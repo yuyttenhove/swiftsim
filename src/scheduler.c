@@ -710,7 +710,7 @@ struct task *scheduler_addtask(struct scheduler *s, enum task_types type,
   t->skip = 1; /* Mark tasks as skip by default. */
   t->tight = tight;
   t->implicit = 0;
-  t->weight = 0;
+  t->weight = 0.0f;
   t->rank = 0;
   t->nr_unlock_tasks = 0;
 #ifdef SWIFT_DEBUG_TASKS
@@ -900,6 +900,90 @@ void scheduler_reset(struct scheduler *s, int size) {
 }
 
 /**
+ * @brief Set the cost scale for each type/subtypes of task, categorised by
+ * sort directions if necessary.
+ *
+ * These should be determined using the EAGLE_25 exercise with a fixed dt.
+ * Sort directions are [1, 2, 1, 2, 3, 2, 1, 2, 1, 2, 3, 2, 3] as determined
+ * by the sid_scale array. For self interaction these are not relevant.
+ *
+ * The idea is that these numbers reflect how much more expensive each task
+ * type is, i.e. a fit of slope to the actual task times per particle.
+ *
+ * @param s our scheduler
+ * @param taskcosts array of size [task_type_count][task_subtype_count][3]
+ */
+static void setcostscale(struct scheduler *s,
+                         float costscale[task_type_count][task_subtype_count][3]) {
+
+  /* All unset scaled costs are 1.0f. */
+  float *ptr = &costscale[0][0][0];
+  for (int i = 0; i < task_type_count * task_subtype_count * 3; i++) ptr[i] = 1.0f;
+
+  /* task_type_self: */
+  costscale[task_type_self][task_subtype_density][0] = 10446.0f;
+
+  costscale[task_type_self][task_subtype_force][0] = 9324.0f;
+
+  /* task_type_pair: */
+  costscale[task_type_pair][task_subtype_density][0] = 23.0f;
+  costscale[task_type_pair][task_subtype_density][1] = 37.0f;
+  costscale[task_type_pair][task_subtype_density][2] = 387.0f;
+
+  costscale[task_type_pair][task_subtype_force][0] = 62.0f;
+  costscale[task_type_pair][task_subtype_force][1] = 62.0f; /* Missing */
+  costscale[task_type_pair][task_subtype_force][2] = 62.0f; /* Missing */
+
+  /* task_type_sub_self: */
+  costscale[task_type_sub_self][task_subtype_density][0] = 1143.0f;
+
+  costscale[task_type_sub_self][task_subtype_force][0] = 883.0f;
+
+  /* task_type_ghost: */
+  costscale[task_type_ghost][task_subtype_none][0] = 4167225.0f;
+
+  /* task_type_kick: */
+  costscale[task_type_kick][task_subtype_none][0] = 10446.0f;
+
+  /* task_type_init: */
+  costscale[task_type_init][task_subtype_none][0] = 74332.0f;
+
+  /* task_type_sort: */
+  costscale[task_type_sort][task_subtype_none][0] = 27611.0f;
+
+#ifdef WITH_MPI
+  /* Just give a high cost, these should be considered first. */
+  costscale[task_type_send][task_subtype_xv][0] = 1.0e6f;
+  costscale[task_type_send][task_subtype_rho][0] = 1.0e6f;
+  costscale[task_type_send][task_subtype_tend][0] = 1.0e6f;
+
+  costscale[task_type_recv][task_subtype_xv][0] = 1.0e6f;
+  costscale[task_type_recv][task_subtype_rho][0] = 1.0e6f;
+  costscale[task_type_recv][task_subtype_tend][0] = 1.0e6f;
+#endif
+
+  /* Scale costs to 0-1 to reduce dynamic range. */
+  float cmin = costscale[0][0][0];
+  float cmax = cmin;
+  for (int i = 0; i < task_type_count * task_subtype_count * 3; i++) {
+    if (ptr[i] < cmin)
+      cmin = ptr[i];
+    else if (ptr[i] > cmax)
+      cmax = ptr[i];
+  }
+
+  float scmin = FLT_MAX;
+  float scmax = -FLT_MAX;
+  for (int i = 0; i < task_type_count * task_subtype_count * 3; i++) {
+    ptr[i] = (ptr[i] - cmin) * 1.0f / (cmax - cmin);
+    if (ptr[i] < scmin)
+      scmin = ptr[i];
+    else if (ptr[i] > scmax)
+      scmax = ptr[i];
+  }
+}
+
+/**
  * @brief Compute the task weights
  *
  * @param s The #scheduler.
@@ -914,8 +998,16 @@ void scheduler_reweight(struct scheduler *s, int verbose) {
   const float sid_scale[13] = {0.1897, 0.4025, 0.1897, 0.4025, 0.5788,
                                0.4025, 0.1897, 0.4025, 0.1897, 0.4025,
                                0.5788, 0.4025, 0.5788};
-  const float wscale = 0.001;
+  const int sortdirs[13] = {0, 1, 0, 1, 2, 1, 0, 1, 0, 1, 2, 1, 2};
   const ticks tic = getticks();
+
+  /* Set the task weights. */
+  static int weightsset = 0;
+  static float costscale[task_type_count][task_subtype_count][3];
+  if (!weightsset) {
+    setcostscale(s, costscale);
+    weightsset = 1;
+  }
 
   /* Run through the tasks backwards and set their weights. */
   for (int k = nr_tasks - 1; k >= 0; k--) {
@@ -924,50 +1016,65 @@ void scheduler_reweight(struct scheduler *s, int verbose) {
     for (int j = 0; j < t->nr_unlock_tasks; j++)
       if (t->unlock_tasks[j]->weight > t->weight)
         t->weight = t->unlock_tasks[j]->weight;
-    int cost = 0;
+    float cost = 0;
+
+    /* Basic scaling for this type. */
+    int sortind = t->flags;
+    if (sortind > 12)
+        sortind = 12;
+    else if (t->type == task_type_sort)
+        sortind = 0;
+#ifdef WITH_MPI
+    else if (t->type == task_type_recv || t->type == task_type_send)
+        sortind = 0;
+#endif
+    float cscale = costscale[t->type][t->subtype][sortdirs[sortind]];
+
     switch (t->type) {
       case task_type_sort:
-        cost = wscale * intrinsics_popcount(t->flags) * t->ci->count *
+        cost = cscale * intrinsics_popcount(t->flags) * t->ci->count *
                (sizeof(int) * 8 - intrinsics_clz(t->ci->count));
         break;
       case task_type_self:
-        cost = 1 * wscale * t->ci->count * t->ci->count;
+        cost = 1.0f * cscale * t->ci->count * t->ci->count;
+        if ( cost < 0)
+          message("self: %f %f %d", cost, cscale, t->ci->count);
         break;
       case task_type_pair:
         if (t->ci->nodeID != nodeID || t->cj->nodeID != nodeID)
-          cost = 3 * wscale * t->ci->count * t->cj->count * sid_scale[t->flags];
+          cost = 3.0f * cscale * t->ci->count * t->cj->count * sid_scale[t->flags];
         else
-          cost = 2 * wscale * t->ci->count * t->cj->count * sid_scale[t->flags];
+          cost = 2.0f * cscale * t->ci->count * t->cj->count * sid_scale[t->flags];
         break;
       case task_type_sub_pair:
         if (t->ci->nodeID != nodeID || t->cj->nodeID != nodeID) {
           if (t->flags < 0)
-            cost = 3 * wscale * t->ci->count * t->cj->count;
+            cost = 3.0f * cscale * t->ci->count * t->cj->count;
           else
             cost =
-                3 * wscale * t->ci->count * t->cj->count * sid_scale[t->flags];
+                3.0f * cscale * t->ci->count * t->cj->count * sid_scale[t->flags];
         } else {
           if (t->flags < 0)
-            cost = 2 * wscale * t->ci->count * t->cj->count;
+            cost = 2.0f * cscale * t->ci->count * t->cj->count;
           else
             cost =
-                2 * wscale * t->ci->count * t->cj->count * sid_scale[t->flags];
+                2.0f * cscale * t->ci->count * t->cj->count * sid_scale[t->flags];
         }
         break;
       case task_type_sub_self:
-        cost = 1 * wscale * t->ci->count * t->ci->count;
+        cost = 1.0f * cscale * t->ci->count * t->ci->count;
         break;
       case task_type_ghost:
-        if (t->ci == t->ci->super) cost = wscale * t->ci->count;
+        if (t->ci == t->ci->super) cost = cscale * t->ci->count;
         break;
       case task_type_kick:
-        cost = wscale * t->ci->count;
+        cost = cscale * t->ci->count;
         break;
       case task_type_init:
-        cost = wscale * t->ci->count;
+        cost = cscale * t->ci->count;
         break;
       default:
-        cost = 0;
+        cost = 0.0f;
         break;
     }
 #if defined(WITH_MPI) && defined(HAVE_METIS)
@@ -980,13 +1087,13 @@ void scheduler_reweight(struct scheduler *s, int verbose) {
     message("took %.3f %s.", clocks_from_ticks(getticks() - tic),
             clocks_getunit());
 
-  /* int min = tasks[0].weight, max = tasks[0].weight;
+  float min = tasks[0].weight, max = tasks[0].weight;
   for ( int k = 1 ; k < nr_tasks ; k++ )
       if ( tasks[k].weight < min )
           min = tasks[k].weight;
       else if ( tasks[k].weight > max )
           max = tasks[k].weight;
-  message( "task weights are in [ %i , %i ]." , min , max ); */
+  message( "task weights are in [%f, %f]." , min , max );
 }
 
 /**
@@ -1176,6 +1283,9 @@ void scheduler_enqueue(struct scheduler *s, struct task *t) {
         //     t->ci->count , t->flags , t->ci->nodeID , s->nodeID );
         // fflush(stdout);
         qid = 1 % s->nr_queues;
+#ifdef SWIFT_DEBUG_TASKS
+        t->tic = getticks();
+#endif
 #else
         error("SWIFT was not compiled with MPI support.");
 #endif
@@ -1198,6 +1308,9 @@ void scheduler_enqueue(struct scheduler *s, struct task *t) {
         //     t->ci->count , t->flags , s->nodeID , t->cj->nodeID );
         // fflush(stdout);
         qid = 0;
+#ifdef SWIFT_DEBUG_TASKS
+        t->tic = getticks();
+#endif
 #else
         error("SWIFT was not compiled with MPI support.");
 #endif
@@ -1381,7 +1494,9 @@ struct task *scheduler_gettask(struct scheduler *s, int qid,
 #ifdef SWIFT_DEBUG_TASKS
   /* Start the timer on this task, if we got one. */
   if (res != NULL) {
-    res->tic = getticks();
+    /* MPI tasks are timed from creation. */
+    if (res->type != task_type_send && res->type != task_type_recv)
+      res->tic = getticks();
     res->rid = qid;
   }
 #endif

@@ -650,14 +650,14 @@ void engine_addtasks_send(struct engine *e, struct cell *ci, struct cell *cj,
 
     /* Create the tasks and their dependencies? */
     if (t_xv == NULL) {
-      t_xv = scheduler_addtask(s, task_type_send, task_subtype_none,
+      t_xv = scheduler_addtask(s, task_type_send, task_subtype_xv,
                                4 * ci->tag, 0, ci, cj, 0);
-      t_rho = scheduler_addtask(s, task_type_send, task_subtype_none,
+      t_rho = scheduler_addtask(s, task_type_send, task_subtype_rho,
                                 4 * ci->tag + 1, 0, ci, cj, 0);
       t_ti = scheduler_addtask(s, task_type_send, task_subtype_tend,
                                4 * ci->tag + 2, 0, ci, cj, 0);
 #ifdef EXTRA_HYDRO_LOOP
-      t_gradient = scheduler_addtask(s, task_type_send, task_subtype_none,
+      t_gradient = scheduler_addtask(s, task_type_send, task_subtype_gradient,
                                      4 * ci->tag + 3, 0, ci, cj, 0);
 #endif
 
@@ -735,14 +735,14 @@ void engine_addtasks_recv(struct engine *e, struct cell *c, struct task *t_xv,
   if (t_xv == NULL && c->density != NULL) {
 
     /* Create the tasks. */
-    t_xv = scheduler_addtask(s, task_type_recv, task_subtype_none, 4 * c->tag,
+    t_xv = scheduler_addtask(s, task_type_recv, task_subtype_xv, 4 * c->tag,
                              0, c, NULL, 0);
-    t_rho = scheduler_addtask(s, task_type_recv, task_subtype_none,
+    t_rho = scheduler_addtask(s, task_type_recv, task_subtype_rho,
                               4 * c->tag + 1, 0, c, NULL, 0);
     t_ti = scheduler_addtask(s, task_type_recv, task_subtype_tend,
                              4 * c->tag + 2, 0, c, NULL, 0);
 #ifdef EXTRA_HYDRO_LOOP
-    t_gradient = scheduler_addtask(s, task_type_recv, task_subtype_none,
+    t_gradient = scheduler_addtask(s, task_type_recv, task_subtype_gradient,
                                    4 * c->tag + 3, 0, c, NULL, 0);
 #endif
   }
@@ -2572,6 +2572,11 @@ void engine_step(struct engine *e) {
   struct clocks_time time1, time2;
   clocks_gettime(&time1);
 
+#if defined(SWIFT_DEBUG_TASKS) && defined(WITH_MPI)
+  /* Make sure all ticks start at the same time so we can compare across
+   * ranks. */
+  MPI_Barrier(MPI_COMM_WORLD);
+#endif
   e->tic_step = getticks();
 
   /* Recover the (integer) end of the next time-step */
