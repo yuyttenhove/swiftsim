@@ -1087,13 +1087,13 @@ void scheduler_reweight(struct scheduler *s, int verbose) {
     message("took %.3f %s.", clocks_from_ticks(getticks() - tic),
             clocks_getunit());
 
-  float min = tasks[0].weight, max = tasks[0].weight;
+  /*float min = tasks[0].weight, max = tasks[0].weight;
   for ( int k = 1 ; k < nr_tasks ; k++ )
       if ( tasks[k].weight < min )
           min = tasks[k].weight;
       else if ( tasks[k].weight > max )
           max = tasks[k].weight;
-  message( "task weights are in [%f, %f]." , min , max );
+  message( "task weights are in [%f, %f]." , min , max );*/
 }
 
 /**
