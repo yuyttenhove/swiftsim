@@ -900,87 +900,145 @@ void scheduler_reset(struct scheduler *s, int size) {
 }
 
 /**
- * @brief Set the cost scale for each type/subtypes of task, categorised by
- * sort directions if necessary.
+ * @brief Set the cost coefficients for each type/subtypes of task,
+ * categorised by sort directions if necessary.
  *
  * These should be determined using the EAGLE_25 exercise with a fixed dt.
  * Sort directions are [1, 2, 1, 2, 3, 2, 1, 2, 1, 2, 3, 2, 3] as determined
  * by the sid_scale array. For self interaction these are not relevant.
  *
- * The idea is that these numbers reflect how much more expensive each task
- * type is, i.e. a fit of slope to the actual task times per particle.
+ * The coefficients reflect the fit to actual data from an SPH EAGLE_25
+ * analysis. For self interactions we fit:
+ *
+ *     t = c1 * cicount + c2 * cicount * cicount
+ *
+ * and pair interactions:
+ *
+ *     t = c1 * cicount + c2 * cjcount + c3 * cicount * cjcount
+ *
+ * the offsets are tied to zero.
  *
  * @param s our scheduler
- * @param taskcosts array of size [task_type_count][task_subtype_count][3]
+ * @param c array of size [task_type_count][task_subtype_count][3][3]
  */
-static void setcostscale(struct scheduler *s,
-                         float costscale[task_type_count][task_subtype_count][3]) {
+static void setcostcoeffs(struct scheduler *s,
+                          float c[task_type_count][task_subtype_count][3][3]) {
 
-  /* All unset scaled costs are 1.0f. */
-  float *ptr = &costscale[0][0][0];
-  for (int i = 0; i < task_type_count * task_subtype_count * 3; i++) ptr[i] = 1.0f;
+  /* All coeefficients are initially zero. */
+  float *ptr = &c[0][0][0][0];
+  for (int i = 0; i < task_type_count * task_subtype_count * 3 * 3; i++)
+    ptr[i] = 0.0f;
 
   /* task_type_self: */
-  costscale[task_type_self][task_subtype_density][0] = 10446.0f;
+  c[task_type_self][task_subtype_density][0][0] = 1442.0f;
+  c[task_type_self][task_subtype_density][0][1] = 10.37f;
 
-  costscale[task_type_self][task_subtype_force][0] = 9324.0f;
+  c[task_type_self][task_subtype_force][0][0] = 1726.0f;
+  c[task_type_self][task_subtype_force][0][1] = 9.23f;
 
   /* task_type_pair: */
-  costscale[task_type_pair][task_subtype_density][0] = 23.0f;
-  costscale[task_type_pair][task_subtype_density][1] = 37.0f;
-  costscale[task_type_pair][task_subtype_density][2] = 387.0f;
+  c[task_type_pair][task_subtype_density][0][0] = 0.24;
+  c[task_type_pair][task_subtype_density][0][1] = 0.20f;
+  c[task_type_pair][task_subtype_density][0][2] = 0.000232f;
 
-  costscale[task_type_pair][task_subtype_force][0] = 62.0f;
-  costscale[task_type_pair][task_subtype_force][1] = 62.0f; /* Missing */
-  costscale[task_type_pair][task_subtype_force][2] = 62.0f; /* Missing */
+  c[task_type_pair][task_subtype_density][1][0] = 3.74;
+  c[task_type_pair][task_subtype_density][1][1] = 3.30f;
+  c[task_type_pair][task_subtype_density][1][2] = 0.00195f;
+
+  c[task_type_pair][task_subtype_density][2][0] = 167.0;
+  c[task_type_pair][task_subtype_density][2][1] = 201.0f;
+  c[task_type_pair][task_subtype_density][2][2] = 0.2097f;
+
+  c[task_type_pair][task_subtype_force][0][0] = 1.029f;
+  c[task_type_pair][task_subtype_force][0][1] = 0.579;
+  c[task_type_pair][task_subtype_force][0][2] = 0.000665f;
+
+  /* These two directions are not used in test, so fake. */
+  c[task_type_pair][task_subtype_force][1][0] = 1.029f;
+  c[task_type_pair][task_subtype_force][1][1] = 0.579;
+  c[task_type_pair][task_subtype_force][1][2] = 0.000665f;
+
+  c[task_type_pair][task_subtype_force][2][0] = 1.029f;
+  c[task_type_pair][task_subtype_force][2][1] = 0.579;
+  c[task_type_pair][task_subtype_force][2][2] = 0.000665f;
+
+  /* task_type_sub_pair: XXX missing from branch XXX */
+
+  c[task_type_sub_pair][task_subtype_density][1][0] = 27.56f;
+  c[task_type_sub_pair][task_subtype_density][1][1] = 25.4f;
+  c[task_type_sub_pair][task_subtype_density][1][2] = 0.003624;
+
+  c[task_type_sub_pair][task_subtype_density][2][0] = 192.6f;
+  c[task_type_sub_pair][task_subtype_density][2][1] = 186.5f;
+  c[task_type_sub_pair][task_subtype_density][2][2] = 0.09427f;
+
+  c[task_type_sub_pair][task_subtype_force][1][0] = 1.33f;
+  c[task_type_sub_pair][task_subtype_force][1][1] = 1.15f;
+  c[task_type_sub_pair][task_subtype_force][1][2] = 0.000415f;
+
+  c[task_type_sub_pair][task_subtype_force][2][0] = 112.0f;
+  c[task_type_sub_pair][task_subtype_force][2][1] = 110.0f;
+  c[task_type_sub_pair][task_subtype_force][2][2] = 0.018607f;
 
   /* task_type_sub_self: */
-  costscale[task_type_sub_self][task_subtype_density][0] = 1143.0f;
+  c[task_type_sub_self][task_subtype_density][0][0] = 7032.0f;
+  c[task_type_sub_self][task_subtype_density][0][1] = 0.287f;
 
-  costscale[task_type_sub_self][task_subtype_force][0] = 883.0f;
+  c[task_type_sub_self][task_subtype_force][0][0] = 6879.0f;
+  c[task_type_sub_self][task_subtype_force][0][1] = 0.0448f;
 
   /* task_type_ghost: */
-  costscale[task_type_ghost][task_subtype_none][0] = 4167225.0f;
+  c[task_type_ghost][task_subtype_none][0][0] = 701.0f;
+  c[task_type_ghost][task_subtype_none][0][1] = 0.012f;
 
   /* task_type_kick: */
-  costscale[task_type_kick][task_subtype_none][0] = 10446.0f;
+  c[task_type_kick][task_subtype_none][0][0] = 288.0f;
+  c[task_type_kick][task_subtype_none][0][1] = 0.0f;
 
   /* task_type_init: */
-  costscale[task_type_init][task_subtype_none][0] = 74332.0f;
+  c[task_type_init][task_subtype_none][0][0] = 68.4f
+  c[task_type_init][task_subtype_none][0][1] = 0.00002f;
 
   /* task_type_sort: */
-  costscale[task_type_sort][task_subtype_none][0] = 27611.0f;
+  c[task_type_sort][task_subtype_none][0][0] = 410.0f;
+  c[task_type_sort][task_subtype_none][0][1] = 0.00034f;
 
 #ifdef WITH_MPI
   /* Just give a high cost, these should be considered first. */
-  costscale[task_type_send][task_subtype_xv][0] = 1.0e6f;
-  costscale[task_type_send][task_subtype_rho][0] = 1.0e6f;
-  costscale[task_type_send][task_subtype_tend][0] = 1.0e6f;
+  c[task_type_send][task_subtype_xv][0][0] = 1.0e6f;
+  c[task_type_send][task_subtype_xv][0][1] = 0.0f;
+  c[task_type_send][task_subtype_xv][0][2] = 0.0f;
 
-  costscale[task_type_recv][task_subtype_xv][0] = 1.0e6f;
-  costscale[task_type_recv][task_subtype_rho][0] = 1.0e6f;
-  costscale[task_type_recv][task_subtype_tend][0] = 1.0e6f;
+  c[task_type_send][task_subtype_rho][0][0] = 1.0e6f;
+  c[task_type_send][task_subtype_rho][0][1] = 0.0f;
+  c[task_type_send][task_subtype_rho][0][2] = 0.0f;
+
+  c[task_type_send][task_subtype_tend][0][0] = 1.0e6f;
+  c[task_type_send][task_subtype_tend][0][1] = 0.0f;
+  c[task_type_send][task_subtype_tend][0][2] = 0.0f;
+
+  c[task_type_recv][task_subtype_xv][0][0] = 1.0e6f;
+  c[task_type_recv][task_subtype_xv][0][1] = 0.0f;
+
+  c[task_type_recv][task_subtype_rho][0][0] = 1.0e6f;
+  c[task_type_recv][task_subtype_rho][0][1] = 0.0f;
+
+  c[task_type_recv][task_subtype_tend][0][0] = 1.0e6f;
+  c[task_type_recv][task_subtype_tend][0][1] = 0.0f;
 #endif
 
-  /* Scale costs to 0-1 to reduce dynamic range. */
-  float cmin = costscale[0][0][0];
+  /* Scale coefficients to 0-1 to reduce dynamic range. */
+  float cmin = c[0][0][0][0];
   float cmax = cmin;
-  for (int i = 0; i < task_type_count * task_subtype_count * 3; i++) {
+  for (int i = 0; i < task_type_count * task_subtype_count * 3 * 3; i++) {
     if (ptr[i] < cmin)
       cmin = ptr[i];
     else if (ptr[i] > cmax)
       cmax = ptr[i];
   }
-
-  float scmin = FLT_MAX;
-  float scmax = -FLT_MAX;
-  for (int i = 0; i < task_type_count * task_subtype_count * 3; i++) {
+  for (int i = 0; i < task_type_count * task_subtype_count * 3 * 3; i++)
     ptr[i] = (ptr[i] - cmin) * 1.0f / (cmax - cmin);
-    if (ptr[i] < scmin)
-      scmin = ptr[i];
-    else if (ptr[i] > scmax)
-      scmax = ptr[i];
-  }
+
 }
 
 /**
@@ -1002,11 +1060,11 @@ void scheduler_reweight(struct scheduler *s, int verbose) {
   const ticks tic = getticks();
 
   /* Set the task weights. */
-  static int weightsset = 0;
-  static float costscale[task_type_count][task_subtype_count][3];
-  if (!weightsset) {
-    setcostscale(s, costscale);
-    weightsset = 1;
+  static int coeffsset = 0;
+  static float c[task_type_count][task_subtype_count][3][3];
+  if (!coeffsset) {
+    setcostcoeffs(s, c);
+    coeffsset = 1;
   }
 
   /* Run through the tasks backwards and set their weights. */
@@ -1018,65 +1076,26 @@ void scheduler_reweight(struct scheduler *s, int verbose) {
         t->weight = t->unlock_tasks[j]->weight;
     float cost = 0;
 
-    /* Basic scaling for this type. */
+    /* Cost for this type. */
     int sortind = t->flags;
     if (sortind > 12)
-        sortind = 12;
+      sortind = 12;
     else if (t->type == task_type_sort)
-        sortind = 0;
+      sortind = 0;
 #ifdef WITH_MPI
     else if (t->type == task_type_recv || t->type == task_type_send)
-        sortind = 0;
+      sortind = 0;
 #endif
-    float cscale = costscale[t->type][t->subtype][sortdirs[sortind]];
+    float c1 = c[t->type][t->subtype][sortdirs[sortind]][0];
+    float c2 = c[t->type][t->subtype][sortdirs[sortind]][1];
+    float c3 = c[t->type][t->subtype][sortdirs[sortind]][2];
+    float cost;
+    if (t->cj != NULL && c3 != 0.0f)
+      cost = c1 * t->ci->count + c2 * t->cj->count +
+             c3 * t->ci->count * t->cj->count;
+    else
+      cost = c1 * t->ci->count + c2 * t->ci->count * t->ci->count;
 
-    switch (t->type) {
-      case task_type_sort:
-        cost = cscale * intrinsics_popcount(t->flags) * t->ci->count *
-               (sizeof(int) * 8 - intrinsics_clz(t->ci->count));
-        break;
-      case task_type_self:
-        cost = 1.0f * cscale * t->ci->count * t->ci->count;
-        if ( cost < 0)
-          message("self: %f %f %d", cost, cscale, t->ci->count);
-        break;
-      case task_type_pair:
-        if (t->ci->nodeID != nodeID || t->cj->nodeID != nodeID)
-          cost = 3.0f * cscale * t->ci->count * t->cj->count * sid_scale[t->flags];
-        else
-          cost = 2.0f * cscale * t->ci->count * t->cj->count * sid_scale[t->flags];
-        break;
-      case task_type_sub_pair:
-        if (t->ci->nodeID != nodeID || t->cj->nodeID != nodeID) {
-          if (t->flags < 0)
-            cost = 3.0f * cscale * t->ci->count * t->cj->count;
-          else
-            cost =
-                3.0f * cscale * t->ci->count * t->cj->count * sid_scale[t->flags];
-        } else {
-          if (t->flags < 0)
-            cost = 2.0f * cscale * t->ci->count * t->cj->count;
-          else
-            cost =
-                2.0f * cscale * t->ci->count * t->cj->count * sid_scale[t->flags];
-        }
-        break;
-      case task_type_sub_self:
-        cost = 1.0f * cscale * t->ci->count * t->ci->count;
-        break;
-      case task_type_ghost:
-        if (t->ci == t->ci->super) cost = cscale * t->ci->count;
-        break;
-      case task_type_kick:
-        cost = cscale * t->ci->count;
-        break;
-      case task_type_init:
-        cost = cscale * t->ci->count;
-        break;
-      default:
-        cost = 0.0f;
-        break;
-    }
 #if defined(WITH_MPI) && defined(HAVE_METIS)
     t->cost = cost;
 #endif
