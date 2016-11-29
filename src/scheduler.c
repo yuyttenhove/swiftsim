@@ -961,8 +961,7 @@ static void setcostcoeffs(struct scheduler *s,
   c[task_type_pair][task_subtype_force][2][1] = 0.579;
   c[task_type_pair][task_subtype_force][2][2] = 0.000665f;
 
-  /* task_type_sub_pair: XXX missing from branch XXX */
-
+  /* task_type_sub_pair: */
   c[task_type_sub_pair][task_subtype_density][1][0] = 27.56f;
   c[task_type_sub_pair][task_subtype_density][1][1] = 25.4f;
   c[task_type_sub_pair][task_subtype_density][1][2] = 0.003624;
@@ -1002,30 +1001,6 @@ static void setcostcoeffs(struct scheduler *s,
   c[task_type_sort][task_subtype_none][0][0] = 410.0f;
   c[task_type_sort][task_subtype_none][0][1] = 0.00034f;
 
-#ifdef WITH_MPI
-  /* Just give a high cost, these should be considered first. */
-  c[task_type_send][task_subtype_xv][0][0] = 1.0e6f;
-  c[task_type_send][task_subtype_xv][0][1] = 0.0f;
-  c[task_type_send][task_subtype_xv][0][2] = 0.0f;
-
-  c[task_type_send][task_subtype_rho][0][0] = 1.0e6f;
-  c[task_type_send][task_subtype_rho][0][1] = 0.0f;
-  c[task_type_send][task_subtype_rho][0][2] = 0.0f;
-
-  c[task_type_send][task_subtype_tend][0][0] = 1.0e6f;
-  c[task_type_send][task_subtype_tend][0][1] = 0.0f;
-  c[task_type_send][task_subtype_tend][0][2] = 0.0f;
-
-  c[task_type_recv][task_subtype_xv][0][0] = 1.0e6f;
-  c[task_type_recv][task_subtype_xv][0][1] = 0.0f;
-
-  c[task_type_recv][task_subtype_rho][0][0] = 1.0e6f;
-  c[task_type_recv][task_subtype_rho][0][1] = 0.0f;
-
-  c[task_type_recv][task_subtype_tend][0][0] = 1.0e6f;
-  c[task_type_recv][task_subtype_tend][0][1] = 0.0f;
-#endif
-
   /* Scale coefficients to 0-1 to reduce dynamic range. */
   float cmin = c[0][0][0][0];
   float cmax = cmin;
@@ -1038,6 +1013,29 @@ static void setcostcoeffs(struct scheduler *s,
   for (int i = 0; i < task_type_count * task_subtype_count * 3 * 3; i++)
     ptr[i] = (ptr[i] - cmin) * 1.0f / (cmax - cmin);
 
+#ifdef WITH_MPI
+  /* Given highest cost, these should be considered first. */
+  c[task_type_send][task_subtype_xv][0][0] = 2.0f;
+  c[task_type_send][task_subtype_xv][0][1] = 2.0f;
+  c[task_type_send][task_subtype_xv][0][2] = 0.0f;
+
+  c[task_type_send][task_subtype_rho][0][0] = 2.0f;
+  c[task_type_send][task_subtype_rho][0][1] = 2.0f;
+  c[task_type_send][task_subtype_rho][0][2] = 0.0f;
+
+  c[task_type_send][task_subtype_tend][0][0] = 2.0f;
+  c[task_type_send][task_subtype_tend][0][1] = 2.0f;
+  c[task_type_send][task_subtype_tend][0][2] = 0.0f;
+
+  c[task_type_recv][task_subtype_xv][0][0] = 2.0f;
+  c[task_type_recv][task_subtype_xv][0][1] = 2.0f;
+
+  c[task_type_recv][task_subtype_rho][0][0] = 2.0f;
+  c[task_type_recv][task_subtype_rho][0][1] = 2.0f;
+
+  c[task_type_recv][task_subtype_tend][0][0] = 2.0f;
+  c[task_type_recv][task_subtype_tend][0][1] = 2.0f;
+#endif
 }
 
 /**
