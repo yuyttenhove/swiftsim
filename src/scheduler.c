@@ -933,6 +933,13 @@ static void setcostscale(struct scheduler *s,
   costscale[task_type_pair][task_subtype_force][1] = 62.0f; /* Missing */
   costscale[task_type_pair][task_subtype_force][2] = 62.0f; /* Missing */
 
+  /* task_type_sub_pair: */
+  costscale[task_type_sub_pair][task_subtype_density][1] = 1326.0f;
+  costscale[task_type_sub_pair][task_subtype_density][2] = 2182.0f;
+
+  costscale[task_type_sub_pair][task_subtype_force][1] = 147.0f;
+  costscale[task_type_sub_pair][task_subtype_force][2] = 483.0f;
+
   /* task_type_sub_self: */
   costscale[task_type_sub_self][task_subtype_density][0] = 1143.0f;
 
@@ -950,17 +957,6 @@ static void setcostscale(struct scheduler *s,
   /* task_type_sort: */
   costscale[task_type_sort][task_subtype_none][0] = 27611.0f;
 
-#ifdef WITH_MPI
-  /* Just give a high cost, these should be considered first. */
-  costscale[task_type_send][task_subtype_xv][0] = 1.0e6f;
-  costscale[task_type_send][task_subtype_rho][0] = 1.0e6f;
-  costscale[task_type_send][task_subtype_tend][0] = 1.0e6f;
-
-  costscale[task_type_recv][task_subtype_xv][0] = 1.0e6f;
-  costscale[task_type_recv][task_subtype_rho][0] = 1.0e6f;
-  costscale[task_type_recv][task_subtype_tend][0] = 1.0e6f;
-#endif
-
   /* Scale costs to 0-1 to reduce dynamic range. */
   float cmin = costscale[0][0][0];
   float cmax = cmin;
@@ -971,15 +967,19 @@ static void setcostscale(struct scheduler *s,
       cmax = ptr[i];
   }
 
-  float scmin = FLT_MAX;
-  float scmax = -FLT_MAX;
-  for (int i = 0; i < task_type_count * task_subtype_count * 3; i++) {
+  for (int i = 0; i < task_type_count * task_subtype_count * 3; i++)
     ptr[i] = (ptr[i] - cmin) * 1.0f / (cmax - cmin);
-    if (ptr[i] < scmin)
-      scmin = ptr[i];
-    else if (ptr[i] > scmax)
-      scmax = ptr[i];
-  }
+
+#ifdef WITH_MPI
+  /* Just give a high cost, these should be considered first. */
+  costscale[task_type_send][task_subtype_xv][0] = 2.0f;
+  costscale[task_type_send][task_subtype_rho][0] = 2.0f;
+  costscale[task_type_send][task_subtype_tend][0] = 2.0f;
+
+  costscale[task_type_recv][task_subtype_xv][0] = 2.0f;
+  costscale[task_type_recv][task_subtype_rho][0] = 2.0f;
+  costscale[task_type_recv][task_subtype_tend][0] = 2.0f;
+#endif
 }
 
 /**
