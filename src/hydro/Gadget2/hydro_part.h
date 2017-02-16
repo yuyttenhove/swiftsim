@@ -42,6 +42,9 @@ struct xpart {
   /* Velocity at the last full step. */
   float v_full[3];
 
+  /* Entropy at the last full step. */
+  float entropy_full;
+
   /* Additional data used to record cooling information */
   struct cooling_xpart_data cooling_data;
 
@@ -49,6 +52,12 @@ struct xpart {
 
 /* Data of a single particle. */
 struct part {
+
+  /* Particle ID. */
+  long long id;
+
+  /* Pointer to corresponding gravity part. */
+  struct gpart* gpart;
 
   /* Particle position. */
   double x[3];
@@ -64,12 +73,6 @@ struct part {
 
   /* Particle mass. */
   float mass;
-
-  /* Particle time of beginning of time-step. */
-  int ti_begin;
-
-  /* Particle time of end of time-step. */
-  int ti_end;
 
   /* Particle density. */
   float rho;
@@ -109,7 +112,7 @@ struct part {
       /*! "Grad h" term */
       float f;
 
-      /* Pressure over density squared (including drho/dh term) */
+      /* Pressure over density squared  */
       float P_over_rho2;
 
       /* Particle sound speed. */
@@ -124,11 +127,18 @@ struct part {
     } force;
   };
 
-  /* Particle ID. */
-  long long id;
+  /* Time-step length */
+  timebin_t time_bin;
 
-  /* Pointer to corresponding gravity part. */
-  struct gpart* gpart;
+#ifdef SWIFT_DEBUG_CHECKS
+
+  /* Time of the last drift */
+  integertime_t ti_drift;
+
+  /* Time of the last kick */
+  integertime_t ti_kick;
+
+#endif
 
 } SWIFT_STRUCT_ALIGN;
 

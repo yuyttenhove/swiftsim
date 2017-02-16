@@ -45,7 +45,10 @@ enum task_types {
   task_type_init,
   task_type_ghost,
   task_type_extra_ghost,
-  task_type_kick,
+  task_type_drift,
+  task_type_kick1,
+  task_type_kick2,
+  task_type_timestep,
   task_type_send,
   task_type_recv,
   task_type_grav_gather_m,
@@ -70,6 +73,8 @@ enum task_subtypes {
   task_subtype_tend,
   task_subtype_xv,
   task_subtype_rho,
+  task_subtype_gpart,
+  task_subtype_spart,
   task_subtype_count
 } __attribute__((packed));
 
@@ -157,6 +162,10 @@ struct task {
 
   /*! Start and end time of this task */
   ticks tic, toc;
+#endif
+
+#ifdef SWIFT_DEBUG_CHECKS
+  int ti_run;
 #endif
 
 } SWIFT_STRUCT_ALIGN;
