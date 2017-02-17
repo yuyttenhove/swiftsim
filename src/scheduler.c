@@ -1003,9 +1003,11 @@ static void setcostcoeffs(struct scheduler *s,
   c[task_type_ghost][task_subtype_none][0][0] = 701.0f;
   c[task_type_ghost][task_subtype_none][0][1] = 0.012f;
 
-  /* task_type_kick: */
-  c[task_type_kick][task_subtype_none][0][0] = 288.0f;
-  c[task_type_kick][task_subtype_none][0][1] = 0.0f;
+  /* task_type_kick1/2: */
+  c[task_type_kick1][task_subtype_none][0][0] = 144.0f;
+  c[task_type_kick1][task_subtype_none][0][1] = 0.0f;
+  c[task_type_kick2][task_subtype_none][0][0] = 144.0f;
+  c[task_type_kick2][task_subtype_none][0][1] = 0.0f;
 
   /* task_type_init: */
   c[task_type_init][task_subtype_none][0][0] = 68.4f;
