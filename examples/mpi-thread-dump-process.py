@@ -120,6 +120,9 @@ for line in range(num_lines):
 
 print "number of keys: ", len(keys)
 
+# Create a file to contain all the solutions.
+fsol = open( "solutions.dat", 'w')
+
 # Output the data to be fitted into files with the names "type.subtype.flags".dat.
 # Also create fits and store these in "type.subtype.flags".fit and plot the fit...
 
@@ -210,14 +213,13 @@ for key in keys:
     y = []
     fy = []
     x = []
-    solution = "Solution: "
     if isself:
         for i in range(num_lines):
             y.append(funcself(xdata[i], popt[0], popt[1], popt[2]))
             fy.append( funcself(xdata[i], 0, popt[1], popt[2]))
             ffit.write(str(xdata[i]) + " " + str(y[i]) + " " + str(ydata[i]) + " " + str(ydata[i] - y[i]) + " " + str(fy[i]) + " " + str(scost[i]) + "\n")
         x = xdata
-        solution = solution + " " + fopt[0] + " + " + fopt[1] + " * cicount " + " + " + fopt[2] + " * cicount * cicount"
+        solution = fopt[0] + " + " + fopt[1] + " * cicount " + " + " + fopt[2] + " * cicount * cicount"
 
     else:
         for i in range(num_lines):
@@ -225,8 +227,9 @@ for key in keys:
             fy.append(funcpair([xdata[0][i], xdata[1][i]], 0, popt[1], popt[2], popt[3]))
             ffit.write(str(xdata[0][i]) + " " + str(xdata[1][i]) + " " + str(y[i]) + " " + str(ydata[i]) + " " + str(ydata[i] - y[i]) + " " + str(fy[i]) + " " + str(scost[i]) + "\n")
         x = xdata[0][:]
-        solution = solution + " " + fopt[0] + " + " + fopt[1] + "* cicount" + " + " + fopt[2] + " * cjcount " + " + " + fopt[3] + " * cicount * cjcount"
-    ffit.write("# " + solution + "\n")
+        solution = fopt[0] + " + " + fopt[1] + "* cicount" + " + " + fopt[2] + " * cjcount " + " + " + fopt[3] + " * cicount * cjcount"
+    ffit.write("# Solution: " + solution + "\n")
+    fsol.write(key + ": " + solution + "\n")
     if maxcost > 0:
         ffit.write("# cost scale: " + str(ymax/maxcost) + "\n")
     else:
@@ -249,3 +252,5 @@ for key in keys:
 
     ffit.close()
     fdat.close()
+fsol.close()
+
