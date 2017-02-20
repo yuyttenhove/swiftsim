@@ -52,7 +52,10 @@ TASKTYPES = ["none",
              "init",
              "ghost",
              "extra_ghost",
-             "kick",
+             "drift",
+             "kick1",
+             "kick2",
+             "timestep",
              "send",
              "recv",
              "grav_gather_m",
@@ -73,6 +76,8 @@ SUBTYPES = ["none",
             "tend",
             "xv",
             "rho",
+            "gpart",
+            "spart",
             "count"]
 
 #  Sorting directions in flags. Should give same results (0 to 12). See
@@ -132,6 +137,8 @@ for key in keys:
 
     ttype = TASKTYPES[int(keys[key][0][3])]
     subtype = SUBTYPES[int(keys[key][0][4])]
+    if ttype == "none":
+        continue
 
     num_lines = 0
     for line in keys[key]:
@@ -139,6 +146,7 @@ for key in keys:
         for item in line:
             res = res + " " + str(int(item)) + " "
         dt = int(line[7]) - int(line[6])
+
         res = res + " " + str(dt) + " "
         res = res + " " + ttype + " "
         res = res + " " + subtype + "\n"
