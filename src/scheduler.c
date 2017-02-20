@@ -962,8 +962,9 @@ static void setcostscale(struct scheduler *s,
   /* task_type_ghost: */
   costscale[task_type_ghost][task_subtype_none][0] = 4167225.0f;
 
-  /* task_type_kick: */
-  costscale[task_type_kick][task_subtype_none][0] = 10446.0f;
+  /* task_type_kick1/2: */
+  costscale[task_type_kick1][task_subtype_none][0] = 10446.0f;
+  costscale[task_type_kick2][task_subtype_none][0] = 10446.0f;
 
   /* task_type_init: */
   costscale[task_type_init][task_subtype_none][0] = 74332.0f;
@@ -1081,13 +1082,13 @@ void scheduler_reweight(struct scheduler *s, int verbose) {
         if (t->ci == t->ci->super) cost = cscale * t->ci->count;
         break;
       case task_type_drift:
-        cost = wscale * t->ci->count;
+        cost = cscale * t->ci->count;
         break;
       case task_type_kick1:
-        cost = wscale * t->ci->count;
+        cost = cscale * t->ci->count;
         break;
       case task_type_kick2:
-        cost = wscale * t->ci->count;
+        cost = cscale * t->ci->count;
         break;
       case task_type_timestep:
         break;
