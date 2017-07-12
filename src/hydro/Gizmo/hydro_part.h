@@ -27,6 +27,9 @@ struct xpart {
   /* Offset between current position and position at last tree rebuild. */
   float x_diff[3];
 
+  /* Offset between the current position and position at the last sort. */
+  float x_diff_sort[3];
+
   /* Velocity at the last full step. */
   float v_full[3];
 
@@ -142,6 +145,12 @@ struct part {
        gradients */
     float matrix_E[3][3];
 
+    /* Total surface area of the particle. */
+    float Atot;
+
+    /* Centroid of the "cell". */
+    float centroid[3];
+
   } geometry;
 
   /* Variables used for timestep calculation (currently not used). */
@@ -167,6 +176,9 @@ struct part {
     /* Particle number density. */
     float wcount;
 
+    /* Correction factor for wcount. */
+    float wcorr;
+
   } density;
 
   /* Quantities used during the force loop. */
@@ -178,6 +190,9 @@ struct part {
     /* Physical time step of the particle. */
     float dt;
 
+    /* Flag keeping track of whether this is an active or inactive particle. */
+    char active;
+
     /* Actual velocity of the particle. */
     float v_full[3];
 
@@ -188,6 +203,8 @@ struct part {
 
     /* Previous value of the gravitational acceleration. */
     float old_a[3];
+
+    float grad_a[3][3];
 
     /* Previous value of the mass flux vector. */
     float old_mflux[3];

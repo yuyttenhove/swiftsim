@@ -41,6 +41,7 @@
 #include "engine.h"
 #include "error.h"
 #include "gravity_io.h"
+#include "gravity_properties.h"
 #include "hydro_io.h"
 #include "hydro_properties.h"
 #include "io_properties.h"
@@ -71,8 +72,8 @@
  */
 void readArray(hid_t grp, const struct io_props prop, size_t N,
                long long N_total, long long offset,
-               const struct UnitSystem* internal_units,
-               const struct UnitSystem* ic_units) {
+               const struct unit_system* internal_units,
+               const struct unit_system* ic_units) {
 
   const size_t typeSize = io_sizeof_type(prop.type);
   const size_t copySize = typeSize * prop.dimension;
@@ -191,8 +192,8 @@ void readArray(hid_t grp, const struct io_props prop, size_t N,
  * @param N The number of particles to write.
  * @param N_total Total number of particles across all cores
  * @param offset Offset in the array where this mpi task starts writing
- * @param internal_units The #UnitSystem used internally
- * @param snapshot_units The #UnitSystem used in the snapshots
+ * @param internal_units The #unit_system used internally
+ * @param snapshot_units The #unit_system used in the snapshots
  *
  * @todo A better version using HDF5 hyper-slabs to write the file directly from
  * the part array will be written once the structures have been stabilized.
@@ -201,8 +202,8 @@ void readArray(hid_t grp, const struct io_props prop, size_t N,
 void writeArray(struct engine* e, hid_t grp, char* fileName, FILE* xmfFile,
                 char* partTypeGroupName, const struct io_props props, size_t N,
                 long long N_total, int mpi_rank, long long offset,
-                const struct UnitSystem* internal_units,
-                const struct UnitSystem* snapshot_units) {
+                const struct unit_system* internal_units,
+                const struct unit_system* snapshot_units) {
 
   const size_t typeSize = io_sizeof_type(props.type);
   const size_t copySize = typeSize * props.dimension;
@@ -374,7 +375,7 @@ void writeArray(struct engine* e, hid_t grp, char* fileName, FILE* xmfFile,
  * Calls #error() if an error occurs.
  *
  */
-void read_ic_parallel(char* fileName, const struct UnitSystem* internal_units,
+void read_ic_parallel(char* fileName, const struct unit_system* internal_units,
                       double dim[3], struct part** parts, struct gpart** gparts,
                       struct spart** sparts, size_t* Ngas, size_t* Ngparts,
                       size_t* Nstars, int* periodic, int* flag_entropy,
@@ -440,9 +441,16 @@ void read_ic_parallel(char* fileName, const struct UnitSystem* internal_units,
     N_total[ptype] =
         (numParticles[ptype]) + (numParticles_highWord[ptype] << 32);
 
+  /* Get the box size if not cubic */
   dim[0] = boxSize[0];
   dim[1] = (boxSize[1] < 0) ? boxSize[0] : boxSize[1];
   dim[2] = (boxSize[2] < 0) ? boxSize[0] : boxSize[2];
+
+  /* Change box size in the 1D and 2D case */
+  if (hydro_dimension == 2)
+    dim[2] = min(dim[0], dim[1]);
+  else if (hydro_dimension == 1)
+    dim[2] = dim[1] = dim[0];
 
   /* message("Found %lld particles in a %speriodic box of size [%f %f %f].", */
   /* 	  N_total[0], (periodic ? "": "non-"), dim[0], */
@@ -458,9 +466,9 @@ void read_ic_parallel(char* fileName, const struct UnitSystem* internal_units,
   H5Gclose(h_grp);
 
   /* Read the unit system used in the ICs */
-  struct UnitSystem* ic_units = malloc(sizeof(struct UnitSystem));
+  struct unit_system* ic_units = malloc(sizeof(struct unit_system));
   if (ic_units == NULL) error("Unable to allocate memory for IC unit system");
-  io_read_UnitSystem(h_file, ic_units);
+  io_read_unit_system(h_file, ic_units);
 
   /* Tell the user if a conversion will be needed */
   if (mpi_rank == 0) {
@@ -620,8 +628,8 @@ void read_ic_parallel(char* fileName, const struct UnitSystem* internal_units,
  *
  * @param e The engine containing all the system.
  * @param baseName The common part of the snapshot file name.
- * @param internal_units The #UnitSystem used internally
- * @param snapshot_units The #UnitSystem used in the snapshots
+ * @param internal_units The #unit_system used internally
+ * @param snapshot_units The #unit_system used in the snapshots
  * @param mpi_rank The MPI rank of this node.
  * @param mpi_size The number of MPI ranks.
  * @param comm The MPI communicator.
@@ -636,8 +644,8 @@ void read_ic_parallel(char* fileName, const struct UnitSystem* internal_units,
  *
  */
 void write_output_parallel(struct engine* e, const char* baseName,
-                           const struct UnitSystem* internal_units,
-                           const struct UnitSystem* snapshot_units,
+                           const struct unit_system* internal_units,
+                           const struct unit_system* snapshot_units,
                            int mpi_rank, int mpi_size, MPI_Comm comm,
                            MPI_Info info) {
 
@@ -750,12 +758,23 @@ void write_output_parallel(struct engine* e, const char* baseName,
   io_write_code_description(h_file);
 
   /* Print the SPH parameters */
-  h_grp =
-      H5Gcreate(h_file, "/HydroScheme", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-  if (h_grp < 0) error("Error while creating SPH group");
-  hydro_props_print_snapshot(h_grp, e->hydro_properties);
-  writeSPHflavour(h_grp);
-  H5Gclose(h_grp);
+  if (e->policy & engine_policy_hydro) {
+    h_grp = H5Gcreate(h_file, "/HydroScheme", H5P_DEFAULT, H5P_DEFAULT,
+                      H5P_DEFAULT);
+    if (h_grp < 0) error("Error while creating SPH group");
+    hydro_props_print_snapshot(h_grp, e->hydro_properties);
+    writeSPHflavour(h_grp);
+    H5Gclose(h_grp);
+  }
+
+  /* Print the gravity parameters */
+  if (e->policy & engine_policy_self_gravity) {
+    h_grp = H5Gcreate(h_file, "/GravityScheme", H5P_DEFAULT, H5P_DEFAULT,
+                      H5P_DEFAULT);
+    if (h_grp < 0) error("Error while creating gravity group");
+    gravity_props_print_snapshot(h_grp, e->gravity_properties);
+    H5Gclose(h_grp);
+  }
 
   /* Print the runtime parameters */
   h_grp =
@@ -765,10 +784,10 @@ void write_output_parallel(struct engine* e, const char* baseName,
   H5Gclose(h_grp);
 
   /* Print the system of Units used in the spashot */
-  io_write_UnitSystem(h_file, snapshot_units, "Units");
+  io_write_unit_system(h_file, snapshot_units, "Units");
 
   /* Print the system of Units used internally */
-  io_write_UnitSystem(h_file, internal_units, "InternalCodeUnits");
+  io_write_unit_system(h_file, internal_units, "InternalCodeUnits");
 
   /* Tell the user if a conversion will be needed */
   if (e->verbose && mpi_rank == 0) {

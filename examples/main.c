@@ -57,42 +57,51 @@ void print_help_message() {
   printf("       swift_mpi [OPTION]... PARAMFILE\n\n");
 
   printf("Valid options are:\n");
-  printf("  %2s %8s %s\n", "-a", "", "Pin runners using processor affinity");
-  printf("  %2s %8s %s\n", "-c", "", "Run with cosmological time integration");
-  printf("  %2s %8s %s\n", "-C", "", "Run with cooling");
+  printf("  %2s %14s %s\n", "-a", "", "Pin runners using processor affinity.");
+  printf("  %2s %14s %s\n", "-c", "",
+         "Run with cosmological time integration.");
+  printf("  %2s %14s %s\n", "-C", "", "Run with cooling.");
   printf(
-      "  %2s %8s %s\n", "-d", "",
+      "  %2s %14s %s\n", "-d", "",
       "Dry run. Read the parameter file, allocate memory but does not read ");
   printf(
-      "  %2s %8s %s\n", "", "",
+      "  %2s %14s %s\n", "", "",
       "the particles from ICs and exit before the start of time integration.");
-  printf("  %2s %8s %s\n", "", "",
+  printf("  %2s %14s %s\n", "", "",
          "Allows user to check validy of parameter and IC files as well as "
          "memory limits.");
-  printf("  %2s %8s %s\n", "-D", "",
-         "Always drift all particles even the ones far from active particles.");
-  printf("  %2s %8s %s\n", "-e", "",
-         "Enable floating-point exceptions (debugging mode)");
-  printf("  %2s %8s %s\n", "-f", "{int}",
-         "Overwrite the CPU frequency (Hz) to be used for time measurements");
-  printf("  %2s %8s %s\n", "-g", "",
-         "Run with an external gravitational potential");
-  printf("  %2s %8s %s\n", "-F", "", "Run with feedback ");
-  printf("  %2s %8s %s\n", "-G", "", "Run with self-gravity");
-  printf("  %2s %8s %s\n", "-n", "{int}",
+  printf("  %2s %14s %s\n", "-D", "",
+         "Always drift all particles even the ones far from active particles. "
+         "This emulates");
+  printf("  %2s %14s %s\n", "", "",
+         "Gadget-[23] and GIZMO's default behaviours.");
+  printf("  %2s %14s %s\n", "-e", "",
+         "Enable floating-point exceptions (debugging mode).");
+  printf("  %2s %14s %s\n", "-f", "{int}",
+         "Overwrite the CPU frequency (Hz) to be used for time measurements.");
+  printf("  %2s %14s %s\n", "-g", "",
+         "Run with an external gravitational potential.");
+  printf("  %2s %14s %s\n", "-G", "", "Run with self-gravity.");
+  printf("  %2s %14s %s\n", "-M", "",
+         "Reconstruct the multipoles every time-step.");
+  printf("  %2s %14s %s\n", "-n", "{int}",
          "Execute a fixed number of time steps. When unset use the time_end "
          "parameter to stop.");
-  printf("  %2s %8s %s\n", "-s", "", "Run with SPH");
-  printf("  %2s %8s %s\n", "-S", "", "Run with stars");
-  printf("  %2s %8s %s\n", "-t", "{int}",
+  printf("  %2s %14s %s\n", "-P", "{sec:par:val}",
+         "Set parameter value and overwrites values read from the parameters "
+         "file. Can be used more than once.");
+  printf("  %2s %14s %s\n", "-s", "", "Run with hydrodynamics.");
+  printf("  %2s %14s %s\n", "-S", "", "Run with stars.");
+  printf("  %2s %14s %s\n", "-t", "{int}",
          "The number of threads to use on each MPI rank. Defaults to 1 if not "
          "specified.");
-  printf("  %2s %8s %s\n", "-v", "[12]", "Increase the level of verbosity");
-  printf("  %2s %8s %s\n", "", "", "1: MPI-rank 0 writes ");
-  printf("  %2s %8s %s\n", "", "", "2: All MPI-ranks write");
-  printf("  %2s %8s %s\n", "-y", "{int}",
-         "Time-step frequency at which task graphs are dumped");
-  printf("  %2s %8s %s\n", "-h", "", "Print this help message and exit");
+  printf("  %2s %14s %s\n", "-T", "", "Print timers every time-step.");
+  printf("  %2s %14s %s\n", "-v", "[12]", "Increase the level of verbosity:");
+  printf("  %2s %14s %s\n", "", "", "1: MPI-rank 0 writes,");
+  printf("  %2s %14s %s\n", "", "", "2: All MPI-ranks write.");
+  printf("  %2s %14s %s\n", "-y", "{int}",
+         "Time-step frequency at which task graphs are dumped.");
+  printf("  %2s %14s %s\n", "-h", "", "Print this help message and exit.");
   printf(
       "\nSee the file parameter_example.yml for an example of "
       "parameter file.\n");
@@ -129,7 +138,9 @@ int main(int argc, char *argv[]) {
   if ((res = MPI_Comm_set_errhandler(MPI_COMM_WORLD, MPI_ERRORS_RETURN)) !=
       MPI_SUCCESS)
     error("Call to MPI_Comm_set_errhandler failed with error %i.", res);
-  if (myrank == 0) message("MPI is up and running with %i node(s).", nr_nodes);
+  if (myrank == 0)
+    printf("[0000] [00000.0] main: MPI is up and running with %i node(s).\n\n",
+           nr_nodes);
   if (nr_nodes == 1) {
     message("WARNING: you are running with one MPI rank.");
     message("WARNING: you should use the non-MPI version of this program.");
@@ -160,14 +171,19 @@ int main(int argc, char *argv[]) {
   int with_stars = 0;
   int with_fp_exceptions = 0;
   int with_drift_all = 0;
+  int with_mpole_reconstruction = 0;
   int verbose = 0;
   int nr_threads = 1;
+  int with_verbose_timers = 0;
+  int nparams = 0;
+  char *cmdparams[PARSER_MAX_NO_OF_PARAMS];
   char paramFileName[200] = "";
   unsigned long long cpufreq = 0;
 
   /* Parse the parameters */
   int c;
-  while ((c = getopt(argc, argv, "acCdDef:FgGhn:sSt:v:y:")) != -1) switch (c) {
+  while ((c = getopt(argc, argv, "acCdDef:FgGhMn:P:sSt:Tv:y:")) != -1)
+    switch (c) {
       case 'a':
         with_aff = 1;
         break;
@@ -205,12 +221,19 @@ int main(int argc, char *argv[]) {
       case 'h':
         if (myrank == 0) print_help_message();
         return 0;
+      case 'M':
+        with_mpole_reconstruction = 1;
+        break;
       case 'n':
         if (sscanf(optarg, "%d", &nsteps) != 1) {
           if (myrank == 0) printf("Error parsing fixed number of steps.\n");
           if (myrank == 0) print_help_message();
           return 1;
         }
+        break;
+      case 'P':
+        cmdparams[nparams] = optarg;
+        nparams++;
         break;
       case 's':
         with_hydro = 1;
@@ -225,6 +248,9 @@ int main(int argc, char *argv[]) {
           if (myrank == 0) print_help_message();
           return 1;
         }
+        break;
+      case 'T':
+        with_verbose_timers = 1;
         break;
       case 'v':
         if (sscanf(optarg, "%d", &verbose) != 1) {
@@ -270,6 +296,14 @@ int main(int argc, char *argv[]) {
     if (myrank == 0) print_help_message();
     return 1;
   }
+  if (with_stars && !with_external_gravity && !with_self_gravity) {
+    if (myrank == 0)
+      printf(
+          "Error: Cannot process stars without gravity, -g or -G must be "
+          "chosen.\n");
+    if (myrank == 0) print_help_message();
+    return 1;
+  }
 
   /* Genesis 1.1: And then, there was time ! */
   clocks_set_cpufreq(cpufreq);
@@ -302,6 +336,15 @@ int main(int argc, char *argv[]) {
     message("WARNING: Debugging checks activated. Code will be slower !");
 #endif
 
+/* Do we have gravity accuracy checks ? */
+#ifdef SWIFT_GRAVITY_FORCE_CHECKS
+  if (myrank == 0)
+    message(
+        "WARNING: Checking 1/%d of all gpart for gravity accuracy. Code will "
+        "be slower !",
+        SWIFT_GRAVITY_FORCE_CHECKS);
+#endif
+
   /* Do we choke on FP-exceptions ? */
   if (with_fp_exceptions) {
     feenableexcept(FE_DIVBYZERO | FE_INVALID | FE_OVERFLOW);
@@ -311,12 +354,14 @@ int main(int argc, char *argv[]) {
 
   /* How large are the parts? */
   if (myrank == 0) {
-    message("sizeof(struct part)  is %4zi bytes.", sizeof(struct part));
-    message("sizeof(struct xpart) is %4zi bytes.", sizeof(struct xpart));
-    message("sizeof(struct spart) is %4zi bytes.", sizeof(struct spart));
-    message("sizeof(struct gpart) is %4zi bytes.", sizeof(struct gpart));
-    message("sizeof(struct task)  is %4zi bytes.", sizeof(struct task));
-    message("sizeof(struct cell)  is %4zi bytes.", sizeof(struct cell));
+    message("sizeof(part)        is %4zi bytes.", sizeof(struct part));
+    message("sizeof(xpart)       is %4zi bytes.", sizeof(struct xpart));
+    message("sizeof(spart)       is %4zi bytes.", sizeof(struct spart));
+    message("sizeof(gpart)       is %4zi bytes.", sizeof(struct gpart));
+    message("sizeof(multipole)   is %4zi bytes.", sizeof(struct multipole));
+    message("sizeof(grav_tensor) is %4zi bytes.", sizeof(struct grav_tensor));
+    message("sizeof(task)        is %4zi bytes.", sizeof(struct task));
+    message("sizeof(cell)        is %4zi bytes.", sizeof(struct cell));
   }
 
   /* Read the parameter file */
@@ -325,6 +370,12 @@ int main(int argc, char *argv[]) {
   if (myrank == 0) {
     message("Reading runtime parameters from file '%s'", paramFileName);
     parser_read_file(paramFileName, params);
+
+    /* Handle any command-line overrides. */
+    if (nparams > 0)
+      for (int k = 0; k < nparams; k++) parser_set_param(params, cmdparams[k]);
+
+    /* And dump the parameters as used. */
     // parser_print_params(&params);
     parser_write_params_to_file(params, "used_parameters.yml");
   }
@@ -333,10 +384,10 @@ int main(int argc, char *argv[]) {
   MPI_Bcast(params, sizeof(struct swift_params), MPI_BYTE, 0, MPI_COMM_WORLD);
 #endif
 
-/* Prepare the domain decomposition scheme */
+  /* Prepare the domain decomposition scheme */
+  struct repartition reparttype;
 #ifdef WITH_MPI
   struct partition initial_partition;
-  enum repartition_type reparttype;
   partition_init(&initial_partition, &reparttype, params, nr_nodes);
 
   /* Let's report what we did */
@@ -346,12 +397,12 @@ int main(int argc, char *argv[]) {
     if (initial_partition.type == INITPART_GRID)
       message("grid set to [ %i %i %i ].", initial_partition.grid[0],
               initial_partition.grid[1], initial_partition.grid[2]);
-    message("Using %s repartitioning", repartition_name[reparttype]);
+    message("Using %s repartitioning", repartition_name[reparttype.type]);
   }
 #endif
 
   /* Initialize unit system and constants */
-  struct UnitSystem us;
+  struct unit_system us;
   struct phys_const prog_const;
   units_init(&us, params, "InternalUnitSystem");
   phys_const_init(&us, &prog_const);
@@ -368,11 +419,17 @@ int main(int argc, char *argv[]) {
   struct hydro_props hydro_properties;
   if (with_hydro) hydro_props_init(&hydro_properties, params);
 
+  /* Initialise the gravity properties */
+  struct gravity_props gravity_properties;
+  if (with_self_gravity) gravity_props_init(&gravity_properties, params);
+
   /* Read particles and space information from (GADGET) ICs */
   char ICfileName[200] = "";
   parser_get_param_string(params, "InitialConditions:file_name", ICfileName);
   const int replicate =
       parser_get_opt_param_int(params, "InitialConditions:replicate", 1);
+  const int clean_h_values =
+      parser_get_opt_param_int(params, "InitialConditions:cleanup_h", 0);
   if (myrank == 0) message("Reading ICs from file '%s'", ICfileName);
   fflush(stdout);
 
@@ -426,8 +483,8 @@ int main(int argc, char *argv[]) {
   long long N_total[3] = {0, 0, 0};
 #if defined(WITH_MPI)
   long long N_long[3] = {Ngas, Ngpart, Nspart};
-  MPI_Reduce(&N_long, &N_total, 3, MPI_LONG_LONG_INT, MPI_SUM, 0,
-             MPI_COMM_WORLD);
+  MPI_Allreduce(&N_long, &N_total, 3, MPI_LONG_LONG_INT, MPI_SUM,
+                MPI_COMM_WORLD);
 #else
   N_total[0] = Ngas;
   N_total[1] = Ngpart;
@@ -498,6 +555,8 @@ int main(int argc, char *argv[]) {
   /* Construct the engine policy */
   int engine_policies = ENGINE_POLICY | engine_policy_steal;
   if (with_drift_all) engine_policies |= engine_policy_drift_all;
+  if (with_mpole_reconstruction)
+    engine_policies |= engine_policy_reconstruct_mpoles;
   if (with_hydro) engine_policies |= engine_policy_hydro;
   if (with_self_gravity) engine_policies |= engine_policy_self_gravity;
   if (with_external_gravity) engine_policies |= engine_policy_external_gravity;
@@ -509,9 +568,10 @@ int main(int argc, char *argv[]) {
   /* Initialize the engine with the space and policies. */
   if (myrank == 0) clocks_gettime(&tic);
   struct engine e;
-  engine_init(&e, &s, params, nr_nodes, myrank, nr_threads, with_aff,
-              engine_policies, talking, &us, &prog_const, &hydro_properties,
-              &potential, &cooling_func, &sourceterms);
+  engine_init(&e, &s, params, nr_nodes, myrank, nr_threads, N_total[0],
+              N_total[1], with_aff, engine_policies, talking, &reparttype, &us,
+              &prog_const, &hydro_properties, &gravity_properties, &potential,
+              &cooling_func, &sourceterms);
   if (myrank == 0) {
     clocks_gettime(&toc);
     message("engine_init took %.3f %s.", clocks_diff(&tic, &toc),
@@ -571,7 +631,7 @@ int main(int argc, char *argv[]) {
 #endif
 
   /* Initialise the particles */
-  engine_init_particles(&e, flag_entropy_ICs);
+  engine_init_particles(&e, flag_entropy_ICs, clean_h_values);
 
   /* Write the state of the system before starting time integration. */
   engine_dump_snapshot(&e);
@@ -582,19 +642,20 @@ int main(int argc, char *argv[]) {
            "Time-step", "Updates", "g-Updates", "s-Updates", "Wall-clock time",
            clocks_getunit());
 
-  /* Main simulation loop */
-  for (int j = 0; !engine_is_done(&e) && e.step != nsteps; j++) {
+  /* File for the timers */
+  if (with_verbose_timers) timers_open_file(myrank);
 
-/* Repartition the space amongst the nodes? */
-#ifdef WITH_MPI
-    if (j % 100 == 2) e.forcerepart = reparttype;
-#endif
+  /* Main simulation loop */
+  for (int j = 0; !engine_is_done(&e) && e.step - 1 != nsteps; j++) {
 
     /* Reset timers */
-    timers_reset(timers_mask_all);
+    timers_reset_all();
 
     /* Take a step. */
     engine_step(&e);
+
+    /* Print the timers. */
+    if (with_verbose_timers) timers_print(e.step);
 
 #ifdef SWIFT_DEBUG_TASKS
     /* Dump the task data using the given frequency. */
@@ -621,9 +682,9 @@ int main(int argc, char *argv[]) {
 
           /* Open file and position at end. */
           file_thread = fopen(dumpfile, "a");
-
-          fprintf(file_thread, " %03i 000 -1 0 0 0 %lli %lli 0 0 0 0 0 %lli\n", myrank,
-                  e.tic_step, e.toc_step - e.tic_step, cpufreq);
+          fprintf(file_thread, " %03i 0 0 0 0 %lli %lli %zi %zi %zi 0 0 %lli\n",
+                  myrank, e.tic_step, e.toc_step, e.updates, e.g_updates,
+                  e.s_updates, cpufreq);
           int count = 0;
           for (int l = 0; l < e.sched.nr_tasks; l++) {
             if (!e.sched.tasks[l].implicit && e.sched.tasks[l].toc != 0) {
@@ -633,20 +694,16 @@ int main(int argc, char *argv[]) {
               if (e.sched.tasks[l].type == task_type_send)
                 otherrank = e.sched.tasks[l].cj->nodeID;
 
-              fprintf(
-                  file_thread, " %03i %03i %i %i %i %i %lli %lli %i %i %i %i %i %f\n",
-                  myrank, otherrank, e.sched.tasks[l].rid, e.sched.tasks[l].type,
-                  e.sched.tasks[l].subtype, (e.sched.tasks[l].cj == NULL),
-                  e.sched.tasks[l].tic - e.tic_step, e.sched.tasks[l].toc - e.tic_step,
-                  (e.sched.tasks[l].ci != NULL) ? e.sched.tasks[l].ci->count
-                                                : 0,
-                  (e.sched.tasks[l].cj != NULL) ? e.sched.tasks[l].cj->count
-                                                : 0,
-                  (e.sched.tasks[l].ci != NULL) ? e.sched.tasks[l].ci->gcount
-                                                : 0,
-                  (e.sched.tasks[l].cj != NULL) ? e.sched.tasks[l].cj->gcount
-                                                : 0,
-                  e.sched.tasks[l].flags, e.sched.tasks[l].cost);
+              fprintf(file_thread,
+                      " %03i %03i %i %i %i %i %lli %lli %i %i %i %i %i %i %f\n",
+                      myrank, otherrank, e.sched.tasks[l].rid, e.sched.tasks[l].type,
+                      e.sched.tasks[l].subtype, (e.sched.tasks[l].cj == NULL),
+                      e.sched.tasks[l].tic - e.tic_step, e.sched.tasks[l].toc - e.tic_step,
+                      (e.sched.tasks[l].ci == NULL) ? 0 : e.sched.tasks[l].ci->count,
+                      (e.sched.tasks[l].cj == NULL) ? 0 : e.sched.tasks[l].cj->count,
+                      (e.sched.tasks[l].ci == NULL) ? 0 : e.sched.tasks[l].ci->gcount,
+                      (e.sched.tasks[l].cj == NULL) ? 0 : e.sched.tasks[l].cj->gcount,
+                      e.sched.tasks[l].flags, e.sched.tasks[l].sid, e.sched.tasks[l].cost);
             }
             fflush(stdout);
             count++;
@@ -664,21 +721,21 @@ int main(int argc, char *argv[]) {
       FILE *file_thread;
       file_thread = fopen(dumpfile, "w");
       /* Add some information to help with the plots */
-      fprintf(file_thread, " %i %i %i %i %lli %lli %i %i %i %i %lli\n",
-              -2, -1, -1, 1, e.tic_step, e.toc_step, 0, 0, 0, 0, cpufreq);
-
+      fprintf(file_thread, " %i %i %i %i %lli %lli %zi %zi %zi %i %lli\n", -2,
+              -1, -1, 1, e.tic_step, e.toc_step, e.updates, e.g_updates,
+              e.s_updates, 0, cpufreq);
       for (int l = 0; l < e.sched.nr_tasks; l++) {
         if (!e.sched.tasks[l].implicit && e.sched.tasks[l].toc != 0) {
           fprintf(
-              file_thread, " %i %i %i %i %lli %lli %i %i %i %i %i\n",
+              file_thread, " %i %i %i %i %lli %lli %i %i %i %i %i %i %f\n",
               e.sched.tasks[l].rid, e.sched.tasks[l].type,
               e.sched.tasks[l].subtype, (e.sched.tasks[l].cj == NULL),
-              e.sched.tasks[l].tic, e.sched.tasks[l].toc,
+              e.sched.tasks[l].tic - e.tic_step, e.sched.tasks[l].toc - e.tic_step,
               (e.sched.tasks[l].ci == NULL) ? 0 : e.sched.tasks[l].ci->count,
               (e.sched.tasks[l].cj == NULL) ? 0 : e.sched.tasks[l].cj->count,
               (e.sched.tasks[l].ci == NULL) ? 0 : e.sched.tasks[l].ci->gcount,
               (e.sched.tasks[l].cj == NULL) ? 0 : e.sched.tasks[l].cj->gcount,
-              e.sched.tasks[l].flags);
+              e.sched.tasks[l].flags, e.sched.tasks[l].sid, e.sched.tasks[l].cost);
         }
       }
       fclose(file_thread);
@@ -699,6 +756,7 @@ int main(int argc, char *argv[]) {
 #endif
 
   /* Write final output. */
+  engine_drift_all(&e);
   engine_dump_snapshot(&e);
 
 #ifdef WITH_MPI
@@ -707,6 +765,7 @@ int main(int argc, char *argv[]) {
 #endif
 
   /* Clean everything */
+  if (with_verbose_timers) timers_close_file();
   engine_clean(&e);
   free(params);
 

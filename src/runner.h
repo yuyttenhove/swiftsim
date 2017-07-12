@@ -23,10 +23,11 @@
 #ifndef SWIFT_RUNNER_H
 #define SWIFT_RUNNER_H
 
-#include "cache.h"
+/* Config parameters. */
+#include "../config.h"
 
-extern const double runner_shift[13][3];
-extern const char runner_flip[27];
+/* Includes. */
+#include "cache.h"
 
 struct cell;
 struct engine;
@@ -48,24 +49,33 @@ struct runner {
   /*! The engine owing this runner. */
   struct engine *e;
 
-  /*! The particle cache of this runner. */
-  struct cache par_cache;
+#ifdef WITH_VECTORIZATION
+  /*! The particle cache of cell ci. */
+  struct cache ci_cache;
+
+  /*! The particle cache of cell cj. */
+  struct cache cj_cache;
+#endif
 };
 
 /* Function prototypes. */
 void runner_do_ghost(struct runner *r, struct cell *c, int timer);
 void runner_do_extra_ghost(struct runner *r, struct cell *c, int timer);
-void runner_do_sort(struct runner *r, struct cell *c, int flag, int clock);
-void runner_do_drift(struct runner *r, struct cell *c, int timer);
+void runner_do_sort(struct runner *r, struct cell *c, int flag, int cleanup,
+                    int clock);
+void runner_do_drift_part(struct runner *r, struct cell *c, int timer);
+void runner_do_drift_gpart(struct runner *r, struct cell *c, int timer);
 void runner_do_kick1(struct runner *r, struct cell *c, int timer);
 void runner_do_kick2(struct runner *r, struct cell *c, int timer);
 void runner_do_end_force(struct runner *r, struct cell *c, int timer);
 void runner_do_init(struct runner *r, struct cell *c, int timer);
 void runner_do_cooling(struct runner *r, struct cell *c, int timer);
 void runner_do_grav_external(struct runner *r, struct cell *c, int timer);
+void runner_do_grav_fft(struct runner *r, int timer);
 void *runner_main(void *data);
 void runner_do_unskip_mapper(void *map_data, int num_elements,
                              void *extra_data);
-void runner_do_drift_mapper(void *map_data, int num_elements, void *extra_data);
+void runner_do_drift_all_mapper(void *map_data, int num_elements,
+                                void *extra_data);
 
 #endif /* SWIFT_RUNNER_H */

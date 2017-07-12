@@ -36,6 +36,7 @@
 #include "dimension.h"
 #include "equation_of_state.h"
 #include "hydro_properties.h"
+#include "hydro_space.h"
 #include "kernel_hydro.h"
 #include "minmax.h"
 
@@ -153,15 +154,26 @@ __attribute__((always_inline)) INLINE static float hydro_compute_timestep(
 }
 
 /**
+ * @brief Does some extra hydro operations once the actual physical time step
+ * for the particle is known.
+ *
+ * @param p The particle to act upon.
+ * @param dt Physical time step of the particle during the next step.
+ */
+__attribute__((always_inline)) INLINE static void hydro_timestep_extra(
+    struct part *p, float dt) {}
+
+/**
  * @brief Prepares a particle for the density calculation.
  *
  * Zeroes all the relevant arrays in preparation for the sums taking place in
  * the variaous density tasks
  *
  * @param p The particle to act upon
+ * @param hs #hydro_space containing hydro specific space information.
  */
 __attribute__((always_inline)) INLINE static void hydro_init_part(
-    struct part *restrict p) {
+    struct part *restrict p, const struct hydro_space *hs) {
 
   p->rho = 0.f;
   p->rho_bar = 0.f;
@@ -222,6 +234,33 @@ __attribute__((always_inline)) INLINE static void hydro_end_density(
 
   /* Finish calculation of the velocity divergence */
   p->density.div_v *= h_inv_dim_plus_one * rho_inv;
+}
+
+/**
+ * @brief Sets all particle fields to sensible values when the #part has 0 ngbs.
+ *
+ * @param p The particle to act upon
+ * @param xp The extended particle data to act upon
+ */
+__attribute__((always_inline)) INLINE static void hydro_part_has_no_neighbours(
+    struct part *restrict p, struct xpart *restrict xp) {
+
+  /* Some smoothing length multiples. */
+  const float h = p->h;
+  const float h_inv = 1.0f / h;                 /* 1/h */
+  const float h_inv_dim = pow_dimension(h_inv); /* 1/h^d */
+
+  /* Re-set problematic values */
+  p->rho = p->mass * kernel_root * h_inv_dim;
+  p->rho_bar = p->mass * kernel_root * h_inv_dim;
+  p->density.wcount = kernel_root * kernel_norm * h_inv_dim;
+  p->density.rho_dh = 0.f;
+  p->density.wcount_dh = 0.f;
+  p->density.pressure_dh = 0.f;
+  p->density.div_v = 0.f;
+  p->density.rot_v[0] = 0.f;
+  p->density.rot_v[1] = 0.f;
+  p->density.rot_v[2] = 0.f;
 }
 
 /**
@@ -464,7 +503,7 @@ __attribute__((always_inline)) INLINE static void hydro_first_init_part(
   xp->v_full[2] = p->v[2];
 
   hydro_reset_acceleration(p);
-  hydro_init_part(p);
+  hydro_init_part(p, NULL);
 }
 
 #endif /* SWIFT_PRESSURE_ENTROPY_HYDRO_H */

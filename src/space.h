@@ -30,11 +30,14 @@
 #include <stddef.h>
 
 /* Includes. */
-#include "cell.h"
+#include "hydro_space.h"
 #include "lock.h"
 #include "parser.h"
 #include "part.h"
 #include "space.h"
+
+/* Avoid cyclic inclusions */
+struct cell;
 
 /* Some constants. */
 #define space_cellallocchunk 1000
@@ -44,7 +47,7 @@
 #define space_maxcount_default 10000
 #define space_max_top_level_cells_default 12
 #define space_stretch 1.10f
-#define space_maxreldx 0.25f
+#define space_maxreldx 0.1f
 
 /* Maximum allowed depth of cell splits. */
 #define space_cell_maxdepth 52
@@ -54,9 +57,6 @@ extern int space_splitsize;
 extern int space_maxsize;
 extern int space_subsize;
 extern int space_maxcount;
-
-/* Map shift vector to sortlist. */
-extern const int sortlistID[27];
 
 /**
  * @brief The space in which the cells and particles reside.
@@ -68,6 +68,9 @@ struct space {
 
   /*! Is the space periodic? */
   int periodic;
+
+  /*! Extra space information needed for some hydro schemes. */
+  struct hydro_space hs;
 
   /*! Are we doing gravity? */
   int gravity;
@@ -102,6 +105,12 @@ struct space {
   /*! Buffer of unused cells for the sub-cells. */
   struct cell *cells_sub;
 
+  /*! The multipoles associated with the top-level (level 0) cells */
+  struct gravity_tensors *multipoles_top;
+
+  /*! Buffer of unused multipoles for the sub-cells. */
+  struct gravity_tensors *multipoles_sub;
+
   /*! The total number of parts in the space. */
   size_t nr_parts, size_parts;
 
@@ -123,14 +132,14 @@ struct space {
   /*! The s-particle data (cells have pointers to this). */
   struct spart *sparts;
 
+  /*! The top-level FFT task */
+  struct task *grav_top_level;
+
   /*! General-purpose lock for this space. */
   swift_lock_type lock;
 
   /*! Number of queues in the system. */
   int nr_queues;
-
-  /*! Has this space already been sanitized ? */
-  int sanitized;
 
   /*! The associated engine. */
   struct engine *e;
@@ -186,8 +195,10 @@ void space_sparts_sort_mapper(void *map_data, int num_elements,
                               void *extra_data);
 void space_rebuild(struct space *s, int verbose);
 void space_recycle(struct space *s, struct cell *c);
-void space_recycle_list(struct space *s, struct cell *list_begin,
-                        struct cell *list_end);
+void space_recycle_list(struct space *s, struct cell *cell_list_begin,
+                        struct cell *cell_list_end,
+                        struct gravity_tensors *multipole_list_begin,
+                        struct gravity_tensors *multipole_list_end);
 void space_split(struct space *s, struct cell *cells, int nr_cells,
                  int verbose);
 void space_split_mapper(void *map_data, int num_elements, void *extra_data);
@@ -197,6 +208,7 @@ void space_gparts_get_cell_index(struct space *s, int *gind, struct cell *cells,
                                  int verbose);
 void space_sparts_get_cell_index(struct space *s, int *sind, struct cell *cells,
                                  int verbose);
+void space_synchronize_particle_positions(struct space *s);
 void space_do_parts_sort();
 void space_do_gparts_sort();
 void space_do_sparts_sort();
@@ -204,9 +216,13 @@ void space_init_parts(struct space *s);
 void space_init_gparts(struct space *s);
 void space_init_sparts(struct space *s);
 void space_link_cleanup(struct space *s);
-void space_check_drift_point(struct space *s, integertime_t ti_current);
+void space_check_drift_point(struct space *s, integertime_t ti_drift,
+                             int multipole);
+void space_check_top_multipoles_drift_point(struct space *s,
+                                            integertime_t ti_drift);
 void space_check_timesteps(struct space *s);
 void space_replicate(struct space *s, int replicate, int verbose);
+void space_reset_task_counters(struct space *s);
 void space_clean(struct space *s);
 
 #endif /* SWIFT_SPACE_H */

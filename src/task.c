@@ -48,15 +48,19 @@
 
 /* Task type names. */
 const char *taskID_names[task_type_count] = {
-    "none",          "sort",     "self",     "pair",        "sub_self",
-    "sub_pair",      "init",     "ghost",    "extra_ghost", "drift",
-    "kick1",         "kick2",    "timestep", "send",        "recv",
-    "grav_gather_m", "grav_fft", "grav_mm",  "grav_up",     "cooling",
-    "sourceterms"};
+    "none",       "sort",           "self",
+    "pair",       "sub_self",       "sub_pair",
+    "init_grav",  "ghost",          "extra_ghost",
+    "drift_part", "drift_gpart",    "kick1",
+    "kick2",      "timestep",       "send",
+    "recv",       "grav_top_level", "grav_long_range",
+    "grav_ghost", "grav_mm",        "grav_down",
+    "cooling",    "sourceterms"};
 
+/* Sub-task type names. */
 const char *subtaskID_names[task_subtype_count] = {
-    "none", "density", "gradient", "force", "grav", "external_grav",
-    "tend", "xv",      "rho",      "gpart", "spart"};
+    "none", "density", "gradient", "force", "grav",      "external_grav",
+    "tend", "xv",      "rho",      "gpart", "multipole", "spart"};
 
 /**
  * @brief Computes the overlap between the parts array of two given cells.
@@ -116,6 +120,7 @@ __attribute__((always_inline)) INLINE static enum task_actions task_acts_on(
       return task_action_none;
       break;
 
+    case task_type_drift_part:
     case task_type_sort:
     case task_type_ghost:
     case task_type_extra_ghost:
@@ -148,13 +153,11 @@ __attribute__((always_inline)) INLINE static enum task_actions task_acts_on(
       }
       break;
 
-    case task_type_init:
     case task_type_kick1:
     case task_type_kick2:
     case task_type_timestep:
     case task_type_send:
     case task_type_recv:
-    case task_type_drift:
       if (t->ci->count > 0 && t->ci->gcount > 0)
         return task_action_all;
       else if (t->ci->count > 0)
@@ -165,11 +168,16 @@ __attribute__((always_inline)) INLINE static enum task_actions task_acts_on(
         error("Task without particles");
       break;
 
-    case task_type_grav_gather_m:
-    case task_type_grav_fft:
+    case task_type_init_grav:
+    case task_type_grav_top_level:
+    case task_type_grav_long_range:
     case task_type_grav_mm:
-    case task_type_grav_up:
       return task_action_multipole;
+      break;
+
+    case task_type_drift_gpart:
+    case task_type_grav_down:
+      return task_action_gpart;
       break;
 
     default:
@@ -178,7 +186,7 @@ __attribute__((always_inline)) INLINE static enum task_actions task_acts_on(
       break;
   }
 
-  /* Silence compile warnings */
+  /* Silence compiler warnings */
   error("Unknown task_action for task");
   return task_action_none;
 }
@@ -258,26 +266,34 @@ float task_overlap(const struct task *restrict ta,
  */
 void task_unlock(struct task *t) {
 
-  const int type = t->type;
-  const int subtype = t->subtype;
+  const enum task_types type = t->type;
+  const enum task_subtypes subtype = t->subtype;
   struct cell *ci = t->ci, *cj = t->cj;
 
   /* Act based on task type. */
   switch (type) {
 
-    case task_type_drift:
+    case task_type_kick1:
+    case task_type_kick2:
+    case task_type_timestep:
       cell_unlocktree(ci);
       cell_gunlocktree(ci);
       break;
 
+    case task_type_drift_part:
     case task_type_sort:
       cell_unlocktree(ci);
+      break;
+
+    case task_type_drift_gpart:
+      cell_gunlocktree(ci);
       break;
 
     case task_type_self:
     case task_type_sub_self:
       if (subtype == task_subtype_grav) {
         cell_gunlocktree(ci);
+        cell_munlocktree(ci);
       } else {
         cell_unlocktree(ci);
       }
@@ -288,15 +304,24 @@ void task_unlock(struct task *t) {
       if (subtype == task_subtype_grav) {
         cell_gunlocktree(ci);
         cell_gunlocktree(cj);
+        cell_munlocktree(ci);
+        cell_munlocktree(cj);
       } else {
         cell_unlocktree(ci);
         cell_unlocktree(cj);
       }
       break;
 
-    case task_type_grav_mm:
+    case task_type_grav_down:
       cell_gunlocktree(ci);
+      cell_munlocktree(ci);
       break;
+
+    case task_type_grav_long_range:
+    case task_type_grav_mm:
+      cell_munlocktree(ci);
+      break;
+
     default:
       break;
   }
@@ -309,8 +334,8 @@ void task_unlock(struct task *t) {
  */
 int task_lock(struct task *t) {
 
-  const int type = t->type;
-  const int subtype = t->subtype;
+  const enum task_types type = t->type;
+  const enum task_subtypes subtype = t->subtype;
   struct cell *ci = t->ci, *cj = t->cj;
 #ifdef WITH_MPI
   int res = 0, err = 0;
@@ -337,7 +362,9 @@ int task_lock(struct task *t) {
 #endif
       break;
 
-    case task_type_drift:
+    case task_type_kick1:
+    case task_type_kick2:
+    case task_type_timestep:
       if (ci->hold || ci->ghold) return 0;
       if (cell_locktree(ci) != 0) return 0;
       if (cell_glocktree(ci) != 0) {
@@ -346,14 +373,28 @@ int task_lock(struct task *t) {
       }
       break;
 
+    case task_type_drift_part:
     case task_type_sort:
+      if (ci->hold) return 0;
       if (cell_locktree(ci) != 0) return 0;
+      break;
+
+    case task_type_drift_gpart:
+      if (ci->ghold) return 0;
+      if (cell_glocktree(ci) != 0) return 0;
       break;
 
     case task_type_self:
     case task_type_sub_self:
       if (subtype == task_subtype_grav) {
-        if (cell_glocktree(ci) != 0) return 0;
+        /* Lock the gparts and the m-pole */
+        if (ci->ghold || ci->mhold) return 0;
+        if (cell_glocktree(ci) != 0)
+          return 0;
+        else if (cell_mlocktree(ci) != 0) {
+          cell_gunlocktree(ci);
+          return 0;
+        }
       } else {
         if (cell_locktree(ci) != 0) return 0;
       }
@@ -362,13 +403,24 @@ int task_lock(struct task *t) {
     case task_type_pair:
     case task_type_sub_pair:
       if (subtype == task_subtype_grav) {
+        /* Lock the gparts and the m-pole in both cells */
         if (ci->ghold || cj->ghold) return 0;
         if (cell_glocktree(ci) != 0) return 0;
         if (cell_glocktree(cj) != 0) {
           cell_gunlocktree(ci);
           return 0;
+        } else if (cell_mlocktree(ci) != 0) {
+          cell_gunlocktree(ci);
+          cell_gunlocktree(cj);
+          return 0;
+        } else if (cell_mlocktree(cj) != 0) {
+          cell_gunlocktree(ci);
+          cell_gunlocktree(cj);
+          cell_munlocktree(ci);
+          return 0;
         }
       } else {
+        /* Lock the parts in both cells */
         if (ci->hold || cj->hold) return 0;
         if (cell_locktree(ci) != 0) return 0;
         if (cell_locktree(cj) != 0) {
@@ -378,8 +430,22 @@ int task_lock(struct task *t) {
       }
       break;
 
+    case task_type_grav_down:
+      /* Lock the gparts and the m-poles */
+      if (ci->ghold || ci->mhold) return 0;
+      if (cell_glocktree(ci) != 0)
+        return 0;
+      else if (cell_mlocktree(ci) != 0) {
+        cell_gunlocktree(ci);
+        return 0;
+      }
+      break;
+
+    case task_type_grav_long_range:
     case task_type_grav_mm:
-      cell_glocktree(ci);
+      /* Lock the m-poles */
+      if (ci->mhold) return 0;
+      if (cell_mlocktree(ci) != 0) return 0;
       break;
 
     default:
