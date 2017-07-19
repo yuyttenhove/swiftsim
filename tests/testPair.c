@@ -16,13 +16,34 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  ******************************************************************************/
+#include "../config.h"
 
+/* Some standard headers. */
 #include <fenv.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+/* Local headers. */
 #include "swift.h"
+
+#if defined(WITH_VECTORIZATION)
+#define DOSELF1 runner_doself1_density_vec
+#define DOPAIR1 runner_dopair1_branch_density
+#define DOSELF1_NAME "runner_doself1_density_vec"
+#define DOPAIR1_NAME "runner_dopair1_density_vec"
+#endif
+
+#ifndef DOSELF1
+#define DOSELF1 runner_doself1_density
+#define DOSELF1_NAME "runner_doself1_density"
+#endif
+
+#ifndef DOPAIR1
+#define DOPAIR1 runner_dopair1_branch_density
+#define DOPAIR1_NAME "runner_dopair1_density"
+#endif
 
 /* n is both particles per axis and box size:
  * particles are generated on a mesh with unit spacing
@@ -63,7 +84,7 @@ struct cell *make_cell(size_t n, double *offset, double size, double h,
         part->v[2] = random_uniform(-0.05, 0.05);
         part->h = size * h / (float)n;
         part->id = ++(*partId);
-#ifdef GIZMO_SPH
+#if defined(GIZMO_SPH) || defined(SHADOWFAX_SPH)
         part->conserved.mass = density * volume / count;
 #else
         part->mass = density * volume / count;
@@ -84,7 +105,8 @@ struct cell *make_cell(size_t n, double *offset, double size, double h,
   cell->split = 0;
   cell->h_max = h;
   cell->count = count;
-  cell->dx_max = 0.;
+  cell->dx_max_part = 0.;
+  cell->dx_max_sort = 0.;
   cell->width[0] = n;
   cell->width[1] = n;
   cell->width[2] = n;
@@ -92,7 +114,7 @@ struct cell *make_cell(size_t n, double *offset, double size, double h,
   cell->loc[1] = offset[1];
   cell->loc[2] = offset[2];
 
-  cell->ti_old = 8;
+  cell->ti_old_part = 8;
   cell->ti_end_min = 8;
   cell->ti_end_max = 8;
 
@@ -100,7 +122,6 @@ struct cell *make_cell(size_t n, double *offset, double size, double h,
 
   cell->sorted = 0;
   cell->sort = NULL;
-  cell->sortsize = 0;
 
   return cell;
 }
@@ -116,7 +137,7 @@ void clean_up(struct cell *ci) {
  */
 void zero_particle_fields(struct cell *c) {
   for (int pid = 0; pid < c->count; pid++) {
-    hydro_init_part(&c->parts[pid]);
+    hydro_init_part(&c->parts[pid], NULL);
   }
 }
 
@@ -142,7 +163,7 @@ void dump_particle_fields(char *fileName, struct cell *ci, struct cell *cj) {
             ci->parts[pid].id, ci->parts[pid].x[0], ci->parts[pid].x[1],
             ci->parts[pid].x[2], ci->parts[pid].v[0], ci->parts[pid].v[1],
             ci->parts[pid].v[2], hydro_get_density(&ci->parts[pid]),
-#if defined(GIZMO_SPH)
+#if defined(GIZMO_SPH) || defined(SHADOWFAX_SPH)
             0.f,
 #else
             ci->parts[pid].density.rho_dh,
@@ -166,7 +187,7 @@ void dump_particle_fields(char *fileName, struct cell *ci, struct cell *cj) {
             cj->parts[pjd].id, cj->parts[pjd].x[0], cj->parts[pjd].x[1],
             cj->parts[pjd].x[2], cj->parts[pjd].v[0], cj->parts[pjd].v[1],
             cj->parts[pjd].v[2], hydro_get_density(&cj->parts[pjd]),
-#if defined(GIZMO_SPH)
+#if defined(GIZMO_SPH) || defined(SHADOWFAX_SPH)
             0.f,
 #else
             cj->parts[pjd].density.rho_dh,
@@ -186,6 +207,9 @@ void dump_particle_fields(char *fileName, struct cell *ci, struct cell *cj) {
 
 /* Just a forward declaration... */
 void runner_dopair1_density(struct runner *r, struct cell *ci, struct cell *cj);
+void runner_doself1_density_vec(struct runner *r, struct cell *ci);
+void runner_dopair1_branch_density(struct runner *r, struct cell *ci,
+                                   struct cell *cj);
 
 int main(int argc, char *argv[]) {
   size_t particles = 0, runs = 0, volume, type = 0;
@@ -204,6 +228,9 @@ int main(int argc, char *argv[]) {
   /* Initialize CPU frequency, this also starts time. */
   unsigned long long cpufreq = 0;
   clocks_set_cpufreq(cpufreq);
+
+  /* Choke on FP-exceptions */
+  feenableexcept(FE_DIVBYZERO | FE_INVALID | FE_OVERFLOW);
 
   srand(0);
 
@@ -252,6 +279,7 @@ int main(int argc, char *argv[]) {
   engine.s = &space;
   engine.time = 0.1f;
   engine.ti_current = 8;
+  engine.max_active_bin = num_time_bins;
   runner.e = &engine;
 
   volume = particles * particles * particles;
@@ -261,8 +289,8 @@ int main(int argc, char *argv[]) {
   for (size_t i = 0; i < type + 1; ++i) offset[i] = 1.;
   cj = make_cell(particles, offset, size, h, rho, &partId, perturbation);
 
-  runner_do_sort(&runner, ci, 0x1FFF, 0);
-  runner_do_sort(&runner, cj, 0x1FFF, 0);
+  runner_do_sort(&runner, ci, 0x1FFF, 0, 0);
+  runner_do_sort(&runner, cj, 0x1FFF, 0, 0);
 
   time = 0;
   for (size_t i = 0; i < runs; ++i) {
@@ -274,7 +302,7 @@ int main(int argc, char *argv[]) {
 
 #if defined(DEFAULT_SPH) || !defined(WITH_VECTORIZATION)
     /* Run the test */
-    runner_dopair1_density(&runner, ci, cj);
+    DOPAIR1(&runner, ci, cj);
 #endif
 
     toc = getticks();

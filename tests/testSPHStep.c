@@ -71,7 +71,8 @@ struct cell *make_cell(size_t N, float cellSize, int offset[3], int id_offset) {
   cell->h_max = h;
   cell->count = count;
   cell->gcount = 0;
-  cell->dx_max = 0.;
+  cell->dx_max_part = 0.;
+  cell->dx_max_sort = 0.;
   cell->width[0] = cellSize;
   cell->width[1] = cellSize;
   cell->width[2] = cellSize;
@@ -81,7 +82,6 @@ struct cell *make_cell(size_t N, float cellSize, int offset[3], int id_offset) {
 
   cell->sorted = 0;
   cell->sort = NULL;
-  cell->sortsize = 0;
 
   return cell;
 }

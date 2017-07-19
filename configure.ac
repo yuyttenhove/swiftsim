@@ -16,7 +16,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 # Init the project.
-AC_INIT([SWIFT],[0.4.0],[https://gitlab.cosma.dur.ac.uk/swift/swiftsim])
+AC_INIT([SWIFT],[0.5.0],[https://gitlab.cosma.dur.ac.uk/swift/swiftsim])
 swift_config_flags="$*"
 
 #  Need to define this, instead of using fifth argument of AC_INIT, until 2.64.
@@ -105,8 +105,9 @@ if test "$enable_mpi" = "yes"; then
        AC_PATH_PROG([MPIRUN],[mpirun],[notfound])
     fi
     if test "$MPIRUN" = "notfound"; then
+       # This may not be fatal (some systems do not allow mpirun on
+       # development nodes)., so push on.
        AC_MSG_WARN([Cannot find mpirun command on PATH, thread support may not be correct])
-       enable_mpi="no"
     else
        # Special options we know about.
        # Intel: -mt_mpi
@@ -188,6 +189,18 @@ if test "$enable_task_debugging" = "yes"; then
    AC_DEFINE([SWIFT_DEBUG_TASKS],1,[Enable task debugging])
 fi
 
+# Check if the general timers are switched on.
+AC_ARG_ENABLE([timers],
+   [AS_HELP_STRING([--enable-timers],
+     [Activate the basic timers @<:@yes/no@:>@]
+   )],
+   [enable_timers="$enableval"],
+   [enable_timers="no"]
+)
+if test "$enable_timers" = "yes"; then
+   AC_DEFINE([SWIFT_USE_TIMERS],1,[Enable individual timers])
+fi
+
 # Check if expensive debugging is on.
 AC_ARG_ENABLE([debugging-checks],
    [AS_HELP_STRING([--enable-debugging-checks],
@@ -199,6 +212,35 @@ AC_ARG_ENABLE([debugging-checks],
 if test "$enable_debugging_checks" = "yes"; then
    AC_DEFINE([SWIFT_DEBUG_CHECKS],1,[Enable expensive debugging])
 fi
+
+# Check if gravity force checks are on for some particles.
+AC_ARG_ENABLE([gravity-force-checks],
+   [AS_HELP_STRING([--enable-gravity-force-checks],
+     [Activate expensive brute-force gravity checks for a fraction 1/N of all particles @<:@N@:>@]
+   )],
+   [gravity_force_checks="$enableval"],
+   [gravity_force_checks="no"]
+)
+if test "$gravity_force_checks" == "yes"; then
+   AC_MSG_ERROR(Need to specify the fraction of particles to check when using --enable-gravity-force-checks!)
+elif test "$gravity_force_checks" != "no"; then
+   AC_DEFINE_UNQUOTED([SWIFT_GRAVITY_FORCE_CHECKS], [$enableval] ,[Enable gravity brute-force checks])
+fi
+
+# Check if we want to zero the gravity forces for all particles below some ID.
+AC_ARG_ENABLE([no-gravity-below-id],
+   [AS_HELP_STRING([--enable-no-gravity-below-id],
+     [Zeros the gravitational acceleration of all particles with an ID smaller than @<:@N@:>@]
+   )],
+   [no_gravity_below_id="$enableval"],
+   [no_gravity_below_id="no"]
+)
+if test "$no_gravity_below_id" == "yes"; then
+   AC_MSG_ERROR(Need to specify the ID below which particles get zero forces when using --enable-no-gravity-below-id!)
+elif test "$no_gravity_below_id" != "no"; then
+   AC_DEFINE_UNQUOTED([SWIFT_NO_GRAVITY_BELOW_ID], [$enableval] ,[Particles with smaller ID than this will have zero gravity forces])
+fi
+
 
 # Define HAVE_POSIX_MEMALIGN if it works.
 AX_FUNC_POSIX_MEMALIGN
@@ -445,7 +487,6 @@ fi
 
 # Check for HDF5. This is required.
 AX_LIB_HDF5
-
 if test "$with_hdf5" != "yes"; then
     AC_MSG_ERROR([Could not find a working HDF5 library])
 fi
@@ -453,8 +494,6 @@ fi
 # We want to know if this HDF5 supports MPI and whether we should use it.
 # The default is to use MPI support if it is available, i.e. this is
 # a parallel HDF5.
-# To do this need to ask the HDF5 compiler about its configuration,
-# -showconfig should have yes/no.
 have_parallel_hdf5="no"
 if test "$with_hdf5" = "yes"; then
     AC_ARG_ENABLE([parallel-hdf5],
@@ -467,7 +506,14 @@ if test "$with_hdf5" = "yes"; then
 
     if test "$enable_parallel_hdf5" = "yes"; then
         AC_MSG_CHECKING([for HDF5 parallel support])
-        parallel=`$H5CC -showconfig | grep "Parallel HDF5:" | awk '{print $3}'`
+# Check if the library is capable, the header should define H5_HAVE_PARALLEL.
+
+        AC_COMPILE_IFELSE([AC_LANG_SOURCE([[
+        #include "hdf5.h"
+        #ifndef H5_HAVE_PARALLEL
+        # error macro not defined
+        #endif
+        ]])], [parallel="yes"], [parallel="no"])
         if test "$parallel" = "yes"; then
             have_parallel_hdf5="yes"
             AC_DEFINE([HAVE_PARALLEL_HDF5],1,[HDF5 library supports parallel access])
@@ -568,7 +614,7 @@ fi
 # Hydro scheme.
 AC_ARG_WITH([hydro],
    [AS_HELP_STRING([--with-hydro=<scheme>],
-      [Hydro dynamics to use @<:@gadget2, minimal, hopkins, default, gizmo default: gadget2@:>@]
+      [Hydro dynamics to use @<:@gadget2, minimal, hopkins, default, gizmo, shadowfax default: gadget2@:>@]
    )],
    [with_hydro="$withval"],
    [with_hydro="gadget2"]
@@ -588,6 +634,9 @@ case "$with_hydro" in
    ;; 
    gizmo)
       AC_DEFINE([GIZMO_SPH], [1], [GIZMO SPH])
+   ;; 
+   shadowfax)
+      AC_DEFINE([SHADOWFAX_SPH], [1], [Shadowfax SPH])
    ;; 
 
    *)
@@ -637,13 +686,13 @@ AC_ARG_WITH([hydro-dimension],
 )
 case "$with_dimension" in
    1)
-      AC_DEFINE([HYDRO_DIMENSION_1D], [1], [1D analysis])
+      AC_DEFINE([HYDRO_DIMENSION_1D], [1], [1D solver])
    ;; 
    2)
-      AC_DEFINE([HYDRO_DIMENSION_2D], [2], [2D analysis])
+      AC_DEFINE([HYDRO_DIMENSION_2D], [2], [2D solver])
    ;; 
    3)
-      AC_DEFINE([HYDRO_DIMENSION_3D], [3], [3D analysis])
+      AC_DEFINE([HYDRO_DIMENSION_3D], [3], [3D solver])
    ;; 
    *)
       AC_MSG_ERROR([Dimensionality must be 1, 2 or 3])
@@ -751,7 +800,7 @@ esac
 #  External potential
 AC_ARG_WITH([ext-potential],
    [AS_HELP_STRING([--with-ext-potential=<pot>],
-      [external potential @<:@none, point-mass, isothermal, softened-isothermal, disc-patch default: none@:>@]
+      [external potential @<:@none, point-mass, isothermal, softened-isothermal, disc-patch, sine-wave default: none@:>@]
    )],
    [with_potential="$withval"],
    [with_potential="none"]
@@ -769,11 +818,23 @@ case "$with_potential" in
    disc-patch)
       AC_DEFINE([EXTERNAL_POTENTIAL_DISC_PATCH], [1], [Disc-patch external potential])
    ;; 
+   sine-wave)
+      AC_DEFINE([EXTERNAL_POTENTIAL_SINE_WAVE], [1], [Sine wave external potential in 1D])
+   ;; 
    *)
       AC_MSG_ERROR([Unknown external potential: $with_potential])
    ;;
 esac
 
+#  Gravity multipole order
+AC_ARG_WITH([multipole-order],
+   [AS_HELP_STRING([--with-multipole-order=<order>],
+      [order of the multipole and gravitational field expansion @<:@ default: 4@:>@]
+   )],
+   [with_multipole_order="$withval"],
+   [with_multipole_order="4"]
+)
+AC_DEFINE_UNQUOTED([SELF_GRAVITY_MULTIPOLE_ORDER], [$with_multipole_order], [Multipole order])
 
 
 # Check for git, needed for revision stamps.
@@ -792,13 +853,24 @@ AC_CONFIG_FILES([tests/testPairPerturbed.sh], [chmod +x tests/testPairPerturbed.
 AC_CONFIG_FILES([tests/test27cells.sh], [chmod +x tests/test27cells.sh])
 AC_CONFIG_FILES([tests/test27cellsPerturbed.sh], [chmod +x tests/test27cellsPerturbed.sh])
 AC_CONFIG_FILES([tests/test125cells.sh], [chmod +x tests/test125cells.sh])
+AC_CONFIG_FILES([tests/test125cellsPerturbed.sh], [chmod +x tests/test125cellsPerturbed.sh])
+AC_CONFIG_FILES([tests/testPeriodicBC.sh], [chmod +x tests/testPeriodicBC.sh])
+AC_CONFIG_FILES([tests/testPeriodicBCPerturbed.sh], [chmod +x tests/testPeriodicBCPerturbed.sh])
 AC_CONFIG_FILES([tests/testParser.sh], [chmod +x tests/testParser.sh])
 
 # Save the compilation options
 AC_DEFINE_UNQUOTED([SWIFT_CONFIG_FLAGS],["$swift_config_flags"],[Flags passed to configure])
 
+# Make sure the latest git revision string gets included
+touch src/version.c
+
+# Generate output.
+AC_OUTPUT
+
 # Report general configuration.
-AC_MSG_RESULT([
+AC_MSG_RESULT([ 
+ ------- Summary --------
+   
    Compiler        : $CC
     - vendor       : $ax_cv_c_compiler_vendor
     - version      : $ax_cv_c_compiler_version
@@ -820,13 +892,14 @@ AC_MSG_RESULT([
    Adiabatic index    : $with_gamma
    Riemann solver     : $with_riemann
    Cooling function   : $with_cooling
-   External potential : $with_potential
-   Task debugging     : $enable_task_debugging
-   Debugging checks   : $enable_debugging_checks
-])
+   
+   External potential  : $with_potential
+   Multipole order     : $with_multipole_order
+   No gravity below ID : $no_gravity_below_id
 
-# Make sure the latest git revision string gets included
-touch src/version.c
+   Individual timers : $enable_timers
+   Task debugging    : $enable_task_debugging
+   Debugging checks  : $enable_debugging_checks
+   Gravity checks    : $gravity_force_checks
 
-# Generate output.
-AC_OUTPUT
+ ------------------------])

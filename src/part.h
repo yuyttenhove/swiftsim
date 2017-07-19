@@ -58,6 +58,10 @@
 #include "./hydro/Gizmo/hydro_part.h"
 #define hydro_need_extra_init_loop 0
 #define EXTRA_HYDRO_LOOP
+#elif defined(SHADOWFAX_SPH)
+#include "./hydro/Shadowswift/hydro_part.h"
+#define hydro_need_extra_init_loop 0
+#define EXTRA_HYDRO_LOOP
 #else
 #error "Invalid choice of SPH variant"
 #endif
@@ -86,6 +90,7 @@ extern MPI_Datatype part_mpi_type;
 extern MPI_Datatype xpart_mpi_type;
 extern MPI_Datatype gpart_mpi_type;
 extern MPI_Datatype spart_mpi_type;
+extern MPI_Datatype multipole_mpi_type;
 
 void part_create_mpi_types();
 #endif

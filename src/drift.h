@@ -39,8 +39,20 @@
  * @param ti_current Integer end of time-step
  */
 __attribute__((always_inline)) INLINE static void drift_gpart(
-    struct gpart *restrict gp, float dt, double timeBase, integertime_t ti_old,
+    struct gpart *restrict gp, double dt, double timeBase, integertime_t ti_old,
     integertime_t ti_current) {
+
+#ifdef SWIFT_DEBUG_CHECKS
+  if (gp->ti_drift != ti_old)
+    error(
+        "g-particle has not been drifted to the current time "
+        "gp->ti_drift=%lld, "
+        "c->ti_old=%lld, ti_current=%lld",
+        gp->ti_drift, ti_old, ti_current);
+
+  gp->ti_drift = ti_current;
+#endif
+
   /* Drift... */
   gp->x[0] += gp->v_full[0] * dt;
   gp->x[1] += gp->v_full[1] * dt;
@@ -63,13 +75,13 @@ __attribute__((always_inline)) INLINE static void drift_gpart(
  * @param ti_current Integer end of time-step
  */
 __attribute__((always_inline)) INLINE static void drift_part(
-    struct part *restrict p, struct xpart *restrict xp, float dt,
+    struct part *restrict p, struct xpart *restrict xp, double dt,
     double timeBase, integertime_t ti_old, integertime_t ti_current) {
 
 #ifdef SWIFT_DEBUG_CHECKS
   if (p->ti_drift != ti_old)
     error(
-        "Particle has not been drifted to the current time p->ti_drift=%lld, "
+        "particle has not been drifted to the current time p->ti_drift=%lld, "
         "c->ti_old=%lld, ti_current=%lld",
         p->ti_drift, ti_old, ti_current);
 
@@ -89,10 +101,12 @@ __attribute__((always_inline)) INLINE static void drift_part(
   /* Predict the values of the extra fields */
   hydro_predict_extra(p, xp, dt);
 
-  /* Compute offset since last cell construction */
-  xp->x_diff[0] -= xp->v_full[0] * dt;
-  xp->x_diff[1] -= xp->v_full[1] * dt;
-  xp->x_diff[2] -= xp->v_full[2] * dt;
+  /* Compute offsets since last cell construction */
+  for (int k = 0; k < 3; k++) {
+    const float dx = xp->v_full[k] * dt;
+    xp->x_diff[k] -= dx;
+    xp->x_diff_sort[k] -= dx;
+  }
 }
 
 /**
@@ -105,8 +119,19 @@ __attribute__((always_inline)) INLINE static void drift_part(
  * @param ti_current Integer end of time-step
  */
 __attribute__((always_inline)) INLINE static void drift_spart(
-    struct spart *restrict sp, float dt, double timeBase, integertime_t ti_old,
+    struct spart *restrict sp, double dt, double timeBase, integertime_t ti_old,
     integertime_t ti_current) {
+
+#ifdef SWIFT_DEBUG_CHECKS
+  if (sp->ti_drift != ti_old)
+    error(
+        "s-particle has not been drifted to the current time "
+        "sp->ti_drift=%lld, "
+        "c->ti_old=%lld, ti_current=%lld",
+        sp->ti_drift, ti_old, ti_current);
+
+  sp->ti_drift = ti_current;
+#endif
 
   /* Drift... */
   sp->x[0] += sp->v[0] * dt;

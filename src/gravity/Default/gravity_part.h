@@ -41,6 +41,9 @@ struct gpart {
   /* Particle mass. */
   float mass;
 
+  /* Gravitational potential */
+  float potential;
+
   /* Softening length */
   float epsilon;
 
@@ -52,11 +55,21 @@ struct gpart {
 
 #ifdef SWIFT_DEBUG_CHECKS
 
+  /* Numer of gparts this gpart interacted with */
+  long long num_interacted;
+
   /* Time of the last drift */
   integertime_t ti_drift;
 
   /* Time of the last kick */
   integertime_t ti_kick;
+
+#endif
+
+#ifdef SWIFT_GRAVITY_FORCE_CHECKS
+
+  /* Brute-force particle acceleration. */
+  double a_grav_exact[3];
 
 #endif
 

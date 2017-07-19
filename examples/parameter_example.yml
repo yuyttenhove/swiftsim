@@ -1,4 +1,4 @@
-# Define the system of units to use internally. 
+# Define the system of units to use internally.
 InternalUnitSystem:
   UnitMass_in_cgs:     1   # Grams
   UnitLength_in_cgs:   1   # Centimeters
@@ -8,12 +8,12 @@ InternalUnitSystem:
 
 # Parameters for the task scheduling
 Scheduler:
-  nr_queues:             0        # (Optional) The number of task queues to use. Use 0  to let the system decide.
-  cell_max_size:         8000000  # (Optional) Maximal number of interactions per task if we force the split (this is the default value).
-  cell_sub_size:         64000000 # (Optional) Maximal number of interactions per sub-task  (this is the default value).
-  cell_split_size:       400      # (Optional) Maximal number of particles per cell (this is the default value).
-  cell_max_count:        10000    # (Optional) Maximal number of particles per cell allowed before triggering a sanitizing (this is the default value).
-  max_top_level_cells:   12       # (Optional) Maximal number of top-level cells in any dimension. The number of top-level cells will be the cube of this (this is the default value).
+  nr_queues:             0         # (Optional) The number of task queues to use. Use 0  to let the system decide.
+  cell_max_size:         8000000   # (Optional) Maximal number of interactions per task if we force the split (this is the default value).
+  cell_sub_size_pair:    256000000 # (Optional) Maximal number of interactions per sub-pair task  (this is the default value).
+  cell_sub_size_self:    32000     # (Optional) Maximal number of interactions per sub-self task  (this is the default value).
+  cell_split_size:       400       # (Optional) Maximal number of particles per cell (this is the default value).
+  max_top_level_cells:   12        # (Optional) Maximal number of top-level cells in any dimension. The number of top-level cells will be the cube of this (this is the default value).
 
 # Parameters governing the time integration (Set dt_min and dt_max to the same value for a fixed time-step run.)
 TimeIntegration:
@@ -38,34 +38,51 @@ Snapshots:
 Statistics:
   delta_time:          1e-2      # Time between statistics output
   energy_file_name:    energy    # (Optional) File name for energy output
-  timestep_file_name:  timesteps # (Optional) File name for timing information output. Note: No underscores "_" allowed in file name 
+  timestep_file_name:  timesteps # (Optional) File name for timing information output. Note: No underscores "_" allowed in file name
 
 # Parameters for the hydrodynamics scheme
 SPH:
   resolution_eta:        1.2348   # Target smoothing length in units of the mean inter-particle separation (1.2348 == 48Ngbs with the cubic spline kernel).
-  delta_neighbours:      0.1      # The tolerance for the targetted number of neighbours.
   CFL_condition:         0.1      # Courant-Friedrich-Levy condition for time integration.
+  h_tolerance:           1e-4     # (Optional) Relative accuracy of the Netwon-Raphson scheme for the smoothing lengths.
+  h_max:                 10.      # (Optional) Maximal allowed smoothing length in internal units. Defaults to FLT_MAX if unspecified.
+  max_volume_change:     1.4      # (Optional) Maximal allowed change of kernel volume over one time-step.
   max_ghost_iterations:  30       # (Optional) Maximal number of iterations allowed to converge towards the smoothing length.
-  max_volume_change:     2.       # (Optional) Maximal allowed change of kernel volume over one time-step
+
+# Parameters for the self-gravity scheme
+Gravity:
+  eta:                   0.025    # Constant dimensionless multiplier for time integration.
+  theta:                 0.7      # Opening angle (Multipole acceptance criterion)
+  epsilon:               0.1      # Softening length (in internal units).
+  a_smooth:              1.25     # (Optional) Smoothing scale in top-level cell sizes to smooth the long-range forces over (this is the default value).
+  r_cut:                 4.5      # (Optional) Cut-off in number of top-level cells beyond which no FMM forces are computed (this is the default value).
 
 # Parameters related to the initial conditions
 InitialConditions:
   file_name:  SedovBlast/sedov.hdf5 # The file to read
+  cleanup_h:   0                    # (Optional) Clean the values of h that are read in. Set to 1 to activate.
   h_scaling:  1.                    # (Optional) A scaling factor to apply to all smoothing lengths in the ICs.
   shift_x:    0.                    # (Optional) A shift to apply to all particles read from the ICs (in internal units).
   shift_y:    0.
   shift_z:    0.
+  replicate:  2                     # (Optional) Replicate all particles along each axis a given number of times. Default 1.
 
 # Parameters governing domain decomposition
 DomainDecomposition:
-  initial_type:       m     # (Optional) The initial strategy ("g", "m", "w", or "v").
-  initial_grid_x:    10     # (Optional) Grid size if the "g" strategy is chosen.
-  initial_grid_y:    10
-  initial_grid_z:    10
-  repartition_type:   b     # (Optional) The re-decomposition strategy ("n", "b", "v", "e" or "x").
- 
+  initial_type:     simple_metis # (Optional) The initial decomposition strategy: "grid",
+                                 #            "simple_metis", "weighted_metis", or "vectorized".
+  initial_grid_x:   10      # (Optional) Grid size if the "grid" strategy is chosen.
+  initial_grid_y:   10      # ""
+  initial_grid_z:   10      # ""
+  repartition_type: task_weights # (Optional) The re-decomposition strategy: "none", "task_weights", "particle_weights",
+                                 #            "edge_task_weights" or "hybrid_weights".
+  trigger:          0.05    # (Optional) Fractional (<1) CPU time difference between MPI ranks required to trigger a
+                            # new decomposition, or number of steps (>1) between decompositions
+  minfrac:          0.9     # (Optional) Fractional of all particles that should be updated in previous step when
+                            # using CPU time trigger
+
 # Parameters related to external potentials --------------------------------------------
-  
+
 # Point mass external potentials
 PointMassPotential:
   position_x:      50.      # location of external point mass (internal units)
@@ -82,15 +99,23 @@ IsothermalPotential:
   vrot:            200.     # Rotation speed of isothermal potential (internal units)
   timestep_mult:   0.03     # Dimensionless pre-factor for the time-step condition
   epsilon:         0.1      # Softening size (internal units)
-  
+
 # Disk-patch potential parameters
 DiscPatchPotential:
   surface_density: 10.      # Surface density of the disc (internal units)
   scale_height:    100.     # Scale height of the disc (internal units)
-  z_disc:          200.     # Position of the disc along the z-axis (internal units)
+  z_disc:          400.     # Position of the disc along the z-axis (internal units)
+  z_trunc:         300.     # (Optional) Distance from the disc along z-axis above which the potential gets truncated.
+  z_max:           380.     # (Optional) Distance from the disc along z-axis above which the potential is set to 0.
   timestep_mult:   0.03     # Dimensionless pre-factor for the time-step condition
   growth_time:     5.       # (Optional) Time for the disc to grow to its final size (multiple of the dynamical time)
 
+# Sine Wave potential
+SineWavePotential:
+  amplitude:        10.     # Amplitude of the sine wave (internal units)
+  timestep_limit:   1.      # Time-step dimensionless pre-factor.
+  growth_time:      0.      # (Optional) Time for the potential to grow to its final size.
+ 
 # Parameters related to cooling function  ----------------------------------------------
 
 # Constant du/dt cooling function

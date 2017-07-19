@@ -16,9 +16,13 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  ******************************************************************************/
-
 #ifndef SWIFT_HYDRO_PROPERTIES
 #define SWIFT_HYDRO_PROPERTIES
+
+/**
+ * @file hydro_properties.h
+ * @brief Contains all the constants and parameters of the hydro scheme
+ */
 
 /* Config parameters. */
 #include "../config.h"
@@ -28,7 +32,6 @@
 #endif
 
 /* Local includes. */
-#include "const.h"
 #include "parser.h"
 
 /**
@@ -36,22 +39,29 @@
  */
 struct hydro_props {
 
-  /* Kernel properties */
+  /*! Resolution parameter */
   float eta_neighbours;
+
+  /*! Target weightd number of neighbours (for info only)*/
   float target_neighbours;
+
+  /*! Smoothing length tolerance */
+  float h_tolerance;
+
+  /*! Tolerance on neighbour number  (for info only)*/
   float delta_neighbours;
 
-  /* Kernel properties */
+  /*! Maximal smoothing length */
+  float h_max;
+
+  /*! Maximal number of iterations to converge h */
   int max_smoothing_iterations;
 
-  /* Time integration properties */
+  /*! Time integration properties */
   float CFL_condition;
-  float log_max_h_change;
 
-/* Viscosity parameters */
-#ifdef GADGET_SPH
-  float const_viscosity_alpha;
-#endif
+  /*! Maximal change of h over one time-step */
+  float log_max_h_change;
 };
 
 void hydro_props_print(const struct hydro_props *p);

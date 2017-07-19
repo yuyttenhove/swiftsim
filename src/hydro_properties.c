@@ -33,17 +33,38 @@
 #include "kernel_hydro.h"
 
 #define hydro_props_default_max_iterations 30
-#define hydro_props_default_volume_change 2.0f
+#define hydro_props_default_volume_change 1.4f
+#define hydro_props_default_h_max FLT_MAX
+#define hydro_props_default_h_tolerance 1e-4
 
 void hydro_props_init(struct hydro_props *p,
                       const struct swift_params *params) {
 
   /* Kernel properties */
   p->eta_neighbours = parser_get_param_float(params, "SPH:resolution_eta");
-  p->target_neighbours = pow_dimension(p->eta_neighbours) * kernel_norm;
-  p->delta_neighbours = parser_get_param_float(params, "SPH:delta_neighbours");
 
-  /* Ghost stuff */
+  /* Tolerance for the smoothing length Newton-Raphson scheme */
+  p->h_tolerance = parser_get_opt_param_float(params, "SPH:h_tolerance",
+                                              hydro_props_default_h_tolerance);
+
+  /* Get derived properties */
+  p->target_neighbours = pow_dimension(p->eta_neighbours) * kernel_norm;
+  const float delta_eta = p->eta_neighbours * (1.f + p->h_tolerance);
+  p->delta_neighbours =
+      (pow_dimension(delta_eta) - pow_dimension(p->eta_neighbours)) *
+      kernel_norm;
+
+#ifdef SHADOWFAX_SPH
+  /* change the meaning of target_neighbours and delta_neighbours */
+  p->target_neighbours = 1.0f;
+  p->delta_neighbours = 0.0f;
+#endif
+
+  /* Maximal smoothing length */
+  p->h_max = parser_get_opt_param_float(params, "SPH:h_max",
+                                        hydro_props_default_h_max);
+
+  /* Number of iterations to converge h */
   p->max_smoothing_iterations = parser_get_opt_param_int(
       params, "SPH:max_ghost_iterations", hydro_props_default_max_iterations);
 
@@ -70,9 +91,11 @@ void hydro_props_print(const struct hydro_props *p) {
   message("Hydrodynamic scheme: %s in %dD.", SPH_IMPLEMENTATION,
           (int)hydro_dimension);
 
-  message("Hydrodynamic kernel: %s with %.2f +/- %.2f neighbours (eta=%f).",
-          kernel_name, p->target_neighbours, p->delta_neighbours,
-          p->eta_neighbours);
+  message("Hydrodynamic kernel: %s with eta=%f (%.2f neighbours).", kernel_name,
+          p->eta_neighbours, p->target_neighbours);
+
+  message("Hydrodynamic tolerance in h: %.5f (+/- %.4f neighbours).",
+          p->h_tolerance, p->delta_neighbours);
 
   message("Hydrodynamic integration: CFL parameter: %.4f.", p->CFL_condition);
 
@@ -80,6 +103,9 @@ void hydro_props_print(const struct hydro_props *p) {
       "Hydrodynamic integration: Max change of volume: %.2f "
       "(max|dlog(h)/dt|=%f).",
       pow_dimension(expf(p->log_max_h_change)), p->log_max_h_change);
+
+  if (p->h_max != hydro_props_default_h_max)
+    message("Maximal smoothing length allowed: %.4f", p->h_max);
 
   if (p->max_smoothing_iterations != hydro_props_default_max_iterations)
     message("Maximal iterations in ghost task set to %d (default is %d)",
@@ -89,18 +115,21 @@ void hydro_props_print(const struct hydro_props *p) {
 #if defined(HAVE_HDF5)
 void hydro_props_print_snapshot(hid_t h_grpsph, const struct hydro_props *p) {
 
-  writeAttribute_f(h_grpsph, "Adiabatic index", hydro_gamma);
-  writeAttribute_i(h_grpsph, "Dimension", (int)hydro_dimension);
-  writeAttribute_s(h_grpsph, "Scheme", SPH_IMPLEMENTATION);
-  writeAttribute_s(h_grpsph, "Kernel function", kernel_name);
-  writeAttribute_f(h_grpsph, "Kernel target N_ngb", p->target_neighbours);
-  writeAttribute_f(h_grpsph, "Kernel delta N_ngb", p->delta_neighbours);
-  writeAttribute_f(h_grpsph, "Kernel eta", p->eta_neighbours);
-  writeAttribute_f(h_grpsph, "CFL parameter", p->CFL_condition);
-  writeAttribute_f(h_grpsph, "Volume log(max(delta h))", p->log_max_h_change);
-  writeAttribute_f(h_grpsph, "Volume max change time-step",
-                   pow_dimension(expf(p->log_max_h_change)));
-  writeAttribute_i(h_grpsph, "Max ghost iterations",
-                   p->max_smoothing_iterations);
+  io_write_attribute_f(h_grpsph, "Adiabatic index", hydro_gamma);
+  io_write_attribute_i(h_grpsph, "Dimension", (int)hydro_dimension);
+  io_write_attribute_s(h_grpsph, "Scheme", SPH_IMPLEMENTATION);
+  io_write_attribute_s(h_grpsph, "Kernel function", kernel_name);
+  io_write_attribute_f(h_grpsph, "Kernel target N_ngb", p->target_neighbours);
+  io_write_attribute_f(h_grpsph, "Kernel delta N_ngb", p->delta_neighbours);
+  io_write_attribute_f(h_grpsph, "Kernel eta", p->eta_neighbours);
+  io_write_attribute_f(h_grpsph, "Smoothing length tolerance", p->h_tolerance);
+  io_write_attribute_f(h_grpsph, "Maximal smoothing length", p->h_max);
+  io_write_attribute_f(h_grpsph, "CFL parameter", p->CFL_condition);
+  io_write_attribute_f(h_grpsph, "Volume log(max(delta h))",
+                       p->log_max_h_change);
+  io_write_attribute_f(h_grpsph, "Volume max change time-step",
+                       pow_dimension(expf(p->log_max_h_change)));
+  io_write_attribute_i(h_grpsph, "Max ghost iterations",
+                       p->max_smoothing_iterations);
 }
 #endif

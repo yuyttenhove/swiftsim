@@ -37,6 +37,7 @@
 #include "gravity.h"
 #include "hydro.h"
 #include "part.h"
+#include "periodic.h"
 #include "runner.h"
 
 /**
@@ -144,7 +145,7 @@ void pairs_single_density(double *dim, long long int pid,
   p = parts[k];
   printf("pairs_single: part[%i].id == %lli.\n", k, pid);
 
-  hydro_init_part(&p);
+  hydro_init_part(&p, NULL);
 
   /* Loop over all particle pairs. */
   for (k = 0; k < N; k++) {
@@ -181,6 +182,7 @@ void pairs_all_density(struct runner *r, struct cell *ci, struct cell *cj) {
 
   float r2, hi, hj, hig2, hjg2, dx[3];
   struct part *pi, *pj;
+  const double dim[3] = {r->e->s->dim[0], r->e->s->dim[1], r->e->s->dim[2]};
 
   /* Implements a double-for loop and checks every interaction */
   for (int i = 0; i < ci->count; ++i) {
@@ -197,6 +199,7 @@ void pairs_all_density(struct runner *r, struct cell *ci, struct cell *cj) {
       r2 = 0.0f;
       for (int k = 0; k < 3; k++) {
         dx[k] = ci->parts[i].x[k] - cj->parts[j].x[k];
+        dx[k] = nearest(dx[k], dim[k]);
         r2 += dx[k] * dx[k];
       }
 
@@ -224,6 +227,7 @@ void pairs_all_density(struct runner *r, struct cell *ci, struct cell *cj) {
       r2 = 0.0f;
       for (int k = 0; k < 3; k++) {
         dx[k] = cj->parts[j].x[k] - ci->parts[i].x[k];
+        dx[k] = nearest(dx[k], dim[k]);
         r2 += dx[k] * dx[k];
       }
 
@@ -241,6 +245,7 @@ void pairs_all_force(struct runner *r, struct cell *ci, struct cell *cj) {
 
   float r2, hi, hj, hig2, hjg2, dx[3];
   struct part *pi, *pj;
+  const double dim[3] = {r->e->s->dim[0], r->e->s->dim[1], r->e->s->dim[2]};
 
   /* Implements a double-for loop and checks every interaction */
   for (int i = 0; i < ci->count; ++i) {
@@ -259,6 +264,7 @@ void pairs_all_force(struct runner *r, struct cell *ci, struct cell *cj) {
       r2 = 0.0f;
       for (int k = 0; k < 3; k++) {
         dx[k] = ci->parts[i].x[k] - cj->parts[j].x[k];
+        dx[k] = nearest(dx[k], dim[k]);
         r2 += dx[k] * dx[k];
       }
 
@@ -288,6 +294,7 @@ void pairs_all_force(struct runner *r, struct cell *ci, struct cell *cj) {
       r2 = 0.0f;
       for (int k = 0; k < 3; k++) {
         dx[k] = cj->parts[j].x[k] - ci->parts[i].x[k];
+        dx[k] = nearest(dx[k], dim[k]);
         r2 += dx[k] * dx[k];
       }
 
@@ -459,7 +466,7 @@ void engine_single_density(double *dim, long long int pid,
   p = parts[k];
 
   /* Clear accumulators. */
-  hydro_init_part(&p);
+  hydro_init_part(&p, NULL);
 
   /* Loop over all particle pairs (force). */
   for (k = 0; k < N; k++) {
@@ -732,19 +739,24 @@ int compare_particles(struct part a, struct part b, double threshold) {
 #endif
 }
 
-/** @brief Computes the forces between all g-particles using the N^2 algorithm
+/**
+ * @brief Computes the forces between all g-particles using the N^2 algorithm
  *
  * Overwrites the accelerations of the gparts with the values.
  * Do not use for actual runs.
  *
  * @brief gparts The array of particles.
  * @brief gcount The number of particles.
+ * @brief constants Physical constants in internal units.
+ * @brief gravity_properties Constants governing the gravity scheme.
  */
 void gravity_n2(struct gpart *gparts, const int gcount,
-                const struct phys_const *constants, float rlr) {
+                const struct phys_const *constants,
+                const struct gravity_props *gravity_properties, float rlr) {
 
   const float rlr_inv = 1. / rlr;
-  const float max_d = const_gravity_r_cut * rlr;
+  const float r_cut = gravity_properties->r_cut;
+  const float max_d = r_cut * rlr;
   const float max_d2 = max_d * max_d;
 
   message("rlr_inv= %f", rlr_inv);
