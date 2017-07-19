@@ -1108,10 +1108,6 @@ static void setcostcoeffs(struct scheduler *s,
   c[task_type_kick2][task_subtype_none][0][0] = 144.0f;
   c[task_type_kick2][task_subtype_none][0][1] = 0.0f;
 
-  /* task_type_init: */
-  c[task_type_init][task_subtype_none][0][0] = 68.4f;
-  c[task_type_init][task_subtype_none][0][1] = 0.00002f;
-
   /* task_type_sort: */
   c[task_type_sort][task_subtype_none][0][0] = 410.0f;
   c[task_type_sort][task_subtype_none][0][1] = 0.00034f;
@@ -1165,7 +1161,6 @@ void scheduler_reweight(struct scheduler *s, int verbose) {
   int *tid = s->tasks_ind;
   struct task *tasks = s->tasks;
   const int sortdirs[13] = {0, 1, 0, 1, 2, 1, 0, 1, 0, 1, 2, 1, 2};
-  const int nodeID = s->nodeID;
   const ticks tic = getticks();
 
   /* Set the task weights. */
