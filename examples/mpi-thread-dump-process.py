@@ -11,9 +11,10 @@ from scipy.optimize import curve_fit
 import math
 import numpy as np
 import pylab as pl
+import os
 import sys
 
-#  Our fitting function.
+#  Our fitting functions.
 def funcpair(x, a, b, c, d):
     return a + b*x[0]+ c*x[1] + d*x[0]*x[1]
 
@@ -22,6 +23,17 @@ def funcself(x, a, b, c):
 
 def iszero(a):
     return 0
+
+#  Utilities.
+def gettask(line):
+    # Lines look like ' task_type_none = 0,\n', ' task_type_sort,\n' or
+    # 'task_type_count\n'. So find task_ and stop at space, comma or end of
+    # line (although we don't expect to see "count").
+    start = line.find("task_")
+    for i in range(start,len(line)):
+        if line[i] == " " or line[i] == "," or line[i] == "\n":
+            return line[start:i]
+    return None
 
 #  Basic plot configuration.
 PLOT_PARAMS = {"axes.labelsize": 10,
@@ -42,55 +54,31 @@ PLOT_PARAMS = {"axes.labelsize": 10,
                }
 pl.rcParams.update(PLOT_PARAMS)
 
-#  Tasks and subtypes. Indexed as in tasks.h.
-TASKTYPES = ["none",
-             "sort",
-             "self",
-             "pair",
-             "sub_self",
-             "sub_pair",
-             "init",
-             "ghost",
-             "extra_ghost",
-             "drift",
-             "kick1",
-             "kick2",
-             "timestep",
-             "send",
-             "recv",
-             "grav_gather_m",
-             "grav_fft",
-             "grav_mm",
-             "grav_up",
-             "grav_external",
-             "cooling",
-             "sourceterms",
-             "count"]
-
-SUBTYPES = ["none",
-            "density",
-            "gradient",
-            "force",
-            "grav",
-            "external_grav",
-            "tend",
-            "xv",
-            "rho",
-            "gpart",
-            "spart",
-            "count"]
+#  Tasks and subtypes extracted from ../src/task.h. XXX parameterise this.
+TASKTYPES = []
+SUBTYPES = []
+with open(os.path.dirname(__file__) + "/../src/task.h") as task_file:
+    for line in task_file:
+        if "task_type_" in line:
+            TASKTYPES.append(gettask(line))
+        else:
+            if "task_subtype_" in line:
+                SUBTYPES.append(gettask(line))
 
 #  Sorting directions in flags. Should give same results (0 to 12). See
 #  sid_scale in scheduler.
 SAMEFLAGS = [1, 2, 1, 2, 3, 2, 1, 2, 1, 2, 3, 2, 3]
 
 #  Handle command-line.
-if len( sys.argv ) != 2:
+if len(sys.argv) != 2:
     print "Usage: ", sys.argv[0], "input.dat"
     sys.exit(1)
 
 #  Read input.
-indata = pl.loadtxt( sys.argv[1] )
+indata = pl.loadtxt(sys.argv[1])
+
+#  Ignore global step lines (first for each rank).
+indata = indata[indata[:,1] >= 0]
 
 num_lines = pl.size(indata) / len(indata[0])
 print "num_lines: ", num_lines
@@ -105,14 +93,14 @@ for line in range(num_lines):
 	flags = 12
 
     # Flags is a tag for these.
-    if ttype == "recv" or ttype == "send":
+    if "recv" in ttype or "send" in ttype:
 	flags = 0
 
     # All sorts are gathered together (multiple sorting directions).
-    if ttype == "sort":
+    elif "sort" in ttype:
         flags = 0
-
-    flags = SAMEFLAGS[flags]
+    else:
+        flags = SAMEFLAGS[flags]
     key = ttype + "." + subtype + "." + str(flags)
     if not key in keys:
         keys[key] = []
@@ -140,8 +128,6 @@ for key in keys:
 
     ttype = TASKTYPES[int(keys[key][0][3])]
     subtype = SUBTYPES[int(keys[key][0][4])]
-    if ttype == "none":
-        continue
 
     num_lines = 0
     for line in keys[key]:
@@ -149,7 +135,6 @@ for key in keys:
         for item in line:
             res = res + " " + str(int(item)) + " "
         dt = int(line[7]) - int(line[6])
-
         res = res + " " + str(dt) + " "
         res = res + " " + ttype + " "
         res = res + " " + subtype + "\n"
@@ -157,7 +142,7 @@ for key in keys:
 
         cidata.append(line[8])
         cjdata.append(line[9])
-        cost.append(line[13])
+        cost.append(line[14])
         ydata.append(dt)
         if ttype == "sort":
             #  Lots of pre-sorted data, try not to prefer that.
@@ -173,8 +158,8 @@ for key in keys:
     cjdata = np.array(cjdata)
     cost = np.array(cost)
 
-    # Self data has different fit.
-    if min(cjdata) == 0:
+    # Self data has different fit. MPI is has cjdata, but really only like a self.
+    if min(cjdata) == 0 or "_recv" in ttype or "_send" in ttype:
         isself = 1
     else:
         isself = 0
@@ -190,6 +175,10 @@ for key in keys:
         xdata = [cidata,cjdata]
         p0 = [0.,1.,1.,1.]
 
+    if len(cidata) < len(p0):
+        print "Not enough data to fit '" + ttype + "." + subtype + "' skipping"
+        print cidata
+        continue
     popt, pcov = curve_fit(minfunc, xdata, ydata, p0=p0, sigma=sigma)
     print popt
 
@@ -204,6 +193,7 @@ for key in keys:
     else:
         ymax = funcpair([max(xdata[0]), max(xdata[1])], popt[0], popt[1], popt[2], popt[3])
     maxcost = float(max(cost))
+    print ymax, maxcost
     if maxcost > 0:
         scost = cost * ymax / maxcost
     else:
@@ -253,4 +243,3 @@ for key in keys:
     ffit.close()
     fdat.close()
 fsol.close()
-
