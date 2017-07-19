@@ -682,9 +682,11 @@ int main(int argc, char *argv[]) {
 
           /* Open file and position at end. */
           file_thread = fopen(dumpfile, "a");
-          fprintf(file_thread, " %03i 0 0 0 0 %lli %lli %zi %zi %zi 0 0 %lli\n",
-                  myrank, e.tic_step, e.toc_step, e.updates, e.g_updates,
-                  e.s_updates, cpufreq);
+          fprintf(file_thread,
+                  " %03i %03i %i %i %i %i %lli %lli %li %li %li %i %i %i %lli\n",
+                  myrank, -1, -2, -1, -1, 1, e.tic_step, e.toc_step, e.updates,
+                  e.g_updates, e.s_updates, 0, 0, 0, cpufreq);
+
           int count = 0;
           for (int l = 0; l < e.sched.nr_tasks; l++) {
             if (!e.sched.tasks[l].implicit && e.sched.tasks[l].toc != 0) {
@@ -721,9 +723,10 @@ int main(int argc, char *argv[]) {
       FILE *file_thread;
       file_thread = fopen(dumpfile, "w");
       /* Add some information to help with the plots */
-      fprintf(file_thread, " %i %i %i %i %lli %lli %zi %zi %zi %i %lli\n", -2,
-              -1, -1, 1, e.tic_step, e.toc_step, e.updates, e.g_updates,
-              e.s_updates, 0, cpufreq);
+      fprintf(file_thread,
+              " %i %i %i %i %lli %lli %zi %zi %zi %i %i %i %lli\n",
+              -2, -1, -1, 1, e.tic_step, e.toc_step, e.updates, e.g_updates,
+              e.s_updates, 0, 0, 0, cpufreq);
       for (int l = 0; l < e.sched.nr_tasks; l++) {
         if (!e.sched.tasks[l].implicit && e.sched.tasks[l].toc != 0) {
           fprintf(
