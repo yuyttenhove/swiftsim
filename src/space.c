@@ -60,9 +60,9 @@
 
 /* Split size. */
 int space_splitsize = space_splitsize_default;
-int space_subsize = space_subsize_default;
+int space_subsize_pair = space_subsize_pair_default;
+int space_subsize_self = space_subsize_self_default;
 int space_maxsize = space_maxsize_default;
-int space_maxcount = space_maxcount_default;
 
 /**
  * @brief Interval stack necessary for parallel particle sorting.
@@ -314,14 +314,22 @@ void space_regrid(struct space *s, int verbose) {
         "small,\n"
         " - the (minimal) time-step is too large leading to particles with "
         "predicted smoothing lengths too large for the box size,\n"
-        " - particle with velocities so large that they move by more than two "
+        " - particles with velocities so large that they move by more than two "
         "box sizes per time-step.\n");
 
-  /* Check if we have enough cells for gravity. */
-  if (s->gravity && (cdim[0] < 8 || cdim[1] < 8 || cdim[2] < 8))
+  /* Check if we have enough cells for periodic gravity. */
+  if (s->gravity && s->periodic && (cdim[0] < 8 || cdim[1] < 8 || cdim[2] < 8))
     error(
-        "Must have at least 8 cells in each spatial dimension when gravity "
-        "is switched on.");
+        "Must have at least 8 cells in each spatial dimension when periodic "
+        "gravity is switched on.\nThis error is often caused by any of the "
+        "followings:\n"
+        " - too few particles to generate a sensible grid,\n"
+        " - the initial value of 'Scheduler:max_top_level_cells' is too "
+        "small,\n"
+        " - the (minimal) time-step is too large leading to particles with "
+        "predicted smoothing lengths too large for the box size,\n"
+        " - particles with velocities so large that they move by more than two "
+        "box sizes per time-step.\n");
 
 /* In MPI-Land, changing the top-level cell size requires that the
  * global partition is recomputed and the particles redistributed.
@@ -2689,15 +2697,18 @@ void space_init(struct space *s, const struct swift_params *params,
   /* Get the constants for the scheduler */
   space_maxsize = parser_get_opt_param_int(params, "Scheduler:cell_max_size",
                                            space_maxsize_default);
-  space_subsize = parser_get_opt_param_int(params, "Scheduler:cell_sub_size",
-                                           space_subsize_default);
+  space_subsize_pair = parser_get_opt_param_int(
+      params, "Scheduler:cell_sub_size_pair", space_subsize_pair_default);
+  space_subsize_self = parser_get_opt_param_int(
+      params, "Scheduler:cell_sub_size_self", space_subsize_self_default);
   space_splitsize = parser_get_opt_param_int(
       params, "Scheduler:cell_split_size", space_splitsize_default);
-  space_maxcount = parser_get_opt_param_int(params, "Scheduler:cell_max_count",
-                                            space_maxcount_default);
+
   if (verbose)
-    message("max_size set to %d, sub_size set to %d, split_size set to %d",
-            space_maxsize, space_subsize, space_splitsize);
+    message(
+        "max_size set to %d, sub_size_pair set to %d, sub_size_self set to %d, "
+        "split_size set to %d",
+        space_maxsize, space_subsize_pair, space_subsize_self, space_splitsize);
 
   /* Apply h scaling */
   const double scaling =
