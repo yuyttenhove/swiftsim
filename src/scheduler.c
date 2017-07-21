@@ -29,6 +29,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 /* MPI headers. */
 #ifdef WITH_MPI
@@ -1036,81 +1037,71 @@ void scheduler_reset(struct scheduler *s, int size) {
 static void setcostcoeffs(struct scheduler *s,
                           float c[task_type_count][task_subtype_count][3][3]) {
 
-  /* All coeefficients are initially zero. */
+  /* All coefficients are initially zero. */
   float *ptr = &c[0][0][0][0];
   for (int i = 0; i < task_type_count * task_subtype_count * 3 * 3; i++)
     ptr[i] = 0.0f;
 
-  /* task_type_self: */
-  c[task_type_self][task_subtype_density][0][0] = 1442.0f;
-  c[task_type_self][task_subtype_density][0][1] = 10.37f;
+  /* Look for a table of coefficients to read. */
+  char fitted_costs_file[PARSER_MAX_LINE_SIZE];
+  parser_get_opt_param_string(s->space->e->parameter_file,
+                              "Scheduler:fitted_costs",
+                              fitted_costs_file,
+                              "swift-task-fitted-costs.txt");
+  if (access(fitted_costs_file, R_OK) == 0) {
 
-  c[task_type_self][task_subtype_force][0][0] = 1726.0f;
-  c[task_type_self][task_subtype_force][0][1] = 9.23f;
+    if (s->space->e->verbose)
+      message("Reading task costs from file: %s", fitted_costs_file);
 
-  /* task_type_pair: */
-  c[task_type_pair][task_subtype_density][0][0] = 0.24;
-  c[task_type_pair][task_subtype_density][0][1] = 0.20f;
-  c[task_type_pair][task_subtype_density][0][2] = 0.000232f;
+    /* Have a file of coefficients, need to match these to tasks. */
+    FILE *cfile = fopen(fitted_costs_file, "r");
+    int nlines = 0;
+    char line[PARSER_MAX_LINE_SIZE];
+    while (!feof(cfile)) {
+      if (fgets(line, PARSER_MAX_LINE_SIZE, cfile) != NULL) {
+        char subtask[32];
+        char task[32];
+        float c1 = 0.0f;
+        float c2 = 0.0f;
+        float c3 = 0.0f;
+        int sortdir = 0;
+        int nread = sscanf(line, "%s %s %d %f %f %f", task, subtask, &sortdir,
+                           &c1, &c2, &c3);
+        if (nread != 5 && nread != 6) {
+          message("read garbage from fitted costs file %s (expect 5 or 6 fields"
+                  " got %d at line %d)", fitted_costs_file, nread, nlines);
+        } else {
 
-  c[task_type_pair][task_subtype_density][1][0] = 3.74;
-  c[task_type_pair][task_subtype_density][1][1] = 3.30f;
-  c[task_type_pair][task_subtype_density][1][2] = 0.00195f;
+          /* Convert task descriptions to indices. */
+          int taskind = 0;
+          for (int k = 0; k < task_type_count; k++) {
+            if (strcmp(taskID_names[k], task) == 0) {
+              taskind = k;
+              break;
+            }
+          }
+          int subtaskind = 0;
+          for (int k = 0; k < task_subtype_count; k++) {
+            if (strcmp(subtaskID_names[k], subtask) == 0) {
+              subtaskind = k;
+              break;
+            }
+          }
+          c[taskind][subtaskind][sortdir][0] = c1;
+          c[taskind][subtaskind][sortdir][1] = c2;
+          if (nread == 6)
+            c[taskind][subtaskind][sortdir][2] = c3;
+        }
+        nlines++;
+      }
+    }
+    fclose(cfile);
+  } else {
 
-  c[task_type_pair][task_subtype_density][2][0] = 167.0;
-  c[task_type_pair][task_subtype_density][2][1] = 201.0f;
-  c[task_type_pair][task_subtype_density][2][2] = 0.2097f;
+    /* No fitted costs, so use the fixed ones. */
+    message("not found");
 
-  c[task_type_pair][task_subtype_force][0][0] = 1.029f;
-  c[task_type_pair][task_subtype_force][0][1] = 0.579;
-  c[task_type_pair][task_subtype_force][0][2] = 0.000665f;
-
-  /* These two directions are not used in test, so fake. */
-  c[task_type_pair][task_subtype_force][1][0] = 1.029f;
-  c[task_type_pair][task_subtype_force][1][1] = 0.579;
-  c[task_type_pair][task_subtype_force][1][2] = 0.000665f;
-
-  c[task_type_pair][task_subtype_force][2][0] = 1.029f;
-  c[task_type_pair][task_subtype_force][2][1] = 0.579;
-  c[task_type_pair][task_subtype_force][2][2] = 0.000665f;
-
-  /* task_type_sub_pair: */
-  c[task_type_sub_pair][task_subtype_density][1][0] = 27.56f;
-  c[task_type_sub_pair][task_subtype_density][1][1] = 25.4f;
-  c[task_type_sub_pair][task_subtype_density][1][2] = 0.003624;
-
-  c[task_type_sub_pair][task_subtype_density][2][0] = 192.6f;
-  c[task_type_sub_pair][task_subtype_density][2][1] = 186.5f;
-  c[task_type_sub_pair][task_subtype_density][2][2] = 0.09427f;
-
-  c[task_type_sub_pair][task_subtype_force][1][0] = 1.33f;
-  c[task_type_sub_pair][task_subtype_force][1][1] = 1.15f;
-  c[task_type_sub_pair][task_subtype_force][1][2] = 0.000415f;
-
-  c[task_type_sub_pair][task_subtype_force][2][0] = 112.0f;
-  c[task_type_sub_pair][task_subtype_force][2][1] = 110.0f;
-  c[task_type_sub_pair][task_subtype_force][2][2] = 0.018607f;
-
-  /* task_type_sub_self: */
-  c[task_type_sub_self][task_subtype_density][0][0] = 7032.0f;
-  c[task_type_sub_self][task_subtype_density][0][1] = 0.287f;
-
-  c[task_type_sub_self][task_subtype_force][0][0] = 6879.0f;
-  c[task_type_sub_self][task_subtype_force][0][1] = 0.0448f;
-
-  /* task_type_ghost: */
-  c[task_type_ghost][task_subtype_none][0][0] = 701.0f;
-  c[task_type_ghost][task_subtype_none][0][1] = 0.012f;
-
-  /* task_type_kick1/2: */
-  c[task_type_kick1][task_subtype_none][0][0] = 144.0f;
-  c[task_type_kick1][task_subtype_none][0][1] = 0.0f;
-  c[task_type_kick2][task_subtype_none][0][0] = 144.0f;
-  c[task_type_kick2][task_subtype_none][0][1] = 0.0f;
-
-  /* task_type_sort: */
-  c[task_type_sort][task_subtype_none][0][0] = 410.0f;
-  c[task_type_sort][task_subtype_none][0][1] = 0.00034f;
+  }
 
   /* Scale coefficients to 0-1 to reduce dynamic range. */
   float cmin = c[0][0][0][0];
@@ -1125,27 +1116,27 @@ static void setcostcoeffs(struct scheduler *s,
     ptr[i] = (ptr[i] - cmin) * 1.0f / (cmax - cmin);
 
 #ifdef WITH_MPI
-  /* Given highest cost, these should be considered first. */
-  c[task_type_send][task_subtype_xv][0][0] = 2.0f;
-  c[task_type_send][task_subtype_xv][0][1] = 2.0f;
+  /* MPI tasks should be considered quickly, so make these the highest value. */
+  c[task_type_send][task_subtype_xv][0][0] = 1.1f;
+  c[task_type_send][task_subtype_xv][0][1] = 1.1f;
   c[task_type_send][task_subtype_xv][0][2] = 0.0f;
 
-  c[task_type_send][task_subtype_rho][0][0] = 2.0f;
-  c[task_type_send][task_subtype_rho][0][1] = 2.0f;
+  c[task_type_send][task_subtype_rho][0][0] = 1.1f;
+  c[task_type_send][task_subtype_rho][0][1] = 1.1f;
   c[task_type_send][task_subtype_rho][0][2] = 0.0f;
 
-  c[task_type_send][task_subtype_tend][0][0] = 2.0f;
-  c[task_type_send][task_subtype_tend][0][1] = 2.0f;
+  c[task_type_send][task_subtype_tend][0][0] = 1.1f;
+  c[task_type_send][task_subtype_tend][0][1] = 1.1f;
   c[task_type_send][task_subtype_tend][0][2] = 0.0f;
 
-  c[task_type_recv][task_subtype_xv][0][0] = 2.0f;
-  c[task_type_recv][task_subtype_xv][0][1] = 2.0f;
+  c[task_type_recv][task_subtype_xv][0][0] = 1.1f;
+  c[task_type_recv][task_subtype_xv][0][1] = 1.1f;
 
-  c[task_type_recv][task_subtype_rho][0][0] = 2.0f;
-  c[task_type_recv][task_subtype_rho][0][1] = 2.0f;
+  c[task_type_recv][task_subtype_rho][0][0] = 1.1f;
+  c[task_type_recv][task_subtype_rho][0][1] = 1.1f;
 
-  c[task_type_recv][task_subtype_tend][0][0] = 2.0f;
-  c[task_type_recv][task_subtype_tend][0][1] = 2.0f;
+  c[task_type_recv][task_subtype_tend][0][0] = 1.1f;
+  c[task_type_recv][task_subtype_tend][0][1] = 1.1f;
 #endif
 }
 

@@ -83,7 +83,7 @@ indata = indata[indata[:,1] >= 0]
 num_lines = pl.size(indata) / len(indata[0])
 print "num_lines: ", num_lines
 
-#  Create hash of unique keys "type.subtype.flags".
+#  Create hash of unique keys "type subtype flags".
 keys = {}
 for line in range(num_lines):
     ttype = TASKTYPES[int(indata[line,3])]
@@ -101,7 +101,8 @@ for line in range(num_lines):
         flags = 0
     else:
         flags = SAMEFLAGS[flags]
-    key = ttype + "." + subtype + "." + str(flags)
+
+    key = ttype + " " + subtype + " " + str(flags)
     if not key in keys:
         keys[key] = []
     keys[key].append(indata[line,:])
@@ -109,7 +110,8 @@ for line in range(num_lines):
 print "number of keys: ", len(keys)
 
 # Create a file to contain all the solutions.
-fsol = open( "solutions.dat", 'w')
+fsol = open( "swift-task-fitted-costs.txt", 'w')
+fsol.write( "# task  subtask sortdir c1 c2 c3\n")
 
 # Output the data to be fitted into files with the names "type.subtype.flags".dat.
 # Also create fits and store these in "type.subtype.flags".fit and plot the fit...
@@ -193,7 +195,6 @@ for key in keys:
     else:
         ymax = funcpair([max(xdata[0]), max(xdata[1])], popt[0], popt[1], popt[2], popt[3])
     maxcost = float(max(cost))
-    print ymax, maxcost
     if maxcost > 0:
         scost = cost * ymax / maxcost
     else:
@@ -206,11 +207,11 @@ for key in keys:
     if isself:
         for i in range(num_lines):
             y.append(funcself(xdata[i], popt[0], popt[1], popt[2]))
-            fy.append( funcself(xdata[i], 0, popt[1], popt[2]))
+            fy.append(funcself(xdata[i], 0, popt[1], popt[2]))
             ffit.write(str(xdata[i]) + " " + str(y[i]) + " " + str(ydata[i]) + " " + str(ydata[i] - y[i]) + " " + str(fy[i]) + " " + str(scost[i]) + "\n")
         x = xdata
         solution = fopt[0] + " + " + fopt[1] + " * cicount " + " + " + fopt[2] + " * cicount * cicount"
-
+        fsol.write( key + " " + fopt[1] + " " + fopt[2] + "\n")
     else:
         for i in range(num_lines):
             y.append(funcpair([xdata[0][i], xdata[1][i]], popt[0], popt[1], popt[2], popt[3]))
@@ -218,26 +219,29 @@ for key in keys:
             ffit.write(str(xdata[0][i]) + " " + str(xdata[1][i]) + " " + str(y[i]) + " " + str(ydata[i]) + " " + str(ydata[i] - y[i]) + " " + str(fy[i]) + " " + str(scost[i]) + "\n")
         x = xdata[0][:]
         solution = fopt[0] + " + " + fopt[1] + "* cicount" + " + " + fopt[2] + " * cjcount " + " + " + fopt[3] + " * cicount * cjcount"
+        fsol.write( key + " " + fopt[1] + " " + fopt[2] + " " + fopt[3] + "\n")
+
     ffit.write("# Solution: " + solution + "\n")
-    fsol.write(key + ": " + solution + "\n")
     if maxcost > 0:
         ffit.write("# cost scale: " + str(ymax/maxcost) + "\n")
     else:
         ffit.write("# cost scale: 0\n")
 
-
     fig = pl.figure()
     ax = fig.add_subplot(1,1,1)
-    pl.scatter(x, ydata, c="blue")
-    pl.scatter(x, fy, c="green")
-    pl.scatter(x, scost, c="cyan")
-    pl.scatter(x, y, c="red")
+    pl.scatter(x, ydata, c="blue", label="data")
+    pl.scatter(x, fy, c="green", label="model")
+    pl.scatter(x, scost, c="cyan", label="costs")
+    pl.scatter(x, y, c="red", label="fit")
     ax.set_title( "task.subtype.flags: " + key + "\n" + solution)
     ax.set_xlabel("ci count")
     ax.set_ylabel("ticks")
 
+    ax.legend()
+
     pl.savefig(key + ".png")
     pl.show()
+    pl.close("all")
 
 
     ffit.close()
