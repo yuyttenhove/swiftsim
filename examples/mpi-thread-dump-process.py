@@ -110,17 +110,18 @@ for line in range(num_lines):
 print "number of keys: ", len(keys)
 
 # Create a file to contain all the solutions.
-fsol = open( "swift-task-fitted-costs.txt", 'w')
-fsol.write( "# task  subtask sortdir c1 c2 c3\n")
+fsol = open("swift-task-fitted-costs.txt", 'w')
+fsol.write("# task  subtask sortdir c1 c2 c3\n")
 
 # Output the data to be fitted into files with the names "type.subtype.flags".dat.
 # Also create fits and store these in "type.subtype.flags".fit and plot the fit...
 
 for key in keys:
-    print key
-    fdat = open( key + ".dat", 'w' )
-    ffit = open( key + ".fit", 'w' )
-    fdat.write( "# rank otherrank rid itype isubtype self tic toc cicount cjcount cigcount cjgcount flags cost dt type subtype\n" )
+    fkey = key.replace(" ", ".")
+    print fkey
+    fdat = open(fkey + ".dat", 'w')
+    ffit = open(fkey + ".fit", 'w')
+    fdat.write("# rank otherrank rid itype isubtype self tic toc cicount cjcount cigcount cjgcount flags cost dt type subtype\n")
 
     ydata = []
     sigma = []
@@ -140,7 +141,7 @@ for key in keys:
         res = res + " " + str(dt) + " "
         res = res + " " + ttype + " "
         res = res + " " + subtype + "\n"
-        fdat.write( res )
+        fdat.write(res)
 
         cidata.append(line[8])
         cjdata.append(line[9])
@@ -167,12 +168,12 @@ for key in keys:
         isself = 0
 
     if isself:
-        ffit.write( "# cicount model dt dmodel fmodel scost\n" )
+        ffit.write("# cicount model dt dmodel fmodel scost\n")
         minfunc = funcself
         xdata = cidata
         p0 = [0.,1.,1.]
     else:
-        ffit.write( "# cicount cjcount model dt dmodel fmodel scost\n" )
+        ffit.write("# cicount cjcount model dt dmodel fmodel scost\n")
         minfunc = funcpair
         xdata = [cidata,cjdata]
         p0 = [0.,1.,1.,1.]
@@ -211,7 +212,7 @@ for key in keys:
             ffit.write(str(xdata[i]) + " " + str(y[i]) + " " + str(ydata[i]) + " " + str(ydata[i] - y[i]) + " " + str(fy[i]) + " " + str(scost[i]) + "\n")
         x = xdata
         solution = fopt[0] + " + " + fopt[1] + " * cicount " + " + " + fopt[2] + " * cicount * cicount"
-        fsol.write( key + " " + fopt[1] + " " + fopt[2] + "\n")
+        fsol.write(key + " " + fopt[1] + " " + fopt[2] + "\n")
     else:
         for i in range(num_lines):
             y.append(funcpair([xdata[0][i], xdata[1][i]], popt[0], popt[1], popt[2], popt[3]))
@@ -219,7 +220,7 @@ for key in keys:
             ffit.write(str(xdata[0][i]) + " " + str(xdata[1][i]) + " " + str(y[i]) + " " + str(ydata[i]) + " " + str(ydata[i] - y[i]) + " " + str(fy[i]) + " " + str(scost[i]) + "\n")
         x = xdata[0][:]
         solution = fopt[0] + " + " + fopt[1] + "* cicount" + " + " + fopt[2] + " * cjcount " + " + " + fopt[3] + " * cicount * cjcount"
-        fsol.write( key + " " + fopt[1] + " " + fopt[2] + " " + fopt[3] + "\n")
+        fsol.write(key + " " + fopt[1] + " " + fopt[2] + " " + fopt[3] + "\n")
 
     ffit.write("# Solution: " + solution + "\n")
     if maxcost > 0:
@@ -233,13 +234,13 @@ for key in keys:
     pl.scatter(x, fy, c="green", label="model")
     pl.scatter(x, scost, c="cyan", label="costs")
     pl.scatter(x, y, c="red", label="fit")
-    ax.set_title( "task.subtype.flags: " + key + "\n" + solution)
+    ax.set_title("task.subtype.flags: " + key + "\n" + solution)
     ax.set_xlabel("ci count")
     ax.set_ylabel("ticks")
 
     ax.legend()
 
-    pl.savefig(key + ".png")
+    pl.savefig(fkey + ".png")
     pl.show()
     pl.close("all")
 
