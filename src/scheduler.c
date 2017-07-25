@@ -1034,8 +1034,8 @@ void scheduler_reset(struct scheduler *s, int size) {
  * @param s our scheduler
  * @param c array of size [task_type_count][task_subtype_count][3][3]
  */
-static void setcostcoeffs(struct scheduler *s,
-                          float c[task_type_count][task_subtype_count][3][3]) {
+static void scheduler_setcosts(struct scheduler *s,
+                               float c[task_type_count][task_subtype_count][3][3]) {
 
   /* All coefficients are initially zero. */
   float *ptr = &c[0][0][0][0];
@@ -1049,9 +1049,7 @@ static void setcostcoeffs(struct scheduler *s,
                               fitted_costs_file,
                               "swift-task-fitted-costs.txt");
   if (access(fitted_costs_file, R_OK) == 0) {
-
-    if (s->space->e->verbose)
-      message("Reading task costs from file: %s", fitted_costs_file);
+    message("task costs from: %s", fitted_costs_file);
 
     /* Have a file of coefficients, need to match these to tasks. */
     FILE *cfile = fopen(fitted_costs_file, "r");
@@ -1059,6 +1057,7 @@ static void setcostcoeffs(struct scheduler *s,
     char line[PARSER_MAX_LINE_SIZE];
     while (!feof(cfile)) {
       if (fgets(line, PARSER_MAX_LINE_SIZE, cfile) != NULL) {
+        if (line[0] == '#') continue; /* Skip comments. */
         char subtask[32];
         char task[32];
         float c1 = 0.0f;
@@ -1068,8 +1067,9 @@ static void setcostcoeffs(struct scheduler *s,
         int nread = sscanf(line, "%s %s %d %f %f %f", task, subtask, &sortdir,
                            &c1, &c2, &c3);
         if (nread != 5 && nread != 6) {
-          message("read garbage from fitted costs file %s (expect 5 or 6 fields"
-                  " got %d at line %d)", fitted_costs_file, nread, nlines);
+          message("read garbage from fitted costs file %s (expect 5 or 6 "
+                  "fields got %d at line %d)", fitted_costs_file, nread,
+                  nlines);
         } else {
 
           /* Convert task descriptions to indices. */
@@ -1097,10 +1097,65 @@ static void setcostcoeffs(struct scheduler *s,
     }
     fclose(cfile);
   } else {
+    message("default costs");
 
-    /* No fitted costs, so use the fixed ones. */
-    message("not found");
+    /* No fitted costs, so use fixed ones, sorts are special...
+     * Check main loop in runner.c to see what tasks/subtasks are needed.
+     * Coefficients represent:
+     *
+     * self: 0 = * ci->count;
+     *       1 = * ci->count * ci->count;
+     *
+     * pair: 0 = * ci->count;
+     *       1 = * cj->count;
+     *       2 = * ci->count * cj->count;
+     */
+    int sortdir = 0;
+    c[task_type_sort][task_subtype_none][sortdir][0] = 1.0f;
 
+    c[task_type_self][task_subtype_density][sortdir][1] = 1.0f;
+    c[task_type_self][task_subtype_external_grav][sortdir][1] = 1.0f;
+    c[task_type_self][task_subtype_force][sortdir][1] = 1.0f;
+    c[task_type_self][task_subtype_gradient][sortdir][1] = 1.0f;
+    c[task_type_self][task_subtype_grav][sortdir][1] = 1.0f;
+
+    c[task_type_sub_self][task_subtype_density][sortdir][1] = 1.0f;
+    c[task_type_sub_self][task_subtype_external_grav][sortdir][1] = 1.0f;
+    c[task_type_sub_self][task_subtype_force][sortdir][1] = 1.0f;
+    c[task_type_sub_self][task_subtype_gradient][sortdir][1] = 1.0f;
+    c[task_type_sub_self][task_subtype_grav][sortdir][1] = 1.0f;
+
+    for (sortdir = 0; sortdir < 3; sortdir++) {
+      c[task_type_pair][task_subtype_density][sortdir][2] = 2.0f;
+      c[task_type_pair][task_subtype_gradient][sortdir][2] = 2.0f;
+      c[task_type_pair][task_subtype_force][sortdir][2] = 2.0f;
+      c[task_type_pair][task_subtype_grav][sortdir][2] = 2.0f;
+
+      c[task_type_sub_pair][task_subtype_density][sortdir][2] = 2.0f;
+      c[task_type_sub_pair][task_subtype_gradient][sortdir][2] = 2.0f;
+      c[task_type_sub_pair][task_subtype_force][sortdir][2] = 2.0f;
+      c[task_type_sub_pair][task_subtype_grav][sortdir][2] = 2.0f;
+    }
+
+    sortdir = 0;
+    c[task_type_init_grav][task_subtype_none][sortdir][0] = 1.0f;
+    c[task_type_ghost][task_subtype_none][sortdir][0] = 1.0f;
+    c[task_type_extra_ghost][task_subtype_none][sortdir][0] = 1.0f;
+    c[task_type_drift_part][task_subtype_none][sortdir][0] = 1.0f;
+    c[task_type_drift_gpart][task_subtype_none][sortdir][0] = 1.0f;
+    c[task_type_kick1][task_subtype_none][sortdir][0] = 1.0f;
+    c[task_type_kick2][task_subtype_none][sortdir][0] = 1.0f;
+    c[task_type_timestep][task_subtype_none][sortdir][0] = 1.0f;
+    c[task_type_cooling][task_subtype_none][sortdir][0] = 1.0f;
+    c[task_type_sourceterms][task_subtype_none][sortdir][0] = 1.0f;
+
+    /* Still to do
+       task_type_grav_top_level,
+       task_type_grav_long_range,
+       task_type_grav_ghost,
+       task_type_grav_mm,
+       task_type_grav_down,
+    */
   }
 
   /* Scale coefficients to 0-1 to reduce dynamic range. */
@@ -1116,27 +1171,27 @@ static void setcostcoeffs(struct scheduler *s,
     ptr[i] = (ptr[i] - cmin) * 1.0f / (cmax - cmin);
 
 #ifdef WITH_MPI
-  /* MPI tasks should be considered quickly, so make these the highest value. */
-  c[task_type_send][task_subtype_xv][0][0] = 1.1f;
-  c[task_type_send][task_subtype_xv][0][1] = 1.1f;
-  c[task_type_send][task_subtype_xv][0][2] = 0.0f;
+  /* MPI tasks should be considered quickly, so make these the highest value
+   * (self) tasks. */
+  int sortdir = 0;
+  cmax = 1.1f;
+  c[task_type_send][task_subtype_xv][sortdir][0] = cmax;
+  c[task_type_send][task_subtype_xv][sortdir][1] = cmax;
 
-  c[task_type_send][task_subtype_rho][0][0] = 1.1f;
-  c[task_type_send][task_subtype_rho][0][1] = 1.1f;
-  c[task_type_send][task_subtype_rho][0][2] = 0.0f;
+  c[task_type_send][task_subtype_rho][sortdir][0] = cmax;
+  c[task_type_send][task_subtype_rho][sortdir][1] = cmax;
 
-  c[task_type_send][task_subtype_tend][0][0] = 1.1f;
-  c[task_type_send][task_subtype_tend][0][1] = 1.1f;
-  c[task_type_send][task_subtype_tend][0][2] = 0.0f;
+  c[task_type_send][task_subtype_tend][sortdir][0] = cmax;
+  c[task_type_send][task_subtype_tend][sortdir][1] = cmax;
 
-  c[task_type_recv][task_subtype_xv][0][0] = 1.1f;
-  c[task_type_recv][task_subtype_xv][0][1] = 1.1f;
+  c[task_type_recv][task_subtype_xv][sortdir][0] = cmax;
+  c[task_type_recv][task_subtype_xv][sortdir][1] = cmax;
 
-  c[task_type_recv][task_subtype_rho][0][0] = 1.1f;
-  c[task_type_recv][task_subtype_rho][0][1] = 1.1f;
+  c[task_type_recv][task_subtype_rho][sortdir][0] = cmax;
+  c[task_type_recv][task_subtype_rho][sortdir][1] = cmax;
 
-  c[task_type_recv][task_subtype_tend][0][0] = 1.1f;
-  c[task_type_recv][task_subtype_tend][0][1] = 1.1f;
+  c[task_type_recv][task_subtype_tend][sortdir][0] = cmax;
+  c[task_type_recv][task_subtype_tend][sortdir][1] = cmax;
 #endif
 }
 
@@ -1155,11 +1210,11 @@ void scheduler_reweight(struct scheduler *s, int verbose) {
   const ticks tic = getticks();
 
   /* Set the task weights. */
-  static int coeffsset = 0;
+  static int costsset = 0;
   static float c[task_type_count][task_subtype_count][3][3];
-  if (!coeffsset) {
-    setcostcoeffs(s, c);
-    coeffsset = 1;
+  if (!costsset) {
+    scheduler_setcosts(s, c);
+    costsset = 1;
   }
 
   /* Run through the tasks backwards and set their weights. */
