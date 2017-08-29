@@ -169,6 +169,38 @@ void threadpool_chomp(struct threadpool *tp, int tid) {
   }
 }
 
+/**
+ * @brief Runner main re-entrant loop.
+ */
+void threadpool_rchomp(struct threadpool *tp, int tid) {
+
+  /* Main loop. */
+  while (tp->rmap_waiting) {
+
+    /* Try to get an entry. */
+    size_t ind = atomic_inc(&tp->rmap_first) % tp->rmap_data_size;
+    while (tp->rmap_data[ind] == NULL) {
+      if (tp->rmap_waiting == 0) return;
+    }
+
+    /* Yay, we got an element! */
+    void *data = tp->rmap_data[ind];
+    tp->rmap_data[ind] = NULL;
+
+/* Call the mapper function. */
+#ifdef SWIFT_DEBUG_THREADPOOL
+    ticks tic = getticks();
+#endif
+    tp->rmap_function(tp, data, tp->rmap_extra_data);
+#ifdef SWIFT_DEBUG_THREADPOOL
+    threadpool_log(tp, tid, 1, tic, getticks());
+#endif
+
+    /* One less task waiting. */
+    atomic_dec(&tp->rmap_waiting);
+  }
+}
+
 void *threadpool_runner(void *data) {
 
   /* Our threadpool. */
@@ -193,7 +225,7 @@ void *threadpool_runner(void *data) {
         threadpool_chomp(tp, atomic_inc(&tp->num_threads_running));
         break;
       case threadpool_mode_rmap:
-        error("Not yet implemented!");
+        threadpool_rchomp(tp, atomic_inc(&tp->num_threads_running));
         break;
       default:
         error("No mapping specified.");
@@ -273,13 +305,13 @@ void threadpool_rmap_add(struct threadpool *tp, void **map_data, size_t count) {
 
   /* Loop over the elements and add them to the rmap_data. */
   for (size_t k = 0; k < count; k++) {
-  
+
     /* Skip empty elements. */
     if (map_data[k] == NULL) continue;
-    
+
     /* Get an index in which to store the data. */
     size_t ind = atomic_inc(&tp->rmap_last) % tp->rmap_data_size;
-    
+
     /* Store the data once the entry is clear. */
     atomic_inc(&tp->rmap_waiting);
     while (atomic_cas(&tp->rmap_data[ind], NULL, map_data[k]) != NULL)
@@ -315,13 +347,15 @@ void threadpool_rmap(struct threadpool *tp,
   tp->rmap_last = count;
   tp->rmap_waiting = count;
   tp->rmap_function = rmap_function;
+  tp->rmap_extra_data = extra_data;
+  tp->num_threads_running = 0;
   tp->mode = threadpool_mode_rmap;
 
   /* Wait for all the threads to be up and running. */
   pthread_barrier_wait(&tp->run_barrier);
 
   /* Do some work while I'm at it. */
-  // threadpool_rchomp(tp, tp->num_threads - 1);
+  threadpool_rchomp(tp, tp->num_threads - 1);
 
   /* Wait for all threads to be done. */
   pthread_barrier_wait(&tp->wait_barrier);
