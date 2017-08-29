@@ -844,24 +844,30 @@ void runner_do_unskip_rmapper(struct threadpool *tp, void *map_data,
   /* Skip inactive cells. */
   if (!cell_is_active(c, e)) return;
 
-  /* Recurse, splitting off inactive progeny as we go. */
-  while (c->split) {
-    int first;
-    for (first = 0; first < 8 && (c->progeny[first] == NULL ||
-                                  !cell_is_active(c->progeny[first], e));
-         first++)
-      ;
-    if (first == 8) error("No active progeny in active cell.");
-    for (int k = first + 1; k < 8; k++) {
-      if (c->progeny[k] && cell_is_active(c->progeny[k], e))
-        threadpool_rmap_add(tp, (void **)&c->progeny[k], 1);
-    }
-    c = c->progeny[first];
-  }
+  /* Loop our way down the cell hierarchy. */
+  while (1) {
 
-  /* We're at a leaf, actually do something. */
-  const int forcerebuild = cell_unskip_tasks(c, &e->sched);
-  if (forcerebuild) atomic_inc(&e->forcerebuild);
+    /* Process this cell. */
+    const int forcerebuild = cell_unskip_tasks(c, &e->sched);
+    if (forcerebuild) atomic_inc(&e->forcerebuild);
+
+    /* Recurse, splitting off inactive progeny as we go. */
+    if (c->split) {
+      int first;
+      for (first = 0; first < 8 && (c->progeny[first] == NULL ||
+                                    !cell_is_active(c->progeny[first], e));
+           first++)
+        ;
+      if (first == 8) error("No active progeny in active cell.");
+      for (int k = first + 1; k < 8; k++) {
+        if (c->progeny[k] && cell_is_active(c->progeny[k], e))
+          threadpool_rmap_add(tp, (void **)&c->progeny[k], 1);
+      }
+      c = c->progeny[first];
+    } else {
+      break;
+    }
+  }
 }
 
 /**
