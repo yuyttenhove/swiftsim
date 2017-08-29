@@ -3796,8 +3796,18 @@ void engine_unskip(struct engine *e) {
   const ticks tic = getticks();
 
   /* Activate all the regular tasks */
-  threadpool_map(&e->threadpool, runner_do_unskip_mapper, e->s->cells_top,
-                 e->s->nr_cells, sizeof(struct cell), 1, e);
+  /* threadpool_map(&e->threadpool, runner_do_unskip_mapper, e->s->cells_top,
+                 e->s->nr_cells, sizeof(struct cell), 1, e); */
+  struct cell **cell_pointers =
+      (struct cell **)calloc(e->s->tot_cells, sizeof(struct cell *));
+  int count = 0;
+  for (int k = 0; k < e->s->nr_cells; k++) {
+    if (cell_is_active(&e->s->cells_top[k], e))
+      cell_pointers[count++] = &e->s->cells_top[k];
+  }
+  threadpool_rmap(&e->threadpool, runner_do_unskip_rmapper,
+                  (void **)cell_pointers, count, e->s->tot_cells, e);
+  free(cell_pointers);
 
   /* And the top level gravity FFT one */
   if (e->s->periodic && (e->policy & engine_policy_self_gravity))
