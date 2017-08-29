@@ -360,13 +360,13 @@ void threadpool_rmap(struct threadpool *tp,
   /* Wait for all threads to be done. */
   pthread_barrier_wait(&tp->wait_barrier);
 
-  /* Re-set the mode. */
-  tp->mode = threadpool_mode_none;
-
 #ifdef SWIFT_DEBUG_THREADPOOL
   /* Log the total call time to thread id -1. */
   threadpool_log(tp, -1, tp->rmap_last, tic, getticks());
 #endif
+
+  /* Re-set the mode. */
+  tp->mode = threadpool_mode_none;
 }
 
 /**
@@ -426,13 +426,13 @@ void threadpool_map(struct threadpool *tp, threadpool_map_function map_function,
   /* Wait for all threads to be done. */
   pthread_barrier_wait(&tp->wait_barrier);
 
-  /* Re-set the mode. */
-  tp->mode = threadpool_mode_none;
-
 #ifdef SWIFT_DEBUG_THREADPOOL
   /* Log the total call time to thread id -1. */
   threadpool_log(tp, -1, N, tic, getticks());
 #endif
+
+  /* Re-set the mode. */
+  tp->mode = threadpool_mode_none;
 }
 
 /**
