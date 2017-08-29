@@ -32,9 +32,14 @@
 #define threadpool_log_initial_size 1000
 #define threadpool_default_chunk_ratio 7
 
+/* Forward declaration of the threadpool struct. */
+struct threadpool;
+
 /* Function type for mappings. */
 typedef void (*threadpool_map_function)(void *map_data, int num_elements,
                                         void *extra_data);
+typedef void (*threadpool_rmap_function)(struct threadpool *t, void *map_data,
+                                         void *extra_data);
 
 /* Data for threadpool logging. */
 struct mapper_log_entry {
@@ -63,6 +68,12 @@ struct mapper_log {
   int count;
 };
 
+/* Enum for threadpool mode of operation. */
+enum threadpool_mode {
+  threadpool_mode_map,
+  threadpool_mode_rmap
+};
+
 /* Data of a threadpool. */
 struct threadpool {
 
@@ -72,12 +83,22 @@ struct threadpool {
   /* This is where threads go to rest. */
   pthread_barrier_t wait_barrier;
   pthread_barrier_t run_barrier;
+  
+  /* Current mode of operation. */
+  enum threadpool_mode mode;
 
   /* Current map data and count. */
   void *map_data, *map_extra_data;
   volatile size_t map_data_count, map_data_size, map_data_stride,
       map_data_chunk;
   volatile threadpool_map_function map_function;
+  
+  /* Re-entrant mapping data. */
+  void *rmap_data;
+  size_t rmap_data_size;
+  volatile size_t rmap_first, rmap_last;
+  volatile size_t waiting;
+  volatile threadpool_rmap_function rmap_function;
 
   /* Number of threads in this pool. */
   int num_threads;
