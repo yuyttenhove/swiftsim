@@ -830,6 +830,41 @@ void runner_do_ghost(struct runner *r, struct cell *c, int timer) {
 }
 
 /**
+ * @brief Re-entrant mapper for the recursive unskip tasks.
+ */
+void runner_do_unskip_rmapper(struct threadpool *tp, void *map_data,
+                              void *extra_data) {
+  struct engine *e = (struct engine *)extra_data;
+  struct cell *c = (struct cell *)map_data;
+
+  /* Ignore empty cells. */
+  if (c == NULL) return;
+  if (c->count == 0 && c->gcount == 0) return;
+
+  /* Skip inactive cells. */
+  if (!cell_is_active(c, e)) return;
+
+  /* Recurse, splitting off inactive progeny as we go. */
+  while (c->split) {
+    int first;
+    for (first = 0; first < 8 && (c->progeny[first] == NULL ||
+                                  !cell_is_active(c->progeny[first], e));
+         first++)
+      ;
+    if (first == 8) error("No active progeny in active cell.");
+    for (int k = first + 1; k < 8; k++) {
+      if (c->progeny[k] && cell_is_active(c->progeny[k], e))
+        threadpool_rmap_add(tp, (void **)&c->progeny[k], 1);
+    }
+    c = c->progeny[first];
+  }
+
+  /* We're at a leaf, actually do something. */
+  const int forcerebuild = cell_unskip_tasks(c, &e->sched);
+  if (forcerebuild) atomic_inc(&e->forcerebuild);
+}
+
+/**
  * @brief Unskip any tasks associated with active cells.
  *
  * @param c The cell.
@@ -876,6 +911,7 @@ void runner_do_unskip_mapper(void *map_data, int num_elements,
     if (c != NULL) runner_do_unskip(c, e);
   }
 }
+
 /**
  * @brief Drift all part in a cell.
  *

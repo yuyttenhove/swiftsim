@@ -29,6 +29,7 @@
 /* Includes. */
 #include "cache.h"
 #include "gravity_cache.h"
+#include "threadpool.h"
 
 struct cell;
 struct engine;
@@ -83,6 +84,8 @@ void runner_do_grav_fft(struct runner *r, int timer);
 void *runner_main(void *data);
 void runner_do_unskip_mapper(void *map_data, int num_elements,
                              void *extra_data);
+void runner_do_unskip_rmapper(struct threadpool *tp, void *map_data,
+                              void *extra_data);
 void runner_do_drift_all_mapper(void *map_data, int num_elements,
                                 void *extra_data);
 
