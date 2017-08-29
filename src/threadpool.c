@@ -65,7 +65,16 @@ void threadpool_log(struct threadpool *tp, int tid, size_t chunk_size,
   entry->chunk_size = chunk_size;
   entry->tic = tic;
   entry->toc = toc;
-  entry->map_function = tp->map_function;
+  switch (tp->mode) {
+    case threadpool_mode_map:
+      entry->map_function = tp->map_function;
+      break;
+    case threadpool_mode_rmap:
+      entry->map_function = tp->rmap_function;
+      break;
+    default:
+      error("Can't log when not running.");
+  }
   log->count++;
 }
 
@@ -186,6 +195,8 @@ void *threadpool_runner(void *data) {
       case threadpool_mode_rmap:
         error("Not yet implemented!");
         break;
+      default:
+        error("No mapping specified.");
     }
   }
 }
@@ -229,6 +240,8 @@ void threadpool_init(struct threadpool *tp, int num_threads) {
   tp->map_data_stride = 0;
   tp->map_data_chunk = 0;
   tp->map_function = NULL;
+  tp->rmap_function = NULL;
+  tp->mode = threadpool_mode_none;
 
   /* Allocate the threads, one less than requested since the calling thread
      works as well. */
@@ -245,6 +258,81 @@ void threadpool_init(struct threadpool *tp, int num_threads) {
 
   /* Wait for all the threads to be up and running. */
   pthread_barrier_wait(&tp->wait_barrier);
+}
+
+/**
+ * @brief Add a set of data pointers to a running re-entrant threadpool.
+ *
+ * @param tp The #threadpool, must be running as a re-entrant mapper.
+ * @param map_data Pointer to an array of pointers containing the data to add.
+ * @param count Number of elements in map_data.
+ */
+void threadpool_rmap_add(struct threadpool *tp, void **map_data, size_t count) {
+  if (tp->mode != threadpool_mode_rmap)
+    error("Threadpool not running as a re-entrant mapper.");
+
+  /* Loop over the elements and add them to the rmap_data. */
+  for (size_t k = 0; k < count; k++) {
+  
+    /* Skip empty elements. */
+    if (map_data[k] == NULL) continue;
+    
+    /* Get an index in which to store the data. */
+    size_t ind = atomic_inc(&tp->rmap_last) % tp->rmap_data_size;
+    
+    /* Store the data once the entry is clear. */
+    atomic_inc(&tp->rmap_waiting);
+    while (atomic_cas(&tp->rmap_data[ind], NULL, map_data[k]) != NULL)
+      ;
+  }
+}
+
+/**
+ * @brief Map a function to an array of pointers where the function can add
+ * elements to the list.
+ *
+ * @param tp The #threadpool on which to run.
+ * @param rmap_function The function that will be applied to the map data.
+ * @param map_data Array of pointers to the data, should be large enough to
+ *        accommodate all in-flight re-entrant calls.
+ * @param count Number of elements in map_data that have been set.
+ * @param size Number of elements allocated in map_data.
+ * @param extra_data Addtitional pointer that will be passed to the mapping
+ *        function, may contain additional data.
+ */
+void threadpool_rmap(struct threadpool *tp,
+                     threadpool_rmap_function rmap_function, void **map_data,
+                     size_t count, size_t size, void *extra_data) {
+
+#ifdef SWIFT_DEBUG_THREADPOOL
+  ticks tic = getticks();
+#endif
+
+  /* Set up the rmap data. */
+  tp->rmap_data = map_data;
+  tp->rmap_data_size = size;
+  tp->rmap_first = 0;
+  tp->rmap_last = count;
+  tp->rmap_waiting = count;
+  tp->rmap_function = rmap_function;
+  tp->mode = threadpool_mode_rmap;
+
+  /* Wait for all the threads to be up and running. */
+  pthread_barrier_wait(&tp->run_barrier);
+
+  /* Do some work while I'm at it. */
+  // threadpool_rchomp(tp, tp->num_threads - 1);
+
+  /* Wait for all threads to be done. */
+  pthread_barrier_wait(&tp->wait_barrier);
+
+  /* Re-set the mode. */
+  tp->mode = threadpool_mode_none;
+
+#ifdef SWIFT_DEBUG_THREADPOOL
+  /* Log the total call time to thread id -1. */
+  threadpool_log(tp, -1, tp->rmap_last, tic, getticks());
+#endif
 }
 
 /**
@@ -293,6 +381,7 @@ void threadpool_map(struct threadpool *tp, threadpool_map_function map_function,
   tp->map_data = map_data;
   tp->map_extra_data = extra_data;
   tp->num_threads_running = 0;
+  tp->mode = threadpool_mode_map;
 
   /* Wait for all the threads to be up and running. */
   pthread_barrier_wait(&tp->run_barrier);
@@ -302,6 +391,9 @@ void threadpool_map(struct threadpool *tp, threadpool_map_function map_function,
 
   /* Wait for all threads to be done. */
   pthread_barrier_wait(&tp->wait_barrier);
+
+  /* Re-set the mode. */
+  tp->mode = threadpool_mode_none;
 
 #ifdef SWIFT_DEBUG_THREADPOOL
   /* Log the total call time to thread id -1. */

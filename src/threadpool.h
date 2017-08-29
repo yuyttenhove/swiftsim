@@ -51,7 +51,7 @@ struct mapper_log_entry {
   int chunk_size;
 
   /* Pointer to the mapper function. */
-  threadpool_map_function map_function;
+  void *map_function;
 
   /*! Start and end time of this task */
   ticks tic, toc;
@@ -70,6 +70,7 @@ struct mapper_log {
 
 /* Enum for threadpool mode of operation. */
 enum threadpool_mode {
+  threadpool_mode_none,
   threadpool_mode_map,
   threadpool_mode_rmap
 };
@@ -83,7 +84,7 @@ struct threadpool {
   /* This is where threads go to rest. */
   pthread_barrier_t wait_barrier;
   pthread_barrier_t run_barrier;
-  
+
   /* Current mode of operation. */
   enum threadpool_mode mode;
 
@@ -92,12 +93,12 @@ struct threadpool {
   volatile size_t map_data_count, map_data_size, map_data_stride,
       map_data_chunk;
   volatile threadpool_map_function map_function;
-  
+
   /* Re-entrant mapping data. */
-  void *rmap_data;
+  void **rmap_data;
   size_t rmap_data_size;
   volatile size_t rmap_first, rmap_last;
-  volatile size_t waiting;
+  volatile size_t rmap_waiting;
   volatile threadpool_rmap_function rmap_function;
 
   /* Number of threads in this pool. */
@@ -116,6 +117,10 @@ void threadpool_init(struct threadpool *tp, int num_threads);
 void threadpool_map(struct threadpool *tp, threadpool_map_function map_function,
                     void *map_data, size_t N, int stride, int chunk,
                     void *extra_data);
+void threadpool_rmap_add(struct threadpool *tp, void **map_data, size_t count);
+void threadpool_rmap(struct threadpool *tp,
+                     threadpool_rmap_function rmap_function, void **map_data,
+                     size_t count, size_t size, void *extra_data);
 void threadpool_clean(struct threadpool *tp);
 #ifdef SWIFT_DEBUG_THREADPOOL
 void threadpool_reset_log(struct threadpool *tp);
