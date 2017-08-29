@@ -179,7 +179,14 @@ void *threadpool_runner(void *data) {
     if (tp->map_function == NULL) pthread_exit(NULL);
 
     /* Do actual work. */
-    threadpool_chomp(tp, atomic_inc(&tp->num_threads_running));
+    switch (tp->mode) {
+      case threadpool_mode_map:
+        threadpool_chomp(tp, atomic_inc(&tp->num_threads_running));
+        break;
+      case threadpool_mode_rmap:
+        error("Not yet implemented!");
+        break;
+    }
   }
 }
 
