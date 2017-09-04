@@ -95,7 +95,7 @@ struct threadpool {
   volatile threadpool_map_function map_function;
 
   /* Re-entrant mapping data. */
-  void **rmap_data;
+  volatile void **rmap_data;
   size_t rmap_data_size;
   void *rmap_extra_data;
   volatile size_t rmap_first, rmap_last;
