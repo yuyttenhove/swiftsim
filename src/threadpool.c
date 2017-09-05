@@ -184,7 +184,7 @@ void threadpool_rchomp(struct threadpool *tp, int tid) {
     }
 
     /* Yay, we got an element! */
-    void *data = tp->rmap_data[ind];
+    void *data = (void *)tp->rmap_data[ind];
     tp->rmap_data[ind] = NULL;
 
 /* Call the mapper function. */
@@ -341,7 +341,7 @@ void threadpool_rmap(struct threadpool *tp,
 #endif
 
   /* Set up the rmap data. */
-  tp->rmap_data = map_data;
+  tp->rmap_data = (volatile void **)map_data;
   tp->rmap_data_size = size;
   tp->rmap_first = 0;
   tp->rmap_last = count;
