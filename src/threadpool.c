@@ -175,7 +175,11 @@ void threadpool_chomp(struct threadpool *tp, int tid) {
 void threadpool_rchomp(struct threadpool *tp, int tid) {
 
   /* Main loop. */
-  while (tp->rmap_waiting) {
+  while (1) {
+
+    /* Wait at the semaphore. */
+    sem_wait(&tp->rmap_semaphore);
+    if (tp->rmap_waiting == 0) return;
 
     /* Try to get an entry. */
     size_t ind = atomic_inc(&tp->rmap_first) % tp->rmap_data_size;
@@ -196,8 +200,12 @@ void threadpool_rchomp(struct threadpool *tp, int tid) {
     threadpool_log(tp, tid, 1, tic, getticks());
 #endif
 
-    /* One less task waiting. */
-    atomic_dec(&tp->rmap_waiting);
+    /* One less task waiting. If we were the last task, hit the
+       semaphore to release the others. */
+    if (atomic_dec(&tp->rmap_waiting) == 1) {
+      for (int k = 0; k < tp->num_threads; k++) sem_post(&tp->rmap_semaphore);
+      break;
+    }
   }
 }
 
@@ -316,6 +324,9 @@ void threadpool_rmap_add(struct threadpool *tp, void **map_data, size_t count) {
     atomic_inc(&tp->rmap_waiting);
     while (atomic_cas(&tp->rmap_data[ind], NULL, map_data[k]) != NULL)
       ;
+
+    /* Post the item to the semaphore. */
+    sem_post(&tp->rmap_semaphore);
   }
 }
 
@@ -351,15 +362,27 @@ void threadpool_rmap(struct threadpool *tp,
   tp->num_threads_running = 0;
   tp->mode = threadpool_mode_rmap;
 
-  /* Wait for all the threads to be up and running. */
-  pthread_barrier_wait(&tp->run_barrier);
+  /* Init the rmap semaphore with the initial number of items. */
+  if (sem_init(&tp->rmap_semaphore, 0, count) != 0)
+    error("Failed to initialize semaphore.");
 
-  /* Do some work while I'm at it. */
-  threadpool_rchomp(tp, tp->num_threads - 1);
+  /* If it's just a single thread, don't bother with the barriers. */
+  if (tp->num_threads == 1) {
+    threadpool_rchomp(tp, 0);
+  }
 
-  /* Wait for all threads to be done. */
-  pthread_barrier_wait(&tp->wait_barrier);
+  /* Otherwise, launch all threads. */
+  else {
 
+    /* Wait for all the threads to be up and running. */
+    pthread_barrier_wait(&tp->run_barrier);
+
+    /* Do some work while I'm at it. */
+    threadpool_rchomp(tp, tp->num_threads - 1);
+
+    /* Wait for all threads to be done. */
+    pthread_barrier_wait(&tp->wait_barrier);
+  }
 #ifdef SWIFT_DEBUG_THREADPOOL
   /* Log the total call time to thread id -1. */
   threadpool_log(tp, -1, tp->rmap_last, tic, getticks());
@@ -395,11 +418,14 @@ void threadpool_map(struct threadpool *tp, threadpool_map_function map_function,
 
   /* If we just have a single thread, call the map function directly. */
   if (tp->num_threads == 1) {
+    tp->mode = threadpool_mode_map;
     map_function(map_data, N, extra_data);
 #ifdef SWIFT_DEBUG_THREADPOOL
     tp->map_function = map_function;
     threadpool_log(tp, 0, N, tic, getticks());
+    threadpool_log(tp, -1, N, tic, getticks());
 #endif
+    tp->mode = threadpool_mode_none;
     return;
   }
 

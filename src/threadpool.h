@@ -24,6 +24,7 @@
 
 /* Some standard headers. */
 #include <pthread.h>
+#include <semaphore.h>
 
 /* Local includes. */
 #include "cycle.h"
@@ -101,6 +102,7 @@ struct threadpool {
   volatile size_t rmap_first, rmap_last;
   volatile size_t rmap_waiting;
   volatile threadpool_rmap_function rmap_function;
+  sem_t rmap_semaphore;
 
   /* Number of threads in this pool. */
   int num_threads;
