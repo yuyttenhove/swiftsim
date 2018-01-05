@@ -113,6 +113,7 @@ struct c2_cache {
   float vzq[C2_CACHE_SIZE] SWIFT_CACHE_ALIGN;
 };
 
+/* Cache to hold a list of vectors used to update particle properties. */
 struct update_cache_density {
   vector v_rhoSum;
   vector v_rho_dhSum;
@@ -124,6 +125,11 @@ struct update_cache_density {
   vector v_curlvzSum;
 };
 
+/**
+ * @brief Reset the update cache to zero.
+ *
+ * @param c The update cache.
+ */
 __attribute__((always_inline)) INLINE void update_cache_density_init(struct update_cache_density *c) {
 
   c->v_rhoSum.v = vec_setzero();
@@ -137,16 +143,22 @@ __attribute__((always_inline)) INLINE void update_cache_density_init(struct upda
 
 }
 
-__attribute__((always_inline)) INLINE void update_density_particle(struct part *restrict pi, struct update_cache_density *sum_cache) {
+/**
+ * @brief Perform horizontal adds on vector sums and store result in particle pi.
+ *
+ * @param pi Particle to update.
+ * @param c Update cache.
+ * */
+__attribute__((always_inline)) INLINE void update_density_particle(struct part *restrict pi, struct update_cache_density *c) {
 
-  VEC_HADD(sum_cache->v_rhoSum, pi->rho);
-  VEC_HADD(sum_cache->v_rho_dhSum, pi->density.rho_dh);
-  VEC_HADD(sum_cache->v_wcountSum, pi->density.wcount);
-  VEC_HADD(sum_cache->v_wcount_dhSum, pi->density.wcount_dh);
-  VEC_HADD(sum_cache->v_div_vSum, pi->density.div_v);
-  VEC_HADD(sum_cache->v_curlvxSum, pi->density.rot_v[0]);
-  VEC_HADD(sum_cache->v_curlvySum, pi->density.rot_v[1]);
-  VEC_HADD(sum_cache->v_curlvzSum, pi->density.rot_v[2]);
+  VEC_HADD(c->v_rhoSum, pi->rho);
+  VEC_HADD(c->v_rho_dhSum, pi->density.rho_dh);
+  VEC_HADD(c->v_wcountSum, pi->density.wcount);
+  VEC_HADD(c->v_wcount_dhSum, pi->density.wcount_dh);
+  VEC_HADD(c->v_div_vSum, pi->density.div_v);
+  VEC_HADD(c->v_curlvxSum, pi->density.rot_v[0]);
+  VEC_HADD(c->v_curlvySum, pi->density.rot_v[1]);
+  VEC_HADD(c->v_curlvzSum, pi->density.rot_v[2]);
 
 }
 

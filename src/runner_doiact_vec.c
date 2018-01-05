@@ -33,27 +33,10 @@ static const vector kernel_gamma2_vec = FILL_VEC(kernel_gamma2);
 /**
  * @brief Compute the vector remainder interactions from the secondary cache.
  *
- * @param int_cache (return) secondary #cache of interactions between two
+ * @param int_cache (return) secondary cache of interactions between two
  * particles.
  * @param icount Interaction count.
- * @param v_rhoSum (return) #vector holding the cumulative sum of the density
- * update on pi.
- * @param v_rho_dhSum (return) #vector holding the cumulative sum of the density
- * gradient update on pi.
- * @param v_wcountSum (return) #vector holding the cumulative sum of the wcount
- * update on pi.
- * @param v_wcount_dhSum (return) #vector holding the cumulative sum of the
- * wcount
- * gradient update on pi.
- * @param v_div_vSum (return) #vector holding the cumulative sum of the
- * divergence
- * update on pi.
- * @param v_curlvxSum (return) #vector holding the cumulative sum of the curl of
- * vx update on pi.
- * @param v_curlvySum (return) #vector holding the cumulative sum of the curl of
- * vy update on pi.
- * @param v_curlvzSum (return) #vector holding the cumulative sum of the curl of
- * vz update on pi.
+ * @param sum_cache (return) Cache of #vector holding the cumulative sum of updates on pi.
  * @param v_hi_inv #vector of 1/h for pi.
  * @param v_vix #vector of x velocity of pi.
  * @param v_viy #vector of y velocity of pi.
@@ -123,30 +106,11 @@ __attribute__((always_inline)) INLINE static void calcRemInteractions(
  * @param v_dx #vector of the x separation between two particles.
  * @param v_dy #vector of the y separation between two particles.
  * @param v_dz #vector of the z separation between two particles.
- * @param cell_cache #cache of all particles in the cell.
- * @param int_cache (return) secondary #cache of interactions between two
+ * @param cell_cache cache of all particles in the cell.
+ * @param int_cache (return) secondary cache of interactions between two
  * particles.
  * @param icount Interaction count.
- * @param v_rhoSum #vector holding the cumulative sum of the density update on
- * pi.
- * @param v_rho_dhSum #vector holding the cumulative sum of the density gradient
- * update on pi.
- * @param v_wcountSum #vector holding the cumulative sum of the wcount update on
- * pi.
- * @param v_wcount_dhSum #vector holding the cumulative sum of the wcount
- * gradient
- * update on pi.
- * @param v_div_vSum #vector holding the cumulative sum of the divergence update
- * on pi.
- * @param v_curlvxSum #vector holding the cumulative sum of the curl of vx
- * update
- * on pi.
- * @param v_curlvySum #vector holding the cumulative sum of the curl of vy
- * update
- * on pi.
- * @param v_curlvzSum #vector holding the cumulative sum of the curl of vz
- * update
- * on pi.
+ * @param sum_cache (return) Cache of #vector holding the cumulative sum of updates on pi.
  * @param v_hi_inv #vector of 1/h for pi.
  * @param v_vix #vector of x velocity of pi.
  * @param v_viy #vector of y velocity of pi.
