@@ -1002,12 +1002,8 @@ __attribute__((always_inline)) INLINE void runner_doself2_force_vec(
     vector v_hi_inv = vec_reciprocal(v_hi);
 
     /* Reset cumulative sums of update vectors. */
-    vector v_a_hydro_xSum = vector_setzero();
-    vector v_a_hydro_ySum = vector_setzero();
-    vector v_a_hydro_zSum = vector_setzero();
-    vector v_h_dtSum = vector_setzero();
-    vector v_sigSum = vector_set1(pi->force.v_sig);
-    vector v_entropy_dtSum = vector_setzero();
+    struct update_cache_force sum_cache;
+    update_cache_force_init(&sum_cache);
 
     /* Pad cache if there is a serial remainder. */
     int count_align = count;
@@ -1092,20 +1088,14 @@ __attribute__((always_inline)) INLINE void runner_doself2_force_vec(
             &cell_cache->vy[pjd], &cell_cache->vz[pjd], &cell_cache->rho[pjd],
             &cell_cache->grad_h[pjd], &cell_cache->pOrho2[pjd],
             &cell_cache->balsara[pjd], &cell_cache->soundspeed[pjd],
-            &cell_cache->m[pjd], v_hi_inv, v_hj_inv, &v_a_hydro_xSum,
-            &v_a_hydro_ySum, &v_a_hydro_zSum, &v_h_dtSum, &v_sigSum,
-            &v_entropy_dtSum, v_doi_mask);
+            &cell_cache->m[pjd], v_hi_inv, v_hj_inv, &sum_cache, v_doi_mask);
       }
 
     } /* Loop over all other particles. */
 
-    VEC_HADD(v_a_hydro_xSum, pi->a_hydro[0]);
-    VEC_HADD(v_a_hydro_ySum, pi->a_hydro[1]);
-    VEC_HADD(v_a_hydro_zSum, pi->a_hydro[2]);
-    VEC_HADD(v_h_dtSum, pi->force.h_dt);
-    VEC_HMAX(v_sigSum, pi->force.v_sig);
-    VEC_HADD(v_entropy_dtSum, pi->entropy_dt);
-
+    /* Perform horizontal adds on vector sums and store result in pj. */
+    update_force_particle(pi, &sum_cache);
+    
   } /* loop over all particles. */
 
   TIMER_TOC(timer_doself_force);
@@ -1631,13 +1621,9 @@ void runner_dopair2_force_vec(struct runner *r, struct cell *ci,
       vector v_hi_inv = vec_reciprocal(v_hi);
 
       /* Reset cumulative sums of update vectors. */
-      vector v_a_hydro_xSum = vector_setzero();
-      vector v_a_hydro_ySum = vector_setzero();
-      vector v_a_hydro_zSum = vector_setzero();
-      vector v_h_dtSum = vector_setzero();
-      vector v_sigSum = vector_set1(pi->force.v_sig);
-      vector v_entropy_dtSum = vector_setzero();
-
+      struct update_cache_force sum_cache;
+      update_cache_force_init(&sum_cache);
+      
       /* Loop over the parts in cj. Making sure to perform an iteration of the
        * loop even if exit_iteration_align is zero and there is only one
        * particle to interact with.*/
@@ -1703,20 +1689,14 @@ void runner_dopair2_force_vec(struct runner *r, struct cell *ci,
               &cj_cache->grad_h[cj_cache_idx], &cj_cache->pOrho2[cj_cache_idx],
               &cj_cache->balsara[cj_cache_idx],
               &cj_cache->soundspeed[cj_cache_idx], &cj_cache->m[cj_cache_idx],
-              v_hi_inv, v_hj_inv, &v_a_hydro_xSum, &v_a_hydro_ySum,
-              &v_a_hydro_zSum, &v_h_dtSum, &v_sigSum, &v_entropy_dtSum,
+              v_hi_inv, v_hj_inv, &sum_cache,
               v_doi_mask);
         }
 
       } /* loop over the parts in cj. */
 
       /* Perform horizontal adds on vector sums and store result in pi. */
-      VEC_HADD(v_a_hydro_xSum, pi->a_hydro[0]);
-      VEC_HADD(v_a_hydro_ySum, pi->a_hydro[1]);
-      VEC_HADD(v_a_hydro_zSum, pi->a_hydro[2]);
-      VEC_HADD(v_h_dtSum, pi->force.h_dt);
-      VEC_HMAX(v_sigSum, pi->force.v_sig);
-      VEC_HADD(v_entropy_dtSum, pi->entropy_dt);
+      update_force_particle(pi, &sum_cache);
 
     } /* loop over the parts in ci. */
   }
@@ -1763,13 +1743,9 @@ void runner_dopair2_force_vec(struct runner *r, struct cell *ci,
       vector v_hj_inv = vec_reciprocal(v_hj);
 
       /* Reset cumulative sums of update vectors. */
-      vector v_a_hydro_xSum = vector_setzero();
-      vector v_a_hydro_ySum = vector_setzero();
-      vector v_a_hydro_zSum = vector_setzero();
-      vector v_h_dtSum = vector_setzero();
-      vector v_sigSum = vector_set1(pj->force.v_sig);
-      vector v_entropy_dtSum = vector_setzero();
-
+      struct update_cache_force sum_cache;
+      update_cache_force_init(&sum_cache);
+      
       /* Convert exit iteration to cache indices. */
       int exit_iteration_align = exit_iteration - first_pi;
 
@@ -1839,20 +1815,14 @@ void runner_dopair2_force_vec(struct runner *r, struct cell *ci,
               &ci_cache->grad_h[ci_cache_idx], &ci_cache->pOrho2[ci_cache_idx],
               &ci_cache->balsara[ci_cache_idx],
               &ci_cache->soundspeed[ci_cache_idx], &ci_cache->m[ci_cache_idx],
-              v_hj_inv, v_hi_inv, &v_a_hydro_xSum, &v_a_hydro_ySum,
-              &v_a_hydro_zSum, &v_h_dtSum, &v_sigSum, &v_entropy_dtSum,
+              v_hj_inv, v_hi_inv, &sum_cache,
               v_doj_mask);
         }
       } /* loop over the parts in ci. */
 
       /* Perform horizontal adds on vector sums and store result in pj. */
-      VEC_HADD(v_a_hydro_xSum, pj->a_hydro[0]);
-      VEC_HADD(v_a_hydro_ySum, pj->a_hydro[1]);
-      VEC_HADD(v_a_hydro_zSum, pj->a_hydro[2]);
-      VEC_HADD(v_h_dtSum, pj->force.h_dt);
-      VEC_HMAX(v_sigSum, pj->force.v_sig);
-      VEC_HADD(v_entropy_dtSum, pj->entropy_dt);
-
+      update_force_particle(pj, &sum_cache);
+      
     } /* loop over the parts in cj. */
 
     TIMER_TOC(timer_dopair_density);

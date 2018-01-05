@@ -113,7 +113,7 @@ struct c2_cache {
   float vzq[C2_CACHE_SIZE] SWIFT_CACHE_ALIGN;
 };
 
-/* Cache to hold a list of vectors used to update particle properties. */
+/* Cache to hold a list of vectors used to update particle properties after a density interaction. */
 struct update_cache_density {
   vector v_rhoSum;
   vector v_rho_dhSum;
@@ -125,8 +125,18 @@ struct update_cache_density {
   vector v_curlvzSum;
 };
 
+/* Cache to hold a list of vectors used to update particle properties after a force interaction. */
+struct update_cache_force {
+  vector v_a_hydro_xSum; 
+  vector v_a_hydro_ySum; 
+  vector v_a_hydro_zSum; 
+  vector v_h_dtSum;
+  vector v_sigSum;
+  vector v_entropy_dtSum;
+};
+
 /**
- * @brief Reset the update cache to zero.
+ * @brief Reset the density update cache to zero.
  *
  * @param c The update cache.
  */
@@ -144,11 +154,27 @@ __attribute__((always_inline)) INLINE void update_cache_density_init(struct upda
 }
 
 /**
- * @brief Perform horizontal adds on vector sums and store result in particle pi.
+ * @brief Reset the force update cache to zero.
+ *
+ * @param c The update cache.
+ */
+__attribute__((always_inline)) INLINE void update_cache_force_init(struct update_cache_force *c) {
+
+  c->v_a_hydro_xSum.v = vec_setzero();
+  c->v_a_hydro_ySum.v = vec_setzero();
+  c->v_a_hydro_zSum.v = vec_setzero();
+  c->v_h_dtSum.v = vec_setzero();
+  c->v_sigSum.v = vec_setzero();
+  c->v_entropy_dtSum.v = vec_setzero();
+
+}
+
+/**
+ * @brief Perform horizontal adds on vector sums and store result in particle pi. Density interaction.
  *
  * @param pi Particle to update.
  * @param c Update cache.
- * */
+ */
 __attribute__((always_inline)) INLINE void update_density_particle(struct part *restrict pi, struct update_cache_density *c) {
 
   VEC_HADD(c->v_rhoSum, pi->rho);
@@ -159,6 +185,23 @@ __attribute__((always_inline)) INLINE void update_density_particle(struct part *
   VEC_HADD(c->v_curlvxSum, pi->density.rot_v[0]);
   VEC_HADD(c->v_curlvySum, pi->density.rot_v[1]);
   VEC_HADD(c->v_curlvzSum, pi->density.rot_v[2]);
+
+}
+
+/**
+ * @brief Perform horizontal adds on vector sums and store result in particle pi. Force interaction.
+ *
+ * @param pi Particle to update.
+ * @param c Update cache.
+ */
+__attribute__((always_inline)) INLINE void update_force_particle(struct part *restrict pi, struct update_cache_force *c) {
+
+  VEC_HADD(c->v_a_hydro_xSum, pi->a_hydro[0]);
+  VEC_HADD(c->v_a_hydro_ySum, pi->a_hydro[1]);
+  VEC_HADD(c->v_a_hydro_zSum, pi->a_hydro[2]);
+  VEC_HADD(c->v_h_dtSum, pi->force.h_dt);
+  VEC_HMAX(c->v_sigSum, pi->force.v_sig);
+  VEC_HADD(c->v_entropy_dtSum, pi->entropy_dt);
 
 }
 

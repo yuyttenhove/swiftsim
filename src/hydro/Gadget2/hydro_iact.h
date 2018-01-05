@@ -609,9 +609,7 @@ runner_iact_nonsym_1_vec_force(
     vector viz, vector pirho, vector grad_hi, vector piPOrho2, vector balsara_i,
     vector ci, float *Vjx, float *Vjy, float *Vjz, float *Pjrho, float *Grad_hj,
     float *PjPOrho2, float *Balsara_j, float *Cj, float *Mj, vector hi_inv,
-    vector hj_inv, vector *a_hydro_xSum, vector *a_hydro_ySum,
-    vector *a_hydro_zSum, vector *h_dtSum, vector *v_sigSum,
-    vector *entropy_dtSum, mask_t mask) {
+    vector hj_inv, struct update_cache_force *sum_cache, mask_t mask) {
 
 #ifdef WITH_VECTORIZATION
 
@@ -711,12 +709,12 @@ runner_iact_nonsym_1_vec_force(
   entropy_dt.v = vec_mul(mj.v, vec_mul(visc_term.v, dvdr.v));
 
   /* Store the forces back on the particles. */
-  a_hydro_xSum->v = vec_mask_sub(a_hydro_xSum->v, piax.v, mask);
-  a_hydro_ySum->v = vec_mask_sub(a_hydro_ySum->v, piay.v, mask);
-  a_hydro_zSum->v = vec_mask_sub(a_hydro_zSum->v, piaz.v, mask);
-  h_dtSum->v = vec_mask_sub(h_dtSum->v, pih_dt.v, mask);
-  v_sigSum->v = vec_fmax(v_sigSum->v, vec_and_mask(v_sig.v, mask));
-  entropy_dtSum->v = vec_mask_add(entropy_dtSum->v, entropy_dt.v, mask);
+  sum_cache->v_a_hydro_xSum.v = vec_mask_sub(sum_cache->v_a_hydro_xSum.v, piax.v, mask);
+  sum_cache->v_a_hydro_ySum.v = vec_mask_sub(sum_cache->v_a_hydro_ySum.v, piay.v, mask);
+  sum_cache->v_a_hydro_zSum.v = vec_mask_sub(sum_cache->v_a_hydro_zSum.v, piaz.v, mask);
+  sum_cache->v_h_dtSum.v = vec_mask_sub(sum_cache->v_h_dtSum.v, pih_dt.v, mask);
+  sum_cache->v_sigSum.v = vec_fmax(sum_cache->v_sigSum.v, vec_and_mask(v_sig.v, mask));
+  sum_cache->v_entropy_dtSum.v = vec_mask_add(sum_cache->v_entropy_dtSum.v, entropy_dt.v, mask);
 
 #else
 
