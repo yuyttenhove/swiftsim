@@ -62,7 +62,7 @@ static const vector kernel_gamma2_vec = FILL_VEC(kernel_gamma2);
  * interactions have been performed, should be a multiple of the vector length.
  */
 __attribute__((always_inline)) INLINE static void calcRemInteractions(
-    struct c2_cache *const int_cache, const int icount, struct update_cache *sum_cache,
+    struct c2_cache *const int_cache, const int icount, struct update_cache_density *sum_cache,
     vector v_hi_inv, vector v_vix, vector v_viy, vector v_viz,
     int *icount_align) {
 
@@ -155,7 +155,7 @@ __attribute__((always_inline)) INLINE static void calcRemInteractions(
 __attribute__((always_inline)) INLINE static void storeInteractions(
     const int mask, const int pjd, vector *v_r2, vector *v_dx, vector *v_dy,
     vector *v_dz, const struct cache *const cell_cache,
-    struct c2_cache *const int_cache, int *icount, struct update_cache *sum_cache,
+    struct c2_cache *const int_cache, int *icount, struct update_cache_density *sum_cache,
     vector v_hi_inv, vector v_vix, vector v_viy, vector v_viz) {
 
 /* Left-pack values needed into the secondary cache using the interaction mask.
@@ -620,8 +620,8 @@ __attribute__((always_inline)) INLINE void runner_doself1_density_vec(
     /* Get the inverse of hi. */
     vector v_hi_inv = vec_reciprocal(v_hi);
 
-    struct update_cache sum_cache;
-    update_cache_init(&sum_cache);
+    struct update_cache_density sum_cache;
+    update_cache_density_init(&sum_cache);
 
     /* Pad cache if there is a serial remainder. */
     int count_align = count;
@@ -743,17 +743,9 @@ __attribute__((always_inline)) INLINE void runner_doself1_density_vec(
           &int_cache.mq[pjd], &sum_cache, int_mask, int_mask2, 0);
     }
 
-    /* Perform horizontal adds on vector sums and store result in particle pi.
-     */
-    VEC_HADD(sum_cache.rhoSum, pi->rho);
-    VEC_HADD(sum_cache.rho_dhSum, pi->density.rho_dh);
-    VEC_HADD(sum_cache.wcountSum, pi->density.wcount);
-    VEC_HADD(sum_cache.wcount_dhSum, pi->density.wcount_dh);
-    VEC_HADD(sum_cache.div_vSum, pi->density.div_v);
-    VEC_HADD(sum_cache.curlvxSum, pi->density.rot_v[0]);
-    VEC_HADD(sum_cache.curlvySum, pi->density.rot_v[1]);
-    VEC_HADD(sum_cache.curlvzSum, pi->density.rot_v[2]);
-
+    /* Perform horizontal adds on vector sums and store result in particle pi. */
+    update_density_particle(pi, &sum_cache);
+    
     /* Reset interaction count. */
     icount = 0;
   } /* loop over all particles. */
@@ -828,8 +820,8 @@ __attribute__((always_inline)) INLINE void runner_doself_subset_density_vec(
     vector v_hi_inv = vec_reciprocal(v_hi);
 
     /* Reset cumulative sums of update vectors. */
-    struct update_cache sum_cache;
-    update_cache_init(&sum_cache);
+    struct update_cache_density sum_cache;
+    update_cache_density_init(&sum_cache);
     
     /* Pad cache if there is a serial remainder. */
     int count_align = count;
@@ -956,16 +948,8 @@ __attribute__((always_inline)) INLINE void runner_doself_subset_density_vec(
           &int_cache.mq[pjd], &sum_cache, int_mask, int_mask2, 0);
     }
 
-    /* Perform horizontal adds on vector sums and store result in particle pi.
-     */
-    VEC_HADD(sum_cache.rhoSum, pi->rho);
-    VEC_HADD(sum_cache.rho_dhSum, pi->density.rho_dh);
-    VEC_HADD(sum_cache.wcountSum, pi->density.wcount);
-    VEC_HADD(sum_cache.wcount_dhSum, pi->density.wcount_dh);
-    VEC_HADD(sum_cache.div_vSum, pi->density.div_v);
-    VEC_HADD(sum_cache.curlvxSum, pi->density.rot_v[0]);
-    VEC_HADD(sum_cache.curlvySum, pi->density.rot_v[1]);
-    VEC_HADD(sum_cache.curlvzSum, pi->density.rot_v[2]);
+    /* Perform horizontal adds on vector sums and store result in particle pi.*/
+    update_density_particle(pi, &sum_cache);
 
     /* Reset interaction count. */
     icount = 0;
@@ -1328,8 +1312,8 @@ void runner_dopair1_density_vec(struct runner *r, struct cell *ci,
       vector v_hi_inv = vec_reciprocal(v_hi);
 
       /* Reset cumulative sums of update vectors. */
-      struct update_cache sum_cache;
-      update_cache_init(&sum_cache);
+      struct update_cache_density sum_cache;
+      update_cache_density_init(&sum_cache);
 
       /* Loop over the parts in cj. Making sure to perform an iteration of the
        * loop even if exit_iteration_align is zero and there is only one
@@ -1388,17 +1372,9 @@ void runner_dopair1_density_vec(struct runner *r, struct cell *ci,
 
       } /* loop over the parts in cj. */
 
-      /* Perform horizontal adds on vector sums and store result in particle pi.
-      */
-      VEC_HADD(sum_cache.rhoSum, pi->rho);
-      VEC_HADD(sum_cache.rho_dhSum, pi->density.rho_dh);
-      VEC_HADD(sum_cache.wcountSum, pi->density.wcount);
-      VEC_HADD(sum_cache.wcount_dhSum, pi->density.wcount_dh);
-      VEC_HADD(sum_cache.div_vSum, pi->density.div_v);
-      VEC_HADD(sum_cache.curlvxSum, pi->density.rot_v[0]);
-      VEC_HADD(sum_cache.curlvySum, pi->density.rot_v[1]);
-      VEC_HADD(sum_cache.curlvzSum, pi->density.rot_v[2]);
-
+      /* Perform horizontal adds on vector sums and store result in particle pi.*/
+      update_density_particle(pi, &sum_cache);
+      
     } /* loop over the parts in ci. */
   }
 
@@ -1438,8 +1414,8 @@ void runner_dopair1_density_vec(struct runner *r, struct cell *ci,
       vector v_hj_inv = vec_reciprocal(v_hj);
 
       /* Reset cumulative sums of update vectors. */
-      struct update_cache sum_cache;
-      update_cache_init(&sum_cache);
+      struct update_cache_density sum_cache;
+      update_cache_density_init(&sum_cache);
       
       /* Convert exit iteration to cache indices. */
       int exit_iteration_align = exit_iteration - first_pi;
@@ -1506,17 +1482,9 @@ void runner_dopair1_density_vec(struct runner *r, struct cell *ci,
 
       } /* loop over the parts in ci. */
 
-      /* Perform horizontal adds on vector sums and store result in particle pj.
-      */
-      VEC_HADD(sum_cache.rhoSum, pj->rho);
-      VEC_HADD(sum_cache.rho_dhSum, pj->density.rho_dh);
-      VEC_HADD(sum_cache.wcountSum, pj->density.wcount);
-      VEC_HADD(sum_cache.wcount_dhSum, pj->density.wcount_dh);
-      VEC_HADD(sum_cache.div_vSum, pj->density.div_v);
-      VEC_HADD(sum_cache.curlvxSum, pj->density.rot_v[0]);
-      VEC_HADD(sum_cache.curlvySum, pj->density.rot_v[1]);
-      VEC_HADD(sum_cache.curlvzSum, pj->density.rot_v[2]);
-
+      /* Perform horizontal adds on vector sums and store result in particle pj.*/
+      update_density_particle(pj, &sum_cache);
+    
     } /* loop over the parts in cj. */
   }
 
