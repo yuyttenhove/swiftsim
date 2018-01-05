@@ -828,15 +828,9 @@ __attribute__((always_inline)) INLINE void runner_doself_subset_density_vec(
     vector v_hi_inv = vec_reciprocal(v_hi);
 
     /* Reset cumulative sums of update vectors. */
-    vector v_rhoSum = vector_setzero();
-    vector v_rho_dhSum = vector_setzero();
-    vector v_wcountSum = vector_setzero();
-    vector v_wcount_dhSum = vector_setzero();
-    vector v_div_vSum = vector_setzero();
-    vector v_curlvxSum = vector_setzero();
-    vector v_curlvySum = vector_setzero();
-    vector v_curlvzSum = vector_setzero();
-
+    struct update_cache sum_cache;
+    update_cache_init(&sum_cache);
+    
     /* Pad cache if there is a serial remainder. */
     int count_align = count;
     const int rem = count % (NUM_VEC_PROC * VEC_SIZE);
@@ -933,24 +927,18 @@ __attribute__((always_inline)) INLINE void runner_doself_subset_density_vec(
        * cache. */
       if (doi_mask) {
         storeInteractions(doi_mask, pjd, &v_r2, &v_dx, &v_dy, &v_dz, cell_cache,
-                          &int_cache, &icount, &v_rhoSum, &v_rho_dhSum,
-                          &v_wcountSum, &v_wcount_dhSum, &v_div_vSum,
-                          &v_curlvxSum, &v_curlvySum, &v_curlvzSum, v_hi_inv,
+                          &int_cache, &icount, &sum_cache, v_hi_inv,
                           v_vix, v_viy, v_viz);
       }
       if (doi_mask2) {
         storeInteractions(doi_mask2, pjd + VEC_SIZE, &v_r2_2, &v_dx_2, &v_dy_2,
-                          &v_dz_2, cell_cache, &int_cache, &icount, &v_rhoSum,
-                          &v_rho_dhSum, &v_wcountSum, &v_wcount_dhSum,
-                          &v_div_vSum, &v_curlvxSum, &v_curlvySum, &v_curlvzSum,
+                          &v_dz_2, cell_cache, &int_cache, &icount, &sum_cache,
                           v_hi_inv, v_vix, v_viy, v_viz);
       }
     }
 
     /* Perform padded vector remainder interactions if any are present. */
-    calcRemInteractions(&int_cache, icount, &v_rhoSum, &v_rho_dhSum,
-                        &v_wcountSum, &v_wcount_dhSum, &v_div_vSum,
-                        &v_curlvxSum, &v_curlvySum, &v_curlvzSum, v_hi_inv,
+    calcRemInteractions(&int_cache, icount, &sum_cache, v_hi_inv,
                         v_vix, v_viy, v_viz, &icount_align);
 
     /* Initialise masks to true in case remainder interactions have been
@@ -965,21 +953,19 @@ __attribute__((always_inline)) INLINE void runner_doself_subset_density_vec(
           &int_cache.r2q[pjd], &int_cache.dxq[pjd], &int_cache.dyq[pjd],
           &int_cache.dzq[pjd], v_hi_inv, v_vix, v_viy, v_viz,
           &int_cache.vxq[pjd], &int_cache.vyq[pjd], &int_cache.vzq[pjd],
-          &int_cache.mq[pjd], &v_rhoSum, &v_rho_dhSum, &v_wcountSum,
-          &v_wcount_dhSum, &v_div_vSum, &v_curlvxSum, &v_curlvySum,
-          &v_curlvzSum, int_mask, int_mask2, 0);
+          &int_cache.mq[pjd], &sum_cache, int_mask, int_mask2, 0);
     }
 
     /* Perform horizontal adds on vector sums and store result in particle pi.
      */
-    VEC_HADD(v_rhoSum, pi->rho);
-    VEC_HADD(v_rho_dhSum, pi->density.rho_dh);
-    VEC_HADD(v_wcountSum, pi->density.wcount);
-    VEC_HADD(v_wcount_dhSum, pi->density.wcount_dh);
-    VEC_HADD(v_div_vSum, pi->density.div_v);
-    VEC_HADD(v_curlvxSum, pi->density.rot_v[0]);
-    VEC_HADD(v_curlvySum, pi->density.rot_v[1]);
-    VEC_HADD(v_curlvzSum, pi->density.rot_v[2]);
+    VEC_HADD(sum_cache.rhoSum, pi->rho);
+    VEC_HADD(sum_cache.rho_dhSum, pi->density.rho_dh);
+    VEC_HADD(sum_cache.wcountSum, pi->density.wcount);
+    VEC_HADD(sum_cache.wcount_dhSum, pi->density.wcount_dh);
+    VEC_HADD(sum_cache.div_vSum, pi->density.div_v);
+    VEC_HADD(sum_cache.curlvxSum, pi->density.rot_v[0]);
+    VEC_HADD(sum_cache.curlvySum, pi->density.rot_v[1]);
+    VEC_HADD(sum_cache.curlvzSum, pi->density.rot_v[2]);
 
     /* Reset interaction count. */
     icount = 0;
@@ -1345,16 +1331,6 @@ void runner_dopair1_density_vec(struct runner *r, struct cell *ci,
       struct update_cache sum_cache;
       update_cache_init(&sum_cache);
 
-      /* Pad the exit iteration if there is a serial remainder. */
-      int exit_iteration_align = exit_iteration;
-      int rem = exit_iteration % VEC_SIZE;
-      if (rem != 0) {
-        int pad = VEC_SIZE - rem;
-
-        if (exit_iteration_align + pad <= last_pj_align + 1)
-          exit_iteration_align += pad;
-      }
-
       /* Loop over the parts in cj. Making sure to perform an iteration of the
        * loop even if exit_iteration_align is zero and there is only one
        * particle to interact with.*/
@@ -1465,16 +1441,6 @@ void runner_dopair1_density_vec(struct runner *r, struct cell *ci,
       struct update_cache sum_cache;
       update_cache_init(&sum_cache);
       
-      /* Reset cumulative sums of update vectors. */
-      vector v_rhoSum = vector_setzero();
-      vector v_rho_dhSum = vector_setzero();
-      vector v_wcountSum = vector_setzero();
-      vector v_wcount_dhSum = vector_setzero();
-      vector v_div_vSum = vector_setzero();
-      vector v_curlvxSum = vector_setzero();
-      vector v_curlvySum = vector_setzero();
-      vector v_curlvzSum = vector_setzero();
-
       /* Convert exit iteration to cache indices. */
       int exit_iteration_align = exit_iteration - first_pi;
 
