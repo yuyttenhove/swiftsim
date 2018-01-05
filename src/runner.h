@@ -27,7 +27,7 @@
 #include "../config.h"
 
 /* Includes. */
-#include "cache.h"
+#include "hydro.h"
 #include "gravity_cache.h"
 
 struct cell;

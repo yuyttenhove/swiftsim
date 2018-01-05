@@ -32,8 +32,8 @@
  * Gadget-2 tree-code neighbours search.
  */
 
-#include "cache.h"
 #include "minmax.h"
+#include "hydro_cache.h"
 
 /**
  * @brief Density loop
@@ -181,10 +181,7 @@ __attribute__((always_inline)) INLINE static void
 runner_iact_nonsym_1_vec_density(vector *r2, vector *dx, vector *dy, vector *dz,
                                  vector hi_inv, vector vix, vector viy,
                                  vector viz, float *Vjx, float *Vjy, float *Vjz,
-                                 float *Mj, vector *rhoSum, vector *rho_dhSum,
-                                 vector *wcountSum, vector *wcount_dhSum,
-                                 vector *div_vSum, vector *curlvxSum,
-                                 vector *curlvySum, vector *curlvzSum,
+                                 float *Mj, struct update_cache *sum_cache,
                                  mask_t mask) {
 
   vector r, ri, ui, wi, wi_dx;
@@ -232,18 +229,18 @@ runner_iact_nonsym_1_vec_density(vector *r2, vector *dx, vector *dy, vector *dz,
       vec_fma(vec_set1(hydro_dimension), wi.v, vec_mul(ui.v, wi_dx.v));
 
   /* Mask updates to intermediate vector sums for particle pi. */
-  rhoSum->v = vec_mask_add(rhoSum->v, vec_mul(mj.v, wi.v), mask);
-  rho_dhSum->v =
-      vec_mask_sub(rho_dhSum->v, vec_mul(mj.v, wcount_dh_update.v), mask);
-  wcountSum->v = vec_mask_add(wcountSum->v, wi.v, mask);
-  wcount_dhSum->v = vec_mask_sub(wcount_dhSum->v, wcount_dh_update.v, mask);
-  div_vSum->v =
-      vec_mask_sub(div_vSum->v, vec_mul(mj.v, vec_mul(dvdr.v, wi_dx.v)), mask);
-  curlvxSum->v = vec_mask_add(curlvxSum->v,
+  sum_cache->rhoSum.v = vec_mask_add(sum_cache->rhoSum.v, vec_mul(mj.v, wi.v), mask);
+  sum_cache->rho_dhSum.v =
+      vec_mask_sub(sum_cache->rho_dhSum.v, vec_mul(mj.v, wcount_dh_update.v), mask);
+  sum_cache->wcountSum.v = vec_mask_add(sum_cache->wcountSum.v, wi.v, mask);
+  sum_cache->wcount_dhSum.v = vec_mask_sub(sum_cache->wcount_dhSum.v, wcount_dh_update.v, mask);
+  sum_cache->div_vSum.v =
+      vec_mask_sub(sum_cache->div_vSum.v, vec_mul(mj.v, vec_mul(dvdr.v, wi_dx.v)), mask);
+  sum_cache->curlvxSum.v = vec_mask_add(sum_cache->curlvxSum.v,
                               vec_mul(mj.v, vec_mul(curlvrx.v, wi_dx.v)), mask);
-  curlvySum->v = vec_mask_add(curlvySum->v,
+  sum_cache->curlvySum.v = vec_mask_add(sum_cache->curlvySum.v,
                               vec_mul(mj.v, vec_mul(curlvry.v, wi_dx.v)), mask);
-  curlvzSum->v = vec_mask_add(curlvzSum->v,
+  sum_cache->curlvzSum.v = vec_mask_add(sum_cache->curlvzSum.v,
                               vec_mul(mj.v, vec_mul(curlvrz.v, wi_dx.v)), mask);
 }
 
@@ -255,10 +252,7 @@ __attribute__((always_inline)) INLINE static void
 runner_iact_nonsym_2_vec_density(float *R2, float *Dx, float *Dy, float *Dz,
                                  vector hi_inv, vector vix, vector viy,
                                  vector viz, float *Vjx, float *Vjy, float *Vjz,
-                                 float *Mj, vector *rhoSum, vector *rho_dhSum,
-                                 vector *wcountSum, vector *wcount_dhSum,
-                                 vector *div_vSum, vector *curlvxSum,
-                                 vector *curlvySum, vector *curlvzSum,
+                                 float *Mj, struct update_cache *sum_cache,
                                  mask_t mask, mask_t mask2, short mask_cond) {
 
   vector r, ri, ui, wi, wi_dx;
@@ -344,56 +338,56 @@ runner_iact_nonsym_2_vec_density(float *R2, float *Dx, float *Dy, float *Dz,
   /* Mask updates to intermediate vector sums for particle pi. */
   /* Mask only when needed. */
   if (mask_cond) {
-    rhoSum->v = vec_mask_add(rhoSum->v, vec_mul(mj.v, wi.v), mask);
-    rhoSum->v = vec_mask_add(rhoSum->v, vec_mul(mj2.v, wi2.v), mask2);
-    rho_dhSum->v =
-        vec_mask_sub(rho_dhSum->v, vec_mul(mj.v, wcount_dh_update.v), mask);
-    rho_dhSum->v =
-        vec_mask_sub(rho_dhSum->v, vec_mul(mj2.v, wcount_dh_update2.v), mask2);
-    wcountSum->v = vec_mask_add(wcountSum->v, wi.v, mask);
-    wcountSum->v = vec_mask_add(wcountSum->v, wi2.v, mask2);
-    wcount_dhSum->v = vec_mask_sub(wcount_dhSum->v, wcount_dh_update.v, mask);
-    wcount_dhSum->v = vec_mask_sub(wcount_dhSum->v, wcount_dh_update2.v, mask2);
-    div_vSum->v = vec_mask_sub(div_vSum->v,
+    sum_cache->rhoSum.v = vec_mask_add(sum_cache->rhoSum.v, vec_mul(mj.v, wi.v), mask);
+    sum_cache->rhoSum.v = vec_mask_add(sum_cache->rhoSum.v, vec_mul(mj2.v, wi2.v), mask2);
+    sum_cache->rho_dhSum.v =
+        vec_mask_sub(sum_cache->rho_dhSum.v, vec_mul(mj.v, wcount_dh_update.v), mask);
+    sum_cache->rho_dhSum.v =
+        vec_mask_sub(sum_cache->rho_dhSum.v, vec_mul(mj2.v, wcount_dh_update2.v), mask2);
+    sum_cache->wcountSum.v = vec_mask_add(sum_cache->wcountSum.v, wi.v, mask);
+    sum_cache->wcountSum.v = vec_mask_add(sum_cache->wcountSum.v, wi2.v, mask2);
+    sum_cache->wcount_dhSum.v = vec_mask_sub(sum_cache->wcount_dhSum.v, wcount_dh_update.v, mask);
+    sum_cache->wcount_dhSum.v = vec_mask_sub(sum_cache->wcount_dhSum.v, wcount_dh_update2.v, mask2);
+    sum_cache->div_vSum.v = vec_mask_sub(sum_cache->div_vSum.v,
                                vec_mul(mj.v, vec_mul(dvdr.v, wi_dx.v)), mask);
-    div_vSum->v = vec_mask_sub(
-        div_vSum->v, vec_mul(mj2.v, vec_mul(dvdr2.v, wi_dx2.v)), mask2);
-    curlvxSum->v = vec_mask_add(
-        curlvxSum->v, vec_mul(mj.v, vec_mul(curlvrx.v, wi_dx.v)), mask);
-    curlvxSum->v = vec_mask_add(
-        curlvxSum->v, vec_mul(mj2.v, vec_mul(curlvrx2.v, wi_dx2.v)), mask2);
-    curlvySum->v = vec_mask_add(
-        curlvySum->v, vec_mul(mj.v, vec_mul(curlvry.v, wi_dx.v)), mask);
-    curlvySum->v = vec_mask_add(
-        curlvySum->v, vec_mul(mj2.v, vec_mul(curlvry2.v, wi_dx2.v)), mask2);
-    curlvzSum->v = vec_mask_add(
-        curlvzSum->v, vec_mul(mj.v, vec_mul(curlvrz.v, wi_dx.v)), mask);
-    curlvzSum->v = vec_mask_add(
-        curlvzSum->v, vec_mul(mj2.v, vec_mul(curlvrz2.v, wi_dx2.v)), mask2);
+    sum_cache->div_vSum.v = vec_mask_sub(
+        sum_cache->div_vSum.v, vec_mul(mj2.v, vec_mul(dvdr2.v, wi_dx2.v)), mask2);
+    sum_cache->curlvxSum.v = vec_mask_add(
+        sum_cache->curlvxSum.v, vec_mul(mj.v, vec_mul(curlvrx.v, wi_dx.v)), mask);
+    sum_cache->curlvxSum.v = vec_mask_add(
+        sum_cache->curlvxSum.v, vec_mul(mj2.v, vec_mul(curlvrx2.v, wi_dx2.v)), mask2);
+    sum_cache->curlvySum.v = vec_mask_add(
+        sum_cache->curlvySum.v, vec_mul(mj.v, vec_mul(curlvry.v, wi_dx.v)), mask);
+    sum_cache->curlvySum.v = vec_mask_add(
+        sum_cache->curlvySum.v, vec_mul(mj2.v, vec_mul(curlvry2.v, wi_dx2.v)), mask2);
+    sum_cache->curlvzSum.v = vec_mask_add(
+        sum_cache->curlvzSum.v, vec_mul(mj.v, vec_mul(curlvrz.v, wi_dx.v)), mask);
+    sum_cache->curlvzSum.v = vec_mask_add(
+        sum_cache->curlvzSum.v, vec_mul(mj2.v, vec_mul(curlvrz2.v, wi_dx2.v)), mask2);
   } else {
-    rhoSum->v = vec_add(rhoSum->v, vec_mul(mj.v, wi.v));
-    rhoSum->v = vec_add(rhoSum->v, vec_mul(mj2.v, wi2.v));
-    rho_dhSum->v = vec_sub(rho_dhSum->v, vec_mul(mj.v, wcount_dh_update.v));
-    rho_dhSum->v = vec_sub(rho_dhSum->v, vec_mul(mj2.v, wcount_dh_update2.v));
-    wcountSum->v = vec_add(wcountSum->v, wi.v);
-    wcountSum->v = vec_add(wcountSum->v, wi2.v);
-    wcount_dhSum->v = vec_sub(wcount_dhSum->v, wcount_dh_update.v);
-    wcount_dhSum->v = vec_sub(wcount_dhSum->v, wcount_dh_update2.v);
-    div_vSum->v = vec_sub(div_vSum->v, vec_mul(mj.v, vec_mul(dvdr.v, wi_dx.v)));
-    div_vSum->v =
-        vec_sub(div_vSum->v, vec_mul(mj2.v, vec_mul(dvdr2.v, wi_dx2.v)));
-    curlvxSum->v =
-        vec_add(curlvxSum->v, vec_mul(mj.v, vec_mul(curlvrx.v, wi_dx.v)));
-    curlvxSum->v =
-        vec_add(curlvxSum->v, vec_mul(mj2.v, vec_mul(curlvrx2.v, wi_dx2.v)));
-    curlvySum->v =
-        vec_add(curlvySum->v, vec_mul(mj.v, vec_mul(curlvry.v, wi_dx.v)));
-    curlvySum->v =
-        vec_add(curlvySum->v, vec_mul(mj2.v, vec_mul(curlvry2.v, wi_dx2.v)));
-    curlvzSum->v =
-        vec_add(curlvzSum->v, vec_mul(mj.v, vec_mul(curlvrz.v, wi_dx.v)));
-    curlvzSum->v =
-        vec_add(curlvzSum->v, vec_mul(mj2.v, vec_mul(curlvrz2.v, wi_dx2.v)));
+    sum_cache->rhoSum.v = vec_add(sum_cache->rhoSum.v, vec_mul(mj.v, wi.v));
+    sum_cache->rhoSum.v = vec_add(sum_cache->rhoSum.v, vec_mul(mj2.v, wi2.v));
+    sum_cache->rho_dhSum.v = vec_sub(sum_cache->rho_dhSum.v, vec_mul(mj.v, wcount_dh_update.v));
+    sum_cache->rho_dhSum.v = vec_sub(sum_cache->rho_dhSum.v, vec_mul(mj2.v, wcount_dh_update2.v));
+    sum_cache->wcountSum.v = vec_add(sum_cache->wcountSum.v, wi.v);
+    sum_cache->wcountSum.v = vec_add(sum_cache->wcountSum.v, wi2.v);
+    sum_cache->wcount_dhSum.v = vec_sub(sum_cache->wcount_dhSum.v, wcount_dh_update.v);
+    sum_cache->wcount_dhSum.v = vec_sub(sum_cache->wcount_dhSum.v, wcount_dh_update2.v);
+    sum_cache->div_vSum.v = vec_sub(sum_cache->div_vSum.v, vec_mul(mj.v, vec_mul(dvdr.v, wi_dx.v)));
+    sum_cache->div_vSum.v =
+        vec_sub(sum_cache->div_vSum.v, vec_mul(mj2.v, vec_mul(dvdr2.v, wi_dx2.v)));
+    sum_cache->curlvxSum.v =
+        vec_add(sum_cache->curlvxSum.v, vec_mul(mj.v, vec_mul(curlvrx.v, wi_dx.v)));
+    sum_cache->curlvxSum.v =
+        vec_add(sum_cache->curlvxSum.v, vec_mul(mj2.v, vec_mul(curlvrx2.v, wi_dx2.v)));
+    sum_cache->curlvySum.v =
+        vec_add(sum_cache->curlvySum.v, vec_mul(mj.v, vec_mul(curlvry.v, wi_dx.v)));
+    sum_cache->curlvySum.v =
+        vec_add(sum_cache->curlvySum.v, vec_mul(mj2.v, vec_mul(curlvry2.v, wi_dx2.v)));
+    sum_cache->curlvzSum.v =
+        vec_add(sum_cache->curlvzSum.v, vec_mul(mj.v, vec_mul(curlvrz.v, wi_dx.v)));
+    sum_cache->curlvzSum.v =
+        vec_add(sum_cache->curlvzSum.v, vec_mul(mj2.v, vec_mul(curlvrz2.v, wi_dx2.v)));
   }
 }
 #endif
