@@ -957,28 +957,17 @@ __attribute__((always_inline)) INLINE void runner_doself2_force_vec(
     if (!part_is_active_no_debug(pi, max_active_bin)) continue;
 
     const float hi = cell_cache->h[pid];
+    const float hig2 = hi * hi * kernel_gamma2;
 
     /* Fill particle pi vectors. */
     const vector v_pix = vector_set1(cell_cache->x[pid]);
     const vector v_piy = vector_set1(cell_cache->y[pid]);
     const vector v_piz = vector_set1(cell_cache->z[pid]);
-    const vector v_hi = vector_set1(hi);
-    const vector v_vix = vector_set1(cell_cache->vx[pid]);
-    const vector v_viy = vector_set1(cell_cache->vy[pid]);
-    const vector v_viz = vector_set1(cell_cache->vz[pid]);
-
-    const vector v_rhoi = vector_set1(cell_cache->rho[pid]);
-    const vector v_grad_hi = vector_set1(cell_cache->grad_h[pid]);
-    const vector v_pOrhoi2 = vector_set1(cell_cache->pOrho2[pid]);
-    const vector v_balsara_i = vector_set1(cell_cache->balsara[pid]);
-    const vector v_ci = vector_set1(cell_cache->soundspeed[pid]);
-
-    const float hig2 = hi * hi * kernel_gamma2;
     const vector v_hig2 = vector_set1(hig2);
 
-    /* Get the inverse of hi. */
-    vector v_hi_inv = vec_reciprocal(v_hi);
-
+    struct input_params_force params;
+    populate_input_params_force_cache(cell_cache, pid, &params);
+    
     /* Reset cumulative sums of update vectors. */
     struct update_cache_force sum_cache;
     update_cache_force_init(&sum_cache);
@@ -1061,12 +1050,11 @@ __attribute__((always_inline)) INLINE void runner_doself2_force_vec(
         v_r2.v = vec_add(v_r2.v, vec_set1(FLT_MIN));
 
         runner_iact_nonsym_1_vec_force(
-            &v_r2, &v_dx, &v_dy, &v_dz, v_vix, v_viy, v_viz, v_rhoi, v_grad_hi,
-            v_pOrhoi2, v_balsara_i, v_ci, &cell_cache->vx[pjd],
+            &v_r2, &v_dx, &v_dy, &v_dz, &params, &cell_cache->vx[pjd],
             &cell_cache->vy[pjd], &cell_cache->vz[pjd], &cell_cache->rho[pjd],
             &cell_cache->grad_h[pjd], &cell_cache->pOrho2[pjd],
             &cell_cache->balsara[pjd], &cell_cache->soundspeed[pjd],
-            &cell_cache->m[pjd], v_hi_inv, v_hj_inv, &sum_cache, v_doi_mask);
+            &cell_cache->m[pjd], v_hj_inv, &sum_cache, v_doi_mask);
       }
 
     } /* Loop over all other particles. */
@@ -1570,26 +1558,17 @@ void runner_dopair2_force_vec(struct runner *r, struct cell *ci,
       /* Determine the exit iteration of the interaction loop. */
       const int exit_iteration_end = max_index_i[pid] + 1;
 
+      const float hig2 = hi * hi * kernel_gamma2;
+      
       /* Fill particle pi vectors. */
       const vector v_pix = vector_set1(ci_cache->x[ci_cache_idx]);
       const vector v_piy = vector_set1(ci_cache->y[ci_cache_idx]);
       const vector v_piz = vector_set1(ci_cache->z[ci_cache_idx]);
-      const vector v_hi = vector_set1(hi);
-      const vector v_vix = vector_set1(ci_cache->vx[ci_cache_idx]);
-      const vector v_viy = vector_set1(ci_cache->vy[ci_cache_idx]);
-      const vector v_viz = vector_set1(ci_cache->vz[ci_cache_idx]);
-      const vector v_rhoi = vector_set1(ci_cache->rho[ci_cache_idx]);
-      const vector v_grad_hi = vector_set1(ci_cache->grad_h[ci_cache_idx]);
-      const vector v_pOrhoi2 = vector_set1(ci_cache->pOrho2[ci_cache_idx]);
-      const vector v_balsara_i = vector_set1(ci_cache->balsara[ci_cache_idx]);
-      const vector v_ci = vector_set1(ci_cache->soundspeed[ci_cache_idx]);
-
-      const float hig2 = hi * hi * kernel_gamma2;
       const vector v_hig2 = vector_set1(hig2);
-
-      /* Get the inverse of hi. */
-      vector v_hi_inv = vec_reciprocal(v_hi);
-
+      
+      struct input_params_force params;
+      populate_input_params_force_cache(ci_cache, ci_cache_idx, &params);
+      
       /* Reset cumulative sums of update vectors. */
       struct update_cache_force sum_cache;
       update_cache_force_init(&sum_cache);
@@ -1652,14 +1631,13 @@ void runner_dopair2_force_vec(struct runner *r, struct cell *ci,
           vector v_hj_inv = vec_reciprocal(v_hj);
 
           runner_iact_nonsym_1_vec_force(
-              &v_r2, &v_dx, &v_dy, &v_dz, v_vix, v_viy, v_viz, v_rhoi,
-              v_grad_hi, v_pOrhoi2, v_balsara_i, v_ci,
+              &v_r2, &v_dx, &v_dy, &v_dz, &params,
               &cj_cache->vx[cj_cache_idx], &cj_cache->vy[cj_cache_idx],
               &cj_cache->vz[cj_cache_idx], &cj_cache->rho[cj_cache_idx],
               &cj_cache->grad_h[cj_cache_idx], &cj_cache->pOrho2[cj_cache_idx],
               &cj_cache->balsara[cj_cache_idx],
               &cj_cache->soundspeed[cj_cache_idx], &cj_cache->m[cj_cache_idx],
-              v_hi_inv, v_hj_inv, &sum_cache,
+              v_hj_inv, &sum_cache,
               v_doi_mask);
         }
 
@@ -1692,26 +1670,17 @@ void runner_dopair2_force_vec(struct runner *r, struct cell *ci,
       /* Determine the exit iteration of the interaction loop. */
       const int exit_iteration = max_index_j[pjd];
 
+      const float hjg2 = hj * hj * kernel_gamma2;
+      
       /* Fill particle pi vectors. */
       const vector v_pjx = vector_set1(cj_cache->x[cj_cache_idx]);
       const vector v_pjy = vector_set1(cj_cache->y[cj_cache_idx]);
       const vector v_pjz = vector_set1(cj_cache->z[cj_cache_idx]);
-      const vector v_hj = vector_set1(hj);
-      const vector v_vjx = vector_set1(cj_cache->vx[cj_cache_idx]);
-      const vector v_vjy = vector_set1(cj_cache->vy[cj_cache_idx]);
-      const vector v_vjz = vector_set1(cj_cache->vz[cj_cache_idx]);
-      const vector v_rhoj = vector_set1(cj_cache->rho[cj_cache_idx]);
-      const vector v_grad_hj = vector_set1(cj_cache->grad_h[cj_cache_idx]);
-      const vector v_pOrhoj2 = vector_set1(cj_cache->pOrho2[cj_cache_idx]);
-      const vector v_balsara_j = vector_set1(cj_cache->balsara[cj_cache_idx]);
-      const vector v_cj = vector_set1(cj_cache->soundspeed[cj_cache_idx]);
-
-      const float hjg2 = hj * hj * kernel_gamma2;
       const vector v_hjg2 = vector_set1(hjg2);
 
-      /* Get the inverse of hj. */
-      vector v_hj_inv = vec_reciprocal(v_hj);
-
+      struct input_params_force params;
+      populate_input_params_force_cache(cj_cache, cj_cache_idx, &params);
+      
       /* Reset cumulative sums of update vectors. */
       struct update_cache_force sum_cache;
       update_cache_force_init(&sum_cache);
@@ -1778,14 +1747,13 @@ void runner_dopair2_force_vec(struct runner *r, struct cell *ci,
           vector v_hi_inv = vec_reciprocal(v_hi);
 
           runner_iact_nonsym_1_vec_force(
-              &v_r2, &v_dx, &v_dy, &v_dz, v_vjx, v_vjy, v_vjz, v_rhoj,
-              v_grad_hj, v_pOrhoj2, v_balsara_j, v_cj,
+              &v_r2, &v_dx, &v_dy, &v_dz, &params,
               &ci_cache->vx[ci_cache_idx], &ci_cache->vy[ci_cache_idx],
               &ci_cache->vz[ci_cache_idx], &ci_cache->rho[ci_cache_idx],
               &ci_cache->grad_h[ci_cache_idx], &ci_cache->pOrho2[ci_cache_idx],
               &ci_cache->balsara[ci_cache_idx],
               &ci_cache->soundspeed[ci_cache_idx], &ci_cache->m[ci_cache_idx],
-              v_hj_inv, v_hi_inv, &sum_cache,
+              v_hi_inv, &sum_cache,
               v_doj_mask);
         }
       } /* loop over the parts in ci. */

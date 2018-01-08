@@ -135,12 +135,25 @@ struct update_cache_force {
   vector v_entropy_dtSum;
 };
 
-/* Cache to hold a list of vectors used to update particle properties after a force interaction. */
+/* Input parameters needed for computing the density interaction. */
 struct input_params_density {
   vector v_vix;
   vector v_viy;
   vector v_viz;
   vector v_hi_inv;
+};
+
+/* Input parameters needed for computing the force interaction. */
+struct input_params_force {
+  vector v_vix;
+  vector v_viy;
+  vector v_viz;
+  vector v_hi_inv;
+  vector v_rhoi;
+  vector v_grad_hi;
+  vector v_pOrhoi2;
+  vector v_balsara_i;
+  vector v_ci;
 };
 
 /**
@@ -229,6 +242,30 @@ __attribute__((always_inline)) INLINE void populate_input_params_density_cache(c
   params->v_viy = vector_set1(c->vy[cache_index]);
   params->v_viz = vector_set1(c->vz[cache_index]);
   params->v_hi_inv = vector_set1(hi_inv);
+}
+
+/**
+ * @brief Populate the parameters used in the interaction function using a cache. Force interaction.
+ *
+ * @param c Particle cache.
+ * @param cache_index Cache index.
+ * @param params Input parameters.
+ */
+__attribute__((always_inline)) INLINE void populate_input_params_force_cache(const struct cache *restrict c, const int cache_index, struct input_params_force *params) {
+
+  const float hi = c->h[cache_index];
+  const float hi_inv = 1.f / hi;
+  
+  params->v_vix = vector_set1(c->vx[cache_index]);
+  params->v_viy = vector_set1(c->vy[cache_index]);
+  params->v_viz = vector_set1(c->vz[cache_index]);
+  params->v_hi_inv = vector_set1(hi_inv); 
+  params->v_rhoi = vector_set1(c->rho[cache_index]);
+  params->v_grad_hi = vector_set1(c->grad_h[cache_index]);
+  params->v_pOrhoi2 = vector_set1(c->pOrho2[cache_index]);
+  params->v_balsara_i = vector_set1(c->balsara[cache_index]);
+  params->v_ci = vector_set1(c->soundspeed[cache_index]);
+
 }
 
 /**

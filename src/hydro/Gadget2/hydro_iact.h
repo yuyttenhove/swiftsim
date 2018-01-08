@@ -603,10 +603,8 @@ static const vector const_viscosity_alpha_fac =
  */
 __attribute__((always_inline)) INLINE static void
 runner_iact_nonsym_1_vec_force(
-    vector *r2, vector *dx, vector *dy, vector *dz, vector vix, vector viy,
-    vector viz, vector pirho, vector grad_hi, vector piPOrho2, vector balsara_i,
-    vector ci, float *Vjx, float *Vjy, float *Vjz, float *Pjrho, float *Grad_hj,
-    float *PjPOrho2, float *Balsara_j, float *Cj, float *Mj, vector hi_inv,
+    vector *r2, vector *dx, vector *dy, vector *dz, const struct input_params_force *params, float *Vjx, float *Vjy, float *Vjz, float *Pjrho, float *Grad_hj,
+    float *PjPOrho2, float *Balsara_j, float *Cj, float *Mj, 
     vector hj_inv, struct update_cache_force *sum_cache, mask_t mask) {
 
 #ifdef WITH_VECTORIZATION
@@ -637,15 +635,15 @@ runner_iact_nonsym_1_vec_force(
       vector_set1(1.f); /* Will change with cosmological integration */
 
   /* Load stuff. */
-  balsara.v = vec_add(balsara_i.v, balsara_j.v);
+  balsara.v = vec_add(params->v_balsara_i.v, balsara_j.v);
 
   /* Get the radius and inverse radius. */
   ri = vec_reciprocal_sqrt(*r2);
   r.v = vec_mul(r2->v, ri.v);
 
   /* Get the kernel for hi. */
-  hid_inv = pow_dimension_plus_one_vec(hi_inv);
-  xi.v = vec_mul(r.v, hi_inv.v);
+  hid_inv = pow_dimension_plus_one_vec(params->v_hi_inv);
+  xi.v = vec_mul(r.v, params->v_hi_inv.v);
   kernel_eval_dWdx_force_vec(&xi, &wi_dx);
   wi_dr.v = vec_mul(hid_inv.v, wi_dx.v);
 
@@ -659,9 +657,9 @@ runner_iact_nonsym_1_vec_force(
   wj_dr.v = vec_mul(hjd_inv.v, wj_dx.v);
 
   /* Compute dv. */
-  dvx.v = vec_sub(vix.v, vjx.v);
-  dvy.v = vec_sub(viy.v, vjy.v);
-  dvz.v = vec_sub(viz.v, vjz.v);
+  dvx.v = vec_sub(params->v_vix.v, vjx.v);
+  dvy.v = vec_sub(params->v_viy.v, vjy.v);
+  dvz.v = vec_sub(params->v_viz.v, vjz.v);
 
   /* Compute dv dot r. */
   dvdr.v = vec_fma(dvx.v, dx->v, vec_fma(dvy.v, dy->v, vec_mul(dvz.v, dz->v)));
@@ -673,10 +671,10 @@ runner_iact_nonsym_1_vec_force(
       vec_mul(fac_mu.v, vec_mul(ri.v, omega_ij.v)); /* This is 0 or negative */
 
   /* Compute signal velocity */
-  v_sig.v = vec_fnma(vec_set1(3.f), mu_ij.v, vec_add(ci.v, cj.v));
+  v_sig.v = vec_fnma(vec_set1(3.f), mu_ij.v, vec_add(params->v_ci.v, cj.v));
 
   /* Now construct the full viscosity term */
-  rho_ij.v = vec_mul(vec_set1(0.5f), vec_add(pirho.v, pjrho.v));
+  rho_ij.v = vec_mul(vec_set1(0.5f), vec_add(params->v_rhoi.v, pjrho.v));
   visc.v = vec_div(vec_mul(const_viscosity_alpha_fac.v,
                            vec_mul(v_sig.v, vec_mul(mu_ij.v, balsara.v))),
                    rho_ij.v);
@@ -687,7 +685,7 @@ runner_iact_nonsym_1_vec_force(
               vec_mul(visc.v, vec_mul(vec_add(wi_dr.v, wj_dr.v), ri.v)));
 
   sph_term.v =
-      vec_mul(vec_fma(vec_mul(grad_hi.v, piPOrho2.v), wi_dr.v,
+      vec_mul(vec_fma(vec_mul(params->v_grad_hi.v, params->v_pOrhoi2.v), wi_dr.v,
                       vec_mul(grad_hj.v, vec_mul(pjPOrho2.v, wj_dr.v))),
               ri.v);
 
