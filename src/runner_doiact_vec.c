@@ -43,7 +43,7 @@ static const vector kernel_gamma2_vec = FILL_VEC(kernel_gamma2);
  */
 __attribute__((always_inline)) INLINE static void calcRemInteractions(
     struct c2_cache *const int_cache, const int icount, struct update_cache_density *sum_cache,
-    const struct input_params *params,
+    const struct input_params_density *params,
     int *icount_align) {
 
   mask_t int_mask, int_mask2;
@@ -114,7 +114,7 @@ __attribute__((always_inline)) INLINE static void storeInteractions(
     const int mask, const int pjd, vector *v_r2, vector *v_dx, vector *v_dy,
     vector *v_dz, const struct cache *const cell_cache,
     struct c2_cache *const int_cache, int *icount, struct update_cache_density *sum_cache,
-    const struct input_params *params) {
+    const struct input_params_density *params) {
 
 /* Left-pack values needed into the secondary cache using the interaction mask.
  */
@@ -570,8 +570,8 @@ __attribute__((always_inline)) INLINE void runner_doself1_density_vec(
     const vector v_piz = vector_set1(cell_cache->z[pid]);
     const vector v_hig2 = vector_set1(hig2);
 
-    struct input_params params;
-    populate_input_params_cache(cell_cache, pid, &params);
+    struct input_params_density params;
+    populate_input_params_density_cache(cell_cache, pid, &params);
     
     struct update_cache_density sum_cache;
     update_cache_density_init(&sum_cache);
@@ -762,8 +762,8 @@ __attribute__((always_inline)) INLINE void runner_doself_subset_density_vec(
     const vector v_piz = vector_set1(pi->x[2] - c->loc[2]);
     const vector v_hig2 = vector_set1(hig2);
 
-    struct input_params params;
-    populate_input_params(pi, &params);
+    struct input_params_density params;
+    populate_input_params_density(pi, &params);
 
     /* Reset cumulative sums of update vectors. */
     struct update_cache_density sum_cache;
@@ -1236,8 +1236,8 @@ void runner_dopair1_density_vec(struct runner *r, struct cell *ci,
       const float hig2 = hi * hi * kernel_gamma2;
       const vector v_hig2 = vector_set1(hig2);
 
-      struct input_params params;
-      populate_input_params_cache(ci_cache, ci_cache_idx, &params);
+      struct input_params_density params;
+      populate_input_params_density_cache(ci_cache, ci_cache_idx, &params);
       
       /* Reset cumulative sums of update vectors. */
       struct update_cache_density sum_cache;
@@ -1334,8 +1334,8 @@ void runner_dopair1_density_vec(struct runner *r, struct cell *ci,
       const float hjg2 = hj * hj * kernel_gamma2;
       const vector v_hjg2 = vector_set1(hjg2);
 
-      struct input_params params;
-      populate_input_params_cache(cj_cache, cj_cache_idx, &params);
+      struct input_params_density params;
+      populate_input_params_density_cache(cj_cache, cj_cache_idx, &params);
       
       /* Reset cumulative sums of update vectors. */
       struct update_cache_density sum_cache;

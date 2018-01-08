@@ -136,7 +136,7 @@ struct update_cache_force {
 };
 
 /* Cache to hold a list of vectors used to update particle properties after a force interaction. */
-struct input_params {
+struct input_params_density {
   vector v_vix;
   vector v_viy;
   vector v_viz;
@@ -220,7 +220,7 @@ __attribute__((always_inline)) INLINE void update_force_particle(struct part *re
  * @param cache_index Cache index.
  * @param params Input parameters.
  */
-__attribute__((always_inline)) INLINE void populate_input_params_cache(const struct cache *restrict c, const int cache_index, struct input_params *params) {
+__attribute__((always_inline)) INLINE void populate_input_params_density_cache(const struct cache *restrict c, const int cache_index, struct input_params_density *params) {
 
   const float hi = c->h[cache_index];
   const float hi_inv = 1.f / hi;
@@ -237,7 +237,7 @@ __attribute__((always_inline)) INLINE void populate_input_params_cache(const str
  * @param pi Particle to update.
  * @param params Input parameters.
  */
-__attribute__((always_inline)) INLINE void populate_input_params(struct part *restrict pi, struct input_params *params) {
+__attribute__((always_inline)) INLINE void populate_input_params_density(struct part *restrict pi, struct input_params_density *params) {
 
   const float hi = pi->h;
   const float hi_inv = 1.f / hi;

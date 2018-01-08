@@ -179,7 +179,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_density(
  */
 __attribute__((always_inline)) INLINE static void
 runner_iact_nonsym_1_vec_density(vector *r2, vector *dx, vector *dy, vector *dz,
-                                 const struct input_params *params, float *Vjx, float *Vjy, float *Vjz,
+                                 const struct input_params_density *params, float *Vjx, float *Vjy, float *Vjz,
                                  float *Mj, struct update_cache_density *sum_cache,
                                  mask_t mask) {
 
@@ -249,7 +249,7 @@ runner_iact_nonsym_1_vec_density(vector *r2, vector *dx, vector *dy, vector *dz,
  */
 __attribute__((always_inline)) INLINE static void
 runner_iact_nonsym_2_vec_density(float *R2, float *Dx, float *Dy, float *Dz,
-                                 const struct input_params *params, float *Vjx, float *Vjy, float *Vjz,
+                                 const struct input_params_density *params, float *Vjx, float *Vjy, float *Vjz,
                                  float *Mj, struct update_cache_density *sum_cache,
                                  mask_t mask, mask_t mask2, short mask_cond) {
 
