@@ -37,16 +37,13 @@ static const vector kernel_gamma2_vec = FILL_VEC(kernel_gamma2);
  * particles.
  * @param icount Interaction count.
  * @param sum_cache (return) Cache of #vector holding the cumulative sum of updates on pi.
- * @param v_hi_inv #vector of 1/h for pi.
- * @param v_vix #vector of x velocity of pi.
- * @param v_viy #vector of y velocity of pi.
- * @param v_viz #vector of z velocity of pi.
+ * @param params Input parameters for SPH scheme.
  * @param icount_align (return) Interaction count after the remainder
  * interactions have been performed, should be a multiple of the vector length.
  */
 __attribute__((always_inline)) INLINE static void calcRemInteractions(
     struct c2_cache *const int_cache, const int icount, struct update_cache_density *sum_cache,
-    vector v_hi_inv, vector v_vix, vector v_viy, vector v_viz,
+    const struct input_params *params,
     int *icount_align) {
 
   mask_t int_mask, int_mask2;
@@ -89,7 +86,7 @@ __attribute__((always_inline)) INLINE static void calcRemInteractions(
     runner_iact_nonsym_2_vec_density(
         &int_cache->r2q[*icount_align], &int_cache->dxq[*icount_align],
         &int_cache->dyq[*icount_align], &int_cache->dzq[*icount_align],
-        v_hi_inv, v_vix, v_viy, v_viz, &int_cache->vxq[*icount_align],
+        params, &int_cache->vxq[*icount_align],
         &int_cache->vyq[*icount_align], &int_cache->vzq[*icount_align],
         &int_cache->mq[*icount_align], sum_cache, int_mask,
         int_mask2, 1);
@@ -111,16 +108,13 @@ __attribute__((always_inline)) INLINE static void calcRemInteractions(
  * particles.
  * @param icount Interaction count.
  * @param sum_cache (return) Cache of #vector holding the cumulative sum of updates on pi.
- * @param v_hi_inv #vector of 1/h for pi.
- * @param v_vix #vector of x velocity of pi.
- * @param v_viy #vector of y velocity of pi.
- * @param v_viz #vector of z velocity of pi.
+ * @param params Input parameters for SPH scheme.
  */
 __attribute__((always_inline)) INLINE static void storeInteractions(
     const int mask, const int pjd, vector *v_r2, vector *v_dx, vector *v_dy,
     vector *v_dz, const struct cache *const cell_cache,
     struct c2_cache *const int_cache, int *icount, struct update_cache_density *sum_cache,
-    vector v_hi_inv, vector v_vix, vector v_viy, vector v_viz) {
+    const struct input_params *params) {
 
 /* Left-pack values needed into the secondary cache using the interaction mask.
  */
@@ -169,8 +163,7 @@ __attribute__((always_inline)) INLINE static void storeInteractions(
     int icount_align = *icount;
 
     /* Peform remainder interactions. */
-    calcRemInteractions(int_cache, *icount, sum_cache,
-                        v_hi_inv, v_vix, v_viy, v_viz, &icount_align);
+    calcRemInteractions(int_cache, *icount, sum_cache, params, &icount_align);
 
     mask_t int_mask, int_mask2;
     vec_init_mask_true(int_mask);
@@ -180,7 +173,7 @@ __attribute__((always_inline)) INLINE static void storeInteractions(
     for (int j = 0; j < icount_align; j += (NUM_VEC_PROC * VEC_SIZE)) {
       runner_iact_nonsym_2_vec_density(
           &int_cache->r2q[j], &int_cache->dxq[j], &int_cache->dyq[j],
-          &int_cache->dzq[j], v_hi_inv, v_vix, v_viy, v_viz, &int_cache->vxq[j],
+          &int_cache->dzq[j], params, &int_cache->vxq[j],
           &int_cache->vyq[j], &int_cache->vzq[j], &int_cache->mq[j], sum_cache, int_mask, int_mask2, 0);
     }
 
@@ -567,23 +560,19 @@ __attribute__((always_inline)) INLINE void runner_doself1_density_vec(
     /* Is the ith particle active? */
     if (!part_is_active_no_debug(pi, max_active_bin)) continue;
 
+    /* Get the smoothing length, hi. */
     const float hi = cell_cache->h[pid];
+    const float hig2 = hi * hi * kernel_gamma2;
 
     /* Fill particle pi vectors. */
     const vector v_pix = vector_set1(cell_cache->x[pid]);
     const vector v_piy = vector_set1(cell_cache->y[pid]);
     const vector v_piz = vector_set1(cell_cache->z[pid]);
-    const vector v_hi = vector_set1(hi);
-    const vector v_vix = vector_set1(cell_cache->vx[pid]);
-    const vector v_viy = vector_set1(cell_cache->vy[pid]);
-    const vector v_viz = vector_set1(cell_cache->vz[pid]);
-
-    const float hig2 = hi * hi * kernel_gamma2;
     const vector v_hig2 = vector_set1(hig2);
 
-    /* Get the inverse of hi. */
-    vector v_hi_inv = vec_reciprocal(v_hi);
-
+    struct input_params params;
+    populate_input_params_cache(cell_cache, pid, &params);
+    
     struct update_cache_density sum_cache;
     update_cache_density_init(&sum_cache);
 
@@ -678,19 +667,16 @@ __attribute__((always_inline)) INLINE void runner_doself1_density_vec(
        * cache. */
       if (doi_mask) {
         storeInteractions(doi_mask, pjd, &v_r2, &v_dx, &v_dy, &v_dz, cell_cache,
-                          &int_cache, &icount, &sum_cache,
-                          v_hi_inv, v_vix, v_viy, v_viz);
+                          &int_cache, &icount, &sum_cache, &params);
       }
       if (doi_mask2) {
         storeInteractions(doi_mask2, pjd + VEC_SIZE, &v_r2_2, &v_dx_2, &v_dy_2,
-                          &v_dz_2, cell_cache, &int_cache, &icount, &sum_cache, v_hi_inv, v_vix,
-                          v_viy, v_viz);
+                          &v_dz_2, cell_cache, &int_cache, &icount, &sum_cache, &params);
       }
     }
 
     /* Perform padded vector remainder interactions if any are present. */
-    calcRemInteractions(&int_cache, icount, &sum_cache, v_hi_inv, v_vix, v_viy, v_viz,
-                        &icount_align);
+    calcRemInteractions(&int_cache, icount, &sum_cache, &params, &icount_align);
 
     /* Initialise masks to true in case remainder interactions have been
      * performed. */
@@ -702,7 +688,7 @@ __attribute__((always_inline)) INLINE void runner_doself1_density_vec(
     for (int pjd = 0; pjd < icount_align; pjd += (NUM_VEC_PROC * VEC_SIZE)) {
       runner_iact_nonsym_2_vec_density(
           &int_cache.r2q[pjd], &int_cache.dxq[pjd], &int_cache.dyq[pjd],
-          &int_cache.dzq[pjd], v_hi_inv, v_vix, v_viy, v_viz,
+          &int_cache.dzq[pjd], &params,
           &int_cache.vxq[pjd], &int_cache.vyq[pjd], &int_cache.vzq[pjd],
           &int_cache.mq[pjd], &sum_cache, int_mask, int_mask2, 0);
     }
@@ -766,22 +752,18 @@ __attribute__((always_inline)) INLINE void runner_doself_subset_density_vec(
     if (!part_is_active(pi, e)) error("Inactive particle in subset function!");
 #endif
 
+    /* Get the smoothing length, hi. */
     const float hi = pi->h;
+    const float hig2 = hi * hi * kernel_gamma2;
 
     /* Fill particle pi vectors. */
     const vector v_pix = vector_set1(pi->x[0] - c->loc[0]);
     const vector v_piy = vector_set1(pi->x[1] - c->loc[1]);
     const vector v_piz = vector_set1(pi->x[2] - c->loc[2]);
-    const vector v_hi = vector_set1(hi);
-    const vector v_vix = vector_set1(pi->v[0]);
-    const vector v_viy = vector_set1(pi->v[1]);
-    const vector v_viz = vector_set1(pi->v[2]);
-
-    const float hig2 = hi * hi * kernel_gamma2;
     const vector v_hig2 = vector_set1(hig2);
 
-    /* Get the inverse of hi. */
-    vector v_hi_inv = vec_reciprocal(v_hi);
+    struct input_params params;
+    populate_input_params(pi, &params);
 
     /* Reset cumulative sums of update vectors. */
     struct update_cache_density sum_cache;
@@ -883,19 +865,17 @@ __attribute__((always_inline)) INLINE void runner_doself_subset_density_vec(
        * cache. */
       if (doi_mask) {
         storeInteractions(doi_mask, pjd, &v_r2, &v_dx, &v_dy, &v_dz, cell_cache,
-                          &int_cache, &icount, &sum_cache, v_hi_inv,
-                          v_vix, v_viy, v_viz);
+                          &int_cache, &icount, &sum_cache, &params);
       }
       if (doi_mask2) {
         storeInteractions(doi_mask2, pjd + VEC_SIZE, &v_r2_2, &v_dx_2, &v_dy_2,
                           &v_dz_2, cell_cache, &int_cache, &icount, &sum_cache,
-                          v_hi_inv, v_vix, v_viy, v_viz);
+                          &params);
       }
     }
 
     /* Perform padded vector remainder interactions if any are present. */
-    calcRemInteractions(&int_cache, icount, &sum_cache, v_hi_inv,
-                        v_vix, v_viy, v_viz, &icount_align);
+    calcRemInteractions(&int_cache, icount, &sum_cache, &params, &icount_align);
 
     /* Initialise masks to true in case remainder interactions have been
      * performed. */
@@ -907,9 +887,7 @@ __attribute__((always_inline)) INLINE void runner_doself_subset_density_vec(
     for (int pjd = 0; pjd < icount_align; pjd += (NUM_VEC_PROC * VEC_SIZE)) {
       runner_iact_nonsym_2_vec_density(
           &int_cache.r2q[pjd], &int_cache.dxq[pjd], &int_cache.dyq[pjd],
-          &int_cache.dzq[pjd], v_hi_inv, v_vix, v_viy, v_viz,
-          &int_cache.vxq[pjd], &int_cache.vyq[pjd], &int_cache.vzq[pjd],
-          &int_cache.mq[pjd], &sum_cache, int_mask, int_mask2, 0);
+          &int_cache.dzq[pjd], &params, &int_cache.vxq[pjd], &int_cache.vyq[pjd], &int_cache.vzq[pjd], &int_cache.mq[pjd], &sum_cache, int_mask, int_mask2, 0);
     }
 
     /* Perform horizontal adds on vector sums and store result in particle pi.*/
@@ -1254,17 +1232,13 @@ void runner_dopair1_density_vec(struct runner *r, struct cell *ci,
       const vector v_pix = vector_set1(ci_cache->x[ci_cache_idx]);
       const vector v_piy = vector_set1(ci_cache->y[ci_cache_idx]);
       const vector v_piz = vector_set1(ci_cache->z[ci_cache_idx]);
-      const vector v_hi = vector_set1(hi);
-      const vector v_vix = vector_set1(ci_cache->vx[ci_cache_idx]);
-      const vector v_viy = vector_set1(ci_cache->vy[ci_cache_idx]);
-      const vector v_viz = vector_set1(ci_cache->vz[ci_cache_idx]);
-
+      
       const float hig2 = hi * hi * kernel_gamma2;
       const vector v_hig2 = vector_set1(hig2);
 
-      /* Get the inverse of hi. */
-      vector v_hi_inv = vec_reciprocal(v_hi);
-
+      struct input_params params;
+      populate_input_params_cache(ci_cache, ci_cache_idx, &params);
+      
       /* Reset cumulative sums of update vectors. */
       struct update_cache_density sum_cache;
       update_cache_density_init(&sum_cache);
@@ -1320,7 +1294,7 @@ void runner_dopair1_density_vec(struct runner *r, struct cell *ci,
         /* If there are any interactions perform them. */
         if (vec_is_mask_true(v_doi_mask))
           runner_iact_nonsym_1_vec_density(
-              &v_r2, &v_dx, &v_dy, &v_dz, v_hi_inv, v_vix, v_viy, v_viz,
+              &v_r2, &v_dx, &v_dy, &v_dz, &params,
               &cj_cache->vx[cj_cache_idx], &cj_cache->vy[cj_cache_idx],
               &cj_cache->vz[cj_cache_idx], &cj_cache->m[cj_cache_idx], &sum_cache, v_doi_mask);
 
@@ -1356,17 +1330,13 @@ void runner_dopair1_density_vec(struct runner *r, struct cell *ci,
       const vector v_pjx = vector_set1(cj_cache->x[cj_cache_idx]);
       const vector v_pjy = vector_set1(cj_cache->y[cj_cache_idx]);
       const vector v_pjz = vector_set1(cj_cache->z[cj_cache_idx]);
-      const vector v_hj = vector_set1(hj);
-      const vector v_vjx = vector_set1(cj_cache->vx[cj_cache_idx]);
-      const vector v_vjy = vector_set1(cj_cache->vy[cj_cache_idx]);
-      const vector v_vjz = vector_set1(cj_cache->vz[cj_cache_idx]);
-
+      
       const float hjg2 = hj * hj * kernel_gamma2;
       const vector v_hjg2 = vector_set1(hjg2);
 
-      /* Get the inverse of hj. */
-      vector v_hj_inv = vec_reciprocal(v_hj);
-
+      struct input_params params;
+      populate_input_params_cache(cj_cache, cj_cache_idx, &params);
+      
       /* Reset cumulative sums of update vectors. */
       struct update_cache_density sum_cache;
       update_cache_density_init(&sum_cache);
@@ -1430,7 +1400,7 @@ void runner_dopair1_density_vec(struct runner *r, struct cell *ci,
         /* If there are any interactions perform them. */
         if (vec_is_mask_true(v_doj_mask))
           runner_iact_nonsym_1_vec_density(
-              &v_r2, &v_dx, &v_dy, &v_dz, v_hj_inv, v_vjx, v_vjy, v_vjz,
+              &v_r2, &v_dx, &v_dy, &v_dz, &params,
               &ci_cache->vx[ci_cache_idx], &ci_cache->vy[ci_cache_idx],
               &ci_cache->vz[ci_cache_idx], &ci_cache->m[ci_cache_idx], &sum_cache, v_doj_mask);
 

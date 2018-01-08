@@ -179,8 +179,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_density(
  */
 __attribute__((always_inline)) INLINE static void
 runner_iact_nonsym_1_vec_density(vector *r2, vector *dx, vector *dy, vector *dz,
-                                 vector hi_inv, vector vix, vector viy,
-                                 vector viz, float *Vjx, float *Vjy, float *Vjz,
+                                 const struct input_params *params, float *Vjx, float *Vjy, float *Vjz,
                                  float *Mj, struct update_cache_density *sum_cache,
                                  mask_t mask) {
 
@@ -199,15 +198,15 @@ runner_iact_nonsym_1_vec_density(vector *r2, vector *dx, vector *dy, vector *dz,
   ri = vec_reciprocal_sqrt(*r2);
   r.v = vec_mul(r2->v, ri.v);
 
-  ui.v = vec_mul(r.v, hi_inv.v);
+  ui.v = vec_mul(r.v, params->v_hi_inv.v);
 
   /* Calculate the kernel for two particles. */
   kernel_deval_1_vec(&ui, &wi, &wi_dx);
 
   /* Compute dv. */
-  dvx.v = vec_sub(vix.v, vjx.v);
-  dvy.v = vec_sub(viy.v, vjy.v);
-  dvz.v = vec_sub(viz.v, vjz.v);
+  dvx.v = vec_sub(params->v_vix.v, vjx.v);
+  dvy.v = vec_sub(params->v_viy.v, vjy.v);
+  dvz.v = vec_sub(params->v_viz.v, vjz.v);
 
   /* Compute dv dot r */
   dvdr.v = vec_fma(dvx.v, dx->v, vec_fma(dvy.v, dy->v, vec_mul(dvz.v, dz->v)));
@@ -250,8 +249,7 @@ runner_iact_nonsym_1_vec_density(vector *r2, vector *dx, vector *dy, vector *dz,
  */
 __attribute__((always_inline)) INLINE static void
 runner_iact_nonsym_2_vec_density(float *R2, float *Dx, float *Dy, float *Dz,
-                                 vector hi_inv, vector vix, vector viy,
-                                 vector viz, float *Vjx, float *Vjy, float *Vjz,
+                                 const struct input_params *params, float *Vjx, float *Vjy, float *Vjz,
                                  float *Mj, struct update_cache_density *sum_cache,
                                  mask_t mask, mask_t mask2, short mask_cond) {
 
@@ -288,19 +286,19 @@ runner_iact_nonsym_2_vec_density(float *R2, float *Dx, float *Dy, float *Dz,
   r.v = vec_mul(r2.v, ri.v);
   r_2.v = vec_mul(r2_2.v, ri2.v);
 
-  ui.v = vec_mul(r.v, hi_inv.v);
-  ui2.v = vec_mul(r_2.v, hi_inv.v);
+  ui.v = vec_mul(r.v, params->v_hi_inv.v);
+  ui2.v = vec_mul(r_2.v, params->v_hi_inv.v);
 
   /* Calculate the kernel for two particles. */
   kernel_deval_2_vec(&ui, &wi, &wi_dx, &ui2, &wi2, &wi_dx2);
 
   /* Compute dv. */
-  dvx.v = vec_sub(vix.v, vjx.v);
-  dvx2.v = vec_sub(vix.v, vjx2.v);
-  dvy.v = vec_sub(viy.v, vjy.v);
-  dvy2.v = vec_sub(viy.v, vjy2.v);
-  dvz.v = vec_sub(viz.v, vjz.v);
-  dvz2.v = vec_sub(viz.v, vjz2.v);
+  dvx.v = vec_sub(params->v_vix.v, vjx.v);
+  dvx2.v = vec_sub(params->v_vix.v, vjx2.v);
+  dvy.v = vec_sub(params->v_viy.v, vjy.v);
+  dvy2.v = vec_sub(params->v_viy.v, vjy2.v);
+  dvz.v = vec_sub(params->v_viz.v, vjz.v);
+  dvz2.v = vec_sub(params->v_viz.v, vjz2.v);
 
   /* Compute dv dot r */
   dvdr.v = vec_fma(dvx.v, dx.v, vec_fma(dvy.v, dy.v, vec_mul(dvz.v, dz.v)));

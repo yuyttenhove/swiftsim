@@ -135,6 +135,14 @@ struct update_cache_force {
   vector v_entropy_dtSum;
 };
 
+/* Cache to hold a list of vectors used to update particle properties after a force interaction. */
+struct input_params {
+  vector v_vix;
+  vector v_viy;
+  vector v_viz;
+  vector v_hi_inv;
+};
+
 /**
  * @brief Reset the density update cache to zero.
  *
@@ -203,6 +211,41 @@ __attribute__((always_inline)) INLINE void update_force_particle(struct part *re
   VEC_HMAX(c->v_sigSum, pi->force.v_sig);
   VEC_HADD(c->v_entropy_dtSum, pi->entropy_dt);
 
+}
+
+/**
+ * @brief Populate the parameters used in the interaction function using a cache. Density interaction.
+ *
+ * @param c Particle cache.
+ * @param cache_index Cache index.
+ * @param params Input parameters.
+ */
+__attribute__((always_inline)) INLINE void populate_input_params_cache(const struct cache *restrict c, const int cache_index, struct input_params *params) {
+
+  const float hi = c->h[cache_index];
+  const float hi_inv = 1.f / hi;
+  
+  params->v_vix = vector_set1(c->vx[cache_index]);
+  params->v_viy = vector_set1(c->vy[cache_index]);
+  params->v_viz = vector_set1(c->vz[cache_index]);
+  params->v_hi_inv = vector_set1(hi_inv);
+}
+
+/**
+ * @brief Populate the parameters used in the interaction function. Density interaction.
+ *
+ * @param pi Particle to update.
+ * @param params Input parameters.
+ */
+__attribute__((always_inline)) INLINE void populate_input_params(struct part *restrict pi, struct input_params *params) {
+
+  const float hi = pi->h;
+  const float hi_inv = 1.f / hi;
+  
+  params->v_vix = vector_set1(pi->v[0]);
+  params->v_viy = vector_set1(pi->v[1]);
+  params->v_viz = vector_set1(pi->v[2]);
+  params->v_hi_inv = vector_set1(hi_inv);
 }
 
 /**
