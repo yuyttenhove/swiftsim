@@ -179,8 +179,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_density(
  */
 __attribute__((always_inline)) INLINE static void
 runner_iact_nonsym_1_vec_density(vector *r2, vector *dx, vector *dy, vector *dz,
-                                 const struct input_params_density *params, float *Vjx, float *Vjy, float *Vjz,
-                                 float *Mj, struct update_cache_density *sum_cache,
+                                 const struct input_params_density *params, const struct cache *cell_cache, const int cache_idx, struct update_cache_density *sum_cache,
                                  mask_t mask) {
 
   vector r, ri, ui, wi, wi_dx;
@@ -189,10 +188,10 @@ runner_iact_nonsym_1_vec_density(vector *r2, vector *dx, vector *dy, vector *dz,
   vector curlvrx, curlvry, curlvrz;
 
   /* Fill the vectors. */
-  const vector mj = vector_load(Mj);
-  const vector vjx = vector_load(Vjx);
-  const vector vjy = vector_load(Vjy);
-  const vector vjz = vector_load(Vjz);
+  const vector mj = vector_load(&cell_cache->m[cache_idx]);
+  const vector vjx = vector_load(&cell_cache->vx[cache_idx]);
+  const vector vjy = vector_load(&cell_cache->vy[cache_idx]);
+  const vector vjz = vector_load(&cell_cache->vz[cache_idx]);
 
   /* Get the radius and inverse radius. */
   ri = vec_reciprocal_sqrt(*r2);
@@ -248,9 +247,9 @@ runner_iact_nonsym_1_vec_density(vector *r2, vector *dx, vector *dy, vector *dz,
  * (non-symmetric vectorized version).
  */
 __attribute__((always_inline)) INLINE static void
-runner_iact_nonsym_2_vec_density(float *R2, float *Dx, float *Dy, float *Dz,
-                                 const struct input_params_density *params, float *Vjx, float *Vjy, float *Vjz,
-                                 float *Mj, struct update_cache_density *sum_cache,
+runner_iact_nonsym_2_vec_density(struct c2_cache *int_cache, const int int_cache_idx,
+                                 const struct input_params_density *params, 
+                                 struct update_cache_density *sum_cache,
                                  mask_t mask, mask_t mask2, short mask_cond) {
 
   vector r, ri, ui, wi, wi_dx;
@@ -263,24 +262,24 @@ runner_iact_nonsym_2_vec_density(float *R2, float *Dx, float *Dy, float *Dz,
   vector curlvrx2, curlvry2, curlvrz2;
 
   /* Fill the vectors. */
-  const vector mj = vector_load(Mj);
-  const vector mj2 = vector_load(&Mj[VEC_SIZE]);
-  const vector vjx = vector_load(Vjx);
-  const vector vjx2 = vector_load(&Vjx[VEC_SIZE]);
-  const vector vjy = vector_load(Vjy);
-  const vector vjy2 = vector_load(&Vjy[VEC_SIZE]);
-  const vector vjz = vector_load(Vjz);
-  const vector vjz2 = vector_load(&Vjz[VEC_SIZE]);
-  const vector dx = vector_load(Dx);
-  const vector dx2 = vector_load(&Dx[VEC_SIZE]);
-  const vector dy = vector_load(Dy);
-  const vector dy2 = vector_load(&Dy[VEC_SIZE]);
-  const vector dz = vector_load(Dz);
-  const vector dz2 = vector_load(&Dz[VEC_SIZE]);
+  const vector mj = vector_load(&int_cache->mq[int_cache_idx]);
+  const vector mj2 = vector_load(&int_cache->mq[int_cache_idx + VEC_SIZE]);
+  const vector vjx = vector_load(&int_cache->vxq[int_cache_idx]);
+  const vector vjx2 = vector_load(&int_cache->vxq[int_cache_idx + VEC_SIZE]);
+  const vector vjy = vector_load(&int_cache->vyq[int_cache_idx]);
+  const vector vjy2 = vector_load(&int_cache->vyq[int_cache_idx + VEC_SIZE]);
+  const vector vjz = vector_load(&int_cache->vzq[int_cache_idx]);
+  const vector vjz2 = vector_load(&int_cache->vzq[int_cache_idx + VEC_SIZE]);
+  const vector dx = vector_load(&int_cache->dxq[int_cache_idx]);
+  const vector dx2 = vector_load(&int_cache->dxq[int_cache_idx + VEC_SIZE]);
+  const vector dy = vector_load(&int_cache->dyq[int_cache_idx]);
+  const vector dy2 = vector_load(&int_cache->dyq[int_cache_idx + VEC_SIZE]);
+  const vector dz = vector_load(&int_cache->dzq[int_cache_idx]);
+  const vector dz2 = vector_load(&int_cache->dzq[int_cache_idx + VEC_SIZE]);
 
   /* Get the radius and inverse radius. */
-  const vector r2 = vector_load(R2);
-  const vector r2_2 = vector_load(&R2[VEC_SIZE]);
+  const vector r2 = vector_load(&int_cache->r2q[int_cache_idx]);
+  const vector r2_2 = vector_load(&int_cache->r2q[int_cache_idx + VEC_SIZE]);
   ri = vec_reciprocal_sqrt(r2);
   ri2 = vec_reciprocal_sqrt(r2_2);
   r.v = vec_mul(r2.v, ri.v);

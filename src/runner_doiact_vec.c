@@ -84,11 +84,8 @@ __attribute__((always_inline)) INLINE static void calcRemInteractions(
      * interaction count. */
     *icount_align = icount - rem;
     runner_iact_nonsym_2_vec_density(
-        &int_cache->r2q[*icount_align], &int_cache->dxq[*icount_align],
-        &int_cache->dyq[*icount_align], &int_cache->dzq[*icount_align],
-        params, &int_cache->vxq[*icount_align],
-        &int_cache->vyq[*icount_align], &int_cache->vzq[*icount_align],
-        &int_cache->mq[*icount_align], sum_cache, int_mask,
+        int_cache, *icount_align,
+        params, sum_cache, int_mask,
         int_mask2, 1);
   }
 }
@@ -172,9 +169,7 @@ __attribute__((always_inline)) INLINE static void storeInteractions(
     /* Perform interactions. */
     for (int j = 0; j < icount_align; j += (NUM_VEC_PROC * VEC_SIZE)) {
       runner_iact_nonsym_2_vec_density(
-          &int_cache->r2q[j], &int_cache->dxq[j], &int_cache->dyq[j],
-          &int_cache->dzq[j], params, &int_cache->vxq[j],
-          &int_cache->vyq[j], &int_cache->vzq[j], &int_cache->mq[j], sum_cache, int_mask, int_mask2, 0);
+          int_cache, j, params, sum_cache, int_mask, int_mask2, 0);
     }
 
     /* Reset interaction count. */
@@ -686,11 +681,7 @@ __attribute__((always_inline)) INLINE void runner_doself1_density_vec(
 
     /* Perform interaction with 2 vectors. */
     for (int pjd = 0; pjd < icount_align; pjd += (NUM_VEC_PROC * VEC_SIZE)) {
-      runner_iact_nonsym_2_vec_density(
-          &int_cache.r2q[pjd], &int_cache.dxq[pjd], &int_cache.dyq[pjd],
-          &int_cache.dzq[pjd], &params,
-          &int_cache.vxq[pjd], &int_cache.vyq[pjd], &int_cache.vzq[pjd],
-          &int_cache.mq[pjd], &sum_cache, int_mask, int_mask2, 0);
+      runner_iact_nonsym_2_vec_density(&int_cache, pjd, &params, &sum_cache, int_mask, int_mask2, 0);
     }
 
     /* Perform horizontal adds on vector sums and store result in particle pi. */
@@ -886,8 +877,7 @@ __attribute__((always_inline)) INLINE void runner_doself_subset_density_vec(
     /* Perform interaction with 2 vectors. */
     for (int pjd = 0; pjd < icount_align; pjd += (NUM_VEC_PROC * VEC_SIZE)) {
       runner_iact_nonsym_2_vec_density(
-          &int_cache.r2q[pjd], &int_cache.dxq[pjd], &int_cache.dyq[pjd],
-          &int_cache.dzq[pjd], &params, &int_cache.vxq[pjd], &int_cache.vyq[pjd], &int_cache.vzq[pjd], &int_cache.mq[pjd], &sum_cache, int_mask, int_mask2, 0);
+          &int_cache, pjd, &params, &sum_cache, int_mask, int_mask2, 0);
     }
 
     /* Perform horizontal adds on vector sums and store result in particle pi.*/
@@ -1283,8 +1273,7 @@ void runner_dopair1_density_vec(struct runner *r, struct cell *ci,
         if (vec_is_mask_true(v_doi_mask))
           runner_iact_nonsym_1_vec_density(
               &v_r2, &v_dx, &v_dy, &v_dz, &params,
-              &cj_cache->vx[cj_cache_idx], &cj_cache->vy[cj_cache_idx],
-              &cj_cache->vz[cj_cache_idx], &cj_cache->m[cj_cache_idx], &sum_cache, v_doi_mask);
+              cj_cache, cj_cache_idx, &sum_cache, v_doi_mask);
 
       } /* loop over the parts in cj. */
 
@@ -1389,8 +1378,7 @@ void runner_dopair1_density_vec(struct runner *r, struct cell *ci,
         if (vec_is_mask_true(v_doj_mask))
           runner_iact_nonsym_1_vec_density(
               &v_r2, &v_dx, &v_dy, &v_dz, &params,
-              &ci_cache->vx[ci_cache_idx], &ci_cache->vy[ci_cache_idx],
-              &ci_cache->vz[ci_cache_idx], &ci_cache->m[ci_cache_idx], &sum_cache, v_doj_mask);
+              ci_cache, ci_cache_idx, &sum_cache, v_doj_mask);
 
       } /* loop over the parts in ci. */
 
