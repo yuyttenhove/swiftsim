@@ -1040,11 +1040,8 @@ __attribute__((always_inline)) INLINE void runner_doself2_force_vec(
         v_r2.v = vec_add(v_r2.v, vec_set1(FLT_MIN));
 
         runner_iact_nonsym_1_vec_force(
-            &v_r2, &v_dx, &v_dy, &v_dz, &params, &cell_cache->vx[pjd],
-            &cell_cache->vy[pjd], &cell_cache->vz[pjd], &cell_cache->rho[pjd],
-            &cell_cache->grad_h[pjd], &cell_cache->pOrho2[pjd],
-            &cell_cache->balsara[pjd], &cell_cache->soundspeed[pjd],
-            &cell_cache->m[pjd], v_hj_inv, &sum_cache, v_doi_mask);
+            &v_r2, &v_dx, &v_dy, &v_dz, &params, cell_cache, pjd,
+            v_hj_inv, &sum_cache, v_doi_mask);
       }
 
     } /* Loop over all other particles. */
@@ -1620,11 +1617,7 @@ void runner_dopair2_force_vec(struct runner *r, struct cell *ci,
 
           runner_iact_nonsym_1_vec_force(
               &v_r2, &v_dx, &v_dy, &v_dz, &params,
-              &cj_cache->vx[cj_cache_idx], &cj_cache->vy[cj_cache_idx],
-              &cj_cache->vz[cj_cache_idx], &cj_cache->rho[cj_cache_idx],
-              &cj_cache->grad_h[cj_cache_idx], &cj_cache->pOrho2[cj_cache_idx],
-              &cj_cache->balsara[cj_cache_idx],
-              &cj_cache->soundspeed[cj_cache_idx], &cj_cache->m[cj_cache_idx],
+              cj_cache, cj_cache_idx,
               v_hj_inv, &sum_cache,
               v_doi_mask);
         }
@@ -1736,11 +1729,7 @@ void runner_dopair2_force_vec(struct runner *r, struct cell *ci,
 
           runner_iact_nonsym_1_vec_force(
               &v_r2, &v_dx, &v_dy, &v_dz, &params,
-              &ci_cache->vx[ci_cache_idx], &ci_cache->vy[ci_cache_idx],
-              &ci_cache->vz[ci_cache_idx], &ci_cache->rho[ci_cache_idx],
-              &ci_cache->grad_h[ci_cache_idx], &ci_cache->pOrho2[ci_cache_idx],
-              &ci_cache->balsara[ci_cache_idx],
-              &ci_cache->soundspeed[ci_cache_idx], &ci_cache->m[ci_cache_idx],
+              ci_cache, ci_cache_idx, 
               v_hi_inv, &sum_cache,
               v_doj_mask);
         }

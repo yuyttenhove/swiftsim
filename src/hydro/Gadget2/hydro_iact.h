@@ -602,9 +602,7 @@ static const vector const_viscosity_alpha_fac =
  */
 __attribute__((always_inline)) INLINE static void
 runner_iact_nonsym_1_vec_force(
-    vector *r2, vector *dx, vector *dy, vector *dz, const struct input_params_force *params, float *Vjx, float *Vjy, float *Vjz, float *Pjrho, float *Grad_hj,
-    float *PjPOrho2, float *Balsara_j, float *Cj, float *Mj, 
-    vector hj_inv, struct update_cache_force *sum_cache, mask_t mask) {
+    vector *r2, vector *dx, vector *dy, vector *dz, const struct input_params_force *params, const struct cache *cell_cache, const int cache_idx, vector hj_inv, struct update_cache_force *sum_cache, mask_t mask) {
 
 #ifdef WITH_VECTORIZATION
 
@@ -620,15 +618,15 @@ runner_iact_nonsym_1_vec_force(
   vector rho_ij, visc, visc_term, sph_term, acc, entropy_dt;
 
   /* Fill vectors. */
-  const vector vjx = vector_load(Vjx);
-  const vector vjy = vector_load(Vjy);
-  const vector vjz = vector_load(Vjz);
-  const vector mj = vector_load(Mj);
-  const vector pjrho = vector_load(Pjrho);
-  const vector grad_hj = vector_load(Grad_hj);
-  const vector pjPOrho2 = vector_load(PjPOrho2);
-  const vector balsara_j = vector_load(Balsara_j);
-  const vector cj = vector_load(Cj);
+  const vector vjx = vector_load(&cell_cache->vx[cache_idx]);
+  const vector vjy = vector_load(&cell_cache->vy[cache_idx]);
+  const vector vjz = vector_load(&cell_cache->vz[cache_idx]);
+  const vector mj = vector_load(&cell_cache->m[cache_idx]);
+  const vector pjrho = vector_load(&cell_cache->rho[cache_idx]);
+  const vector grad_hj = vector_load(&cell_cache->grad_h[cache_idx]);
+  const vector pjPOrho2 = vector_load(&cell_cache->pOrho2[cache_idx]);
+  const vector balsara_j = vector_load(&cell_cache->balsara[cache_idx]);
+  const vector cj = vector_load(&cell_cache->soundspeed[cache_idx]);
 
   const vector fac_mu =
       vector_set1(1.f); /* Will change with cosmological integration */
