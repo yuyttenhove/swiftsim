@@ -26,9 +26,10 @@
 /* Local headers. */
 #include "active.h"
 
-#if defined(WITH_VECTORIZATION) && defined(GADGET2_SPH)
+//#if defined(WITH_VECTORIZATION) && defined(GADGET2_SPH)
+#if defined(WITH_VECTORIZATION)
 
-static const vector kernel_gamma2_vec = FILL_VEC(kernel_gamma2);
+//static const vector kernel_gamma2_vec = FILL_VEC(kernel_gamma2);
 
 /**
  * @brief Compute the vector remainder interactions from the secondary cache.
@@ -38,7 +39,6 @@ static const vector kernel_gamma2_vec = FILL_VEC(kernel_gamma2);
  * @param icount Interaction count.
  * @param sum_cache (return) Cache of #vector holding the cumulative sum of updates on pi.
  * @param params Input parameters for SPH scheme.
- * @param icount_align (return) Interaction count after the remainder
  * interactions have been performed, should be a multiple of the vector length.
  */
 __attribute__((always_inline)) INLINE static void calcRemInteractions(
@@ -286,6 +286,7 @@ __attribute__((always_inline)) INLINE static void populate_max_index_no_cache(
   *init_pj = last_pj;
 }
 
+#if defined(WITH_VECTORIZATION) && defined(GADGET2_SPH)
 /**
  * @brief Populates the arrays max_index_i and max_index_j with the maximum
  * indices of
@@ -450,7 +451,7 @@ populate_max_index_no_cache_force(
   *init_pi = first_pi;
   *init_pj = last_pj;
 }
-
+#endif
 #endif /* WITH_VECTORIZATION && GADGET2_SPH */
 
 /**
@@ -463,7 +464,8 @@ populate_max_index_no_cache_force(
 __attribute__((always_inline)) INLINE void runner_doself1_density_vec(
     struct runner *r, struct cell *restrict c) {
 
-#if defined(WITH_VECTORIZATION) && defined(GADGET2_SPH)
+//#if defined(WITH_VECTORIZATION) && defined(GADGET2_SPH)
+#if defined(WITH_VECTORIZATION)
 
   /* Get some local variables */
   const struct engine *e = r->e;
@@ -651,7 +653,8 @@ __attribute__((always_inline)) INLINE void runner_doself_subset_density_vec(
     struct runner *r, struct cell *restrict c, struct part *restrict parts,
     int *restrict ind, int pi_count) {
 
-#if defined(WITH_VECTORIZATION) && defined(GADGET2_SPH)
+//#if defined(WITH_VECTORIZATION) && defined(GADGET2_SPH)
+#if defined(WITH_VECTORIZATION)
 
   const int count = c->count;
 
@@ -1011,7 +1014,8 @@ void runner_dopair1_density_vec(struct runner *r, struct cell *ci,
                                 struct cell *cj, const int sid,
                                 const double *shift) {
 
-#if defined(WITH_VECTORIZATION) && defined(GADGET2_SPH)
+//#if defined(WITH_VECTORIZATION) && defined(GADGET2_SPH)
+#if defined(WITH_VECTORIZATION)
 
   const struct engine *restrict e = r->e;
   const timebin_t max_active_bin = e->max_active_bin;

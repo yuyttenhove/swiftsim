@@ -134,9 +134,9 @@ struct part {
       /*! "Grad h" term */
       float f;
 
-      /*! Particle pressure. */
-      float pressure;
-
+      /* Pressure over density squared  */
+      float P_over_rho2;
+      
       /*! Particle soundspeed. */
       float soundspeed;
 

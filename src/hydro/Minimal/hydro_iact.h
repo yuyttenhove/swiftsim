@@ -34,6 +34,7 @@
 
 #include "adiabatic_index.h"
 #include "minmax.h"
+#include "hydro_cache.h"
 
 /**
  * @brief Density loop
@@ -94,6 +95,106 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_density(
   pi->density.wcount_dh -= (hydro_dimension * wi + ui * wi_dx);
 }
 
+#ifdef WITH_VECTORIZATION
+
+/**
+ * @brief Density interaction computed using 1 vector
+ * (non-symmetric vectorized version).
+ */
+__attribute__((always_inline)) INLINE static void
+runner_iact_nonsym_1_vec_density(vector *r2, vector *dx, vector *dy, vector *dz,
+                                 const struct input_params_density *params, const struct cache *cell_cache, const int cache_idx, struct update_cache_density *sum_cache,
+                                 mask_t mask) {
+
+  vector r, ri, ui, wi, wi_dx;
+
+  /* Fill the vectors. */
+  const vector mj = vector_load(&cell_cache->m[cache_idx]);
+
+  /* Get the radius and inverse radius. */
+  ri = vec_reciprocal_sqrt(*r2);
+  r.v = vec_mul(r2->v, ri.v);
+
+  ui.v = vec_mul(r.v, params->v_hi_inv.v);
+
+  /* Calculate the kernel for two particles. */
+  kernel_deval_1_vec(&ui, &wi, &wi_dx);
+
+  vector wcount_dh_update;
+  wcount_dh_update.v =
+      vec_fma(vec_set1(hydro_dimension), wi.v, vec_mul(ui.v, wi_dx.v));
+
+  /* Mask updates to intermediate vector sums for particle pi. */
+  sum_cache->v_rhoSum.v = vec_mask_add(sum_cache->v_rhoSum.v, vec_mul(mj.v, wi.v), mask);
+  sum_cache->v_rho_dhSum.v =
+      vec_mask_sub(sum_cache->v_rho_dhSum.v, vec_mul(mj.v, wcount_dh_update.v), mask);
+  sum_cache->v_wcountSum.v = vec_mask_add(sum_cache->v_wcountSum.v, wi.v, mask);
+  sum_cache->v_wcount_dhSum.v = vec_mask_sub(sum_cache->v_wcount_dhSum.v, wcount_dh_update.v, mask);
+}
+
+/**
+ * @brief Density interaction computed using 2 interleaved vectors
+ * (non-symmetric vectorized version).
+ */
+__attribute__((always_inline)) INLINE static void
+runner_iact_nonsym_2_vec_density(struct c2_cache *int_cache, const int int_cache_idx,
+                                 const struct input_params_density *params, 
+                                 struct update_cache_density *sum_cache,
+                                 mask_t mask, mask_t mask2, short mask_cond) {
+
+  vector r, ri, ui, wi, wi_dx;
+  vector r_2, ri2, ui2, wi2, wi_dx2;
+
+  /* Fill the vectors. */
+  const vector mj = vector_load(&int_cache->mq[int_cache_idx]);
+  const vector mj2 = vector_load(&int_cache->mq[int_cache_idx + VEC_SIZE]);
+
+  /* Get the radius and inverse radius. */
+  const vector r2 = vector_load(&int_cache->r2q[int_cache_idx]);
+  const vector r2_2 = vector_load(&int_cache->r2q[int_cache_idx + VEC_SIZE]);
+  ri = vec_reciprocal_sqrt(r2);
+  ri2 = vec_reciprocal_sqrt(r2_2);
+  r.v = vec_mul(r2.v, ri.v);
+  r_2.v = vec_mul(r2_2.v, ri2.v);
+
+  ui.v = vec_mul(r.v, params->v_hi_inv.v);
+  ui2.v = vec_mul(r_2.v, params->v_hi_inv.v);
+
+  /* Calculate the kernel for two particles. */
+  kernel_deval_2_vec(&ui, &wi, &wi_dx, &ui2, &wi2, &wi_dx2);
+
+  vector wcount_dh_update, wcount_dh_update2;
+  wcount_dh_update.v =
+      vec_fma(vec_set1(hydro_dimension), wi.v, vec_mul(ui.v, wi_dx.v));
+  wcount_dh_update2.v =
+      vec_fma(vec_set1(hydro_dimension), wi2.v, vec_mul(ui2.v, wi_dx2.v));
+
+  /* Mask updates to intermediate vector sums for particle pi. */
+  /* Mask only when needed. */
+  if (mask_cond) {
+    sum_cache->v_rhoSum.v = vec_mask_add(sum_cache->v_rhoSum.v, vec_mul(mj.v, wi.v), mask);
+    sum_cache->v_rhoSum.v = vec_mask_add(sum_cache->v_rhoSum.v, vec_mul(mj2.v, wi2.v), mask2);
+    sum_cache->v_rho_dhSum.v =
+        vec_mask_sub(sum_cache->v_rho_dhSum.v, vec_mul(mj.v, wcount_dh_update.v), mask);
+    sum_cache->v_rho_dhSum.v =
+        vec_mask_sub(sum_cache->v_rho_dhSum.v, vec_mul(mj2.v, wcount_dh_update2.v), mask2);
+    sum_cache->v_wcountSum.v = vec_mask_add(sum_cache->v_wcountSum.v, wi.v, mask);
+    sum_cache->v_wcountSum.v = vec_mask_add(sum_cache->v_wcountSum.v, wi2.v, mask2);
+    sum_cache->v_wcount_dhSum.v = vec_mask_sub(sum_cache->v_wcount_dhSum.v, wcount_dh_update.v, mask);
+    sum_cache->v_wcount_dhSum.v = vec_mask_sub(sum_cache->v_wcount_dhSum.v, wcount_dh_update2.v, mask2);
+  } else {
+    sum_cache->v_rhoSum.v = vec_add(sum_cache->v_rhoSum.v, vec_mul(mj.v, wi.v));
+    sum_cache->v_rhoSum.v = vec_add(sum_cache->v_rhoSum.v, vec_mul(mj2.v, wi2.v));
+    sum_cache->v_rho_dhSum.v = vec_sub(sum_cache->v_rho_dhSum.v, vec_mul(mj.v, wcount_dh_update.v));
+    sum_cache->v_rho_dhSum.v = vec_sub(sum_cache->v_rho_dhSum.v, vec_mul(mj2.v, wcount_dh_update2.v));
+    sum_cache->v_wcountSum.v = vec_add(sum_cache->v_wcountSum.v, wi.v);
+    sum_cache->v_wcountSum.v = vec_add(sum_cache->v_wcountSum.v, wi2.v);
+    sum_cache->v_wcount_dhSum.v = vec_sub(sum_cache->v_wcount_dhSum.v, wcount_dh_update.v);
+    sum_cache->v_wcount_dhSum.v = vec_sub(sum_cache->v_wcount_dhSum.v, wcount_dh_update2.v);
+  }
+}
+#endif
+
 /**
  * @brief Force loop
  */
@@ -110,8 +211,8 @@ __attribute__((always_inline)) INLINE static void runner_iact_force(
   const float mj = pj->mass;
   const float rhoi = pi->rho;
   const float rhoj = pj->rho;
-  const float pressurei = pi->force.pressure;
-  const float pressurej = pj->force.pressure;
+  const float P_over_rho2_i = pi->force.P_over_rho2;
+  const float P_over_rho2_j = pj->force.P_over_rho2;
 
   /* Get the kernel for hi. */
   const float hi_inv = 1.0f / hi;
@@ -128,10 +229,6 @@ __attribute__((always_inline)) INLINE static void runner_iact_force(
   float wj, wj_dx;
   kernel_deval(xj, &wj, &wj_dx);
   const float wj_dr = hjd_inv * wj_dx;
-
-  /* Compute gradient terms */
-  const float P_over_rho2_i = pressurei / (rhoi * rhoi) * pi->force.f;
-  const float P_over_rho2_j = pressurej / (rhoj * rhoj) * pj->force.f;
 
   /* Compute dv dot r. */
   const float dvdr = (pi->v[0] - pj->v[0]) * dx[0] +
@@ -210,8 +307,8 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force(
   const float mj = pj->mass;
   const float rhoi = pi->rho;
   const float rhoj = pj->rho;
-  const float pressurei = pi->force.pressure;
-  const float pressurej = pj->force.pressure;
+  const float P_over_rho2_i = pi->force.P_over_rho2;
+  const float P_over_rho2_j = pj->force.P_over_rho2;
 
   /* Get the kernel for hi. */
   const float hi_inv = 1.0f / hi;
@@ -228,10 +325,6 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force(
   float wj, wj_dx;
   kernel_deval(xj, &wj, &wj_dx);
   const float wj_dr = hjd_inv * wj_dx;
-
-  /* Compute gradient terms */
-  const float P_over_rho2_i = pressurei / (rhoi * rhoi) * pi->force.f;
-  const float P_over_rho2_j = pressurej / (rhoj * rhoj) * pj->force.f;
 
   /* Compute dv dot r. */
   const float dvdr = (pi->v[0] - pj->v[0]) * dx[0] +

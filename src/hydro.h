@@ -30,6 +30,7 @@
 #if defined(MINIMAL_SPH)
 #include "./hydro/Minimal/hydro.h"
 #include "./hydro/Minimal/hydro_iact.h"
+#include "./hydro/Minimal/hydro_cache.h"
 #define SPH_IMPLEMENTATION "Minimal version of SPH (e.g. Price 2010)"
 #elif defined(GADGET2_SPH)
 #include "./hydro/Gadget2/hydro.h"

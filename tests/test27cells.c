@@ -471,7 +471,8 @@ int main(int argc, char *argv[]) {
 
     const ticks tic = getticks();
 
-#if !(defined(MINIMAL_SPH) && defined(WITH_VECTORIZATION))
+//#if !(defined(MINIMAL_SPH) && defined(WITH_VECTORIZATION))
+#if defined(WITH_VECTORIZATION)
 
 #ifdef WITH_VECTORIZATION
     runner.ci_cache.count = 0;
@@ -554,7 +555,8 @@ int main(int argc, char *argv[]) {
 
   const ticks tic = getticks();
 
-#if !(defined(MINIMAL_SPH) && defined(WITH_VECTORIZATION))
+//#if !(defined(MINIMAL_SPH) && defined(WITH_VECTORIZATION))
+#if defined(WITH_VECTORIZATION)
 
   /* Run all the brute-force pairs */
   for (int j = 0; j < 27; ++j)
