@@ -42,18 +42,17 @@ static const vector kernel_gamma2_vec = FILL_VEC(kernel_gamma2);
  * interactions have been performed, should be a multiple of the vector length.
  */
 __attribute__((always_inline)) INLINE static void calcRemInteractions(
-    struct c2_cache *const int_cache, const int icount, struct update_cache_density *sum_cache,
-    const struct input_params_density *params,
-    int *icount_align) {
+    struct c2_cache *const int_cache, int *icount, struct update_cache_density *sum_cache,
+    const struct input_params_density *params) {
 
   mask_t int_mask, int_mask2;
 
   /* Work out the number of remainder interactions and pad secondary cache. */
-  *icount_align = icount;
-  int rem = icount % (NUM_VEC_PROC * VEC_SIZE);
+  int icount_padded = *icount;
+  int rem = *icount % (NUM_VEC_PROC * VEC_SIZE);
   if (rem != 0) {
     int pad = (NUM_VEC_PROC * VEC_SIZE) - rem;
-    *icount_align += pad;
+    icount_padded += pad;
 
     /* Initialise masks to true. */
     vec_init_mask_true(int_mask);
@@ -61,7 +60,7 @@ __attribute__((always_inline)) INLINE static void calcRemInteractions(
 
     /* Pad secondary cache so that there are no contributions in the interaction
      * function. */
-    for (int i = icount; i < *icount_align; i++) {
+    for (int i = *icount; i < icount_padded; i++) {
       int_cache->mq[i] = 0.f;
       int_cache->r2q[i] = 1.f;
       int_cache->dxq[i] = 0.f;
@@ -82,11 +81,12 @@ __attribute__((always_inline)) INLINE static void calcRemInteractions(
 
     /* Perform remainder interaction and remove remainder from aligned
      * interaction count. */
-    *icount_align = icount - rem;
+    *icount -= rem;
     runner_iact_nonsym_2_vec_density(
-        int_cache, *icount_align,
+        int_cache, *icount,
         params, sum_cache, int_mask,
         int_mask2, 1);
+
   }
 }
 
@@ -157,17 +157,15 @@ __attribute__((always_inline)) INLINE static void storeInteractions(
   /* Flush the c2 cache if it has reached capacity. */
   if (*icount >= (C2_CACHE_SIZE - (NUM_VEC_PROC * VEC_SIZE))) {
 
-    int icount_align = *icount;
-
     /* Peform remainder interactions. */
-    calcRemInteractions(int_cache, *icount, sum_cache, params, &icount_align);
+    calcRemInteractions(int_cache, icount, sum_cache, params);
 
     mask_t int_mask, int_mask2;
     vec_init_mask_true(int_mask);
     vec_init_mask_true(int_mask2);
 
     /* Perform interactions. */
-    for (int j = 0; j < icount_align; j += (NUM_VEC_PROC * VEC_SIZE)) {
+    for (int j = 0; j < *icount; j += (NUM_VEC_PROC * VEC_SIZE)) {
       runner_iact_nonsym_2_vec_density(
           int_cache, j, params, sum_cache, int_mask, int_mask2, 0);
     }
@@ -516,9 +514,6 @@ __attribute__((always_inline)) INLINE void runner_doself1_density_vec(
 
   /* Get some local variables */
   const struct engine *e = r->e;
-  const timebin_t max_active_bin = e->max_active_bin;
-  struct part *restrict parts = c->parts;
-  const int count = c->count;
 
   TIMER_TIC;
 
@@ -526,6 +521,11 @@ __attribute__((always_inline)) INLINE void runner_doself1_density_vec(
   if (!cell_is_active_hydro(c, e)) return;
 
   if (!cell_are_part_drifted(c, e)) error("Interacting undrifted cell.");
+
+  /* Get some local variables */
+  const timebin_t max_active_bin = e->max_active_bin;
+  struct part *restrict parts = c->parts;
+  const int count = c->count;
 
 #ifdef SWIFT_DEBUG_CHECKS
   for (int i = 0; i < count; i++) {
@@ -541,7 +541,7 @@ __attribute__((always_inline)) INLINE void runner_doself1_density_vec(
   if (cell_cache->count < count) cache_init(cell_cache, count);
 
   /* Read the particles from the cell and store them locally in the cache. */
-  cache_read_particles(c, cell_cache);
+  cache_read_particles(c, cell_cache, count);
 
   /* Create secondary cache to store particle interactions. */
   struct c2_cache int_cache;
@@ -571,28 +571,13 @@ __attribute__((always_inline)) INLINE void runner_doself1_density_vec(
     struct update_cache_density sum_cache;
     update_cache_density_init(&sum_cache);
 
-    /* Pad cache if there is a serial remainder. */
-    int count_align = count;
-    const int rem = count % (NUM_VEC_PROC * VEC_SIZE);
-    if (rem != 0) {
-      count_align += (NUM_VEC_PROC * VEC_SIZE) - rem;
-
-      /* Set positions to the same as particle pi so when the r2 > 0 mask is
-       * applied these extra contributions are masked out.*/
-      for (int i = count; i < count_align; i++) {
-        cell_cache->x[i] = v_pix.f[0];
-        cell_cache->y[i] = v_piy.f[0];
-        cell_cache->z[i] = v_piz.f[0];
-      }
-    }
-
     /* The number of interactions for pi and the padded version of it to
      * make it a multiple of VEC_SIZE. */
-    int icount = 0, icount_align = 0;
+    int icount = 0;
 
     /* Find all of particle pi's interacions and store needed values in the
      * secondary cache.*/
-    for (int pjd = 0; pjd < count_align; pjd += (NUM_VEC_PROC * VEC_SIZE)) {
+    for (int pjd = 0; pjd < count; pjd += (NUM_VEC_PROC * VEC_SIZE)) {
 
       /* Load 2 sets of vectors from the particle cache. */
       const vector v_pjx = vector_load(&cell_cache->x[pjd]);
@@ -624,7 +609,7 @@ __attribute__((always_inline)) INLINE void runner_doself1_density_vec(
       /* Form a mask from r2 < hig2 and r2 > 0.*/
       mask_t v_doi_mask, v_doi_mask_self_check, v_doi_mask2,
           v_doi_mask2_self_check;
-
+      
       /* Form r2 > 0 mask and r2 < hig2 mask. */
       vec_create_mask(v_doi_mask_self_check, vec_cmp_gt(v_r2.v, vec_setzero()));
       vec_create_mask(v_doi_mask, vec_cmp_lt(v_r2.v, v_hig2.v));
@@ -671,7 +656,7 @@ __attribute__((always_inline)) INLINE void runner_doself1_density_vec(
     }
 
     /* Perform padded vector remainder interactions if any are present. */
-    calcRemInteractions(&int_cache, icount, &sum_cache, &params, &icount_align);
+    calcRemInteractions(&int_cache, &icount, &sum_cache, &params);
 
     /* Initialise masks to true in case remainder interactions have been
      * performed. */
@@ -680,7 +665,7 @@ __attribute__((always_inline)) INLINE void runner_doself1_density_vec(
     vec_init_mask_true(int_mask2);
 
     /* Perform interaction with 2 vectors. */
-    for (int pjd = 0; pjd < icount_align; pjd += (NUM_VEC_PROC * VEC_SIZE)) {
+    for (int pjd = 0; pjd < icount; pjd += (NUM_VEC_PROC * VEC_SIZE)) {
       runner_iact_nonsym_2_vec_density(&int_cache, pjd, &params, &sum_cache, int_mask, int_mask2, 0);
     }
 
@@ -727,7 +712,7 @@ __attribute__((always_inline)) INLINE void runner_doself_subset_density_vec(
   if (cell_cache->count < count) cache_init(cell_cache, count);
 
   /* Read the particles from the cell and store them locally in the cache. */
-  cache_read_particles(c, cell_cache);
+  cache_read_particles(c, cell_cache, count);
 
   /* Create secondary cache to store particle interactions. */
   struct c2_cache int_cache;
@@ -779,11 +764,11 @@ __attribute__((always_inline)) INLINE void runner_doself_subset_density_vec(
 
     /* The number of interactions for pi and the padded version of it to
      * make it a multiple of VEC_SIZE. */
-    int icount = 0, icount_align = 0;
+    int icount = 0;
 
     /* Find all of particle pi's interacions and store needed values in the
      * secondary cache.*/
-    for (int pjd = 0; pjd < count_align; pjd += (NUM_VEC_PROC * VEC_SIZE)) {
+    for (int pjd = 0; pjd < count; pjd += (NUM_VEC_PROC * VEC_SIZE)) {
 
       /* Load 2 sets of vectors from the particle cache. */
       const vector v_pjx = vector_load(&cell_cache->x[pjd]);
@@ -866,7 +851,7 @@ __attribute__((always_inline)) INLINE void runner_doself_subset_density_vec(
     }
 
     /* Perform padded vector remainder interactions if any are present. */
-    calcRemInteractions(&int_cache, icount, &sum_cache, &params, &icount_align);
+    calcRemInteractions(&int_cache, &icount, &sum_cache, &params);
 
     /* Initialise masks to true in case remainder interactions have been
      * performed. */
@@ -875,7 +860,7 @@ __attribute__((always_inline)) INLINE void runner_doself_subset_density_vec(
     vec_init_mask_true(int_mask2);
 
     /* Perform interaction with 2 vectors. */
-    for (int pjd = 0; pjd < icount_align; pjd += (NUM_VEC_PROC * VEC_SIZE)) {
+    for (int pjd = 0; pjd < icount; pjd += (NUM_VEC_PROC * VEC_SIZE)) {
       runner_iact_nonsym_2_vec_density(
           &int_cache, pjd, &params, &sum_cache, int_mask, int_mask2, 0);
     }
