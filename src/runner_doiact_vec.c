@@ -60,17 +60,8 @@ __attribute__((always_inline)) INLINE static void calcRemInteractions(
 
     /* Pad secondary cache so that there are no contributions in the interaction
      * function. */
-    for (int i = *icount; i < icount_padded; i++) {
-      int_cache->mq[i] = 0.f;
-      int_cache->r2q[i] = 1.f;
-      int_cache->dxq[i] = 0.f;
-      int_cache->dyq[i] = 0.f;
-      int_cache->dzq[i] = 0.f;
-      int_cache->vxq[i] = 0.f;
-      int_cache->vyq[i] = 0.f;
-      int_cache->vzq[i] = 0.f;
-    }
-
+    pad_c2_cache(int_cache, *icount, icount_padded);
+    
     /* Zero parts of mask that represent the padded values.*/
     if (pad < VEC_SIZE) {
       vec_pad_mask(int_mask2, pad);
@@ -113,47 +104,9 @@ __attribute__((always_inline)) INLINE static void storeInteractions(
     struct c2_cache *const int_cache, int *icount, struct update_cache_density *sum_cache,
     const struct input_params_density *params) {
 
-/* Left-pack values needed into the secondary cache using the interaction mask.
- */
-#if defined(HAVE_AVX2) || defined(HAVE_AVX512_F)
-  mask_t packed_mask;
-  VEC_FORM_PACKED_MASK(mask, packed_mask);
-
-  VEC_LEFT_PACK(v_r2->v, packed_mask, &int_cache->r2q[*icount]);
-  VEC_LEFT_PACK(v_dx->v, packed_mask, &int_cache->dxq[*icount]);
-  VEC_LEFT_PACK(v_dy->v, packed_mask, &int_cache->dyq[*icount]);
-  VEC_LEFT_PACK(v_dz->v, packed_mask, &int_cache->dzq[*icount]);
-  VEC_LEFT_PACK(vec_load(&cell_cache->m[pjd]), packed_mask,
-                &int_cache->mq[*icount]);
-  VEC_LEFT_PACK(vec_load(&cell_cache->vx[pjd]), packed_mask,
-                &int_cache->vxq[*icount]);
-  VEC_LEFT_PACK(vec_load(&cell_cache->vy[pjd]), packed_mask,
-                &int_cache->vyq[*icount]);
-  VEC_LEFT_PACK(vec_load(&cell_cache->vz[pjd]), packed_mask,
-                &int_cache->vzq[*icount]);
-
-  /* Increment interaction count by number of bits set in mask. */
-  (*icount) += __builtin_popcount(mask);
-#else
-  /* Quicker to do it serially in AVX rather than use intrinsics. */
-  for (int bit_index = 0; bit_index < VEC_SIZE; bit_index++) {
-    if (mask & (1 << bit_index)) {
-      /* Add this interaction to the queue. */
-      int_cache->r2q[*icount] = v_r2->f[bit_index];
-      int_cache->dxq[*icount] = v_dx->f[bit_index];
-      int_cache->dyq[*icount] = v_dy->f[bit_index];
-      int_cache->dzq[*icount] = v_dz->f[bit_index];
-      int_cache->mq[*icount] = cell_cache->m[pjd + bit_index];
-      int_cache->vxq[*icount] = cell_cache->vx[pjd + bit_index];
-      int_cache->vyq[*icount] = cell_cache->vy[pjd + bit_index];
-      int_cache->vzq[*icount] = cell_cache->vz[pjd + bit_index];
-
-      (*icount)++;
-    }
-  }
-
-#endif /* defined(HAVE_AVX2) || defined(HAVE_AVX512_F) */
-
+  /* Left-pack values needed into the secondary cache using the interaction mask. */
+  left_pack_c2_cache(mask, pjd, v_r2, v_dx, v_dy, v_dz, cell_cache, int_cache, icount);
+  
   /* Flush the c2 cache if it has reached capacity. */
   if (*icount >= (C2_CACHE_SIZE - (NUM_VEC_PROC * VEC_SIZE))) {
 
@@ -571,8 +524,7 @@ __attribute__((always_inline)) INLINE void runner_doself1_density_vec(
     struct update_cache_density sum_cache;
     update_cache_density_init(&sum_cache);
 
-    /* The number of interactions for pi and the padded version of it to
-     * make it a multiple of VEC_SIZE. */
+    /* The number of interactions for pi. */
     int icount = 0;
 
     /* Find all of particle pi's interacions and store needed values in the

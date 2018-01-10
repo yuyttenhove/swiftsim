@@ -868,6 +868,91 @@ cache_read_two_partial_cells_sorted_force(
   }
 }
 
+/* @brief Pads the secondary cache so that there are no contributions in the interaction
+ * function.  
+ *
+ * @param int_cache (return) secondary cache of interactions between two
+ * particles.
+ * @param icount Interaction count.
+ * @param icount_padded Interaction count padded to a multiple of two vector lengths.
+*/
+__attribute__((always_inline)) INLINE static void pad_c2_cache(
+    struct c2_cache *const int_cache, const int icount, const int icount_padded) {
+
+  for (int i = icount; i < icount_padded; i++) {
+      int_cache->mq[i] = 0.f;
+      int_cache->r2q[i] = 1.f;
+      int_cache->dxq[i] = 0.f;
+      int_cache->dyq[i] = 0.f;
+      int_cache->dzq[i] = 0.f;
+      int_cache->vxq[i] = 0.f;
+      int_cache->vyq[i] = 0.f;
+      int_cache->vzq[i] = 0.f;
+  }
+}
+
+/**
+ * @brief Left-packs the values needed by an interaction into the secondary
+ * cache (Supports AVX, AVX2 and AVX512 instruction sets).
+ *
+ * @param mask Contains which particles need to interact.
+ * @param pjd Index of the particle to store into.
+ * @param v_r2 #vector of the separation between two particles squared.
+ * @param v_dx #vector of the x separation between two particles.
+ * @param v_dy #vector of the y separation between two particles.
+ * @param v_dz #vector of the z separation between two particles.
+ * @param cell_cache cache of all particles in the cell.
+ * @param int_cache (return) secondary cache of interactions between two
+ * particles.
+ * @param icount Interaction count.
+ */
+__attribute__((always_inline)) INLINE static void left_pack_c2_cache(
+    const int mask, const int pjd, vector *v_r2, vector *v_dx, vector *v_dy,
+    vector *v_dz, const struct cache *const cell_cache,
+    struct c2_cache *const int_cache, int *icount) {
+
+  /* Left-pack values needed into the secondary cache using the interaction mask.*/
+#if defined(HAVE_AVX2) || defined(HAVE_AVX512_F)
+  mask_t packed_mask;
+  VEC_FORM_PACKED_MASK(mask, packed_mask);
+
+  VEC_LEFT_PACK(v_r2->v, packed_mask, &int_cache->r2q[*icount]);
+  VEC_LEFT_PACK(v_dx->v, packed_mask, &int_cache->dxq[*icount]);
+  VEC_LEFT_PACK(v_dy->v, packed_mask, &int_cache->dyq[*icount]);
+  VEC_LEFT_PACK(v_dz->v, packed_mask, &int_cache->dzq[*icount]);
+  VEC_LEFT_PACK(vec_load(&cell_cache->m[pjd]), packed_mask,
+                &int_cache->mq[*icount]);
+  VEC_LEFT_PACK(vec_load(&cell_cache->vx[pjd]), packed_mask,
+                &int_cache->vxq[*icount]);
+  VEC_LEFT_PACK(vec_load(&cell_cache->vy[pjd]), packed_mask,
+                &int_cache->vyq[*icount]);
+  VEC_LEFT_PACK(vec_load(&cell_cache->vz[pjd]), packed_mask,
+                &int_cache->vzq[*icount]);
+
+  /* Increment interaction count by number of bits set in mask. */
+  (*icount) += __builtin_popcount(mask);
+#else
+  /* Quicker to do it serially in AVX rather than use intrinsics. */
+  for (int bit_index = 0; bit_index < VEC_SIZE; bit_index++) {
+    if (mask & (1 << bit_index)) {
+      /* Add this interaction to the queue. */
+      int_cache->r2q[*icount] = v_r2->f[bit_index];
+      int_cache->dxq[*icount] = v_dx->f[bit_index];
+      int_cache->dyq[*icount] = v_dy->f[bit_index];
+      int_cache->dzq[*icount] = v_dz->f[bit_index];
+      int_cache->mq[*icount] = cell_cache->m[pjd + bit_index];
+      int_cache->vxq[*icount] = cell_cache->vx[pjd + bit_index];
+      int_cache->vyq[*icount] = cell_cache->vy[pjd + bit_index];
+      int_cache->vzq[*icount] = cell_cache->vz[pjd + bit_index];
+
+      (*icount)++;
+    }
+  }
+
+#endif /* defined(HAVE_AVX2) || defined(HAVE_AVX512_F) */
+
+}
+
 /* @brief Clean the memory allocated by a #cache object.
  *
  * @param c The #cache to clean.
