@@ -29,7 +29,7 @@
 //#if defined(WITH_VECTORIZATION) && defined(GADGET2_SPH)
 #if defined(WITH_VECTORIZATION)
 
-//static const vector kernel_gamma2_vec = FILL_VEC(kernel_gamma2);
+static const vector kernel_gamma2_vec = FILL_VEC(kernel_gamma2);
 
 /**
  * @brief Compute the vector remainder interactions from the secondary cache.
