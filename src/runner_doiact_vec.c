@@ -26,8 +26,7 @@
 /* Local headers. */
 #include "active.h"
 
-//#if defined(WITH_VECTORIZATION) && defined(GADGET2_SPH)
-#if defined(WITH_VECTORIZATION)
+#if defined(WITH_VECTORIZATION) && (defined(GADGET2_SPH) || defined(MINIMAL_SPH))
 
 static const vector kernel_gamma2_vec = FILL_VEC(kernel_gamma2);
 
@@ -286,7 +285,7 @@ __attribute__((always_inline)) INLINE static void populate_max_index_no_cache(
   *init_pj = last_pj;
 }
 
-#if defined(WITH_VECTORIZATION) && defined(GADGET2_SPH)
+#if defined(WITH_VECTORIZATION)
 /**
  * @brief Populates the arrays max_index_i and max_index_j with the maximum
  * indices of
@@ -452,7 +451,7 @@ populate_max_index_no_cache_force(
   *init_pj = last_pj;
 }
 #endif
-#endif /* WITH_VECTORIZATION && GADGET2_SPH */
+#endif /* WITH_VECTORIZATION && (GADGET2_SPH || MINIMAL_SPH) */
 
 /**
  * @brief Compute the cell self-interaction (non-symmetric) using vector
@@ -464,8 +463,7 @@ populate_max_index_no_cache_force(
 __attribute__((always_inline)) INLINE void runner_doself1_density_vec(
     struct runner *r, struct cell *restrict c) {
 
-//#if defined(WITH_VECTORIZATION) && defined(GADGET2_SPH)
-#if defined(WITH_VECTORIZATION)
+#if defined(WITH_VECTORIZATION) && (defined(GADGET2_SPH) || defined(MINIMAL_SPH))
 
   /* Get some local variables */
   const struct engine *e = r->e;
@@ -653,7 +651,6 @@ __attribute__((always_inline)) INLINE void runner_doself_subset_density_vec(
     struct runner *r, struct cell *restrict c, struct part *restrict parts,
     int *restrict ind, int pi_count) {
 
-//#if defined(WITH_VECTORIZATION) && defined(GADGET2_SPH)
 #if defined(WITH_VECTORIZATION)
 
   const int count = c->count;
@@ -846,7 +843,7 @@ __attribute__((always_inline)) INLINE void runner_doself_subset_density_vec(
 __attribute__((always_inline)) INLINE void runner_doself2_force_vec(
     struct runner *r, struct cell *restrict c) {
 
-#if defined(WITH_VECTORIZATION) && defined(GADGET2_SPH)
+#if defined(WITH_VECTORIZATION)
 
   const struct engine *e = r->e;
   const timebin_t max_active_bin = e->max_active_bin;
@@ -875,7 +872,7 @@ __attribute__((always_inline)) INLINE void runner_doself2_force_vec(
   if (cell_cache->count < count) cache_init(cell_cache, count);
 
   /* Read the particles from the cell and store them locally in the cache. */
-  cache_read_force_particles(c, cell_cache);
+  cache_read_force_particles(c, cell_cache, count);
 
   /* Loop over the particles in the cell. */
   for (int pid = 0; pid < count; pid++) {
@@ -902,32 +899,9 @@ __attribute__((always_inline)) INLINE void runner_doself2_force_vec(
     struct update_cache_force sum_cache;
     update_cache_force_init(&sum_cache);
 
-    /* Pad cache if there is a serial remainder. */
-    int count_align = count;
-    int rem = count % VEC_SIZE;
-    if (rem != 0) {
-      int pad = VEC_SIZE - rem;
-
-      count_align += pad;
-
-      /* Set positions to the same as particle pi so when the r2 > 0 mask is
-       * applied these extra contributions are masked out.*/
-      for (int i = count; i < count_align; i++) {
-        cell_cache->x[i] = v_pix.f[0];
-        cell_cache->y[i] = v_piy.f[0];
-        cell_cache->z[i] = v_piz.f[0];
-        cell_cache->h[i] = 1.f;
-        cell_cache->rho[i] = 1.f;
-        cell_cache->grad_h[i] = 1.f;
-        cell_cache->pOrho2[i] = 1.f;
-        cell_cache->balsara[i] = 1.f;
-        cell_cache->soundspeed[i] = 1.f;
-      }
-    }
-
     /* Find all of particle pi's interacions and store needed values in the
      * secondary cache.*/
-    for (int pjd = 0; pjd < count_align; pjd += VEC_SIZE) {
+    for (int pjd = 0; pjd < count; pjd += VEC_SIZE) {
 
       /* Load 1 set of vectors from the particle cache. */
       vector hjg2;
@@ -947,18 +921,18 @@ __attribute__((always_inline)) INLINE void runner_doself2_force_vec(
       v_r2.v = vec_fma(v_dy.v, v_dy.v, v_r2.v);
       v_r2.v = vec_fma(v_dz.v, v_dz.v, v_r2.v);
 
-      /* Form r2 > 0 mask, r2 < hig2 mask and r2 < hjg2 mask. */
+      /* Form r2 > 0 mask, r2 < max(hig2,hjg2) mask. */
       mask_t v_doi_mask, v_doi_mask_self_check;
 
       /* Form r2 > 0 mask.*/
       vec_create_mask(v_doi_mask_self_check, vec_cmp_gt(v_r2.v, vec_setzero()));
 
-      /* Form a mask from r2 < hig2 mask and r2 < hjg2 mask. */
+      /* Form a mask from r2 < max(hig2,hjg2) mask. */
       vector v_h2;
       v_h2.v = vec_fmax(v_hig2.v, hjg2.v);
       vec_create_mask(v_doi_mask, vec_cmp_lt(v_r2.v, v_h2.v));
 
-      /* Combine all 3 masks. */
+      /* Combine both masks. */
       vec_combine_masks(v_doi_mask, v_doi_mask_self_check);
 
 #ifdef DEBUG_INTERACTIONS_SPH
@@ -1014,8 +988,7 @@ void runner_dopair1_density_vec(struct runner *r, struct cell *ci,
                                 struct cell *cj, const int sid,
                                 const double *shift) {
 
-//#if defined(WITH_VECTORIZATION) && defined(GADGET2_SPH)
-#if defined(WITH_VECTORIZATION)
+#if defined(WITH_VECTORIZATION) && (defined(GADGET2_SPH) || defined(MINIMAL_SPH))
 
   const struct engine *restrict e = r->e;
   const timebin_t max_active_bin = e->max_active_bin;
@@ -1349,7 +1322,7 @@ void runner_dopair2_force_vec(struct runner *r, struct cell *ci,
                               struct cell *cj, const int sid,
                               const double *shift) {
 
-#if defined(WITH_VECTORIZATION) && defined(GADGET2_SPH)
+#if defined(WITH_VECTORIZATION) && (defined(GADGET2_SPH) || defined(MINIMAL_SPH))
 
   const struct engine *restrict e = r->e;
   const timebin_t max_active_bin = e->max_active_bin;

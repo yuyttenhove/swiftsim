@@ -418,7 +418,7 @@ __attribute__((always_inline)) INLINE void cache_read_particles(
  */
 __attribute__((always_inline)) INLINE void cache_read_force_particles(
     const struct cell *restrict const ci,
-    struct cache *restrict const ci_cache) {
+    struct cache *restrict const ci_cache, const int ci_count) {
 
 #if defined(GADGET2_SPH)
 
@@ -447,7 +447,7 @@ __attribute__((always_inline)) INLINE void cache_read_force_particles(
 
   /* Shift the particles positions to a local frame so single precision can be
    * used instead of double precision. */
-  for (int i = 0; i < ci->count; i++) {
+  for (int i = 0; i < ci_count; i++) {
     x[i] = (float)(parts[i].x[0] - loc[0]);
     y[i] = (float)(parts[i].x[1] - loc[1]);
     z[i] = (float)(parts[i].x[2] - loc[2]);
@@ -463,6 +463,31 @@ __attribute__((always_inline)) INLINE void cache_read_force_particles(
     soundspeed[i] = parts[i].force.soundspeed;
   }
 
+  /* Pad cache with fake particles that exist outside the cell so will not
+   * interact. We use values of the same magnitude (but negative!) as the real
+   * particles to avoid overflow problems. */
+  const double max_dx = ci->dx_max_part;
+  const float pos_padded[3] = {-(2. * ci->width[0] + max_dx),
+                               -(2. * ci->width[1] + max_dx),
+                               -(2. * ci->width[2] + max_dx)};
+  const float h_padded = ci->parts[0].h;
+  const int ci_count_padded = ci_count - (ci_count % VEC_SIZE) + VEC_SIZE;
+
+  for (int i = ci_count; i < ci_count_padded; i++) {
+    x[i] = pos_padded[0];
+    y[i] = pos_padded[1];
+    z[i] = pos_padded[2];
+    h[i] = h_padded;
+    m[i] = 1.f;
+    vx[i] = 1.f;
+    vy[i] = 1.f;
+    vz[i] = 1.f;
+    rho[i] = 1.f;
+    grad_h[i] = 1.f;
+    pOrho2[i] = 1.f;
+    balsara[i] = 1.f;
+    soundspeed[i] = 1.f;
+  }
 #endif
 }
 
