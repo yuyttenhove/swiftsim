@@ -471,9 +471,6 @@ int main(int argc, char *argv[]) {
 
     const ticks tic = getticks();
 
-//#if !(defined(MINIMAL_SPH) && defined(WITH_VECTORIZATION))
-#if defined(WITH_VECTORIZATION)
-
 #ifdef WITH_VECTORIZATION
     runner.ci_cache.count = 0;
     cache_init(&runner.ci_cache, 512);
@@ -515,8 +512,6 @@ int main(int argc, char *argv[]) {
 
     timings[13] += getticks() - self_tic;
 
-#endif
-
     const ticks toc = getticks();
     time += toc - tic;
 
@@ -555,17 +550,12 @@ int main(int argc, char *argv[]) {
 
   const ticks tic = getticks();
 
-//#if !(defined(MINIMAL_SPH) && defined(WITH_VECTORIZATION))
-#if defined(WITH_VECTORIZATION)
-
   /* Run all the brute-force pairs */
   for (int j = 0; j < 27; ++j)
     if (cells[j] != main_cell) pairs_all_density(&runner, main_cell, cells[j]);
 
   /* And now the self-interaction */
   self_all_density(&runner, main_cell);
-
-#endif
 
   const ticks toc = getticks();
 

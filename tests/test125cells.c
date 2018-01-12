@@ -653,11 +653,9 @@ int main(int argc, char *argv[]) {
     for (int j = 0; j < 125; ++j)
       runner_do_sort(&runner, cells[j], 0x1FFF, 0, 0);
 
-/* Do the density calculation */
-#if !(defined(MINIMAL_SPH) && defined(WITH_VECTORIZATION))
-
-/* Initialise the particle cache. */
+    /* Do the density calculation */
 #ifdef WITH_VECTORIZATION
+    /* Initialise the particle cache. */
     runner.ci_cache.count = 0;
     cache_init(&runner.ci_cache, 512);
     runner.cj_cache.count = 0;
@@ -698,14 +696,10 @@ int main(int argc, char *argv[]) {
     for (int j = 0; j < 27; ++j)
       runner_doself1_density(&runner, inner_cells[j]);
 
-#endif
-
     /* Ghost to finish everything on the central cells */
     for (int j = 0; j < 27; ++j) runner_do_ghost(&runner, inner_cells[j], 0);
 
-/* Do the force calculation */
-#if !(defined(MINIMAL_SPH) && defined(WITH_VECTORIZATION))
-
+    /* Do the force calculation */
 #ifdef WITH_VECTORIZATION
     /* Initialise the cache. */
     runner.ci_cache.count = 0;
@@ -740,7 +734,6 @@ int main(int argc, char *argv[]) {
     DOSELF2(&runner, main_cell);
 
     timings[26] += getticks() - self_tic;
-#endif
 
     /* Finally, give a gentle kick */
     runner_do_end_force(&runner, main_cell, 0);
@@ -797,7 +790,6 @@ int main(int argc, char *argv[]) {
 // 0);
 
 /* Do the density calculation */
-#if !(defined(MINIMAL_SPH) && defined(WITH_VECTORIZATION))
 
   /* Run all the pairs (only once !)*/
   for (int i = 0; i < 5; i++) {
@@ -832,13 +824,10 @@ int main(int argc, char *argv[]) {
   /* And now the self-interaction for the central cells*/
   for (int j = 0; j < 27; ++j) self_all_density(&runner, inner_cells[j]);
 
-#endif
-
   /* Ghost to finish everything on the central cells */
   for (int j = 0; j < 27; ++j) runner_do_ghost(&runner, inner_cells[j], 0);
 
 /* Do the force calculation */
-#if !(defined(MINIMAL_SPH) && defined(WITH_VECTORIZATION))
 
   /* Do the pairs (for the central 27 cells) */
   for (int i = 1; i < 4; i++) {
@@ -854,8 +843,6 @@ int main(int argc, char *argv[]) {
 
   /* And now the self-interaction for the main cell */
   self_all_force(&runner, main_cell);
-
-#endif
 
   /* Finally, give a gentle kick */
   runner_do_end_force(&runner, main_cell, 0);
