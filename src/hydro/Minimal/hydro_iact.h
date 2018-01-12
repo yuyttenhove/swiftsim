@@ -400,8 +400,9 @@ runner_iact_nonsym_1_vec_force(
   vector piax, piay, piaz;
   vector pih_dt;
   vector v_sig;
-  vector omega_ij, mu_ij, balsara;
-  vector rho_ij, visc, visc_term, sph_term, acc, entropy_dt;
+  vector omega_ij, mu_ij;
+  vector rho_ij, visc, visc_term, sph_term, acc;
+  vector sph_du_term_i, visc_du_term, du_dt_i;
 
   /* Fill vectors. */
   const vector vjx = vector_load(&cell_cache->vx[cache_idx]);
@@ -409,7 +410,6 @@ runner_iact_nonsym_1_vec_force(
   const vector vjz = vector_load(&cell_cache->vz[cache_idx]);
   const vector mj = vector_load(&cell_cache->m[cache_idx]);
   const vector pjrho = vector_load(&cell_cache->rho[cache_idx]);
-  const vector grad_hj = vector_load(&cell_cache->grad_h[cache_idx]);
   const vector pjPOrho2 = vector_load(&cell_cache->pOrho2[cache_idx]);
   const vector cj = vector_load(&cell_cache->soundspeed[cache_idx]);
 
@@ -476,20 +476,26 @@ runner_iact_nonsym_1_vec_force(
   piay.v = vec_mul(mj.v, vec_mul(dy->v, acc.v));
   piaz.v = vec_mul(mj.v, vec_mul(dz->v, acc.v));
 
+  /* Get the time derivative for u. */
+  sph_du_term_i.v = vec_mul(vec_mul(params->v_pOrhoi2.v, dvdr.v), vec_mul(ri.v, wi_dr.v));
+
+  /* Viscosity term */
+  visc_du_term.v = vec_mul(vec_set1(0.5f), vec_mul(visc_term.v, dvdr.v));
+
+  /* Assemble the energy equation term */
+  du_dt_i.v = vec_mul(mj.v, vec_add(sph_du_term_i.v, visc_du_term.v));
+
   /* Get the time derivative for h. */
   pih_dt.v =
       vec_div(vec_mul(mj.v, vec_mul(dvdr.v, vec_mul(ri.v, wi_dr.v))), pjrho.v);
-
-  /* Change in entropy */
-  entropy_dt.v = vec_mul(mj.v, vec_mul(visc_term.v, dvdr.v));
 
   /* Store the forces back on the particles. */
   sum_cache->v_a_hydro_xSum.v = vec_mask_sub(sum_cache->v_a_hydro_xSum.v, piax.v, mask);
   sum_cache->v_a_hydro_ySum.v = vec_mask_sub(sum_cache->v_a_hydro_ySum.v, piay.v, mask);
   sum_cache->v_a_hydro_zSum.v = vec_mask_sub(sum_cache->v_a_hydro_zSum.v, piaz.v, mask);
+  sum_cache->v_u_dtSum.v = vec_mask_add(sum_cache->v_u_dtSum.v, du_dt_i.v, mask);
   sum_cache->v_h_dtSum.v = vec_mask_sub(sum_cache->v_h_dtSum.v, pih_dt.v, mask);
   sum_cache->v_sigSum.v = vec_fmax(sum_cache->v_sigSum.v, vec_and_mask(v_sig.v, mask));
-  sum_cache->v_entropy_dtSum.v = vec_mask_add(sum_cache->v_entropy_dtSum.v, entropy_dt.v, mask);
 
 #else
 
