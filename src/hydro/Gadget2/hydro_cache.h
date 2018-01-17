@@ -221,7 +221,8 @@ __attribute__((always_inline)) INLINE void update_force_particle(struct part *re
   VEC_HADD(c->v_a_hydro_ySum, pi->a_hydro[1]);
   VEC_HADD(c->v_a_hydro_zSum, pi->a_hydro[2]);
   VEC_HADD(c->v_h_dtSum, pi->force.h_dt);
-  VEC_HMAX(c->v_sigSum, const float max_v_sig);
+  float max_v_sig = 0.f;
+  VEC_HMAX(c->v_sigSum, max_v_sig);
   pi->force.v_sig = max(pi->force.v_sig, max_v_sig);
   VEC_HADD(c->v_entropy_dtSum, pi->entropy_dt);
 
