@@ -95,6 +95,26 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_density(
   pi->density.wcount_dh -= (hydro_dimension * wi + ui * wi_dx);
 }
 
+/**
+ * @brief Density loop (non-symmetric version)
+ */
+__attribute__((always_inline)) INLINE static void runner_iact_nonsym_density_scalar(
+    const float r2, const float hi_inv, float *restrict rhoSum, float *restrict rho_dhSum, float *restrict wcountSum, float *restrict wcount_dhSum, const float mj) {
+ 
+ float wi, wi_dx;
+
+  /* Get r and r inverse. */
+  const float r = sqrtf(r2);
+
+  const float ui = r * hi_inv;
+  kernel_deval(ui, &wi, &wi_dx);
+
+  *rhoSum += mj * wi;
+  *rho_dhSum -= mj * (hydro_dimension * wi + ui * wi_dx);
+  *wcountSum += wi;
+  *wcount_dhSum -= (hydro_dimension * wi + ui * wi_dx);
+}
+
 #ifdef WITH_VECTORIZATION
 
 /**
@@ -103,33 +123,47 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_density(
  */
 __attribute__((always_inline)) INLINE static void
 runner_iact_nonsym_1_vec_density(vector *r2, vector *dx, vector *dy, vector *dz,
-                                 const struct input_params_density *params, const struct cache *cell_cache, const int cache_idx, struct update_cache_density *sum_cache,
-                                 mask_t mask) {
+                                 const struct input_params_density *params, const struct cache *cell_cache, const int cache_idx, struct update_cache_density *sum_cache, mask_t mask) {
 
-  vector r, ri, ui, wi, wi_dx;
+  const int int_mask = vec_is_mask_true(mask);
 
-  /* Fill the vectors. */
-  const vector mj = vector_load(&cell_cache->m[cache_idx]);
+//#pragma nounroll
+  for(int i=0; i<VEC_SIZE; i++) {
+  float rho = 0.f, rho_dh = 0.f, wcount = 0.f, wcount_dh = 0.f;
+    if (int_mask & (1 << i)) {
+      runner_iact_nonsym_density_scalar(r2->f[i], params->v_hi_inv.f[i], &rho, &rho_dh, &wcount, &wcount_dh, cell_cache->m[cache_idx + i]);
+    }
+    sum_cache->v_rhoSum.f[i] += rho;
+    sum_cache->v_rho_dhSum.f[i] += rho_dh;
+    sum_cache->v_wcountSum.f[i] += wcount;
+    sum_cache->v_wcount_dhSum.f[i] += wcount_dh;
 
-  /* Get the radius and inverse radius. */
-  ri = vec_reciprocal_sqrt(*r2);
-  r.v = vec_mul(r2->v, ri.v);
+  }
 
-  ui.v = vec_mul(r.v, params->v_hi_inv.v);
-
-  /* Calculate the kernel for two particles. */
-  kernel_deval_1_vec(&ui, &wi, &wi_dx);
-
-  vector wcount_dh_update;
-  wcount_dh_update.v =
-      vec_fma(vec_set1(hydro_dimension), wi.v, vec_mul(ui.v, wi_dx.v));
-
-  /* Mask updates to intermediate vector sums for particle pi. */
-  sum_cache->v_rhoSum.v = vec_mask_add(sum_cache->v_rhoSum.v, vec_mul(mj.v, wi.v), mask);
-  sum_cache->v_rho_dhSum.v =
-      vec_mask_sub(sum_cache->v_rho_dhSum.v, vec_mul(mj.v, wcount_dh_update.v), mask);
-  sum_cache->v_wcountSum.v = vec_mask_add(sum_cache->v_wcountSum.v, wi.v, mask);
-  sum_cache->v_wcount_dhSum.v = vec_mask_sub(sum_cache->v_wcount_dhSum.v, wcount_dh_update.v, mask);
+//  vector r, ri, ui, wi, wi_dx;
+//
+//  /* Fill the vectors. */
+//  const vector mj = vector_load(&cell_cache->m[cache_idx]);
+//
+//  /* Get the radius and inverse radius. */
+//  ri = vec_reciprocal_sqrt(*r2);
+//  r.v = vec_mul(r2->v, ri.v);
+//
+//  ui.v = vec_mul(r.v, params->v_hi_inv.v);
+//
+//  /* Calculate the kernel for two particles. */
+//  kernel_deval_1_vec(&ui, &wi, &wi_dx);
+//
+//  vector wcount_dh_update;
+//  wcount_dh_update.v =
+//      vec_fma(vec_set1(hydro_dimension), wi.v, vec_mul(ui.v, wi_dx.v));
+//
+//  /* Mask updates to intermediate vector sums for particle pi. */
+//  sum_cache->v_rhoSum.v = vec_mask_add(sum_cache->v_rhoSum.v, vec_mul(mj.v, wi.v), mask);
+//  sum_cache->v_rho_dhSum.v =
+//      vec_mask_sub(sum_cache->v_rho_dhSum.v, vec_mul(mj.v, wcount_dh_update.v), mask);
+//  sum_cache->v_wcountSum.v = vec_mask_add(sum_cache->v_wcountSum.v, wi.v, mask);
+//  sum_cache->v_wcount_dhSum.v = vec_mask_sub(sum_cache->v_wcount_dhSum.v, wcount_dh_update.v, mask);
 }
 
 /**
