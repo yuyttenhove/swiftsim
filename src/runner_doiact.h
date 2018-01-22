@@ -1036,7 +1036,7 @@ void DOPAIR1_BRANCH(struct runner *r, struct cell *ci, struct cell *cj) {
 
 #if defined(SWIFT_USE_NAIVE_INTERACTIONS)
   DOPAIR1_NAIVE(r, ci, cj);
-#elif defined(WITH_VECTORIZATION) && defined(GADGET2_SPH)
+#elif defined(WITH_VECTORIZATION) && (defined(GADGET2_SPH) || defined(MINIMAL_SPH))
   if (!sort_is_corner(sid))
     runner_dopair1_density_vec(r, ci, cj, sid, shift);
   else
@@ -1521,7 +1521,7 @@ void DOPAIR2_BRANCH(struct runner *r, struct cell *ci, struct cell *cj) {
 
 #ifdef SWIFT_USE_NAIVE_INTERACTIONS
   DOPAIR2_NAIVE(r, ci, cj);
-#elif defined(WITH_VECTORIZATION) && defined(GADGET2_SPH)
+#elif defined(WITH_VECTORIZATION) && (defined(GADGET2_SPH) || defined(MINIMAL_SPH))
   if (!sort_is_corner(sid))
     runner_dopair2_force_vec(r, ci, cj, sid, shift);
   else
@@ -1683,7 +1683,7 @@ void DOSELF1_BRANCH(struct runner *r, struct cell *c) {
 
 #if defined(SWIFT_USE_NAIVE_INTERACTIONS)
   DOSELF1_NAIVE(r, c);
-#elif defined(WITH_VECTORIZATION) && defined(GADGET2_SPH)
+#elif defined(WITH_VECTORIZATION) && (defined(GADGET2_SPH) || defined(MINIMAL_SPH))
   runner_doself1_density_vec(r, c);
 #else
   DOSELF1(r, c);
@@ -1834,7 +1834,7 @@ void DOSELF2_BRANCH(struct runner *r, struct cell *c) {
 
 #if defined(SWIFT_USE_NAIVE_INTERACTIONS)
   DOSELF2_NAIVE(r, c);
-#elif defined(WITH_VECTORIZATION) && defined(GADGET2_SPH)
+#elif defined(WITH_VECTORIZATION) && (defined(GADGET2_SPH) || defined(MINIMAL_SPH))
   runner_doself2_force_vec(r, c);
 #else
   DOSELF2(r, c);
@@ -2461,7 +2461,7 @@ void DOSUB_SUBSET(struct runner *r, struct cell *ci, struct part *parts,
 
     /* Otherwise, compute self-interaction. */
     else
-#if defined(WITH_VECTORIZATION) && defined(GADGET2_SPH)
+#if defined(WITH_VECTORIZATION) && (defined(GADGET2_SPH) || defined(MINIMAL_SPH))
       runner_doself_subset_density_vec(r, ci, parts, ind, count);
 #else
       DOSELF_SUBSET(r, ci, parts, ind, count);
