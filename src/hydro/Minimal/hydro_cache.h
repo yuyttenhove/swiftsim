@@ -114,6 +114,29 @@ enum update_cache_density_types {
   update_cache_density_length
 };
 
+/* List which particle force parameters are required as input. */
+enum input_params_force_types {
+  input_params_force_vix = 0,
+  input_params_force_viy,
+  input_params_force_viz,
+  input_params_force_hi_inv,
+  input_params_force_rhoi,
+  input_params_force_pOrhoi2,
+  input_params_force_ci,
+  input_params_force_length
+};
+
+/* List which particle force parameters need updating. */
+enum update_cache_force_types {
+  update_cache_force_a_hydro_x = 0,
+  update_cache_force_a_hydro_y,
+  update_cache_force_a_hydro_z,
+  update_cache_force_u_dt,
+  update_cache_force_h_dt,
+  update_cache_force_sig,
+  update_cache_force_length
+};
+
 /* Cache to hold a list of vectors used to update particle properties after a density interaction. */
 struct update_cache_density {
   vector updates[update_cache_density_length];  
@@ -121,12 +144,7 @@ struct update_cache_density {
 
 /* Cache to hold a list of vectors used to update particle properties after a force interaction. */
 struct update_cache_force {
-  vector v_a_hydro_xSum; 
-  vector v_a_hydro_ySum; 
-  vector v_a_hydro_zSum;
-  vector v_u_dtSum; 
-  vector v_h_dtSum;
-  vector v_sigSum;
+  vector updates[update_cache_force_length];  
 };
 
 /* Input parameters needed for computing the density interaction. */
@@ -136,13 +154,7 @@ struct input_params_density {
 
 /* Input parameters needed for computing the force interaction. */
 struct input_params_force {
-  vector v_vix;
-  vector v_viy;
-  vector v_viz;
-  vector v_hi_inv;
-  vector v_rhoi;
-  vector v_pOrhoi2;
-  vector v_ci;
+  vector input[input_params_force_length];
 };
 
 /**
@@ -163,12 +175,7 @@ __attribute__((always_inline)) INLINE void update_cache_density_init(struct upda
  */
 __attribute__((always_inline)) INLINE void update_cache_force_init(struct update_cache_force *c) {
 
-  c->v_a_hydro_xSum.v = vec_setzero();
-  c->v_a_hydro_ySum.v = vec_setzero();
-  c->v_a_hydro_zSum.v = vec_setzero();
-  c->v_u_dtSum.v = vec_setzero();
-  c->v_h_dtSum.v = vec_setzero();
-  c->v_sigSum.v = vec_setzero();
+  for(int i=0; i<update_cache_force_length; i++) c->updates[i].v = vec_setzero();
 }
 
 /**
@@ -193,13 +200,13 @@ __attribute__((always_inline)) INLINE void update_density_particle(struct part *
  */
 __attribute__((always_inline)) INLINE void update_force_particle(struct part *restrict pi, struct update_cache_force *c) {
 
-  VEC_HADD(c->v_a_hydro_xSum, pi->a_hydro[0]);
-  VEC_HADD(c->v_a_hydro_ySum, pi->a_hydro[1]);
-  VEC_HADD(c->v_a_hydro_zSum, pi->a_hydro[2]);
-  VEC_HADD(c->v_u_dtSum, pi->u_dt);
-  VEC_HADD(c->v_h_dtSum, pi->force.h_dt);
+  VEC_HADD(c->updates[update_cache_force_a_hydro_x], pi->a_hydro[0]);
+  VEC_HADD(c->updates[update_cache_force_a_hydro_y], pi->a_hydro[1]);
+  VEC_HADD(c->updates[update_cache_force_a_hydro_z], pi->a_hydro[2]);
+  VEC_HADD(c->updates[update_cache_force_u_dt], pi->u_dt);
+  VEC_HADD(c->updates[update_cache_force_h_dt], pi->force.h_dt);
   float max_v_sig = 0.f;
-  VEC_HMAX(c->v_sigSum, max_v_sig);
+  VEC_HMAX(c->updates[update_cache_force_sig], max_v_sig);
   pi->force.v_sig = max(pi->force.v_sig, max_v_sig);
 
 }
@@ -231,13 +238,13 @@ __attribute__((always_inline)) INLINE void populate_input_params_force_cache(con
   const float hi = c->h[cache_index];
   const float hi_inv = 1.f / hi;
   
-  params->v_vix = vector_set1(c->vx[cache_index]);
-  params->v_viy = vector_set1(c->vy[cache_index]);
-  params->v_viz = vector_set1(c->vz[cache_index]);
-  params->v_hi_inv = vector_set1(hi_inv); 
-  params->v_rhoi = vector_set1(c->rho[cache_index]);
-  params->v_pOrhoi2 = vector_set1(c->pOrho2[cache_index]);
-  params->v_ci = vector_set1(c->soundspeed[cache_index]);
+  params->input[input_params_force_vix] = vector_set1(c->vx[cache_index]);
+  params->input[input_params_force_viy] = vector_set1(c->vy[cache_index]);
+  params->input[input_params_force_viz] = vector_set1(c->vz[cache_index]);
+  params->input[input_params_force_hi_inv] = vector_set1(hi_inv); 
+  params->input[input_params_force_rhoi] = vector_set1(c->rho[cache_index]);
+  params->input[input_params_force_pOrhoi2] = vector_set1(c->pOrho2[cache_index]);
+  params->input[input_params_force_ci] = vector_set1(c->soundspeed[cache_index]);
 
 }
 

@@ -430,8 +430,8 @@ runner_iact_nonsym_1_vec_force(
   r.v = vec_mul(r2->v, ri.v);
 
   /* Get the kernel for hi. */
-  hid_inv = pow_dimension_plus_one_vec(params->v_hi_inv);
-  xi.v = vec_mul(r.v, params->v_hi_inv.v);
+  hid_inv = pow_dimension_plus_one_vec(params->input[input_params_force_hi_inv]);
+  xi.v = vec_mul(r.v, params->input[input_params_force_hi_inv].v);
   kernel_eval_dWdx_force_vec(&xi, &wi_dx);
   wi_dr.v = vec_mul(hid_inv.v, wi_dx.v);
 
@@ -445,9 +445,9 @@ runner_iact_nonsym_1_vec_force(
   wj_dr.v = vec_mul(hjd_inv.v, wj_dx.v);
 
   /* Compute dv. */
-  dvx.v = vec_sub(params->v_vix.v, vjx.v);
-  dvy.v = vec_sub(params->v_viy.v, vjy.v);
-  dvz.v = vec_sub(params->v_viz.v, vjz.v);
+  dvx.v = vec_sub(params->input[input_params_force_vix].v, vjx.v);
+  dvy.v = vec_sub(params->input[input_params_force_viy].v, vjy.v);
+  dvz.v = vec_sub(params->input[input_params_force_viz].v, vjz.v);
 
   /* Compute dv dot r. */
   dvdr.v = vec_fma(dvx.v, dx->v, vec_fma(dvy.v, dy->v, vec_mul(dvz.v, dz->v)));
@@ -459,10 +459,10 @@ runner_iact_nonsym_1_vec_force(
       vec_mul(fac_mu.v, vec_mul(ri.v, omega_ij.v)); /* This is 0 or negative */
 
   /* Compute signal velocity */
-  v_sig.v = vec_fnma(vec_set1(3.f), mu_ij.v, vec_add(params->v_ci.v, cj.v));
+  v_sig.v = vec_fnma(vec_set1(3.f), mu_ij.v, vec_add(params->input[input_params_force_ci].v, cj.v));
 
   /* Now construct the full viscosity term */
-  rho_ij.v = vec_mul(vec_set1(0.5f), vec_add(params->v_rhoi.v, pjrho.v));
+  rho_ij.v = vec_mul(vec_set1(0.5f), vec_add(params->input[input_params_force_rhoi].v, pjrho.v));
   visc.v = vec_div(vec_mul(const_viscosity_alpha_fac.v,
                            vec_mul(v_sig.v, mu_ij.v)),
                    rho_ij.v);
@@ -473,7 +473,7 @@ runner_iact_nonsym_1_vec_force(
               vec_mul(visc.v, vec_mul(vec_add(wi_dr.v, wj_dr.v), ri.v)));
 
   sph_term.v =
-      vec_mul(vec_fma(params->v_pOrhoi2.v, wi_dr.v,
+      vec_mul(vec_fma(params->input[input_params_force_pOrhoi2].v, wi_dr.v,
                       vec_mul(pjPOrho2.v, wj_dr.v)),
               ri.v);
 
@@ -486,7 +486,7 @@ runner_iact_nonsym_1_vec_force(
   piaz.v = vec_mul(mj.v, vec_mul(dz->v, acc.v));
 
   /* Get the time derivative for u. */
-  sph_du_term_i.v = vec_mul(vec_mul(params->v_pOrhoi2.v, dvdr.v), vec_mul(ri.v, wi_dr.v));
+  sph_du_term_i.v = vec_mul(vec_mul(params->input[input_params_force_pOrhoi2].v, dvdr.v), vec_mul(ri.v, wi_dr.v));
 
   /* Viscosity term */
   visc_du_term.v = vec_mul(vec_set1(0.5f), vec_mul(visc_term.v, dvdr.v));
@@ -499,12 +499,12 @@ runner_iact_nonsym_1_vec_force(
       vec_div(vec_mul(mj.v, vec_mul(dvdr.v, vec_mul(ri.v, wi_dr.v))), pjrho.v);
 
   /* Store the forces back on the particles. */
-  sum_cache->v_a_hydro_xSum.v = vec_mask_sub(sum_cache->v_a_hydro_xSum.v, piax.v, mask);
-  sum_cache->v_a_hydro_ySum.v = vec_mask_sub(sum_cache->v_a_hydro_ySum.v, piay.v, mask);
-  sum_cache->v_a_hydro_zSum.v = vec_mask_sub(sum_cache->v_a_hydro_zSum.v, piaz.v, mask);
-  sum_cache->v_u_dtSum.v = vec_mask_add(sum_cache->v_u_dtSum.v, du_dt_i.v, mask);
-  sum_cache->v_h_dtSum.v = vec_mask_sub(sum_cache->v_h_dtSum.v, pih_dt.v, mask);
-  sum_cache->v_sigSum.v = vec_fmax(sum_cache->v_sigSum.v, vec_and_mask(v_sig.v, mask));
+  sum_cache->updates[update_cache_force_a_hydro_x].v = vec_mask_sub(sum_cache->updates[update_cache_force_a_hydro_x].v, piax.v, mask);
+  sum_cache->updates[update_cache_force_a_hydro_y].v = vec_mask_sub(sum_cache->updates[update_cache_force_a_hydro_y].v, piay.v, mask);
+  sum_cache->updates[update_cache_force_a_hydro_z].v = vec_mask_sub(sum_cache->updates[update_cache_force_a_hydro_z].v, piaz.v, mask);
+  sum_cache->updates[update_cache_force_u_dt].v = vec_mask_add(sum_cache->updates[update_cache_force_u_dt].v, du_dt_i.v, mask);
+  sum_cache->updates[update_cache_force_h_dt].v = vec_mask_sub(sum_cache->updates[update_cache_force_h_dt].v, pih_dt.v, mask);
+  sum_cache->updates[update_cache_force_sig].v = vec_fmax(sum_cache->updates[update_cache_force_sig].v, vec_and_mask(v_sig.v, mask));
 
 #else
 
