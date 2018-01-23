@@ -99,12 +99,24 @@ struct c2_cache {
 
 };
 
+/* List which particle density parameters are required as input. */
+enum input_params_density_types {
+  input_params_density_hi_inv = 0,
+  input_params_density_length
+};
+
+/* List which particle density parameters need updating. */
+enum update_cache_density_types {
+  update_cache_density_rho = 0,
+  update_cache_density_rho_dh,
+  update_cache_density_wcount,
+  update_cache_density_wcount_dh,
+  update_cache_density_length
+};
+
 /* Cache to hold a list of vectors used to update particle properties after a density interaction. */
 struct update_cache_density {
-  vector v_rhoSum;
-  vector v_rho_dhSum;
-  vector v_wcountSum;
-  vector v_wcount_dhSum;
+  vector updates[update_cache_density_length];  
 };
 
 /* Cache to hold a list of vectors used to update particle properties after a force interaction. */
@@ -119,7 +131,7 @@ struct update_cache_force {
 
 /* Input parameters needed for computing the density interaction. */
 struct input_params_density {
-  vector v_hi_inv;
+  vector input[input_params_density_length];
 };
 
 /* Input parameters needed for computing the force interaction. */
@@ -140,10 +152,8 @@ struct input_params_force {
  */
 __attribute__((always_inline)) INLINE void update_cache_density_init(struct update_cache_density *c) {
 
-  c->v_rhoSum.v = vec_setzero();
-  c->v_rho_dhSum.v = vec_setzero();
-  c->v_wcountSum.v = vec_setzero();
-  c->v_wcount_dhSum.v = vec_setzero();
+  for(int i=0; i<update_cache_density_length; i++) c->updates[i].v = vec_setzero();
+
 }
 
 /**
@@ -169,10 +179,10 @@ __attribute__((always_inline)) INLINE void update_cache_force_init(struct update
  */
 __attribute__((always_inline)) INLINE void update_density_particle(struct part *restrict pi, struct update_cache_density *c) {
 
-  VEC_HADD(c->v_rhoSum, pi->rho);
-  VEC_HADD(c->v_rho_dhSum, pi->density.rho_dh);
-  VEC_HADD(c->v_wcountSum, pi->density.wcount);
-  VEC_HADD(c->v_wcount_dhSum, pi->density.wcount_dh);
+  VEC_HADD(c->updates[update_cache_density_rho], pi->rho);
+  VEC_HADD(c->updates[update_cache_density_rho_dh], pi->density.rho_dh);
+  VEC_HADD(c->updates[update_cache_density_wcount], pi->density.wcount);
+  VEC_HADD(c->updates[update_cache_density_wcount_dh], pi->density.wcount_dh);
 }
 
 /**
@@ -206,7 +216,7 @@ __attribute__((always_inline)) INLINE void populate_input_params_density_cache(c
   const float hi = c->h[cache_index];
   const float hi_inv = 1.f / hi;
   
-  params->v_hi_inv = vector_set1(hi_inv);
+  params->input[input_params_density_hi_inv] = vector_set1(hi_inv);
 }
 
 /**
@@ -242,7 +252,7 @@ __attribute__((always_inline)) INLINE void populate_input_params_density(struct 
   const float hi = pi->h;
   const float hi_inv = 1.f / hi;
   
-  params->v_hi_inv = vector_set1(hi_inv);
+  params->input[input_params_density_hi_inv] = vector_set1(hi_inv);
 }
 
 /**
