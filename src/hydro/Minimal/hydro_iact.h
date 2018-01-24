@@ -130,7 +130,7 @@ runner_iact_nonsym_1_vec_density(vector *r2, vector *dx, vector *dy, vector *dz,
   for(int i=0; i<VEC_SIZE; i++) {
   float rho = 0.f, rho_dh = 0.f, wcount = 0.f, wcount_dh = 0.f;
     if (int_mask & (1 << i)) {
-      runner_iact_nonsym_density_scalar(r2->f[i], params->input[input_params_density_hi_inv].f[i], &rho, &rho_dh, &wcount, &wcount_dh, cell_cache->m[cache_idx + i]);
+      runner_iact_nonsym_density_scalar(r2->f[i], params->input[input_params_density_hi_inv].f[0], &rho, &rho_dh, &wcount, &wcount_dh, cell_cache->m[cache_idx + i]);
     }
     sum_cache->updates[update_cache_density_rho].f[i] += rho;
     sum_cache->updates[update_cache_density_rho_dh].f[i] += rho_dh;
@@ -387,6 +387,93 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force(
   pi->force.v_sig = max(pi->force.v_sig, v_sig);
 }
 
+/**
+ * @brief Force loop (non-symmetric version)
+ */
+__attribute__((always_inline)) INLINE static void runner_iact_nonsym_force_scalar(
+     float r2, float dx, float dy, float dz, float hj_inv, const struct input_params_force *params, const struct cache *cell_cache, const int cache_idx, float *restrict a_hydro_xSum, float *restrict a_hydro_ySum, float *restrict a_hydro_zSum, float *restrict u_dtSum, float *restrict h_dtSum, float *restrict sigSum) {
+
+  const float fac_mu = 1.f; /* Will change with cosmological integration */
+
+  const float r = sqrtf(r2);
+  const float r_inv = 1.0f / r;
+
+  /* Recover some data */
+  const float mj = cell_cache->m[cache_idx];
+  const float rhoi = params->input[input_params_force_rhoi].f[0];
+  const float rhoj = cell_cache->rho[cache_idx];
+  const float P_over_rho2_i = params->input[input_params_force_pOrhoi2].f[0];
+  const float P_over_rho2_j = cell_cache->pOrho2[cache_idx];
+
+  /* Get the kernel for hi. */
+  const float hi_inv = params->input[input_params_force_hi_inv].f[0];
+  const float hid_inv = pow_dimension_plus_one(hi_inv); /* 1/h^(d+1) */
+  const float xi = r * hi_inv;
+  float wi, wi_dx;
+  kernel_deval(xi, &wi, &wi_dx);
+  const float wi_dr = hid_inv * wi_dx;
+
+  /* Get the kernel for hj. */
+  //const float hj_inv = 1.0f / hj;
+  const float hjd_inv = pow_dimension_plus_one(hj_inv); /* 1/h^(d+1) */
+  const float xj = r * hj_inv;
+  float wj, wj_dx;
+  kernel_deval(xj, &wj, &wj_dx);
+  const float wj_dr = hjd_inv * wj_dx;
+
+  /* Compute dv dot r. */
+  const float dvdr = (params->input[input_params_force_vix].f[0] - cell_cache->vx[cache_idx]) * dx +
+                     (params->input[input_params_force_viy].f[0] - cell_cache->vy[cache_idx]) * dy +
+                     (params->input[input_params_force_viz].f[0] - cell_cache->vz[cache_idx]) * dz;
+
+  /* Are the particles moving towards each others ? */
+  const float omega_ij = min(dvdr, 0.f);
+  const float mu_ij = fac_mu * r_inv * omega_ij; /* This is 0 or negative */
+
+  /* Compute sound speeds and signal velocity */
+  const float ci = params->input[input_params_force_ci].f[0];
+  const float cj = cell_cache->soundspeed[cache_idx];
+  *sigSum = ci + cj - 3.f * mu_ij;
+
+  /* Construct the full viscosity term */
+  const float rho_ij = 0.5f * (rhoi + rhoj);
+  const float visc = -0.5f * const_viscosity_alpha * (*sigSum) * mu_ij / rho_ij;
+
+  /* Convolve with the kernel */
+  const float visc_acc_term = 0.5f * visc * (wi_dr + wj_dr) * r_inv;
+
+  /* SPH acceleration term */
+  const float sph_acc_term =
+      (P_over_rho2_i * wi_dr + P_over_rho2_j * wj_dr) * r_inv;
+
+  /* Assemble the acceleration */
+  const float acc = sph_acc_term + visc_acc_term;
+
+  /* Use the force Luke ! */
+  *a_hydro_xSum -= mj * acc * dx;
+  *a_hydro_ySum -= mj * acc * dy;
+  *a_hydro_zSum -= mj * acc * dz;
+
+  /* Get the time derivative for u. */
+  const float sph_du_term_i = P_over_rho2_i * dvdr * r_inv * wi_dr;
+
+  /* Viscosity term */
+  const float visc_du_term = 0.5f * visc_acc_term * dvdr;
+
+  /* Assemble the energy equation term */
+  const float du_dt_i = sph_du_term_i + visc_du_term;
+
+  /* Internal energy time derivatibe */
+  *u_dtSum += du_dt_i * mj;
+
+  /* Get the time derivative for h. */
+  *h_dtSum -= mj * dvdr * r_inv / rhoj * wi_dr;
+
+  /* Update the signal velocity. */
+  //*sigSum = max(pi->force.v_sig, v_sig);
+  //*sigSum = v_sig;
+}
+
 #ifdef WITH_VECTORIZATION
 static const vector const_viscosity_alpha_fac =
     FILL_VEC(-0.5f * const_viscosity_alpha);
@@ -399,120 +486,146 @@ __attribute__((always_inline)) INLINE static void
 runner_iact_nonsym_1_vec_force(
     vector *r2, vector *dx, vector *dy, vector *dz, const struct input_params_force *params, const struct cache *cell_cache, const int cache_idx, vector hj_inv, struct update_cache_force *sum_cache, mask_t mask) {
 
-#ifdef WITH_VECTORIZATION
+  const int int_mask = vec_is_mask_true(mask);
 
-  vector r, ri;
-  vector dvx, dvy, dvz;
-  vector xi, xj;
-  vector hid_inv, hjd_inv;
-  vector wi_dx, wj_dx, wi_dr, wj_dr, dvdr;
-  vector piax, piay, piaz;
-  vector pih_dt;
-  vector v_sig;
-  vector omega_ij, mu_ij;
-  vector rho_ij, visc, visc_term, sph_term, acc;
-  vector sph_du_term_i, visc_du_term, du_dt_i;
+  //for(int i=0; i<VEC_SIZE; i++) {
+  //    message("r2: %f", r2->f[i]);
+  //    message("rhoi: %f, rhoj: %f", params->input[input_params_force_rhoi].f[0], cell_cache->rho[cache_idx + i]);
+  //    message("hj_inv: %f", hj_inv.f[i]);
+  //}
 
-  /* Fill vectors. */
-  const vector vjx = vector_load(&cell_cache->vx[cache_idx]);
-  const vector vjy = vector_load(&cell_cache->vy[cache_idx]);
-  const vector vjz = vector_load(&cell_cache->vz[cache_idx]);
-  const vector mj = vector_load(&cell_cache->m[cache_idx]);
-  const vector pjrho = vector_load(&cell_cache->rho[cache_idx]);
-  const vector pjPOrho2 = vector_load(&cell_cache->pOrho2[cache_idx]);
-  const vector cj = vector_load(&cell_cache->soundspeed[cache_idx]);
+//#pragma simd
+//#pragma novector
+  for(int i=0; i<VEC_SIZE; i++) {
+  float a_hydro_x = 0.f, a_hydro_y = 0.f, a_hydro_z = 0.f, u_dt = 0.f, h_dt = 0.f, sig = 0.f;
+    if (int_mask & (1 << i)) {
+      runner_iact_nonsym_force_scalar(r2->f[i], dx->f[i], dy->f[i], dz->f[i], hj_inv.f[i], params, cell_cache, cache_idx + i, &a_hydro_x, &a_hydro_y, &a_hydro_z, &u_dt, &h_dt, &sig);
+      
+      sum_cache->updates[update_cache_force_a_hydro_x].f[i] += a_hydro_x;
+      sum_cache->updates[update_cache_force_a_hydro_y].f[i] += a_hydro_y;
+      sum_cache->updates[update_cache_force_a_hydro_z].f[i] += a_hydro_z;
+      sum_cache->updates[update_cache_force_u_dt].f[i] += u_dt;
+      sum_cache->updates[update_cache_force_h_dt].f[i] += h_dt;
+      sum_cache->updates[update_cache_force_sig].f[i] = max(sum_cache->updates[update_cache_force_sig].f[i], sig);
 
-  const vector fac_mu =
-      vector_set1(1.f); /* Will change with cosmological integration */
+    }
+    
+  }
 
-  /* Get the radius and inverse radius. */
-  ri = vec_reciprocal_sqrt(*r2);
-  r.v = vec_mul(r2->v, ri.v);
-
-  /* Get the kernel for hi. */
-  hid_inv = pow_dimension_plus_one_vec(params->input[input_params_force_hi_inv]);
-  xi.v = vec_mul(r.v, params->input[input_params_force_hi_inv].v);
-  kernel_eval_dWdx_force_vec(&xi, &wi_dx);
-  wi_dr.v = vec_mul(hid_inv.v, wi_dx.v);
-
-  /* Get the kernel for hj. */
-  hjd_inv = pow_dimension_plus_one_vec(hj_inv);
-  xj.v = vec_mul(r.v, hj_inv.v);
-
-  /* Calculate the kernel. */
-  kernel_eval_dWdx_force_vec(&xj, &wj_dx);
-
-  wj_dr.v = vec_mul(hjd_inv.v, wj_dx.v);
-
-  /* Compute dv. */
-  dvx.v = vec_sub(params->input[input_params_force_vix].v, vjx.v);
-  dvy.v = vec_sub(params->input[input_params_force_viy].v, vjy.v);
-  dvz.v = vec_sub(params->input[input_params_force_viz].v, vjz.v);
-
-  /* Compute dv dot r. */
-  dvdr.v = vec_fma(dvx.v, dx->v, vec_fma(dvy.v, dy->v, vec_mul(dvz.v, dz->v)));
-
-  /* Compute the relative velocity. (This is 0 if the particles move away from
-   * each other and negative otherwise) */
-  omega_ij.v = vec_fmin(dvdr.v, vec_setzero());
-  mu_ij.v =
-      vec_mul(fac_mu.v, vec_mul(ri.v, omega_ij.v)); /* This is 0 or negative */
-
-  /* Compute signal velocity */
-  v_sig.v = vec_fnma(vec_set1(3.f), mu_ij.v, vec_add(params->input[input_params_force_ci].v, cj.v));
-
-  /* Now construct the full viscosity term */
-  rho_ij.v = vec_mul(vec_set1(0.5f), vec_add(params->input[input_params_force_rhoi].v, pjrho.v));
-  visc.v = vec_div(vec_mul(const_viscosity_alpha_fac.v,
-                           vec_mul(v_sig.v, mu_ij.v)),
-                   rho_ij.v);
-
-  /* Now, convolve with the kernel */
-  visc_term.v =
-      vec_mul(vec_set1(0.5f),
-              vec_mul(visc.v, vec_mul(vec_add(wi_dr.v, wj_dr.v), ri.v)));
-
-  sph_term.v =
-      vec_mul(vec_fma(params->input[input_params_force_pOrhoi2].v, wi_dr.v,
-                      vec_mul(pjPOrho2.v, wj_dr.v)),
-              ri.v);
-
-  /* Eventually get the acceleration */
-  acc.v = vec_add(visc_term.v, sph_term.v);
-
-  /* Use the force, Luke! */
-  piax.v = vec_mul(mj.v, vec_mul(dx->v, acc.v));
-  piay.v = vec_mul(mj.v, vec_mul(dy->v, acc.v));
-  piaz.v = vec_mul(mj.v, vec_mul(dz->v, acc.v));
-
-  /* Get the time derivative for u. */
-  sph_du_term_i.v = vec_mul(vec_mul(params->input[input_params_force_pOrhoi2].v, dvdr.v), vec_mul(ri.v, wi_dr.v));
-
-  /* Viscosity term */
-  visc_du_term.v = vec_mul(vec_set1(0.5f), vec_mul(visc_term.v, dvdr.v));
-
-  /* Assemble the energy equation term */
-  du_dt_i.v = vec_mul(mj.v, vec_add(sph_du_term_i.v, visc_du_term.v));
-
-  /* Get the time derivative for h. */
-  pih_dt.v =
-      vec_div(vec_mul(mj.v, vec_mul(dvdr.v, vec_mul(ri.v, wi_dr.v))), pjrho.v);
-
-  /* Store the forces back on the particles. */
-  sum_cache->updates[update_cache_force_a_hydro_x].v = vec_mask_sub(sum_cache->updates[update_cache_force_a_hydro_x].v, piax.v, mask);
-  sum_cache->updates[update_cache_force_a_hydro_y].v = vec_mask_sub(sum_cache->updates[update_cache_force_a_hydro_y].v, piay.v, mask);
-  sum_cache->updates[update_cache_force_a_hydro_z].v = vec_mask_sub(sum_cache->updates[update_cache_force_a_hydro_z].v, piaz.v, mask);
-  sum_cache->updates[update_cache_force_u_dt].v = vec_mask_add(sum_cache->updates[update_cache_force_u_dt].v, du_dt_i.v, mask);
-  sum_cache->updates[update_cache_force_h_dt].v = vec_mask_sub(sum_cache->updates[update_cache_force_h_dt].v, pih_dt.v, mask);
-  sum_cache->updates[update_cache_force_sig].v = vec_fmax(sum_cache->updates[update_cache_force_sig].v, vec_and_mask(v_sig.v, mask));
-
-#else
-
-  error(
-      "The Gadget2 serial version of runner_iact_nonsym_force was called when "
-      "the vectorised version should have been used.");
-
-#endif
+//#ifdef WITH_VECTORIZATION
+//
+//  vector r, ri;
+//  vector dvx, dvy, dvz;
+//  vector xi, xj;
+//  vector hid_inv, hjd_inv;
+//  vector wi_dx, wj_dx, wi_dr, wj_dr, dvdr;
+//  vector piax, piay, piaz;
+//  vector pih_dt;
+//  vector v_sig;
+//  vector omega_ij, mu_ij;
+//  vector rho_ij, visc, visc_term, sph_term, acc;
+//  vector sph_du_term_i, visc_du_term, du_dt_i;
+//
+//  /* Fill vectors. */
+//  const vector vjx = vector_load(&cell_cache->vx[cache_idx]);
+//  const vector vjy = vector_load(&cell_cache->vy[cache_idx]);
+//  const vector vjz = vector_load(&cell_cache->vz[cache_idx]);
+//  const vector mj = vector_load(&cell_cache->m[cache_idx]);
+//  const vector pjrho = vector_load(&cell_cache->rho[cache_idx]);
+//  const vector pjPOrho2 = vector_load(&cell_cache->pOrho2[cache_idx]);
+//  const vector cj = vector_load(&cell_cache->soundspeed[cache_idx]);
+//
+//  const vector fac_mu =
+//      vector_set1(1.f); /* Will change with cosmological integration */
+//
+//  /* Get the radius and inverse radius. */
+//  ri = vec_reciprocal_sqrt(*r2);
+//  r.v = vec_mul(r2->v, ri.v);
+//
+//  /* Get the kernel for hi. */
+//  hid_inv = pow_dimension_plus_one_vec(params->input[input_params_force_hi_inv]);
+//  xi.v = vec_mul(r.v, params->input[input_params_force_hi_inv].v);
+//  kernel_eval_dWdx_force_vec(&xi, &wi_dx);
+//  wi_dr.v = vec_mul(hid_inv.v, wi_dx.v);
+//
+//  /* Get the kernel for hj. */
+//  hjd_inv = pow_dimension_plus_one_vec(hj_inv);
+//  xj.v = vec_mul(r.v, hj_inv.v);
+//
+//  /* Calculate the kernel. */
+//  kernel_eval_dWdx_force_vec(&xj, &wj_dx);
+//
+//  wj_dr.v = vec_mul(hjd_inv.v, wj_dx.v);
+//
+//  /* Compute dv. */
+//  dvx.v = vec_sub(params->input[input_params_force_vix].v, vjx.v);
+//  dvy.v = vec_sub(params->input[input_params_force_viy].v, vjy.v);
+//  dvz.v = vec_sub(params->input[input_params_force_viz].v, vjz.v);
+//
+//  /* Compute dv dot r. */
+//  dvdr.v = vec_fma(dvx.v, dx->v, vec_fma(dvy.v, dy->v, vec_mul(dvz.v, dz->v)));
+//
+//  /* Compute the relative velocity. (This is 0 if the particles move away from
+//   * each other and negative otherwise) */
+//  omega_ij.v = vec_fmin(dvdr.v, vec_setzero());
+//  mu_ij.v =
+//      vec_mul(fac_mu.v, vec_mul(ri.v, omega_ij.v)); /* This is 0 or negative */
+//
+//  /* Compute signal velocity */
+//  v_sig.v = vec_fnma(vec_set1(3.f), mu_ij.v, vec_add(params->input[input_params_force_ci].v, cj.v));
+//
+//  /* Now construct the full viscosity term */
+//  rho_ij.v = vec_mul(vec_set1(0.5f), vec_add(params->input[input_params_force_rhoi].v, pjrho.v));
+//  visc.v = vec_div(vec_mul(const_viscosity_alpha_fac.v,
+//                           vec_mul(v_sig.v, mu_ij.v)),
+//                   rho_ij.v);
+//
+//  /* Now, convolve with the kernel */
+//  visc_term.v =
+//      vec_mul(vec_set1(0.5f),
+//              vec_mul(visc.v, vec_mul(vec_add(wi_dr.v, wj_dr.v), ri.v)));
+//
+//  sph_term.v =
+//      vec_mul(vec_fma(params->input[input_params_force_pOrhoi2].v, wi_dr.v,
+//                      vec_mul(pjPOrho2.v, wj_dr.v)),
+//              ri.v);
+//
+//  /* Eventually get the acceleration */
+//  acc.v = vec_add(visc_term.v, sph_term.v);
+//
+//  /* Use the force, Luke! */
+//  piax.v = vec_mul(mj.v, vec_mul(dx->v, acc.v));
+//  piay.v = vec_mul(mj.v, vec_mul(dy->v, acc.v));
+//  piaz.v = vec_mul(mj.v, vec_mul(dz->v, acc.v));
+//
+//  /* Get the time derivative for u. */
+//  sph_du_term_i.v = vec_mul(vec_mul(params->input[input_params_force_pOrhoi2].v, dvdr.v), vec_mul(ri.v, wi_dr.v));
+//
+//  /* Viscosity term */
+//  visc_du_term.v = vec_mul(vec_set1(0.5f), vec_mul(visc_term.v, dvdr.v));
+//
+//  /* Assemble the energy equation term */
+//  du_dt_i.v = vec_mul(mj.v, vec_add(sph_du_term_i.v, visc_du_term.v));
+//
+//  /* Get the time derivative for h. */
+//  pih_dt.v =
+//      vec_div(vec_mul(mj.v, vec_mul(dvdr.v, vec_mul(ri.v, wi_dr.v))), pjrho.v);
+//
+//  /* Store the forces back on the particles. */
+//  sum_cache->updates[update_cache_force_a_hydro_x].v = vec_mask_sub(sum_cache->updates[update_cache_force_a_hydro_x].v, piax.v, mask);
+//  sum_cache->updates[update_cache_force_a_hydro_y].v = vec_mask_sub(sum_cache->updates[update_cache_force_a_hydro_y].v, piay.v, mask);
+//  sum_cache->updates[update_cache_force_a_hydro_z].v = vec_mask_sub(sum_cache->updates[update_cache_force_a_hydro_z].v, piaz.v, mask);
+//  sum_cache->updates[update_cache_force_u_dt].v = vec_mask_add(sum_cache->updates[update_cache_force_u_dt].v, du_dt_i.v, mask);
+//  sum_cache->updates[update_cache_force_h_dt].v = vec_mask_sub(sum_cache->updates[update_cache_force_h_dt].v, pih_dt.v, mask);
+//  sum_cache->updates[update_cache_force_sig].v = vec_fmax(sum_cache->updates[update_cache_force_sig].v, vec_and_mask(v_sig.v, mask));
+//
+//#else
+//
+//  error(
+//      "The Gadget2 serial version of runner_iact_nonsym_force was called when "
+//      "the vectorised version should have been used.");
+//
+//#endif
 }
 
 /**

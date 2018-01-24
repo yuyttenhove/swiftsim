@@ -479,7 +479,7 @@ int main(int argc, char *argv[]) {
 
 /* Choke on FP-exceptions */
 #ifdef HAVE_FE_ENABLE_EXCEPT
-  feenableexcept(FE_DIVBYZERO | FE_INVALID | FE_OVERFLOW);
+  //feenableexcept(FE_DIVBYZERO | FE_INVALID | FE_OVERFLOW);
 #endif
 
   /* Get some randomness going */
