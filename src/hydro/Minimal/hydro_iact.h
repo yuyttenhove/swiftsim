@@ -389,7 +389,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force(
 
 #ifdef WITH_VECTORIZATION
 static const vector const_viscosity_alpha_fac =
-    FILL_VEC(-0.25f * const_viscosity_alpha);
+    FILL_VEC(-0.5f * const_viscosity_alpha);
 
 /**
  * @brief Force interaction computed using 1 vector
