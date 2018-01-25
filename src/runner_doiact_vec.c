@@ -1467,7 +1467,6 @@ void runner_dopair_subset_density_vec(struct runner *r,
       const float piy = pi->x[1] - total_ci_shift[1];
       const float piz = pi->x[2] - total_ci_shift[2];
       const float hi = pi->h;
-      const float hig2 = hi * hi * kernel_gamma2;
 
       /* Skip this particle if no particle in cj is within range of it. */
       const double di = hi * kernel_gamma + dxj + pix * runner_shift_x +
@@ -1479,24 +1478,16 @@ void runner_dopair_subset_density_vec(struct runner *r,
       const vector v_pix = vector_set1(pix);
       const vector v_piy = vector_set1(piy);
       const vector v_piz = vector_set1(piz);
-      const vector v_hi = vector_set1(hi);
-      const vector v_vix = vector_set1(pi->v[0]);
-      const vector v_viy = vector_set1(pi->v[1]);
-      const vector v_viz = vector_set1(pi->v[2]);
+      
+      const float hig2 = hi * hi * kernel_gamma2;
       const vector v_hig2 = vector_set1(hig2);
-
-      /* Get the inverse of hi. */
-      vector v_hi_inv = vec_reciprocal(v_hi);
-
+      
+      struct input_params_density params;
+      populate_input_params_density(pi, &params);
+      
       /* Reset cumulative sums of update vectors. */
-      vector v_rhoSum = vector_setzero();
-      vector v_rho_dhSum = vector_setzero();
-      vector v_wcountSum = vector_setzero();
-      vector v_wcount_dhSum = vector_setzero();
-      vector v_div_vSum = vector_setzero();
-      vector v_curlvxSum = vector_setzero();
-      vector v_curlvySum = vector_setzero();
-      vector v_curlvzSum = vector_setzero();
+      struct update_cache_density sum_cache;
+      update_cache_density_init(&sum_cache);
 
       int exit_iteration_end = max_index_i[pid] + 1;
 
@@ -1542,25 +1533,14 @@ void runner_dopair_subset_density_vec(struct runner *r,
         /* If there are any interactions perform them. */
         if (vec_is_mask_true(v_doi_mask))
           runner_iact_nonsym_1_vec_density(
-              &v_r2, &v_dx, &v_dy, &v_dz, v_hi_inv, v_vix, v_viy, v_viz,
-              &cj_cache->vx[cj_cache_idx], &cj_cache->vy[cj_cache_idx],
-              &cj_cache->vz[cj_cache_idx], &cj_cache->m[cj_cache_idx],
-              &v_rhoSum, &v_rho_dhSum, &v_wcountSum, &v_wcount_dhSum,
-              &v_div_vSum, &v_curlvxSum, &v_curlvySum, &v_curlvzSum,
-              v_doi_mask);
+              &v_r2, &v_dx, &v_dy, &v_dz, &params, cj_cache, cj_cache_idx,
+              &sum_cache, v_doi_mask);
 
       } /* loop over the parts in cj. */
 
-      /* Perform horizontal adds on vector sums and store result in pi. */
-      VEC_HADD(v_rhoSum, pi->rho);
-      VEC_HADD(v_rho_dhSum, pi->density.rho_dh);
-      VEC_HADD(v_wcountSum, pi->density.wcount);
-      VEC_HADD(v_wcount_dhSum, pi->density.wcount_dh);
-      VEC_HADD(v_div_vSum, pi->density.div_v);
-      VEC_HADD(v_curlvxSum, pi->density.rot_v[0]);
-      VEC_HADD(v_curlvySum, pi->density.rot_v[1]);
-      VEC_HADD(v_curlvzSum, pi->density.rot_v[2]);
-
+      /* Perform horizontal adds on vector sums and store result in particle pi.*/
+      update_density_particle(pi, &sum_cache);
+      
     } /* loop over the parts in ci. */
   }
 
@@ -1588,7 +1568,6 @@ void runner_dopair_subset_density_vec(struct runner *r,
       const float piy = pi->x[1] - total_ci_shift[1];
       const float piz = pi->x[2] - total_ci_shift[2];
       const float hi = pi->h;
-      const float hig2 = hi * hi * kernel_gamma2;
 
       /* Skip this particle if no particle in cj is within range of it. */
       const double di = -hi * kernel_gamma - dxj + pix * runner_shift_x +
@@ -1600,29 +1579,19 @@ void runner_dopair_subset_density_vec(struct runner *r,
       const vector v_pix = vector_set1(pix);
       const vector v_piy = vector_set1(piy);
       const vector v_piz = vector_set1(piz);
-      const vector v_hi = vector_set1(hi);
-      const vector v_vix = vector_set1(pi->v[0]);
-      const vector v_viy = vector_set1(pi->v[1]);
-      const vector v_viz = vector_set1(pi->v[2]);
+      
+      const float hig2 = hi * hi * kernel_gamma2;
       const vector v_hig2 = vector_set1(hig2);
 
-      /* Get the inverse of hi. */
-      vector v_hi_inv = vec_reciprocal(v_hi);
+      struct input_params_density params;
+      populate_input_params_density(pi, &params);
 
       /* Reset cumulative sums of update vectors. */
-      vector v_rhoSum = vector_setzero();
-      vector v_rho_dhSum = vector_setzero();
-      vector v_wcountSum = vector_setzero();
-      vector v_wcount_dhSum = vector_setzero();
-      vector v_div_vSum = vector_setzero();
-      vector v_curlvxSum = vector_setzero();
-      vector v_curlvySum = vector_setzero();
-      vector v_curlvzSum = vector_setzero();
-
-      int exit_iteration = max_index_i[pid];
+      struct update_cache_density sum_cache;
+      update_cache_density_init(&sum_cache);
 
       /* Convert exit iteration to cache indices. */
-      int exit_iteration_align = exit_iteration - first_pj;
+      int exit_iteration_align = max_index_i[pid] - first_pj;
 
       /* Pad the exit iteration align so cache reads are aligned. */
       const int rem = exit_iteration_align % VEC_SIZE;
@@ -1671,25 +1640,14 @@ void runner_dopair_subset_density_vec(struct runner *r,
         /* If there are any interactions perform them. */
         if (vec_is_mask_true(v_doi_mask))
           runner_iact_nonsym_1_vec_density(
-              &v_r2, &v_dx, &v_dy, &v_dz, v_hi_inv, v_vix, v_viy, v_viz,
-              &cj_cache->vx[cj_cache_idx], &cj_cache->vy[cj_cache_idx],
-              &cj_cache->vz[cj_cache_idx], &cj_cache->m[cj_cache_idx],
-              &v_rhoSum, &v_rho_dhSum, &v_wcountSum, &v_wcount_dhSum,
-              &v_div_vSum, &v_curlvxSum, &v_curlvySum, &v_curlvzSum,
-              v_doi_mask);
+              &v_r2, &v_dx, &v_dy, &v_dz, &params, cj_cache, cj_cache_idx, 
+              &sum_cache, v_doi_mask);
 
       } /* loop over the parts in cj. */
 
-      /* Perform horizontal adds on vector sums and store result in pi. */
-      VEC_HADD(v_rhoSum, pi->rho);
-      VEC_HADD(v_rho_dhSum, pi->density.rho_dh);
-      VEC_HADD(v_wcountSum, pi->density.wcount);
-      VEC_HADD(v_wcount_dhSum, pi->density.wcount_dh);
-      VEC_HADD(v_div_vSum, pi->density.div_v);
-      VEC_HADD(v_curlvxSum, pi->density.rot_v[0]);
-      VEC_HADD(v_curlvySum, pi->density.rot_v[1]);
-      VEC_HADD(v_curlvzSum, pi->density.rot_v[2]);
-
+      /* Perform horizontal adds on vector sums and store result in particle pi.*/
+      update_density_particle(pi, &sum_cache);
+      
     } /* loop over the parts in ci. */
   }
 
