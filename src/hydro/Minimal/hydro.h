@@ -293,12 +293,9 @@ __attribute__((always_inline)) INLINE static void hydro_prepare_force(
   const float grad_h_term =
       1.f / (1.f + hydro_dimension_inv * p->h * p->density.rho_dh * rho_inv);
 
-  /* Divide the pressure by the density squared to get the SPH term */
-  const float P_over_rho2 = pressure * rho_inv * rho_inv;
-  
   /* Update variables. */
   p->force.f = grad_h_term;
-  p->force.P_over_rho2 = P_over_rho2;
+  p->force.pressure = pressure;
   p->force.soundspeed = soundspeed;
 }
 
@@ -381,13 +378,8 @@ __attribute__((always_inline)) INLINE static void hydro_predict_extra(
   /* Compute the new sound speed */
   const float soundspeed = gas_soundspeed_from_pressure(p->rho, pressure);
 
-  /* Divide the pressure by the density squared to get the SPH term */
-  const float rho_inv = 1.f / p->rho;
-  const float P_over_rho2 = pressure * rho_inv * rho_inv;
-
-  /* Update variables */
+  p->force.pressure = pressure;
   p->force.soundspeed = soundspeed;
-  p->force.P_over_rho2 = P_over_rho2;
 }
 
 /**
@@ -430,13 +422,8 @@ __attribute__((always_inline)) INLINE static void hydro_kick_extra(
   /* Compute the sound speed */
   const float soundspeed = gas_soundspeed_from_internal_energy(p->rho, p->u);
 
-  /* Divide the pressure by the density squared to get the SPH term */
-  const float rho_inv = 1.f / p->rho;
-  const float P_over_rho2 = pressure * rho_inv * rho_inv;
-
+  p->force.pressure = pressure;
   p->force.soundspeed = soundspeed;
-  p->force.P_over_rho2 = P_over_rho2;
-
 }
 
 /**
@@ -459,12 +446,8 @@ __attribute__((always_inline)) INLINE static void hydro_convert_quantities(
   /* Compute the sound speed */
   const float soundspeed = gas_soundspeed_from_internal_energy(p->rho, p->u);
 
-  /* Divide the pressure by the density squared to get the SPH term */
-  const float rho_inv = 1.f / p->rho;
-  const float P_over_rho2 = pressure * rho_inv * rho_inv;
-
+  p->force.pressure = pressure;
   p->force.soundspeed = soundspeed;
-  p->force.P_over_rho2 = P_over_rho2;
 }
 
 /**

@@ -68,8 +68,11 @@ struct cache {
   /* Particle density. */
   float *restrict rho SWIFT_CACHE_ALIGN;
 
-  /* Pressure over density squared. */
-  float *restrict pOrho2 SWIFT_CACHE_ALIGN;
+  /* Pressure. */
+  float *restrict pressure SWIFT_CACHE_ALIGN;
+  
+  /* Particle smoothing length gradient. */
+  float *restrict grad_h SWIFT_CACHE_ALIGN;
 
   /* Particle sound speed. */
   float *restrict soundspeed SWIFT_CACHE_ALIGN;
@@ -121,7 +124,8 @@ enum input_params_force_types {
   input_params_force_viz,
   input_params_force_hi_inv,
   input_params_force_rhoi,
-  input_params_force_pOrhoi2,
+  input_params_force_pressure,
+  input_params_force_grad_h,
   input_params_force_ci,
   input_params_force_length
 };
@@ -243,7 +247,8 @@ __attribute__((always_inline)) INLINE void populate_input_params_force_cache(con
   params->input[input_params_force_viz] = vector_set1(c->vz[cache_index]);
   params->input[input_params_force_hi_inv] = vector_set1(hi_inv); 
   params->input[input_params_force_rhoi] = vector_set1(c->rho[cache_index]);
-  params->input[input_params_force_pOrhoi2] = vector_set1(c->pOrho2[cache_index]);
+  params->input[input_params_force_pressure] = vector_set1(c->pressure[cache_index]);
+  params->input[input_params_force_grad_h] = vector_set1(c->grad_h[cache_index]);
   params->input[input_params_force_ci] = vector_set1(c->soundspeed[cache_index]);
 
 }
@@ -292,7 +297,8 @@ __attribute__((always_inline)) INLINE void cache_init(struct cache *c,
     free(c->h);
     free(c->max_index);
     free(c->rho);
-    free(c->pOrho2);
+    free(c->pressure);
+    free(c->grad_h);
     free(c->soundspeed);
   }
 
@@ -308,7 +314,9 @@ __attribute__((always_inline)) INLINE void cache_init(struct cache *c,
                           sizeIntBytes);
   error += posix_memalign((void **)&c->rho, SWIFT_CACHE_ALIGNMENT, sizeBytes);
   error +=
-      posix_memalign((void **)&c->pOrho2, SWIFT_CACHE_ALIGNMENT, sizeBytes);
+      posix_memalign((void **)&c->pressure, SWIFT_CACHE_ALIGNMENT, sizeBytes);
+  error +=
+      posix_memalign((void **)&c->grad_h, SWIFT_CACHE_ALIGNMENT, sizeBytes);
   error +=
       posix_memalign((void **)&c->soundspeed, SWIFT_CACHE_ALIGNMENT, sizeBytes);
 
@@ -368,6 +376,119 @@ __attribute__((always_inline)) INLINE void cache_read_particles(
 }
 
 /**
+ * @brief Populate cache by only reading particles that are within range of
+ * each other within the adjoining cell. Also read the particles into the cache
+ * in sorted order.
+ *
+ * @param ci The i #cell.
+ * @param ci_cache The #cache for cell ci.
+ * @param sort_i The array of sorted particle indices for cell ci.
+ * @param first_pi The first particle in cell ci that is in range.
+ * @param last_pi The last particle in cell ci that is in range.
+ * @param last_pi The last particle in cell ci that is in range.
+ * @param loc The cell location to remove from the particle positions.
+ * @param flipped Flag to check whether the cells have been flipped or not.
+ */
+__attribute__((always_inline)) INLINE void cache_read_particles_subset(
+    const struct cell *restrict const ci, struct cache *restrict const ci_cache,
+    const struct entry *restrict sort_i, int *first_pi, int *last_pi,
+    const double *loc, const int flipped) {
+
+  /* Let the compiler know that the data is aligned and create pointers to the
+   * arrays inside the cache. */
+  swift_declare_aligned_ptr(float, x, ci_cache->x, SWIFT_CACHE_ALIGNMENT);
+  swift_declare_aligned_ptr(float, y, ci_cache->y, SWIFT_CACHE_ALIGNMENT);
+  swift_declare_aligned_ptr(float, z, ci_cache->z, SWIFT_CACHE_ALIGNMENT);
+  swift_declare_aligned_ptr(float, h, ci_cache->h, SWIFT_CACHE_ALIGNMENT);
+  swift_declare_aligned_ptr(float, m, ci_cache->m, SWIFT_CACHE_ALIGNMENT);
+  
+  const struct part *restrict parts = ci->parts;
+
+  /* The cell is on the right so read the particles
+   * into the cache from the start of the cell. */
+  if (!flipped) {
+    const int rem = (*last_pi + 1) % VEC_SIZE;
+    if (rem != 0) {
+      const int pad = VEC_SIZE - rem;
+
+      /* Increase last_pi if there are particles in the cell left to read. */
+      if (*last_pi + pad < ci->count) *last_pi += pad;
+    }
+
+    /* Shift the particles positions to a local frame so single precision can be
+     * used instead of double precision. */
+    for (int i = 0; i < *last_pi; i++) {
+      const int idx = sort_i[i].i;
+      x[i] = (float)(parts[idx].x[0] - loc[0]);
+      y[i] = (float)(parts[idx].x[1] - loc[1]);
+      z[i] = (float)(parts[idx].x[2] - loc[2]);
+      h[i] = parts[idx].h;
+      m[i] = parts[idx].mass;
+     }
+
+    /* Pad cache with fake particles that exist outside the cell so will not
+     * interact. We use values of the same magnitude (but negative!) as the real
+     * particles to avoid overflow problems. */
+    const double max_dx = ci->dx_max_part;
+    const float pos_padded[3] = {-(2. * ci->width[0] + max_dx),
+                                 -(2. * ci->width[1] + max_dx),
+                                 -(2. * ci->width[2] + max_dx)};
+    const float h_padded = ci->parts[0].h;
+
+    for (int i = *last_pi; i < *last_pi + VEC_SIZE; i++) {
+      x[i] = pos_padded[0];
+      y[i] = pos_padded[1];
+      z[i] = pos_padded[2];
+      h[i] = h_padded;
+      m[i] = 1.f;
+    }
+  }
+  /* The cell is on the left so read the particles
+   * into the cache from the end of the cell. */
+  else {
+    const int rem = (ci->count - *first_pi) % VEC_SIZE;
+    if (rem != 0) {
+      const int pad = VEC_SIZE - rem;
+
+      /* Decrease first_pi if there are particles in the cell left to read. */
+      if (*first_pi - pad >= 0) *first_pi -= pad;
+    }
+
+    const int ci_cache_count = ci->count - *first_pi;
+
+    /* Shift the particles positions to a local frame so single precision can be
+     * used instead of double precision. */
+    for (int i = 0; i < ci_cache_count; i++) {
+      const int idx = sort_i[i + *first_pi].i;
+      x[i] = (float)(parts[idx].x[0] - loc[0]);
+      y[i] = (float)(parts[idx].x[1] - loc[1]);
+      z[i] = (float)(parts[idx].x[2] - loc[2]);
+      h[i] = parts[idx].h;
+      m[i] = parts[idx].mass;
+    }
+
+    /* Pad cache with fake particles that exist outside the cell so will not
+     * interact. We use values of the same magnitude (but negative!) as the real
+     * particles to avoid overflow problems. */
+    const double max_dx = ci->dx_max_part;
+    const float pos_padded[3] = {-(2. * ci->width[0] + max_dx),
+                                 -(2. * ci->width[1] + max_dx),
+                                 -(2. * ci->width[2] + max_dx)};
+    const float h_padded = ci->parts[0].h;
+
+    for (int i = ci->count - *first_pi; i < ci->count - *first_pi + VEC_SIZE;
+         i++) {
+      x[i] = pos_padded[0];
+      y[i] = pos_padded[1];
+      z[i] = pos_padded[2];
+      h[i] = h_padded;
+      m[i] = 1.f;
+    }
+  }
+
+}
+
+/**
  * @brief Populate cache for force interactions by reading in the particles in
  * unsorted order.
  *
@@ -390,7 +511,9 @@ __attribute__((always_inline)) INLINE void cache_read_force_particles(
   swift_declare_aligned_ptr(float, vy, ci_cache->vy, SWIFT_CACHE_ALIGNMENT);
   swift_declare_aligned_ptr(float, vz, ci_cache->vz, SWIFT_CACHE_ALIGNMENT);
   swift_declare_aligned_ptr(float, rho, ci_cache->rho, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, pOrho2, ci_cache->pOrho2,
+  swift_declare_aligned_ptr(float, pressure, ci_cache->pressure,
+                            SWIFT_CACHE_ALIGNMENT);
+  swift_declare_aligned_ptr(float, grad_h, ci_cache->grad_h,
                             SWIFT_CACHE_ALIGNMENT);
   swift_declare_aligned_ptr(float, soundspeed, ci_cache->soundspeed,
                             SWIFT_CACHE_ALIGNMENT);
@@ -410,7 +533,8 @@ __attribute__((always_inline)) INLINE void cache_read_force_particles(
     vy[i] = parts[i].v[1];
     vz[i] = parts[i].v[2];
     rho[i] = parts[i].rho;
-    pOrho2[i] = parts[i].force.P_over_rho2;
+    pressure[i] = parts[i].force.pressure;
+    grad_h[i] = parts[i].force.f;
     soundspeed[i] = parts[i].force.soundspeed;
   }
 
@@ -434,7 +558,8 @@ __attribute__((always_inline)) INLINE void cache_read_force_particles(
     vy[i] = 1.f;
     vz[i] = 1.f;
     rho[i] = 1.f;
-    pOrho2[i] = 1.f;
+    pressure[i] = 1.f;
+    grad_h[i] = 1.f;
     soundspeed[i] = 1.f;
   }
 }
@@ -698,7 +823,9 @@ cache_read_two_partial_cells_sorted_force(
   swift_declare_aligned_ptr(float, vy, ci_cache->vy, SWIFT_CACHE_ALIGNMENT);
   swift_declare_aligned_ptr(float, vz, ci_cache->vz, SWIFT_CACHE_ALIGNMENT);
   swift_declare_aligned_ptr(float, rho, ci_cache->rho, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, pOrho2, ci_cache->pOrho2,
+  swift_declare_aligned_ptr(float, pressure, ci_cache->pressure,
+                            SWIFT_CACHE_ALIGNMENT);
+  swift_declare_aligned_ptr(float, grad_h, ci_cache->grad_h,
                             SWIFT_CACHE_ALIGNMENT);
   swift_declare_aligned_ptr(float, soundspeed, ci_cache->soundspeed,
                             SWIFT_CACHE_ALIGNMENT);
@@ -718,7 +845,8 @@ cache_read_two_partial_cells_sorted_force(
     vz[i] = parts_i[idx].v[2];
     m[i] = parts_i[idx].mass;
     rho[i] = parts_i[idx].rho;
-    pOrho2[i] = parts_i[idx].force.P_over_rho2;
+    pressure[i] = parts_i[idx].force.pressure;
+    grad_h[i] = parts_i[idx].force.f;
     soundspeed[i] = parts_i[idx].force.soundspeed;
   }
 
@@ -742,7 +870,8 @@ cache_read_two_partial_cells_sorted_force(
     vy[i] = 1.f;
     vz[i] = 1.f;
     rho[i] = 1.f;
-    pOrho2[i] = 1.f;
+    pressure[i] = 1.f;
+    grad_h[i] = 1.f;
     soundspeed[i] = 1.f;
   }
 
@@ -757,7 +886,9 @@ cache_read_two_partial_cells_sorted_force(
   swift_declare_aligned_ptr(float, vyj, cj_cache->vy, SWIFT_CACHE_ALIGNMENT);
   swift_declare_aligned_ptr(float, vzj, cj_cache->vz, SWIFT_CACHE_ALIGNMENT);
   swift_declare_aligned_ptr(float, rhoj, cj_cache->rho, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, pOrho2j, cj_cache->pOrho2,
+  swift_declare_aligned_ptr(float, pressurej, cj_cache->pressure,
+                            SWIFT_CACHE_ALIGNMENT);
+  swift_declare_aligned_ptr(float, grad_hj, cj_cache->grad_h,
                             SWIFT_CACHE_ALIGNMENT);
   swift_declare_aligned_ptr(float, soundspeedj, cj_cache->soundspeed,
                             SWIFT_CACHE_ALIGNMENT);
@@ -773,7 +904,8 @@ cache_read_two_partial_cells_sorted_force(
     vzj[i] = parts_j[idx].v[2];
     mj[i] = parts_j[idx].mass;
     rhoj[i] = parts_j[idx].rho;
-    pOrho2j[i] = parts_j[idx].force.P_over_rho2;
+    pressurej[i] = parts_j[idx].force.pressure;
+    grad_hj[i] = parts_j[idx].force.f;
     soundspeedj[i] = parts_j[idx].force.soundspeed;
   }
 
@@ -795,7 +927,8 @@ cache_read_two_partial_cells_sorted_force(
     vyj[i] = 1.f;
     vzj[i] = 1.f;
     rhoj[i] = 1.f;
-    pOrho2j[i] = 1.f;
+    pressurej[i] = 1.f;
+    grad_hj[i] = 1.f;
     soundspeedj[i] = 1.f;
   }
 }
@@ -889,7 +1022,8 @@ static INLINE void cache_clean(struct cache *c) {
     free(c->h);
     free(c->max_index);
     free(c->rho);
-    free(c->pOrho2);
+    free(c->pressure);
+    free(c->grad_h);
     free(c->soundspeed);
   }
 }

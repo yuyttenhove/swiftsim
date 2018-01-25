@@ -220,8 +220,8 @@ __attribute__((always_inline)) INLINE static void runner_iact_force(
   const float mj = pj->mass;
   const float rhoi = pi->rho;
   const float rhoj = pj->rho;
-  const float P_over_rho2_i = pi->force.P_over_rho2;
-  const float P_over_rho2_j = pj->force.P_over_rho2;
+  const float pressurei = pi->force.pressure;
+  const float pressurej = pj->force.pressure;
 
   /* Get the kernel for hi. */
   const float hi_inv = 1.0f / hi;
@@ -238,6 +238,10 @@ __attribute__((always_inline)) INLINE static void runner_iact_force(
   float wj, wj_dx;
   kernel_deval(xj, &wj, &wj_dx);
   const float wj_dr = hjd_inv * wj_dx;
+
+  /* Compute gradient terms */
+  const float P_over_rho2_i = pressurei / (rhoi * rhoi) * pi->force.f;
+  const float P_over_rho2_j = pressurej / (rhoj * rhoj) * pj->force.f;
 
   /* Compute dv dot r. */
   const float dvdr = (pi->v[0] - pj->v[0]) * dx[0] +
@@ -316,8 +320,8 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force(
   const float mj = pj->mass;
   const float rhoi = pi->rho;
   const float rhoj = pj->rho;
-  const float P_over_rho2_i = pi->force.P_over_rho2;
-  const float P_over_rho2_j = pj->force.P_over_rho2;
+  const float pressurei = pi->force.pressure;
+  const float pressurej = pj->force.pressure;
 
   /* Get the kernel for hi. */
   const float hi_inv = 1.0f / hi;
@@ -334,6 +338,10 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force(
   float wj, wj_dx;
   kernel_deval(xj, &wj, &wj_dx);
   const float wj_dr = hjd_inv * wj_dx;
+
+  /* Compute gradient terms */
+  const float P_over_rho2_i = pressurei / (rhoi * rhoi) * pi->force.f;
+  const float P_over_rho2_j = pressurej / (rhoj * rhoj) * pj->force.f;
 
   /* Compute dv dot r. */
   const float dvdr = (pi->v[0] - pj->v[0]) * dx[0] +
@@ -403,9 +411,9 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force_scala
   const float mj = cell_cache->m[cache_idx];
   const float rhoi = params->input[input_params_force_rhoi].f[0];
   const float rhoj = cell_cache->rho[cache_idx];
-  const float P_over_rho2_i = params->input[input_params_force_pOrhoi2].f[0];
-  const float P_over_rho2_j = cell_cache->pOrho2[cache_idx];
-
+  const float P_over_rho2_i = params->input[input_params_force_pressure].f[0] / (rhoi * rhoi) * params->input[input_params_force_grad_h].f[0];
+  const float P_over_rho2_j = cell_cache->pressure[cache_idx] / (rhoj * rhoj) * cell_cache->grad_h[cache_idx];
+  
   /* Get the kernel for hi. */
   const float hi_inv = params->input[input_params_force_hi_inv].f[0];
   const float hid_inv = pow_dimension_plus_one(hi_inv); /* 1/h^(d+1) */
