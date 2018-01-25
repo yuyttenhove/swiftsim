@@ -225,6 +225,14 @@ void scheduler_write_dependencies(struct scheduler *s, int verbose) {
         if (tb->implicit)
           fprintf(f, "\t %s [style = filled];\n\t %s [color = lightgrey];\n",
                   tb_name, tb_name);
+
+        /* Change shape of MPI communications */
+        if (ta->type == task_type_send || ta->type == task_type_recv)
+          fprintf(f, "\t \"%s %s\" [shape = diamond];\n",
+                  taskID_names[ta->type], subtaskID_names[ta->subtype]);
+        if (tb->type == task_type_send || tb->type == task_type_recv)
+          fprintf(f, "\t \"%s %s\" [shape = diamond];\n",
+                  taskID_names[tb->type], subtaskID_names[tb->subtype]);
       }
     }
   }
@@ -234,7 +242,7 @@ void scheduler_write_dependencies(struct scheduler *s, int verbose) {
   int force_cluster[4] = {0};
   int gravity_cluster[4] = {0};
 
-  /* Modify the style of some tasks on the plot */
+  /* Check whether we need to construct a group of tasks */
   for (int type = 0; type < task_type_count; ++type) {
 
     for (int subtype = 0; subtype < task_subtype_count; ++subtype) {
@@ -243,11 +251,6 @@ void scheduler_write_dependencies(struct scheduler *s, int verbose) {
 
       /* Does this task/sub-task exist? */
       if (table[ind] != -1) {
-
-        /* Make MPI tasks a different shape */
-        if (type == task_type_send || type == task_type_recv)
-          fprintf(f, "\t \"%s %s\" [shape = diamond];\n", taskID_names[type],
-                  subtaskID_names[subtype]);
 
         for (int k = 0; k < 4; ++k) {
           if (type == task_type_self + k && subtype == task_subtype_density)
@@ -356,7 +359,7 @@ static void scheduler_splittask_hydro(struct task *t, struct scheduler *s) {
       if (cell_can_split_self_task(ci)) {
 
         /* Make a sub? */
-        if (scheduler_dosub && ci->count < space_subsize_self) {
+        if (scheduler_dosub && ci->count < space_subsize_self_hydro) {
 
           /* convert to a self-subtask. */
           t->type = task_type_sub_self;
@@ -416,7 +419,7 @@ static void scheduler_splittask_hydro(struct task *t, struct scheduler *s) {
 
         /* Replace by a single sub-task? */
         if (scheduler_dosub && /* Use division to avoid integer overflow. */
-            ci->count * sid_scale[sid] < space_subsize_pair / cj->count &&
+            ci->count * sid_scale[sid] < space_subsize_pair_hydro / cj->count &&
             !sort_is_corner(sid)) {
 
           /* Make this task a sub task. */
@@ -1176,7 +1179,7 @@ void scheduler_reweight(struct scheduler *s, int verbose) {
   int *tid = s->tasks_ind;
   struct task *tasks = s->tasks;
   const int nodeID = s->nodeID;
-  const float wscale = 0.001;
+  const float wscale = 0.001f;
   const ticks tic = getticks();
 
   /* Run through the tasks backwards and set their weights. */
@@ -1195,47 +1198,47 @@ void scheduler_reweight(struct scheduler *s, int verbose) {
 
       case task_type_self:
         if (t->subtype == task_subtype_grav)
-          cost = 1 * wscale * t->ci->gcount * t->ci->gcount;
+          cost = 1.f * (wscale * t->ci->gcount) * t->ci->gcount;
         else if (t->subtype == task_subtype_external_grav)
-          cost = 1 * wscale * t->ci->gcount;
+          cost = 1.f * wscale * t->ci->gcount;
         else
-          cost = 1 * wscale * t->ci->count * t->ci->count;
+          cost = 1.f * (wscale * t->ci->count) * t->ci->count;
         break;
 
       case task_type_pair:
         if (t->subtype == task_subtype_grav) {
           if (t->ci->nodeID != nodeID || t->cj->nodeID != nodeID)
-            cost = 3 * wscale * t->ci->gcount * t->cj->gcount;
+            cost = 3.f * (wscale * t->ci->gcount) * t->cj->gcount;
           else
-            cost = 2 * wscale * t->ci->gcount * t->cj->gcount;
+            cost = 2.f * (wscale * t->ci->gcount) * t->cj->gcount;
         } else {
           if (t->ci->nodeID != nodeID || t->cj->nodeID != nodeID)
-            cost =
-                3 * wscale * t->ci->count * t->cj->count * sid_scale[t->flags];
+            cost = 3.f * (wscale * t->ci->count) * t->cj->count *
+                   sid_scale[t->flags];
           else
-            cost =
-                2 * wscale * t->ci->count * t->cj->count * sid_scale[t->flags];
+            cost = 2.f * (wscale * t->ci->count) * t->cj->count *
+                   sid_scale[t->flags];
         }
         break;
 
       case task_type_sub_pair:
         if (t->ci->nodeID != nodeID || t->cj->nodeID != nodeID) {
           if (t->flags < 0)
-            cost = 3 * wscale * t->ci->count * t->cj->count;
+            cost = 3.f * (wscale * t->ci->count) * t->cj->count;
           else
-            cost =
-                3 * wscale * t->ci->count * t->cj->count * sid_scale[t->flags];
+            cost = 3.f * (wscale * t->ci->count) * t->cj->count *
+                   sid_scale[t->flags];
         } else {
           if (t->flags < 0)
-            cost = 2 * wscale * t->ci->count * t->cj->count;
+            cost = 2.f * (wscale * t->ci->count) * t->cj->count;
           else
-            cost =
-                2 * wscale * t->ci->count * t->cj->count * sid_scale[t->flags];
+            cost = 2.f * (wscale * t->ci->count) * t->cj->count *
+                   sid_scale[t->flags];
         }
         break;
 
       case task_type_sub_self:
-        cost = 1 * wscale * t->ci->count * t->ci->count;
+        cost = 1.f * (wscale * t->ci->count) * t->ci->count;
         break;
       case task_type_ghost:
         if (t->ci == t->ci->super_hydro) cost = wscale * t->ci->count;
@@ -1258,6 +1261,9 @@ void scheduler_reweight(struct scheduler *s, int verbose) {
       case task_type_grav_long_range:
         cost = wscale * t->ci->gcount;
         break;
+      case task_type_end_force:
+        cost = wscale * t->ci->count + wscale * t->ci->gcount;
+        break;
       case task_type_kick1:
         cost = wscale * t->ci->count + wscale * t->ci->gcount;
         break;
@@ -1268,10 +1274,16 @@ void scheduler_reweight(struct scheduler *s, int verbose) {
         cost = wscale * t->ci->count + wscale * t->ci->gcount;
         break;
       case task_type_send:
-        cost = 10 * wscale * t->ci->count * t->ci->count;
+        if (t->ci->count < 1e5)
+          cost = 10.f * (wscale * t->ci->count) * t->ci->count;
+        else
+          cost = 2e9;
         break;
       case task_type_recv:
-        cost = 5 * wscale * t->ci->count * t->ci->count;
+        if (t->ci->count < 1e5)
+          cost = 5.f * (wscale * t->ci->count) * t->ci->count;
+        else
+          cost = 1e9;
         break;
       default:
         cost = 0;

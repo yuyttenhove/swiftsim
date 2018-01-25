@@ -26,6 +26,7 @@
 #include "active.h"
 #include "atomic.h"
 #include "cell.h"
+#include "chemistry.h"
 #include "clocks.h"
 #include "const.h"
 #include "cooling.h"

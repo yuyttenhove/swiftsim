@@ -41,6 +41,7 @@
 
 /* Local headers. */
 #include "atomic.h"
+#include "chemistry.h"
 #include "const.h"
 #include "cooling.h"
 #include "engine.h"
@@ -60,8 +61,9 @@
 
 /* Split size. */
 int space_splitsize = space_splitsize_default;
-int space_subsize_pair = space_subsize_pair_default;
-int space_subsize_self = space_subsize_self_default;
+int space_subsize_pair_hydro = space_subsize_pair_hydro_default;
+int space_subsize_self_hydro = space_subsize_self_hydro_default;
+int space_subsize_pair_grav = space_subsize_pair_grav_default;
 int space_subsize_self_grav = space_subsize_self_grav_default;
 int space_maxsize = space_maxsize_default;
 #ifdef SWIFT_DEBUG_CHECKS
@@ -224,6 +226,7 @@ void space_rebuild_recycle_mapper(void *map_data, int num_elements,
     c->kick1 = NULL;
     c->kick2 = NULL;
     c->timestep = NULL;
+    c->end_force = NULL;
     c->drift_part = NULL;
     c->drift_gpart = NULL;
     c->cooling = NULL;
@@ -1080,7 +1083,11 @@ void space_parts_get_cell_index_mapper(void *map_data, int nr_parts,
     ind[k] = index;
 
 #ifdef SWIFT_DEBUG_CHECKS
-    if (pos_x > dim_x || pos_y > dim_y || pos_z > pos_z || pos_x < 0. ||
+    if (index < 0 || index >= cdim[0] * cdim[1] * cdim[2])
+      error("Invalid index=%d cdim=[%d %d %d] p->x=[%e %e %e]", index, cdim[0],
+            cdim[1], cdim[2], pos_x, pos_y, pos_z);
+
+    if (pos_x >= dim_x || pos_y >= dim_y || pos_z >= dim_z || pos_x < 0. ||
         pos_y < 0. || pos_z < 0.)
       error("Particle outside of simulation box. p->x=[%e %e %e]", pos_x, pos_y,
             pos_z);
@@ -1137,6 +1144,17 @@ void space_gparts_get_cell_index_mapper(void *map_data, int nr_gparts,
         cell_getid(cdim, pos_x * ih_x, pos_y * ih_y, pos_z * ih_z);
     ind[k] = index;
 
+#ifdef SWIFT_DEBUG_CHECKS
+    if (index < 0 || index >= cdim[0] * cdim[1] * cdim[2])
+      error("Invalid index=%d cdim=[%d %d %d] p->x=[%e %e %e]", index, cdim[0],
+            cdim[1], cdim[2], pos_x, pos_y, pos_z);
+
+    if (pos_x >= dim_x || pos_y >= dim_y || pos_z >= dim_z || pos_x < 0. ||
+        pos_y < 0. || pos_z < 0.)
+      error("Particle outside of simulation box. p->x=[%e %e %e]", pos_x, pos_y,
+            pos_z);
+#endif
+
     /* Update the position */
     gp->x[0] = pos_x;
     gp->x[1] = pos_y;
@@ -1187,6 +1205,17 @@ void space_sparts_get_cell_index_mapper(void *map_data, int nr_sparts,
     const int index =
         cell_getid(cdim, pos_x * ih_x, pos_y * ih_y, pos_z * ih_z);
     ind[k] = index;
+
+#ifdef SWIFT_DEBUG_CHECKS
+    if (index < 0 || index >= cdim[0] * cdim[1] * cdim[2])
+      error("Invalid index=%d cdim=[%d %d %d] p->x=[%e %e %e]", index, cdim[0],
+            cdim[1], cdim[2], pos_x, pos_y, pos_z);
+
+    if (pos_x >= dim_x || pos_y >= dim_y || pos_z >= dim_z || pos_x < 0. ||
+        pos_y < 0. || pos_z < 0.)
+      error("Particle outside of simulation box. p->x=[%e %e %e]", pos_x, pos_y,
+            pos_z);
+#endif
 
     /* Update the position */
     sp->x[0] = pos_x;
@@ -2589,8 +2618,11 @@ void space_synchronize_particle_positions(struct space *s) {
  * @brief Initialises all the particles by setting them into a valid state
  *
  * Calls hydro_first_init_part() on all the particles
+ * Calls chemistry_first_init_part() on all the particles
  */
-void space_first_init_parts(struct space *s) {
+void space_first_init_parts(struct space *s,
+                            const struct chemistry_data *chemistry,
+                            const struct cooling_function_data *cool_func) {
 
   const size_t nr_parts = s->nr_parts;
   struct part *restrict p = s->parts;
@@ -2610,27 +2642,16 @@ void space_first_init_parts(struct space *s) {
 
     hydro_first_init_part(&p[i], &xp[i]);
 
+    /* Also initialise the chemistry */
+    chemistry_first_init_part(&p[i], &xp[i], chemistry);
+
+    /* And the cooling */
+    cooling_first_init_part(&p[i], &xp[i], cool_func);
+
 #ifdef SWIFT_DEBUG_CHECKS
-    p->ti_drift = 0;
-    p->ti_kick = 0;
+    p[i].ti_drift = 0;
+    p[i].ti_kick = 0;
 #endif
-  }
-}
-
-/**
- * @brief Initialises all the extra particle data
- *
- * Calls cooling_init_xpart() on all the particles
- */
-void space_first_init_xparts(struct space *s) {
-
-  const size_t nr_parts = s->nr_parts;
-  struct part *restrict p = s->parts;
-  struct xpart *restrict xp = s->xparts;
-
-  for (size_t i = 0; i < nr_parts; ++i) {
-
-    cooling_init_part(&p[i], &xp[i]);
   }
 }
 
@@ -2639,7 +2660,8 @@ void space_first_init_xparts(struct space *s) {
  *
  * Calls gravity_first_init_gpart() on all the particles
  */
-void space_first_init_gparts(struct space *s) {
+void space_first_init_gparts(struct space *s,
+                             const struct gravity_props *grav_props) {
 
   const size_t nr_gparts = s->nr_gparts;
   struct gpart *restrict gp = s->gparts;
@@ -2656,11 +2678,11 @@ void space_first_init_gparts(struct space *s) {
     gp[i].v_full[1] = gp[i].v_full[2] = 0.f;
 #endif
 
-    gravity_first_init_gpart(&gp[i]);
+    gravity_first_init_gpart(&gp[i], grav_props);
 
 #ifdef SWIFT_DEBUG_CHECKS
-    gp->ti_drift = 0;
-    gp->ti_kick = 0;
+    gp[i].ti_drift = 0;
+    gp[i].ti_kick = 0;
 #endif
   }
 }
@@ -2690,8 +2712,8 @@ void space_first_init_sparts(struct space *s) {
     star_first_init_spart(&sp[i]);
 
 #ifdef SWIFT_DEBUG_CHECKS
-    sp->ti_drift = 0;
-    sp->ti_kick = 0;
+    sp[i].ti_drift = 0;
+    sp[i].ti_kick = 0;
 #endif
   }
 }
@@ -2860,21 +2882,29 @@ void space_init(struct space *s, const struct swift_params *params,
   /* Get the constants for the scheduler */
   space_maxsize = parser_get_opt_param_int(params, "Scheduler:cell_max_size",
                                            space_maxsize_default);
-  space_subsize_pair = parser_get_opt_param_int(
-      params, "Scheduler:cell_sub_size_pair", space_subsize_pair_default);
-  space_subsize_self = parser_get_opt_param_int(
-      params, "Scheduler:cell_sub_size_self", space_subsize_self_default);
+  space_subsize_pair_hydro =
+      parser_get_opt_param_int(params, "Scheduler:cell_sub_size_pair_hydro",
+                               space_subsize_pair_hydro_default);
+  space_subsize_self_hydro =
+      parser_get_opt_param_int(params, "Scheduler:cell_sub_size_self_hydro",
+                               space_subsize_self_hydro_default);
+  space_subsize_pair_grav =
+      parser_get_opt_param_int(params, "Scheduler:cell_sub_size_pair_grav",
+                               space_subsize_pair_grav_default);
   space_subsize_self_grav =
       parser_get_opt_param_int(params, "Scheduler:cell_sub_size_self_grav",
                                space_subsize_self_grav_default);
   space_splitsize = parser_get_opt_param_int(
       params, "Scheduler:cell_split_size", space_splitsize_default);
 
-  if (verbose)
-    message(
-        "max_size set to %d, sub_size_pair set to %d, sub_size_self set to %d, "
-        "split_size set to %d",
-        space_maxsize, space_subsize_pair, space_subsize_self, space_splitsize);
+  if (verbose) {
+    message("max_size set to %d split_size set to %d", space_maxsize,
+            space_splitsize);
+    message("sub_size_pair_hydro set to %d, sub_size_self_hydro set to %d",
+            space_subsize_pair_hydro, space_subsize_self_hydro);
+    message("sub_size_pair_grav set to %d, sub_size_self_grav set to %d",
+            space_subsize_pair_grav, space_subsize_self_grav);
+  }
 
   /* Apply h scaling */
   const double scaling =
@@ -2965,17 +2995,6 @@ void space_init(struct space *s, const struct swift_params *params,
   }
 
   hydro_space_init(&s->hs, s);
-
-  ticks tic = getticks();
-  if (verbose) message("first init...");
-  /* Set the particles in a state where they are ready for a run */
-  space_first_init_parts(s);
-  space_first_init_xparts(s);
-  space_first_init_gparts(s);
-  space_first_init_sparts(s);
-  if (verbose)
-    message("took %.3f %s.", clocks_from_ticks(getticks() - tic),
-            clocks_getunit());
 
   /* Init the space lock. */
   if (lock_init(&s->lock) != 0) error("Failed to create space spin-lock.");

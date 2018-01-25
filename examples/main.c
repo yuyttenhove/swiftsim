@@ -568,6 +568,19 @@ int main(int argc, char *argv[]) {
     fflush(stdout);
   }
 
+  /* Also update the total counts (in case of changes due to replication) */
+#if defined(WITH_MPI)
+  N_long[0] = s.nr_parts;
+  N_long[1] = s.nr_gparts;
+  N_long[2] = s.nr_sparts;
+  MPI_Allreduce(&N_long, &N_total, 3, MPI_LONG_LONG_INT, MPI_SUM,
+             MPI_COMM_WORLD);
+#else
+  N_total[0] = s.nr_parts;
+  N_total[1] = s.nr_gparts;
+  N_total[2] = s.nr_sparts;
+#endif
+
   /* Say a few nice things about the space we just created. */
   if (myrank == 0) {
     message("space dimensions are [ %.3f %.3f %.3f ].", s.dim[0], s.dim[1],
@@ -596,7 +609,7 @@ int main(int argc, char *argv[]) {
     message("nr of cells at depth %i is %i.", data[0], data[1]);
   }
 
-/* Initialise the table of Ewald corrections for the gravity checks */
+  /* Initialise the table of Ewald corrections for the gravity checks */
 #ifdef SWIFT_GRAVITY_FORCE_CHECKS
   if (periodic) gravity_exact_force_ewald_init(dim[0]);
 #endif
@@ -605,12 +618,17 @@ int main(int argc, char *argv[]) {
   struct external_potential potential;
   if (with_external_gravity)
     potential_init(params, &prog_const, &us, &s, &potential);
-  if (with_external_gravity && myrank == 0) potential_print(&potential);
+  if (myrank == 0) potential_print(&potential);
 
   /* Initialise the cooling function properties */
   struct cooling_function_data cooling_func;
   if (with_cooling) cooling_init(params, &us, &prog_const, &cooling_func);
-  if (with_cooling && myrank == 0) cooling_print(&cooling_func);
+  if (myrank == 0) cooling_print(&cooling_func);
+
+  /* Initialise the chemistry */
+  struct chemistry_data chemistry;
+  chemistry_init(params, &us, &prog_const, &chemistry);
+  if (myrank == 0) chemistry_print(&chemistry);
 
   /* Initialise the feedback properties */
   struct sourceterms sourceterms;
@@ -636,7 +654,7 @@ int main(int argc, char *argv[]) {
   engine_init(&e, &s, params, nr_nodes, myrank, nr_threads, N_total[0],
               N_total[1], with_aff, engine_policies, talking, &reparttype, &us,
               &prog_const, &hydro_properties, &gravity_properties, &potential,
-              &cooling_func, &sourceterms);
+              &cooling_func, &chemistry, &sourceterms);
   if (myrank == 0) {
     clocks_gettime(&toc);
     message("engine_init took %.3f %s.", clocks_diff(&tic, &toc),
@@ -647,18 +665,6 @@ int main(int argc, char *argv[]) {
 /* Init the runner history. */
 #ifdef HIST
   for (k = 0; k < runner_hist_N; k++) runner_hist_bins[k] = 0;
-#endif
-
-#if defined(WITH_MPI)
-  N_long[0] = s.nr_parts;
-  N_long[1] = s.nr_gparts;
-  N_long[2] = s.nr_sparts;
-  MPI_Reduce(&N_long, &N_total, 3, MPI_LONG_LONG_INT, MPI_SUM, 0,
-             MPI_COMM_WORLD);
-#else
-  N_total[0] = s.nr_parts;
-  N_total[1] = s.nr_gparts;
-  N_total[2] = s.nr_sparts;
 #endif
 
   /* Get some info to the user. */

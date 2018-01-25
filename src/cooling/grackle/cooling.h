@@ -26,23 +26,88 @@
 
 /* Some standard headers. */
 #include <float.h>
+#include <grackle.h>
 #include <math.h>
 
 /* Local includes. */
 #include "error.h"
 #include "hydro.h"
+#include "io_properties.h"
 #include "parser.h"
 #include "part.h"
 #include "physical_constants.h"
 #include "units.h"
 
-/* include the grackle wrapper */
-#include "grackle_wrapper.h"
+/* need to rework (and check) code if changed */
+#define GRACKLE_NPART 1
+#define GRACKLE_RANK 3
+
+/**
+ * @brief Writes the current model of SPH to the file
+ * @param h_grpsph The HDF5 group in which to write
+ */
+__attribute__((always_inline)) INLINE static void cooling_write_flavour(
+    hid_t h_grpsph) {
+
+  io_write_attribute_s(h_grpsph, "Cooling Model", "Grackle");
+}
+
+/**
+ * @brief Sets the cooling properties of the (x-)particles to a valid start
+ * state.
+ *
+ * @param p Pointer to the particle data.
+ * @param xp Pointer to the extended particle data.
+ * @param cooling The properties of the cooling function.
+ */
+__attribute__((always_inline)) INLINE static void cooling_first_init_part(
+    const struct part* restrict p, struct xpart* restrict xp,
+    const struct cooling_function_data* cooling) {
+
+  xp->cooling_data.radiated_energy = 0.f;
+}
+
+/**
+ * @brief Returns the total radiated energy by this particle.
+ *
+ * @param xp The extended particle data
+ */
+__attribute__((always_inline)) INLINE static float cooling_get_radiated_energy(
+    const struct xpart* restrict xp) {
+
+  return xp->cooling_data.radiated_energy;
+}
+
+/**
+ * @brief Prints the properties of the cooling model to stdout.
+ *
+ * @param cooling The properties of the cooling function.
+ */
+__attribute__((always_inline)) INLINE static void cooling_print_backend(
+    const struct cooling_function_data* cooling) {
+
+  message("Cooling function is 'Grackle'.");
+  message("Using Grackle           = %i", cooling->chemistry.use_grackle);
+  message("Chemical network        = %i",
+          cooling->chemistry.primordial_chemistry);
+  message("Radiative cooling       = %i",
+          cooling->chemistry.with_radiative_cooling);
+  message("Metal cooling           = %i", cooling->chemistry.metal_cooling);
+
+  message("CloudyTable             = %s", cooling->cloudy_table);
+  message("UVbackground            = %d", cooling->uv_background);
+  message("Redshift                = %g", cooling->redshift);
+  message("Density Self Shielding  = %g", cooling->density_self_shielding);
+  message("Units:");
+  message("\tComoving     = %i", cooling->units.comoving_coordinates);
+  message("\tLength       = %g", cooling->units.length_units);
+  message("\tDensity      = %g", cooling->units.density_units);
+  message("\tTime         = %g", cooling->units.time_units);
+  message("\tScale Factor = %g", cooling->units.a_units);
+}
 
 /**
  * @brief Compute the cooling rate
- *
- * We do nothing.
  *
  * @param phys_const The physical constants in internal units.
  * @param us The internal system of units.
@@ -58,32 +123,101 @@ __attribute__((always_inline)) INLINE static double cooling_rate(
     const struct cooling_function_data* restrict cooling,
     struct part* restrict p, float dt) {
 
-  if (cooling->GrackleRedshift == -1) error("TODO time dependant redshift");
+  if (cooling->chemistry.primordial_chemistry > 1) error("Not implemented");
 
-  /* Get current internal energy (dt=0) */
-  double u_old = hydro_get_internal_energy(p);
-  double u_new = u_old;
-  /* Get current density */
-  const float rho = hydro_get_density(p);
-  /* Actual scaling fractor */
-  const float a_now = 1. / (1. + cooling->GrackleRedshift);
+  /* set current time */
+  code_units units = cooling->units;
+  if (cooling->redshift == -1)
+    error("TODO time dependant redshift");
+  else
+    units.a_value = 1. / (1. + cooling->redshift);
 
-  /* 0.02041 (= 1 Zsun in Grackle v2.0, but = 1.5761 Zsun in
-     Grackle v2.1) */
-  double Z = 0.02041;
+  /* initialize data */
+  grackle_field_data data;
 
-  if (wrap_do_cooling(rho, &u_new, dt, Z, a_now) == 0) {
-    error("Error in do_cooling.\n");
-    return 0;
+  /* set values */
+  /* grid */
+  int grid_dimension[GRACKLE_RANK] = {GRACKLE_NPART, 1, 1};
+  int grid_start[GRACKLE_RANK] = {0, 0, 0};
+  int grid_end[GRACKLE_RANK] = {GRACKLE_NPART - 1, 0, 0};
+
+  data.grid_rank = GRACKLE_RANK;
+  data.grid_dimension = grid_dimension;
+  data.grid_start = grid_start;
+  data.grid_end = grid_end;
+
+  /* general particle data */
+  gr_float density = hydro_get_density(p);
+  const double energy_before = hydro_get_internal_energy(p);
+  gr_float energy = energy_before;
+  gr_float vx = 0;
+  gr_float vy = 0;
+  gr_float vz = 0;
+
+  data.density = &density;
+  data.internal_energy = &energy;
+  data.x_velocity = &vx;
+  data.y_velocity = &vy;
+  data.z_velocity = &vz;
+
+  /* /\* primordial chemistry >= 1 *\/ */
+  /* gr_float HI_density = density; */
+  /* gr_float HII_density = 0.; */
+  /* gr_float HeI_density = 0.; */
+  /* gr_float HeII_density = 0.; */
+  /* gr_float HeIII_density = 0.; */
+  /* gr_float e_density = 0.; */
+
+  /* data.HI_density = &HI_density; */
+  /* data.HII_density = &HII_density; */
+  /* data.HeI_density = &HeI_density; */
+  /* data.HeII_density = &HeII_density; */
+  /* data.HeIII_density = &HeIII_density; */
+  /* data.e_density = &e_density; */
+
+  /* /\* primordial chemistry >= 2 *\/ */
+  /* gr_float HM_density = 0.; */
+  /* gr_float H2I_density = 0.; */
+  /* gr_float H2II_density = 0.; */
+
+  /* data.HM_density = &HM_density; */
+  /* data.H2I_density = &H2I_density; */
+  /* data.H2II_density = &H2II_density; */
+
+  /* /\* primordial chemistry >= 3 *\/ */
+  /* gr_float DI_density = 0.; */
+  /* gr_float DII_density = 0.; */
+  /* gr_float HDI_density = 0.; */
+
+  /* data.DI_density = &DI_density; */
+  /* data.DII_density = &DII_density; */
+  /* data.HDI_density = &HDI_density; */
+
+  /* metal cooling = 1 */
+  gr_float metal_density = density * grackle_data->SolarMetalFractionByMass;
+
+  data.metal_density = &metal_density;
+
+  /* /\* volumetric heating rate *\/ */
+  /* gr_float volumetric_heating_rate = 0.; */
+
+  /* data.volumetric_heating_rate = &volumetric_heating_rate; */
+
+  /* /\* specific heating rate *\/ */
+  /* gr_float specific_heating_rate = 0.; */
+
+  /* data.specific_heating_rate = &specific_heating_rate; */
+
+  /* solve chemistry with table */
+  if (solve_chemistry(&units, &data, dt) == 0) {
+    error("Error in solve_chemistry.");
   }
 
-  return (u_new - u_old) / dt;
+  return (energy - energy_before) / dt;
 }
 
 /**
  * @brief Apply the cooling function to a particle.
- *
- * We do nothing.
  *
  * @param phys_const The physical constants in internal units.
  * @param us The internal system of units.
@@ -102,15 +236,11 @@ __attribute__((always_inline)) INLINE static void cooling_cool_part(
   /* Current du_dt */
   const float hydro_du_dt = hydro_get_internal_energy_dt(p);
 
-  float du_dt;
-  float delta_u;
-
-  du_dt = cooling_rate(phys_const, us, cooling, p, dt);
-
-  delta_u = du_dt * dt;
+  /* compute cooling rate */
+  const float du_dt = cooling_rate(phys_const, us, cooling, p, dt);
 
   /* record energy lost */
-  xp->cooling_data.radiated_energy += -delta_u * hydro_get_mass(p);
+  xp->cooling_data.radiated_energy += -du_dt * dt * hydro_get_mass(p);
 
   /* Update the internal energy */
   hydro_set_internal_energy_dt(p, hydro_du_dt + du_dt);
@@ -135,30 +265,6 @@ __attribute__((always_inline)) INLINE static float cooling_timestep(
 }
 
 /**
- * @brief Sets the cooling properties of the (x-)particles to a valid start
- * state.
- *
- * @param p Pointer to the particle data.
- * @param xp Pointer to the extended particle data.
- */
-__attribute__((always_inline)) INLINE static void cooling_init_part(
-    const struct part* restrict p, struct xpart* restrict xp) {
-
-  xp->cooling_data.radiated_energy = 0.f;
-}
-
-/**
- * @brief Returns the total radiated energy by this particle.
- *
- * @param xp The extended particle data
- */
-__attribute__((always_inline)) INLINE static float cooling_get_radiated_energy(
-    const struct xpart* restrict xp) {
-
-  return xp->cooling_data.radiated_energy;
-}
-
-/**
  * @brief Initialises the cooling properties.
  *
  * @param parameter_file The parsed parameter file.
@@ -166,33 +272,77 @@ __attribute__((always_inline)) INLINE static float cooling_get_radiated_energy(
  * @param phys_const The physical constants in internal units.
  * @param cooling The cooling properties to initialize
  */
-static INLINE void cooling_init_backend(
+__attribute__((always_inline)) INLINE static void cooling_init_backend(
     const struct swift_params* parameter_file, const struct unit_system* us,
     const struct phys_const* phys_const,
     struct cooling_function_data* cooling) {
 
-  double units_density, units_length, units_time;
-  int grackle_chemistry;
-  int UVbackground;
-
+  /* read parameters */
   parser_get_param_string(parameter_file, "GrackleCooling:GrackleCloudyTable",
-                          cooling->GrackleCloudyTable);
-  cooling->UVbackground =
+                          cooling->cloudy_table);
+  cooling->uv_background =
       parser_get_param_int(parameter_file, "GrackleCooling:UVbackground");
-  cooling->GrackleRedshift =
+
+  cooling->redshift =
       parser_get_param_double(parameter_file, "GrackleCooling:GrackleRedshift");
-  cooling->GrackleHSShieldingDensityThreshold = parser_get_param_double(
+
+  cooling->density_self_shielding = parser_get_param_double(
       parameter_file, "GrackleCooling:GrackleHSShieldingDensityThreshold");
 
-  UVbackground = cooling->UVbackground;
-  grackle_chemistry = 0; /* forced to be zero : read table */
+#ifdef SWIFT_DEBUG_CHECKS
+  /* enable verbose for grackle */
+  grackle_verbose = 1;
+#endif
 
-  units_density = us->UnitMass_in_cgs / pow(us->UnitLength_in_cgs, 3);
-  units_length = us->UnitLength_in_cgs;
-  units_time = us->UnitTime_in_cgs;
+  /* Set up the units system.
+     These are conversions from code units to cgs. */
+
+  /* first cosmo */
+  cooling->units.a_units = 1.0;  // units for the expansion factor (1/1+zi)
+  cooling->units.a_value = 1.0;
+
+  /* We assume here all physical quantities to
+     be in proper coordinate (not comobile)  */
+  cooling->units.comoving_coordinates = 0;
+
+  /* then units */
+  cooling->units.density_units =
+      us->UnitMass_in_cgs / pow(us->UnitLength_in_cgs, 3);
+  cooling->units.length_units = us->UnitLength_in_cgs;
+  cooling->units.time_units = us->UnitTime_in_cgs;
+  cooling->units.velocity_units = cooling->units.a_units *
+                                  cooling->units.length_units /
+                                  cooling->units.time_units;
+
+  chemistry_data* chemistry = &cooling->chemistry;
+
+  /* Create a chemistry object for parameters and rate data. */
+  if (set_default_chemistry_parameters(chemistry) == 0) {
+    error("Error in set_default_chemistry_parameters.");
+  }
+
+  // Set parameter values for chemistry.
+  chemistry->use_grackle = 1;
+  chemistry->with_radiative_cooling = 1;
+  /* molecular network with H, He, D
+   From Cloudy table */
+  chemistry->primordial_chemistry = 0;
+  chemistry->metal_cooling = 1;  // metal cooling on
+  chemistry->UVbackground = cooling->uv_background;
+  chemistry->grackle_data_file = cooling->cloudy_table;
+  chemistry->use_radiative_transfer = 0;
+  chemistry->use_volumetric_heating_rate = 0;
+  chemistry->use_specific_heating_rate = 0;
+
+  /* Initialize the chemistry object. */
+  if (initialize_chemistry_data(&cooling->units) == 0) {
+    error("Error in initialize_chemistry_data.");
+  }
 
 #ifdef SWIFT_DEBUG_CHECKS
-  float threshold = cooling->GrackleHSShieldingDensityThreshold;
+  if (GRACKLE_NPART != 1)
+    error("Grackle with multiple particles not implemented");
+  float threshold = cooling->density_self_shielding;
 
   threshold /= phys_const->const_proton_mass;
   threshold /= pow(us->UnitLength_in_cgs, 3);
@@ -200,41 +350,12 @@ static INLINE void cooling_init_backend(
   message("***************************************");
   message("initializing grackle cooling function");
   message("");
-  message("CloudyTable                        = %s",
-          cooling->GrackleCloudyTable);
-  message("UVbackground                       = %d", UVbackground);
-  message("GrackleRedshift                    = %g", cooling->GrackleRedshift);
-  message("GrackleHSShieldingDensityThreshold = %g atom/cm3", threshold);
-#endif
+  cooling_print_backend(cooling);
+  message("Density Self Shielding = %g atom/cm3", threshold);
 
-  if (wrap_init_cooling(cooling->GrackleCloudyTable, UVbackground,
-                        units_density, units_length, units_time,
-                        grackle_chemistry) != 1) {
-    error("Error in initialize_chemistry_data.");
-  }
-
-#ifdef SWIFT_DEBUG_CHECKS
-  grackle_print_data();
   message("");
   message("***************************************");
 #endif
-}
-
-/**
- * @brief Prints the properties of the cooling model to stdout.
- *
- * @param cooling The properties of the cooling function.
- */
-static INLINE void cooling_print_backend(
-    const struct cooling_function_data* cooling) {
-
-  message("Cooling function is 'Grackle'.");
-  message("CloudyTable                        = %s",
-          cooling->GrackleCloudyTable);
-  message("UVbackground                       = %d", cooling->UVbackground);
-  message("GrackleRedshift                    = %g", cooling->GrackleRedshift);
-  message("GrackleHSShieldingDensityThreshold = %g atom/cm3",
-          cooling->GrackleHSShieldingDensityThreshold);
 }
 
 #endif /* SWIFT_COOLING_GRACKLE_H */
