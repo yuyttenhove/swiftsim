@@ -387,6 +387,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force(
   pi->force.v_sig = max(pi->force.v_sig, v_sig);
 }
 
+#ifdef WITH_VECTORIZATION
 /**
  * @brief Force loop (non-symmetric version)
  */
@@ -474,7 +475,6 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force_scala
   //*sigSum = v_sig;
 }
 
-#ifdef WITH_VECTORIZATION
 static const vector const_viscosity_alpha_fac =
     FILL_VEC(-0.5f * const_viscosity_alpha);
 
