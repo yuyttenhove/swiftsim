@@ -233,7 +233,6 @@ static const float kernel_coeffs[(kernel_degree + 1) * (kernel_ivals + 1)]
 #define kernel_norm ((float)(hydro_dimension_unit_sphere * kernel_gamma_dim))
 
 /* ------------------------------------------------------------------------- */
-
 /**
  * @brief Computes the kernel function and its derivative.
  *
@@ -252,11 +251,13 @@ __attribute__((always_inline)) INLINE static void kernel_deval(
   /* Go to the range [0,1[ from [0,H[ */
   const float x = u * kernel_gamma_inv;
 #ifdef WENDLAND_C2_KERNEL
-  const float c0 = 4.f, c1 = -15.f, c2 = 20.f, c3 = -10.f, c4 = 0.f, c5 = 1.f;
+  float c0 = 4.f, c1 = -15.f, c2 = 20.f, c3 = -10.f, c4 = 0.f, c5 = 1.f;
+  if(x >= 1.f) c0 = 0.f, c1 = 0.f, c2 = 0.f, c3 = 0.f, c4 = 0.f, c5 = 0.f;
 #else
   /* Pick the correct branch of the kernel */
   float c0 = 3.f, c1 = -3.f, c2 = 0.f, c3 = 0.5f;
-  if( x >= 0.5f) c0 = -1.f, c1 = 3.f, c2 = -3.f, c3 = 1.f;  
+  if(x >= 0.5f && x < 1.f) c0 = -1.f, c1 = 3.f, c2 = -3.f, c3 = 1.f;
+  else if(x >= 1.f) c0 = 0.f, c1 = 0.f, c2 = 0.f, c3 = 0.f;
 #endif
 
   /* First two terms of the polynomial ... */
@@ -282,16 +283,93 @@ __attribute__((always_inline)) INLINE static void kernel_deval(
 
 }
 
-__attribute__((always_inline)) INLINE static void kernel_deval_fake(
-    float u, float *const W, float *const dW_dx) {
+/**
+ * @brief Computes the kernel function derivative.
+ *
+ * The kernel function needs to be mutliplied by \f$h^{-d}\f$ and the gradient
+ * by \f$h^{-(d+1)}\f$, where \f$d\f$ is the dimensionality of the problem.
+ *
+ * Returns 0 if \f$u > \gamma = H/h\f$.
+ *
+ * @param u The ratio of the distance to the smoothing length \f$u = x/h\f$.
+ * @param dW_dx (return) The norm of the gradient of \f$|\nabla W(x,h)|\f$.
+ */
+__attribute__((always_inline)) INLINE static void kernel_deval_dWdx_force(
+    float u, float *restrict dW_dx) {
 
-  /* W(u) = 21u^5 - 90u^4 + 140u^3 - 84u^2 + 14 */
-  *W = 21.f * u - 90.f;
-  *W = *W * u + 140.f;
-  *W = *W * u - 84.f;
-  *W = *W * u;
-  *W = *W * u + 14.f;
-  *dW_dx = *W;
+  /* Go to the range [0,1[ from [0,H[ */
+  const float x = u * kernel_gamma_inv;
+#ifdef WENDLAND_C2_KERNEL
+  /* Kernel constants multiplied by 5,4,3,2,1 respectively. */
+  float c0 = 20.f, c1 = -60.f, c2 = 60.f, c3 = -20.f, c4 = 0.f;
+  if(x >= 1.f) c0 = 0.f, c1 = 0.f, c2 = 0.f, c3 = 0.f, c4 = 0.f;
+#else
+  /* Pick the correct branch of the kernel */
+  /* Kernel constants multiplied by 3,2,1 respectively. */
+  float c0 = 9.f, c1 = -6.f, c2 = 0.f;
+  if(x >= 0.5f && x < 1.f) c0 = -3.f, c1 = 6.f, c2 = -3.f;
+  else if(x >= 1.f) c0 = 0.f, c1 = 0.f, c2 = 0.f;
+#endif
+
+  *dW_dx = c0 * x + c1;
+  *dW_dx = (*dW_dx) * x + c2;
+
+#ifdef WENDLAND_C2_KERNEL
+  *dW_dx = (*dW_dx) * x + c3;
+  *dW_dx = (*dW_dx) * x + c4;
+#endif
+
+  /* Return everything */
+  *dW_dx *= (float)kernel_constant * (float)kernel_gamma_inv_dim_plus_one;
+
+}
+
+/**
+ * @brief Computes the kernel function and its derivative.
+ *
+ * The kernel function needs to be mutliplied by \f$h^{-d}\f$ and the gradient
+ * by \f$h^{-(d+1)}\f$, where \f$d\f$ is the dimensionality of the problem.
+ *
+ * Returns 0 if \f$u > \gamma = H/h\f$.
+ *
+ * @param u The ratio of the distance to the smoothing length \f$u = x/h\f$.
+ * @param W (return) The value of the kernel function \f$W(x,h)\f$.
+ * @param dW_dx (return) The norm of the gradient of \f$|\nabla W(x,h)|\f$.
+ */
+__attribute__((always_inline)) INLINE static void kernel_deval_auto_vec(
+    float u, float *restrict W, float *restrict dW_dx) {
+
+  /* Go to the range [0,1[ from [0,H[ */
+  const float x = u * kernel_gamma_inv;
+#ifdef WENDLAND_C2_KERNEL
+  float c0 = 4.f, c1 = -15.f, c2 = 20.f, c3 = -10.f, c4 = 0.f, c5 = 1.f;
+#else
+  /* Pick the correct branch of the kernel */
+  float c0 = 3.f, c1 = -3.f, c2 = 0.f, c3 = 0.5f;
+  if( x >= 0.5f && x < 1.f) c0 = -1.f, c1 = 3.f, c2 = -3.f, c3 = 1.f;
+#endif
+
+  /* First two terms of the polynomial ... */
+  *W = c0 * x + c1;
+ 
+  *dW_dx = c0 * x + *W;
+  *W = x * (*W) + c2;
+
+  *dW_dx = (*dW_dx) * x + *W;
+  *W = x * (*W) + c3;
+  
+#ifdef WENDLAND_C2_KERNEL
+  *dW_dx = (*dW_dx) * x + *W;
+  *W = x * *W + c4;
+  
+  *dW_dx = (*dW_dx) * x + *W;
+  *W = x * (*W) + c5;
+#endif
+
+  /* Return everything */
+  *W *= (float)kernel_constant * (float)kernel_gamma_inv_dim;
+  *dW_dx *= (float)kernel_constant * (float)kernel_gamma_inv_dim_plus_one;
+
 }
 
 /**
