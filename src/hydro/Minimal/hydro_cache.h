@@ -29,11 +29,11 @@
 #include "part.h"
 #include "sort_part.h"
 #include "vector.h"
-#include "io_properties.h"
 
 #define NUM_VEC_PROC 2
 #define C2_CACHE_SIZE (NUM_VEC_PROC * VEC_SIZE * 6) + (NUM_VEC_PROC * VEC_SIZE)
 #define MAX_NUM_OF_CACHE_FIELDS 10
+#define CACHE_FIELD_BUFFER_SIZE 200
 
 #ifdef WITH_VECTORIZATION
 
@@ -95,61 +95,30 @@ struct cache {
 struct cache_props {
 
   /* Name */
-  char name[FIELD_BUFFER_SIZE];
+  char name[CACHE_FIELD_BUFFER_SIZE];
 
   /* Type of the field */
-  enum IO_DATA_TYPE type;
-
-  /* Dimension (1D, 3D, ...) */
-  int dimension;
-
-  /* Is it compulsory ? (input only) */
-  enum DATA_IMPORTANCE importance;
-
-  /* Units of the quantity */
-  enum unit_conversion_factor units;
+  //enum IO_DATA_TYPE type;
 
   /* Pointer to the field of the first particle in the array */
   char* field;
 
-  //int num_fields;
-
-  /* Pointer to the start of the temporary buffer used in i/o */
-  char* start_temp_c;
-  float* start_temp_f;
-  double* start_temp_d;
-
-  /* Pointer to the engine */
-  const struct engine* e;
-  float* addr;
+  /* Pointer to cache field */
+  float* cache_addr;
 
   /* The size of the particles */
   size_t partSize;
 
-  /* The particle arrays */
-  const struct part* parts;
-  const struct gpart* gparts;
-
-  /* Are we converting? */
-  int conversion;
-
+  /* Function pointer to reduction function */
   reduction_func reduction_f;
   
-  /* Conversion function for part */
-  conversion_func_part_float convert_part_f;
-  conversion_func_part_double convert_part_d;
-
-  /* Conversion function for gpart */
-  conversion_func_gpart_float convert_gpart_f;
-  conversion_func_gpart_double convert_gpart_d;
 };
 
 /**
  * @brief Constructs an #cache_props from its parameters
  */
-#define cache_make_input_field(name, type, dim, importance, units, part, field, addr) \
-  cache_make_input_field_(name, type, dim, importance, units,                   \
-                       (char*)(&(part[0]).field), sizeof(part[0]), addr)
+#define cache_make_input_field(name, part, field, cache_addr) \
+  cache_make_input_field_(name, (char*)(&(part[0]).field), sizeof(part[0]), cache_addr)
 
 /**
  * @brief Construct an #cache_props from its parameters
@@ -165,32 +134,18 @@ struct cache_props {
  * Do not call this function directly. Use the macro defined above.
  */
 INLINE struct cache_props cache_make_input_field_(
-    char name[FIELD_BUFFER_SIZE], enum IO_DATA_TYPE type, int dimension,
-    enum DATA_IMPORTANCE importance, enum unit_conversion_factor units,
-    char* field, size_t partSize, float* addr) {
+    char name[CACHE_FIELD_BUFFER_SIZE], char* field, size_t partSize, float* cache_addr) {
   struct cache_props r;
   strcpy(r.name, name);
-  r.type = type;
-  r.dimension = dimension;
-  r.importance = importance;
-  r.units = units;
   r.field = field;
   r.partSize = partSize;
-  r.parts = NULL;
-  r.gparts = NULL;
-  r.conversion = 0;
-  r.convert_part_f = NULL;
-  r.convert_part_d = NULL;
-  r.convert_gpart_f = NULL;
-  r.convert_gpart_d = NULL;
-  r.addr = addr;
+  r.cache_addr = cache_addr;
 
   return r;
 }
 
-#define cache_make_output_field(name, type, dim, importance, units, part, field, addr, reduction_op) \
-  cache_make_output_field_(name, type, dim, importance, units,                   \
-                       (char*)(&(part[0]).field), sizeof(part[0]), addr, reduction_op)
+#define cache_make_output_field(name, part, field, cache_addr, reduction_op) \
+  cache_make_output_field_(name, (char*)(&(part[0]).field), sizeof(part[0]), cache_addr, reduction_op)
 
 /**
  * @brief Construct an #cache_props from its parameters
@@ -206,29 +161,17 @@ INLINE struct cache_props cache_make_input_field_(
  * Do not call this function directly. Use the macro defined above.
  */
 INLINE struct cache_props cache_make_output_field_(
-    char name[FIELD_BUFFER_SIZE], enum IO_DATA_TYPE type, int dimension,
-    enum DATA_IMPORTANCE importance, enum unit_conversion_factor units,
-    char* field, size_t partSize, float* addr, reduction_func funcPtr) {
+    char name[CACHE_FIELD_BUFFER_SIZE], char* field, size_t partSize, float* cache_addr, reduction_func funcPtr) {
   struct cache_props r;
   strcpy(r.name, name);
-  r.type = type;
-  r.dimension = dimension;
-  r.importance = importance;
-  r.units = units;
   r.field = field;
   r.partSize = partSize;
-  r.parts = NULL;
-  r.gparts = NULL;
-  r.conversion = 0;
-  r.convert_part_f = NULL;
-  r.convert_part_d = NULL;
-  r.convert_gpart_f = NULL;
-  r.convert_gpart_d = NULL;
-  r.addr = addr;
+  r.cache_addr = cache_addr;
   r.reduction_f = funcPtr;
 
   return r;
 }
+
 /**
  * @brief Specifies which particle fields to read from a dataset
  *
@@ -242,16 +185,11 @@ INLINE void cache_read_particle_fields(const struct part *restrict parts, struct
   ci_cache->num_fields = 5;
 
   /* List what we want to read */
-  list[0] = cache_make_input_field("x", FLOAT, 1, COMPULSORY,
-                             UNIT_CONV_LENGTH, parts, x[0], ci_cache->x);
-  list[1] = cache_make_input_field("y", FLOAT, 1, COMPULSORY,
-                             UNIT_CONV_LENGTH, parts, x[1], ci_cache->y);
-  list[2] = cache_make_input_field("z", FLOAT, 1, COMPULSORY,
-                             UNIT_CONV_LENGTH, parts, x[2], ci_cache->z);
-  list[3] = cache_make_input_field("h", FLOAT, 1, COMPULSORY,
-                             UNIT_CONV_LENGTH, parts, h, ci_cache->h);
-  list[4] = cache_make_input_field("mass", FLOAT, 1, COMPULSORY,
-                             UNIT_CONV_LENGTH, parts, mass, ci_cache->m);
+  list[0] = cache_make_input_field("x", parts, x[0], ci_cache->x);
+  list[1] = cache_make_input_field("y", parts, x[1], ci_cache->y);
+  list[2] = cache_make_input_field("z", parts, x[2], ci_cache->z);
+  list[3] = cache_make_input_field("h", parts, h, ci_cache->h);
+  list[4] = cache_make_input_field("mass", parts, mass, ci_cache->m);
 }
 
 /* Secondary cache struct to hold a list of interactions between two
@@ -275,7 +213,7 @@ struct c2_cache {
 
 };
 
-INLINE static void reduction_add(vector field, float *pi_update) {//, const int pid) {
+INLINE static void reduction_add(vector field, float *pi_update) {
   VEC_HADD(field, *pi_update);
 }
 
@@ -349,14 +287,10 @@ INLINE static void cache_read_particle_update_fields(const struct part *restrict
   update_cache->num_fields = 4;
   
   /* List what we want to read */
-  list[0] = cache_make_output_field("rho", FLOAT, 1, COMPULSORY,
-                             UNIT_CONV_LENGTH, parts, rho, &update_cache->v_rhoSum.f[0], reduction_add);
-  list[1] = cache_make_output_field("rho_dh", FLOAT, 1, COMPULSORY,
-                             UNIT_CONV_LENGTH, parts, density.rho_dh, &update_cache->v_rho_dhSum.f[0], reduction_add);
-  list[2] = cache_make_output_field("wcount", FLOAT, 1, COMPULSORY,
-                             UNIT_CONV_LENGTH, parts, density.wcount, &update_cache->v_wcountSum.f[0], reduction_add);
-  list[3] = cache_make_output_field("wcount_dh", FLOAT, 1, COMPULSORY,
-                             UNIT_CONV_LENGTH, parts, density.wcount_dh, &update_cache->v_wcount_dhSum.f[0], reduction_add);
+  list[0] = cache_make_output_field("rho", parts, rho, &update_cache->v_rhoSum.f[0], reduction_add);
+  list[1] = cache_make_output_field("rho_dh", parts, density.rho_dh, &update_cache->v_rho_dhSum.f[0], reduction_add);
+  list[2] = cache_make_output_field("wcount", parts, density.wcount, &update_cache->v_wcountSum.f[0], reduction_add);
+  list[3] = cache_make_output_field("wcount_dh", parts, density.wcount_dh, &update_cache->v_wcount_dhSum.f[0], reduction_add);
 
 }
 
@@ -367,7 +301,7 @@ INLINE static void cache_read_particle_update_fields(const struct part *restrict
  */
 __attribute__((always_inline)) INLINE void update_cache_density_init(struct update_cache_density *c, struct cache_props *props) {
 
-  for(int i=0; i<c->num_fields; i++) ((vector *)props[i].addr)->v = vec_setzero();
+  for(int i=0; i<c->num_fields; i++) ((vector *)props[i].cache_addr)->v = vec_setzero();
 
 }
 
@@ -390,7 +324,7 @@ __attribute__((always_inline)) INLINE void update_cache_force_init(struct update
 __attribute__((always_inline)) INLINE void update_density_particle(struct cache_props *props, const int pid, const int num_fields) {
 
   for(int i=0; i<num_fields; i++) {
-    props[i].reduction_f(*(vector*)props[i].addr, (float *)&props[i].field[pid*props[i].partSize]);
+    props[i].reduction_f(*(vector*)props[i].cache_addr, (float *)&props[i].field[pid*props[i].partSize]);
   }
 
 }
@@ -544,7 +478,7 @@ __attribute__((always_inline)) INLINE void cache_read_particles(
   /* Let the compiler know that the data is aligned and create pointers to the
    * arrays inside the cache. */
   for(int i=0; i<ci_cache->num_fields; i++) {
-    fields[i] = props[i].addr;
+    fields[i] = props[i].cache_addr;
     swift_align_information(fields[i], SWIFT_CACHE_ALIGNMENT);
   }
  
