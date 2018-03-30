@@ -470,7 +470,6 @@ __attribute__((always_inline)) INLINE void cache_read_particles(
 
   const struct part *restrict parts = ci->parts;
   struct cache_props props[MAX_NUM_OF_CACHE_FIELDS];
-
   cache_read_particle_fields(parts, props, ci_cache);
 
   float *restrict fields[MAX_NUM_OF_CACHE_FIELDS];  
@@ -757,13 +756,17 @@ __attribute__((always_inline)) INLINE void cache_read_two_partial_cells_sorted(
       cj->loc[0] + shift[0], cj->loc[1] + shift[1], cj->loc[2] + shift[2]};
   const double total_cj_shift[3] = {cj->loc[0], cj->loc[1], cj->loc[2]};
 
+  struct cache_props props[MAX_NUM_OF_CACHE_FIELDS];
+  cache_read_particle_fields(parts_i, props, ci_cache);
+
+  float *restrict fields[MAX_NUM_OF_CACHE_FIELDS];  
+
   /* Let the compiler know that the data is aligned and create pointers to the
    * arrays inside the cache. */
-  swift_declare_aligned_ptr(float, x, ci_cache->x, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, y, ci_cache->y, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, z, ci_cache->z, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, h, ci_cache->h, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, m, ci_cache->m, SWIFT_CACHE_ALIGNMENT);
+  for(int i=0; i<ci_cache->num_fields; i++) {
+    fields[i] = props[i].cache_addr;
+    swift_align_information(fields[i], SWIFT_CACHE_ALIGNMENT);
+  }
   
   int ci_cache_count = ci->count - first_pi_align;
 
@@ -771,11 +774,12 @@ __attribute__((always_inline)) INLINE void cache_read_two_partial_cells_sorted(
    * precision can be used instead of double precision.  */
   for (int i = 0; i < ci_cache_count; i++) {
     const int idx = sort_i[i + first_pi_align].i;
-    x[i] = (float)(parts_i[idx].x[0] - total_ci_shift[0]);
-    y[i] = (float)(parts_i[idx].x[1] - total_ci_shift[1]);
-    z[i] = (float)(parts_i[idx].x[2] - total_ci_shift[2]);
-    h[i] = parts_i[idx].h;
-    m[i] = parts_i[idx].mass;
+    fields[0][i] = (float)(*(double *)&(props[0].field[idx*props[0].partSize]) - total_ci_shift[0]);
+    fields[1][i] = (float)(*(double *)&(props[1].field[idx*props[1].partSize]) - total_ci_shift[1]);
+    fields[2][i] = (float)(*(double *)&(props[2].field[idx*props[2].partSize]) - total_ci_shift[2]);
+    for(int j = 3; j < ci_cache->num_fields; j++) {
+      fields[j][i] = *(float *)&(props[j].field[idx*props[j].partSize]);
+    }
   }
 
 #ifdef SWIFT_DEBUG_CHECKS
@@ -788,30 +792,30 @@ __attribute__((always_inline)) INLINE void cache_read_two_partial_cells_sorted(
 
   /* Make sure that particle positions have been shifted correctly. */
   for (int i = 0; i < ci_cache_count; i++) {
-    if (x[i] > shift_threshold_x || x[i] < -shift_threshold_x)
+    if (fields[0][i] > shift_threshold_x || fields[0][i] < -shift_threshold_x)
       error(
           "Error: ci->loc[%lf,%lf,%lf],cj->loc[%lf,%lf,%lf] Particle %d x pos "
           "is not within "
           "[-4*ci->width*(1 + 2*space_maxreldx), 4*ci->width*(1 + "
           "2*space_maxreldx)]. x=%f, ci->width[0]=%f",
           ci->loc[0], ci->loc[1], ci->loc[2], cj->loc[0], cj->loc[1],
-          cj->loc[2], i, x[i], ci->width[0]);
-    if (y[i] > shift_threshold_y || y[i] < -shift_threshold_y)
+          cj->loc[2], i, fields[0][i], ci->width[0]);
+    if (fields[1][i] > shift_threshold_y || fields[1][i] < -shift_threshold_y)
       error(
           "Error: ci->loc[%lf,%lf,%lf], cj->loc[%lf,%lf,%lf] Particle %d y pos "
           "is not within "
           "[-4*ci->width*(1 + 2*space_maxreldx), 4*ci->width*(1 + "
           "2*space_maxreldx)]. y=%f, ci->width[1]=%f",
           ci->loc[0], ci->loc[1], ci->loc[2], cj->loc[0], cj->loc[1],
-          cj->loc[2], i, y[i], ci->width[1]);
-    if (z[i] > shift_threshold_z || z[i] < -shift_threshold_z)
+          cj->loc[2], i, fields[1][i], ci->width[1]);
+    if (fields[2][i] > shift_threshold_z || fields[2][i] < -shift_threshold_z)
       error(
           "Error: ci->loc[%lf,%lf,%lf], cj->loc[%lf,%lf,%lf] Particle %d z pos "
           "is not within "
           "[-4*ci->width*(1 + 2*space_maxreldx), 4*ci->width*(1 + "
           "2*space_maxreldx)]. z=%f, ci->width[2]=%f",
           ci->loc[0], ci->loc[1], ci->loc[2], cj->loc[0], cj->loc[1],
-          cj->loc[2], i, z[i], ci->width[2]);
+          cj->loc[2], i, fields[2][i], ci->width[2]);
   }
 #endif
 
@@ -826,57 +830,60 @@ __attribute__((always_inline)) INLINE void cache_read_two_partial_cells_sorted(
 
   for (int i = ci->count - first_pi_align;
        i < ci->count - first_pi_align + VEC_SIZE; i++) {
-    x[i] = pos_padded[0];
-    y[i] = pos_padded[1];
-    z[i] = pos_padded[2];
-    h[i] = h_padded;
-    m[i] = 1.f;
+    fields[0][i] = pos_padded[0];
+    fields[1][i] = pos_padded[1];
+    fields[2][i] = pos_padded[2];
+    fields[3][i] = h_padded;
+    fields[4][i] = 1.f;
+
   }
 
+  cache_read_particle_fields(parts_j, props, cj_cache);
+ 
   /* Let the compiler know that the data is aligned and create pointers to the
    * arrays inside the cache. */
-  swift_declare_aligned_ptr(float, xj, cj_cache->x, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, yj, cj_cache->y, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, zj, cj_cache->z, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, hj, cj_cache->h, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, mj, cj_cache->m, SWIFT_CACHE_ALIGNMENT);
+  for(int i=0; i<cj_cache->num_fields; i++) {
+    fields[i] = props[i].cache_addr;
+    swift_align_information(fields[i], SWIFT_CACHE_ALIGNMENT);
+  }
   
   for (int i = 0; i <= last_pj_align; i++) {
     const int idx = sort_j[i].i;
-    xj[i] = (float)(parts_j[idx].x[0] - total_cj_shift[0]);
-    yj[i] = (float)(parts_j[idx].x[1] - total_cj_shift[1]);
-    zj[i] = (float)(parts_j[idx].x[2] - total_cj_shift[2]);
-    hj[i] = parts_j[idx].h;
-    mj[i] = parts_j[idx].mass;
-  }
+    fields[0][i] = (float)(*(double *)&(props[0].field[idx*props[0].partSize]) - total_cj_shift[0]);
+    fields[1][i] = (float)(*(double *)&(props[1].field[idx*props[1].partSize]) - total_cj_shift[1]);
+    fields[2][i] = (float)(*(double *)&(props[2].field[idx*props[2].partSize]) - total_cj_shift[2]);
+    for(int j = 3; j < cj_cache->num_fields; j++) {
+      fields[j][i] = *(float *)&(props[j].field[idx*props[j].partSize]);
+    }
+ }
 
 #ifdef SWIFT_DEBUG_CHECKS
   /* Make sure that particle positions have been shifted correctly. */
   for (int i = 0; i <= last_pj_align; i++) {
-    if (xj[i] > shift_threshold_x || xj[i] < -shift_threshold_x)
+    if (fields[0][i] > shift_threshold_x || fields[0][i] < -shift_threshold_x)
       error(
           "Error: ci->loc[%lf,%lf,%lf], cj->loc[%lf,%lf,%lf] Particle %d xj "
           "pos is not within "
           "[-4*ci->width*(1 + 2*space_maxreldx), 4*ci->width*(1 + "
           "2*space_maxreldx)]. xj=%f, ci->width[0]=%f",
           ci->loc[0], ci->loc[1], ci->loc[2], cj->loc[0], cj->loc[1],
-          cj->loc[2], i, xj[i], ci->width[0]);
-    if (yj[i] > shift_threshold_y || yj[i] < -shift_threshold_y)
+          cj->loc[2], i, fields[0][i], ci->width[0]);
+    if (fields[1][i] > shift_threshold_y || fields[1][i] < -shift_threshold_y)
       error(
           "Error: ci->loc[%lf,%lf,%lf], cj->loc[%lf,%lf,%lf] Particle %d yj "
           "pos is not within "
           "[-4*ci->width*(1 + 2*space_maxreldx), 4*ci->width*(1 + "
           "2*space_maxreldx)]. yj=%f, ci->width[1]=%f",
           ci->loc[0], ci->loc[1], ci->loc[2], cj->loc[0], cj->loc[1],
-          cj->loc[2], i, yj[i], ci->width[1]);
-    if (zj[i] > shift_threshold_z || zj[i] < -shift_threshold_z)
+          cj->loc[2], i, fields[1][i], ci->width[1]);
+    if (fields[2][i] > shift_threshold_z || fields[2][i] < -shift_threshold_z)
       error(
           "Error: ci->loc[%lf,%lf,%lf], cj->loc[%lf,%lf,%lf] Particle %d zj "
           "pos is not within "
           "[-4*ci->width*(1 + 2*space_maxreldx), 4*ci->width*(1 + "
           "2*space_maxreldx)]. zj=%f, ci->width[2]=%f",
           ci->loc[0], ci->loc[1], ci->loc[2], cj->loc[0], cj->loc[1],
-          cj->loc[2], i, zj[i], ci->width[2]);
+          cj->loc[2], i, fields[2][i], ci->width[2]);
   }
 #endif
 
@@ -889,12 +896,12 @@ __attribute__((always_inline)) INLINE void cache_read_two_partial_cells_sorted(
   const float h_padded_j = cj->parts[0].h;
 
   for (int i = last_pj_align + 1; i < last_pj_align + 1 + VEC_SIZE; i++) {
-    xj[i] = pos_padded_j[0];
-    yj[i] = pos_padded_j[1];
-    zj[i] = pos_padded_j[2];
-    hj[i] = h_padded_j;
-    mj[i] = 1.f;
-  }
+    fields[0][i] = pos_padded_j[0];
+    fields[1][i] = pos_padded_j[1];
+    fields[2][i] = pos_padded_j[2];
+    fields[3][i] = h_padded_j;
+    fields[4][i] = 1.f;
+ }
 }
 
 /**
