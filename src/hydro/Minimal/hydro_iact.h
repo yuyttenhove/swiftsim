@@ -132,10 +132,10 @@ runner_iact_nonsym_1_vec_density(vector *r2, vector *dx, vector *dy, vector *dz,
     if (int_mask & (1 << i)) {
       runner_iact_nonsym_density_scalar(r2->f[i], params->input[input_params_density_hi_inv].f[0], &rho, &rho_dh, &wcount, &wcount_dh, cell_cache->m[cache_idx + i]);
     }
-    sum_cache->updates[update_cache_density_rho].f[i] += rho;
-    sum_cache->updates[update_cache_density_rho_dh].f[i] += rho_dh;
-    sum_cache->updates[update_cache_density_wcount].f[i] += wcount;
-    sum_cache->updates[update_cache_density_wcount_dh].f[i] += wcount_dh;
+    sum_cache->v_rhoSum.f[i] += rho;
+    sum_cache->v_rho_dhSum.f[i] += rho_dh;
+    sum_cache->v_wcountSum.f[i] += wcount;
+    sum_cache->v_wcount_dhSum.f[i] += wcount_dh;
 
   }
 
@@ -181,25 +181,25 @@ runner_iact_nonsym_2_vec_density(struct c2_cache *int_cache, const int int_cache
   /* Mask updates to intermediate vector sums for particle pi. */
   /* Mask only when needed. */
   if (mask_cond) {
-    sum_cache->updates[update_cache_density_rho].v = vec_mask_add(sum_cache->updates[update_cache_density_rho].v, vec_mul(mj.v, wi.v), mask);
-    sum_cache->updates[update_cache_density_rho].v = vec_mask_add(sum_cache->updates[update_cache_density_rho].v, vec_mul(mj2.v, wi2.v), mask2);
-    sum_cache->updates[update_cache_density_rho_dh].v =
-        vec_mask_sub(sum_cache->updates[update_cache_density_rho_dh].v, vec_mul(mj.v, wcount_dh_update.v), mask);
-    sum_cache->updates[update_cache_density_rho_dh].v =
-        vec_mask_sub(sum_cache->updates[update_cache_density_rho_dh].v, vec_mul(mj2.v, wcount_dh_update2.v), mask2);
-    sum_cache->updates[update_cache_density_wcount].v = vec_mask_add(sum_cache->updates[update_cache_density_wcount].v, wi.v, mask);
-    sum_cache->updates[update_cache_density_wcount].v = vec_mask_add(sum_cache->updates[update_cache_density_wcount].v, wi2.v, mask2);
-    sum_cache->updates[update_cache_density_wcount_dh].v = vec_mask_sub(sum_cache->updates[update_cache_density_wcount_dh].v, wcount_dh_update.v, mask);
-    sum_cache->updates[update_cache_density_wcount_dh].v = vec_mask_sub(sum_cache->updates[update_cache_density_wcount_dh].v, wcount_dh_update2.v, mask2);
+    sum_cache->v_rhoSum.v = vec_mask_add(sum_cache->v_rhoSum.v, vec_mul(mj.v, wi.v), mask);
+    sum_cache->v_rhoSum.v = vec_mask_add(sum_cache->v_rhoSum.v, vec_mul(mj2.v, wi2.v), mask2);
+    sum_cache->v_rho_dhSum.v =
+        vec_mask_sub(sum_cache->v_rho_dhSum.v, vec_mul(mj.v, wcount_dh_update.v), mask);
+    sum_cache->v_rho_dhSum.v =
+        vec_mask_sub(sum_cache->v_rho_dhSum.v, vec_mul(mj2.v, wcount_dh_update2.v), mask2);
+    sum_cache->v_wcountSum.v = vec_mask_add(sum_cache->v_wcountSum.v, wi.v, mask);
+    sum_cache->v_wcountSum.v = vec_mask_add(sum_cache->v_wcountSum.v, wi2.v, mask2);
+    sum_cache->v_wcount_dhSum.v = vec_mask_sub(sum_cache->v_wcount_dhSum.v, wcount_dh_update.v, mask);
+    sum_cache->v_wcount_dhSum.v = vec_mask_sub(sum_cache->v_wcount_dhSum.v, wcount_dh_update2.v, mask2);
   } else {
-    sum_cache->updates[update_cache_density_rho].v = vec_add(sum_cache->updates[update_cache_density_rho].v, vec_mul(mj.v, wi.v));
-    sum_cache->updates[update_cache_density_rho].v = vec_add(sum_cache->updates[update_cache_density_rho].v, vec_mul(mj2.v, wi2.v));
-    sum_cache->updates[update_cache_density_rho_dh].v = vec_sub(sum_cache->updates[update_cache_density_rho_dh].v, vec_mul(mj.v, wcount_dh_update.v));
-    sum_cache->updates[update_cache_density_rho_dh].v = vec_sub(sum_cache->updates[update_cache_density_rho_dh].v, vec_mul(mj2.v, wcount_dh_update2.v));
-    sum_cache->updates[update_cache_density_wcount].v = vec_add(sum_cache->updates[update_cache_density_wcount].v, wi.v);
-    sum_cache->updates[update_cache_density_wcount].v = vec_add(sum_cache->updates[update_cache_density_wcount].v, wi2.v);
-    sum_cache->updates[update_cache_density_wcount_dh].v = vec_sub(sum_cache->updates[update_cache_density_wcount_dh].v, wcount_dh_update.v);
-    sum_cache->updates[update_cache_density_wcount_dh].v = vec_sub(sum_cache->updates[update_cache_density_wcount_dh].v, wcount_dh_update2.v);
+    sum_cache->v_rhoSum.v = vec_add(sum_cache->v_rhoSum.v, vec_mul(mj.v, wi.v));
+    sum_cache->v_rhoSum.v = vec_add(sum_cache->v_rhoSum.v, vec_mul(mj2.v, wi2.v));
+    sum_cache->v_rho_dhSum.v = vec_sub(sum_cache->v_rho_dhSum.v, vec_mul(mj.v, wcount_dh_update.v));
+    sum_cache->v_rho_dhSum.v = vec_sub(sum_cache->v_rho_dhSum.v, vec_mul(mj2.v, wcount_dh_update2.v));
+    sum_cache->v_wcountSum.v = vec_add(sum_cache->v_wcountSum.v, wi.v);
+    sum_cache->v_wcountSum.v = vec_add(sum_cache->v_wcountSum.v, wi2.v);
+    sum_cache->v_wcount_dhSum.v = vec_sub(sum_cache->v_wcount_dhSum.v, wcount_dh_update.v);
+    sum_cache->v_wcount_dhSum.v = vec_sub(sum_cache->v_wcount_dhSum.v, wcount_dh_update2.v);
   }
 }
 #endif
