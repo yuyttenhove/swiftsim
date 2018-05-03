@@ -127,8 +127,13 @@ runner_iact_nonsym_1_vec_density(vector *r2, vector *dx, vector *dy, vector *dz,
 
   const int int_mask = vec_is_mask_true(mask);
 
+  swift_align_information(cell_cache->m, SWIFT_CACHE_ALIGNMENT);
+
+#pragma ivdep
+#pragma nounroll
   for(int i=0; i<VEC_SIZE; i++) {
-  float rho = 0.f, rho_dh = 0.f, wcount = 0.f, wcount_dh = 0.f;
+
+    float rho = 0.f, rho_dh = 0.f, wcount = 0.f, wcount_dh = 0.f;
     if (int_mask & (1 << i)) {
       runner_iact_nonsym_density_scalar(r2->f[i], params->input[input_params_density_hi_inv].f[0], &rho, &rho_dh, &wcount, &wcount_dh, cell_cache->m[cache_idx + i]);
     }
@@ -141,12 +146,78 @@ runner_iact_nonsym_1_vec_density(vector *r2, vector *dx, vector *dy, vector *dz,
 
 }
 
+__attribute__((always_inline)) INLINE static void
+runner_iact_nonsym_2_vec_density(struct c2_cache *int_cache, const int int_cache_idx,
+                                 const struct input_params_density *params, 
+                                 struct update_cache_density *sum_cache,
+                                 mask_t mask, mask_t mask2, short mask_cond) {
+
+  swift_align_information(&int_cache->r2q[0], SWIFT_CACHE_ALIGNMENT);
+  swift_align_information(&int_cache->mq[0], SWIFT_CACHE_ALIGNMENT);
+
+  if(mask_cond) {
+    const int int_mask = vec_is_mask_true(mask);
+    const int int_mask2 = vec_is_mask_true(mask2);
+
+    for(int i=0; i<VEC_SIZE; i++) {
+
+      float rho = 0.f, rho_dh = 0.f, wcount = 0.f, wcount_dh = 0.f;
+      if (int_mask & (1 << i)) {
+        runner_iact_nonsym_density_scalar(int_cache->r2q[int_cache_idx + i], params->input[input_params_density_hi_inv].f[0], &rho, &rho_dh, &wcount, &wcount_dh, int_cache->mq[int_cache_idx + i]);
+      }
+      sum_cache->v_rhoSum.f[i] += rho;
+      sum_cache->v_rho_dhSum.f[i] += rho_dh;
+      sum_cache->v_wcountSum.f[i] += wcount;
+      sum_cache->v_wcount_dhSum.f[i] += wcount_dh;
+
+    }
+
+    for(int i=0; i<VEC_SIZE; i++) {
+
+      float rho = 0.f, rho_dh = 0.f, wcount = 0.f, wcount_dh = 0.f;
+      if (int_mask2 & (1 << i)) {
+        runner_iact_nonsym_density_scalar(int_cache->r2q[int_cache_idx + VEC_SIZE + i], params->input[input_params_density_hi_inv].f[0], &rho, &rho_dh, &wcount, &wcount_dh, int_cache->mq[int_cache_idx + VEC_SIZE + i]);
+      }
+      sum_cache->v_rhoSum.f[i] += rho;
+      sum_cache->v_rho_dhSum.f[i] += rho_dh;
+      sum_cache->v_wcountSum.f[i] += wcount;
+      sum_cache->v_wcount_dhSum.f[i] += wcount_dh;
+
+    }
+  }
+  else {
+    for(int i=0; i<VEC_SIZE; i++) {
+
+      float rho = 0.f, rho_dh = 0.f, wcount = 0.f, wcount_dh = 0.f;
+      runner_iact_nonsym_density_scalar(int_cache->r2q[int_cache_idx + i], params->input[input_params_density_hi_inv].f[0], &rho, &rho_dh, &wcount, &wcount_dh, int_cache->mq[int_cache_idx + i]);
+      sum_cache->v_rhoSum.f[i] += rho;
+      sum_cache->v_rho_dhSum.f[i] += rho_dh;
+      sum_cache->v_wcountSum.f[i] += wcount;
+      sum_cache->v_wcount_dhSum.f[i] += wcount_dh;
+
+    }
+
+    for(int i=0; i<VEC_SIZE; i++) {
+
+      float rho = 0.f, rho_dh = 0.f, wcount = 0.f, wcount_dh = 0.f;
+      runner_iact_nonsym_density_scalar(int_cache->r2q[int_cache_idx + VEC_SIZE + i], params->input[input_params_density_hi_inv].f[0], &rho, &rho_dh, &wcount, &wcount_dh, int_cache->mq[int_cache_idx + VEC_SIZE + i]);
+      sum_cache->v_rhoSum.f[i] += rho;
+      sum_cache->v_rho_dhSum.f[i] += rho_dh;
+      sum_cache->v_wcountSum.f[i] += wcount;
+      sum_cache->v_wcount_dhSum.f[i] += wcount_dh;
+
+    }
+
+  }
+
+}
+
 /**
  * @brief Density interaction computed using 2 interleaved vectors
  * (non-symmetric vectorized version).
  */
 __attribute__((always_inline)) INLINE static void
-runner_iact_nonsym_2_vec_density(struct c2_cache *int_cache, const int int_cache_idx,
+runner_iact_nonsym_2_vec_density_intrinsic(struct c2_cache *int_cache, const int int_cache_idx,
                                  const struct input_params_density *params, 
                                  struct update_cache_density *sum_cache,
                                  mask_t mask, mask_t mask2, short mask_cond) {
