@@ -123,14 +123,15 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_density_sca
  */
 __attribute__((always_inline)) INLINE static void
 runner_iact_nonsym_1_vec_density(vector *r2, vector *dx, vector *dy, vector *dz,
-                                 const struct input_params_density *params, const struct cache *cell_cache, const int cache_idx, struct update_cache_density *sum_cache, mask_t mask) {
+                                 const struct input_params_density *params, struct cache *cell_cache, const int cache_idx, struct update_cache_density *sum_cache, mask_t mask) {
 
   const int int_mask = vec_is_mask_true(mask);
 
   swift_align_information(cell_cache->m, SWIFT_CACHE_ALIGNMENT);
-
+#ifdef __ICC
 #pragma ivdep
 #pragma nounroll
+#endif
   for(int i=0; i<VEC_SIZE; i++) {
 
     float rho = 0.f, rho_dh = 0.f, wcount = 0.f, wcount_dh = 0.f;
@@ -146,15 +147,19 @@ runner_iact_nonsym_1_vec_density(vector *r2, vector *dx, vector *dy, vector *dz,
 
 }
 
+/**
+ * @brief Density interaction computed using 2 interleaved vectors
+ * (non-symmetric vectorized version).
+ */
 __attribute__((always_inline)) INLINE static void
 runner_iact_nonsym_2_vec_density(struct c2_cache *int_cache, const int int_cache_idx,
                                  const struct input_params_density *params, 
                                  struct update_cache_density *sum_cache,
                                  mask_t mask, mask_t mask2, short mask_cond) {
-
+#ifdef __ICC
   swift_align_information(&int_cache->r2q[0], SWIFT_CACHE_ALIGNMENT);
   swift_align_information(&int_cache->mq[0], SWIFT_CACHE_ALIGNMENT);
-
+#endif
   if(mask_cond) {
     const int int_mask = vec_is_mask_true(mask);
     const int int_mask2 = vec_is_mask_true(mask2);
@@ -212,67 +217,6 @@ runner_iact_nonsym_2_vec_density(struct c2_cache *int_cache, const int int_cache
 
 }
 
-/**
- * @brief Density interaction computed using 2 interleaved vectors
- * (non-symmetric vectorized version).
- */
-__attribute__((always_inline)) INLINE static void
-runner_iact_nonsym_2_vec_density_intrinsic(struct c2_cache *int_cache, const int int_cache_idx,
-                                 const struct input_params_density *params, 
-                                 struct update_cache_density *sum_cache,
-                                 mask_t mask, mask_t mask2, short mask_cond) {
-
-  vector r, ri, ui, wi, wi_dx;
-  vector r_2, ri2, ui2, wi2, wi_dx2;
-
-  /* Fill the vectors. */
-  const vector mj = vector_load(&int_cache->mq[int_cache_idx]);
-  const vector mj2 = vector_load(&int_cache->mq[int_cache_idx + VEC_SIZE]);
-
-  /* Get the radius and inverse radius. */
-  const vector r2 = vector_load(&int_cache->r2q[int_cache_idx]);
-  const vector r2_2 = vector_load(&int_cache->r2q[int_cache_idx + VEC_SIZE]);
-  ri = vec_reciprocal_sqrt(r2);
-  ri2 = vec_reciprocal_sqrt(r2_2);
-  r.v = vec_mul(r2.v, ri.v);
-  r_2.v = vec_mul(r2_2.v, ri2.v);
-
-  ui.v = vec_mul(r.v, params->input[input_params_density_hi_inv].v);
-  ui2.v = vec_mul(r_2.v, params->input[input_params_density_hi_inv].v);
-
-  /* Calculate the kernel for two particles. */
-  kernel_deval_2_vec(&ui, &wi, &wi_dx, &ui2, &wi2, &wi_dx2);
-
-  vector wcount_dh_update, wcount_dh_update2;
-  wcount_dh_update.v =
-      vec_fma(vec_set1(hydro_dimension), wi.v, vec_mul(ui.v, wi_dx.v));
-  wcount_dh_update2.v =
-      vec_fma(vec_set1(hydro_dimension), wi2.v, vec_mul(ui2.v, wi_dx2.v));
-
-  /* Mask updates to intermediate vector sums for particle pi. */
-  /* Mask only when needed. */
-  if (mask_cond) {
-    sum_cache->v_rhoSum.v = vec_mask_add(sum_cache->v_rhoSum.v, vec_mul(mj.v, wi.v), mask);
-    sum_cache->v_rhoSum.v = vec_mask_add(sum_cache->v_rhoSum.v, vec_mul(mj2.v, wi2.v), mask2);
-    sum_cache->v_rho_dhSum.v =
-        vec_mask_sub(sum_cache->v_rho_dhSum.v, vec_mul(mj.v, wcount_dh_update.v), mask);
-    sum_cache->v_rho_dhSum.v =
-        vec_mask_sub(sum_cache->v_rho_dhSum.v, vec_mul(mj2.v, wcount_dh_update2.v), mask2);
-    sum_cache->v_wcountSum.v = vec_mask_add(sum_cache->v_wcountSum.v, wi.v, mask);
-    sum_cache->v_wcountSum.v = vec_mask_add(sum_cache->v_wcountSum.v, wi2.v, mask2);
-    sum_cache->v_wcount_dhSum.v = vec_mask_sub(sum_cache->v_wcount_dhSum.v, wcount_dh_update.v, mask);
-    sum_cache->v_wcount_dhSum.v = vec_mask_sub(sum_cache->v_wcount_dhSum.v, wcount_dh_update2.v, mask2);
-  } else {
-    sum_cache->v_rhoSum.v = vec_add(sum_cache->v_rhoSum.v, vec_mul(mj.v, wi.v));
-    sum_cache->v_rhoSum.v = vec_add(sum_cache->v_rhoSum.v, vec_mul(mj2.v, wi2.v));
-    sum_cache->v_rho_dhSum.v = vec_sub(sum_cache->v_rho_dhSum.v, vec_mul(mj.v, wcount_dh_update.v));
-    sum_cache->v_rho_dhSum.v = vec_sub(sum_cache->v_rho_dhSum.v, vec_mul(mj2.v, wcount_dh_update2.v));
-    sum_cache->v_wcountSum.v = vec_add(sum_cache->v_wcountSum.v, wi.v);
-    sum_cache->v_wcountSum.v = vec_add(sum_cache->v_wcountSum.v, wi2.v);
-    sum_cache->v_wcount_dhSum.v = vec_sub(sum_cache->v_wcount_dhSum.v, wcount_dh_update.v);
-    sum_cache->v_wcount_dhSum.v = vec_sub(sum_cache->v_wcount_dhSum.v, wcount_dh_update2.v);
-  }
-}
 #endif
 
 /**

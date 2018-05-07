@@ -223,15 +223,6 @@ enum input_params_density_types {
   input_params_density_length
 };
 
-/* List which particle density parameters need updating. */
-enum update_cache_density_types {
-  update_cache_density_rho = 0,
-  update_cache_density_rho_dh,
-  update_cache_density_wcount,
-  update_cache_density_wcount_dh,
-  update_cache_density_length
-};
-
 /* List which particle force parameters are required as input. */
 enum input_params_force_types {
   input_params_force_vix = 0,
@@ -273,7 +264,6 @@ struct update_cache_force {
 /* Input parameters needed for computing the density interaction. */
 struct input_params_density {
   vector input[input_params_density_length];
-  //vector v_hi_inv;
 };
 
 /* Input parameters needed for computing the force interaction. */
@@ -492,7 +482,9 @@ __attribute__((always_inline)) INLINE void cache_read_particles(
 
   /* Shift the particles positions to a local frame so single precision can be
    * used instead of double precision. */
+#ifdef __ICC
 #pragma simd
+#endif
   for (int i = 0; i < ci_count; i++) {
     fields[0][i] = (float)(*(double *)&(props[0].field[i*props[0].partSize]) - loc[0]);
     fields[1][i] = (float)(*(double *)&(props[1].field[i*props[1].partSize]) - loc[1]);
@@ -790,8 +782,10 @@ __attribute__((always_inline)) INLINE void cache_read_two_partial_cells_sorted(
 
   /* Shift the particles positions to a local frame (ci frame) so single
    * precision can be used instead of double precision.  */
+#ifdef __ICC
 //#pragma simd
 #pragma ivdep
+#endif
   for (int i = 0; i < ci_cache_count; i++) {
     const int idx = sort_i[i + first_pi_align].i;
     fields[0][i] = (float)(*(double *)&(props[0].field[idx*props[0].partSize]) - total_ci_shift[0]);
@@ -874,9 +868,11 @@ __attribute__((always_inline)) INLINE void cache_read_two_partial_cells_sorted(
   swift_align_information(fields[2], SWIFT_CACHE_ALIGNMENT);
   swift_align_information(fields[3], SWIFT_CACHE_ALIGNMENT);
   swift_align_information(fields[4], SWIFT_CACHE_ALIGNMENT);
-
+ 
+#ifdef __ICC
 //#pragma simd
 #pragma ivdep
+#endif
   for (int i = 0; i <= last_pj_align; i++) {
     const int idx = sort_j[i].i;
     fields[0][i] = (float)(*(double *)&(props[0].field[idx*props[0].partSize]) - total_cj_shift[0]);
