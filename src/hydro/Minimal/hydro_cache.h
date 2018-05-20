@@ -339,26 +339,12 @@ __attribute__((always_inline)) INLINE void update_cache_init(const int num_field
 }
 
 /**
- * @brief Perform horizontal adds on vector sums and store result in particle pi. Density interaction.
+ * @brief Perform reduction operations on sum vectors and store result in particle pi. Density interaction.
  *
  * @param pi Particle to update.
  * @param c Update cache.
  */
-__attribute__((always_inline)) INLINE void update_density_particle(struct cache_props *props, const int pid, const int num_fields) {
-
-  for(int i=0; i<num_fields; i++) {
-    props[i].reduction_f(*(vector*)props[i].cache_addr, (float *)&props[i].field[pid*props[i].partSize]);
-  }
-
-}
-
-/**
- * @brief Perform horizontal adds on vector sums and store result in particle pi. Force interaction.
- *
- * @param pi Particle to update.
- * @param c Update cache.
- */
-__attribute__((always_inline)) INLINE void update_force_particle(struct cache_props *props, const int pid, const int num_fields) {
+__attribute__((always_inline)) INLINE void update_particle(struct cache_props *props, const int pid, const int num_fields) {
 
   for(int i=0; i<num_fields; i++) {
     props[i].reduction_f(*(vector*)props[i].cache_addr, (float *)&props[i].field[pid*props[i].partSize]);

@@ -706,7 +706,7 @@ void runner_doself1_density_vec(struct runner *r, struct cell *restrict c) {
     }
 
     /* Perform horizontal adds on vector sums and store result in particle pi. */
-    update_density_particle(update_props, pid, sum_cache.num_fields);
+    update_particle(update_props, pid, sum_cache.num_fields);
     
     /* Reset interaction count. */
     icount = 0;
@@ -904,7 +904,7 @@ void runner_doself_subset_density_vec(struct runner *r, struct cell *restrict c,
     }
 
     /* Perform horizontal adds on vector sums and store result in particle pi.*/
-    update_density_particle(update_props, ind[pid], sum_cache.num_fields);
+    update_particle(update_props, ind[pid], sum_cache.num_fields);
 
     /* Reset interaction count. */
     icount = 0;
@@ -1048,7 +1048,7 @@ void runner_doself2_force_vec(struct runner *r, struct cell *restrict c) {
     } /* Loop over all other particles. */
 
     /* Perform horizontal adds on vector sums and store result in pj. */
-    update_force_particle(update_props, pid, sum_cache.num_fields);
+    update_particle(update_props, pid, sum_cache.num_fields);
     
   } /* loop over all particles. */
 
@@ -1278,7 +1278,7 @@ void runner_dopair1_density_vec(struct runner *r, struct cell *ci,
       } /* loop over the parts in cj. */
 
       /* Perform horizontal adds on vector sums and store result in particle pi.*/
-      update_density_particle(update_props, sort_i[pid].i, sum_cache.num_fields);
+      update_particle(update_props, sort_i[pid].i, sum_cache.num_fields);
       
     } /* loop over the parts in ci. */
   }
@@ -1385,7 +1385,7 @@ void runner_dopair1_density_vec(struct runner *r, struct cell *ci,
       } /* loop over the parts in ci. */
 
       /* Perform horizontal adds on vector sums and store result in particle pj.*/
-      update_density_particle(update_props, sort_j[pjd].i, sum_cache.num_fields);
+      update_particle(update_props, sort_j[pjd].i, sum_cache.num_fields);
     
     } /* loop over the parts in cj. */
   }
@@ -1551,7 +1551,7 @@ void runner_dopair_subset_density_vec(struct runner *r,
       } /* loop over the parts in cj. */
 
       /* Perform horizontal adds on vector sums and store result in particle pi.*/
-      update_density_particle(update_props, ind[pid], sum_cache.num_fields);
+      update_particle(update_props, ind[pid], sum_cache.num_fields);
       
     } /* loop over the parts in ci. */
   }
@@ -1660,7 +1660,7 @@ void runner_dopair_subset_density_vec(struct runner *r,
       } /* loop over the parts in cj. */
 
       /* Perform horizontal adds on vector sums and store result in particle pi.*/
-      update_density_particle(update_props, ind[pid], sum_cache.num_fields);
+      update_particle(update_props, ind[pid], sum_cache.num_fields);
       
     } /* loop over the parts in ci. */
   }
@@ -1902,7 +1902,7 @@ void runner_dopair2_force_vec(struct runner *r, struct cell *ci,
       } /* loop over the parts in cj. */
 
       /* Perform horizontal adds on vector sums and store result in pi. */
-      update_force_particle(update_props, sort_i[pid].i, sum_cache.num_fields);
+      update_particle(update_props, sort_i[pid].i, sum_cache.num_fields);
 
     } /* loop over the parts in ci. */
   }
@@ -2015,7 +2015,7 @@ void runner_dopair2_force_vec(struct runner *r, struct cell *ci,
       } /* loop over the parts in ci. */
 
       /* Perform horizontal adds on vector sums and store result in pj. */
-      update_force_particle(update_props, sort_j[pjd].i, sum_cache.num_fields);
+      update_particle(update_props, sort_j[pjd].i, sum_cache.num_fields);
       
     } /* loop over the parts in cj. */
 
