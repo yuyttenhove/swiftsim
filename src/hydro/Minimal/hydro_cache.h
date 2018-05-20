@@ -552,16 +552,19 @@ __attribute__((always_inline)) INLINE void cache_read_particles_subset(
     const struct entry *restrict sort_i, int *first_pi, int *last_pi,
     const double *loc, const int flipped) {
 
+  const struct part *restrict parts = ci->parts;
+  struct cache_props props[MAX_NUM_OF_CACHE_FIELDS];
+  cache_read_particle_fields_density(parts, props, ci_cache);
+
+  float *restrict fields[MAX_NUM_OF_CACHE_FIELDS];  
+
   /* Let the compiler know that the data is aligned and create pointers to the
    * arrays inside the cache. */
-  swift_declare_aligned_ptr(float, x, ci_cache->x, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, y, ci_cache->y, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, z, ci_cache->z, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, h, ci_cache->h, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, m, ci_cache->m, SWIFT_CACHE_ALIGNMENT);
-  
-  const struct part *restrict parts = ci->parts;
-
+  for(int i=0; i<ci_cache->num_fields; i++) {
+    fields[i] = props[i].cache_addr;
+    swift_align_information(fields[i], SWIFT_CACHE_ALIGNMENT);
+  }
+ 
   /* The cell is on the right so read the particles
    * into the cache from the start of the cell. */
   if (!flipped) {
@@ -575,13 +578,16 @@ __attribute__((always_inline)) INLINE void cache_read_particles_subset(
 
     /* Shift the particles positions to a local frame so single precision can be
      * used instead of double precision. */
+#ifdef __ICC
+#pragma simd
+#endif
     for (int i = 0; i < *last_pi; i++) {
       const int idx = sort_i[i].i;
-      x[i] = (float)(parts[idx].x[0] - loc[0]);
-      y[i] = (float)(parts[idx].x[1] - loc[1]);
-      z[i] = (float)(parts[idx].x[2] - loc[2]);
-      h[i] = parts[idx].h;
-      m[i] = parts[idx].mass;
+      fields[0][i] = (float)(*(double *)&(props[0].field[idx*props[0].partSize]) - loc[0]);
+      fields[1][i] = (float)(*(double *)&(props[1].field[idx*props[1].partSize]) - loc[1]);
+      fields[2][i] = (float)(*(double *)&(props[2].field[idx*props[2].partSize]) - loc[2]);
+      fields[3][i] = *(float *)&(props[3].field[idx*props[3].partSize]);
+      fields[4][i] = *(float *)&(props[4].field[idx*props[4].partSize]);
      }
 
     /* Pad cache with fake particles that exist outside the cell so will not
@@ -594,11 +600,11 @@ __attribute__((always_inline)) INLINE void cache_read_particles_subset(
     const float h_padded = ci->parts[0].h;
 
     for (int i = *last_pi; i < *last_pi + VEC_SIZE; i++) {
-      x[i] = pos_padded[0];
-      y[i] = pos_padded[1];
-      z[i] = pos_padded[2];
-      h[i] = h_padded;
-      m[i] = 1.f;
+      fields[0][i] = pos_padded[0];
+      fields[1][i] = pos_padded[1];
+      fields[2][i] = pos_padded[2];
+      fields[3][i] = h_padded;
+      fields[4][i] = 1.f;
     }
   }
   /* The cell is on the left so read the particles
@@ -616,13 +622,16 @@ __attribute__((always_inline)) INLINE void cache_read_particles_subset(
 
     /* Shift the particles positions to a local frame so single precision can be
      * used instead of double precision. */
+#ifdef __ICC
+#pragma simd
+#endif
     for (int i = 0; i < ci_cache_count; i++) {
       const int idx = sort_i[i + *first_pi].i;
-      x[i] = (float)(parts[idx].x[0] - loc[0]);
-      y[i] = (float)(parts[idx].x[1] - loc[1]);
-      z[i] = (float)(parts[idx].x[2] - loc[2]);
-      h[i] = parts[idx].h;
-      m[i] = parts[idx].mass;
+      fields[0][i] = (float)(*(double *)&(props[0].field[idx*props[0].partSize]) - loc[0]);
+      fields[1][i] = (float)(*(double *)&(props[1].field[idx*props[1].partSize]) - loc[1]);
+      fields[2][i] = (float)(*(double *)&(props[2].field[idx*props[2].partSize]) - loc[2]);
+      fields[3][i] = *(float *)&(props[3].field[idx*props[3].partSize]);
+      fields[4][i] = *(float *)&(props[4].field[idx*props[4].partSize]);
     }
 
     /* Pad cache with fake particles that exist outside the cell so will not
@@ -636,11 +645,11 @@ __attribute__((always_inline)) INLINE void cache_read_particles_subset(
 
     for (int i = ci->count - *first_pi; i < ci->count - *first_pi + VEC_SIZE;
          i++) {
-      x[i] = pos_padded[0];
-      y[i] = pos_padded[1];
-      z[i] = pos_padded[2];
-      h[i] = h_padded;
-      m[i] = 1.f;
+      fields[0][i] = pos_padded[0];
+      fields[1][i] = pos_padded[1];
+      fields[2][i] = pos_padded[2];
+      fields[3][i] = h_padded;
+      fields[4][i] = 1.f;
     }
   }
 
