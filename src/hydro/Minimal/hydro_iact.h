@@ -511,16 +511,16 @@ runner_iact_nonsym_1_vec_force(
   const int int_mask = vec_is_mask_true(mask);
 
   for(int i=0; i<VEC_SIZE; i++) {
-  float a_hydro_x = 0.f, a_hydro_y = 0.f, a_hydro_z = 0.f, u_dt = 0.f, h_dt = 0.f, sig = 0.f;
+    float a_hydro_x = 0.f, a_hydro_y = 0.f, a_hydro_z = 0.f, u_dt = 0.f, h_dt = 0.f, sig = 0.f;
     if (int_mask & (1 << i)) {
       runner_iact_nonsym_force_scalar(r2->f[i], dx->f[i], dy->f[i], dz->f[i], hj_inv.f[i], params, cell_cache, cache_idx + i, &a_hydro_x, &a_hydro_y, &a_hydro_z, &u_dt, &h_dt, &sig);
     }
-    sum_cache->updates[update_cache_force_a_hydro_x].f[i] += a_hydro_x;
-    sum_cache->updates[update_cache_force_a_hydro_y].f[i] += a_hydro_y;
-    sum_cache->updates[update_cache_force_a_hydro_z].f[i] += a_hydro_z;
-    sum_cache->updates[update_cache_force_u_dt].f[i] += u_dt;
-    sum_cache->updates[update_cache_force_h_dt].f[i] += h_dt;
-    sum_cache->updates[update_cache_force_sig].f[i] = max(sum_cache->updates[update_cache_force_sig].f[i], sig);
+    sum_cache->v_a_hydro_xSum.f[i] += a_hydro_x;
+    sum_cache->v_a_hydro_ySum.f[i] += a_hydro_y;
+    sum_cache->v_a_hydro_zSum.f[i] += a_hydro_z;
+    sum_cache->v_u_dtSum.f[i] += u_dt;
+    sum_cache->v_h_dtSum.f[i] += h_dt;
+    sum_cache->v_sigSum.f[i] = max(sum_cache->v_sigSum.f[i], sig);
 
   }
 

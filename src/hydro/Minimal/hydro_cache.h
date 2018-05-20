@@ -173,13 +173,13 @@ INLINE struct cache_props cache_make_output_field_(
 }
 
 /**
- * @brief Specifies which particle fields to read from a dataset
+ * @brief Specifies which particle fields to read from a dataset (density).
  *
  * @param parts The particle array.
  * @param list The list of i/o properties to read.
  * @param num_fields The number of i/o fields to read.
  */
-INLINE void cache_read_particle_fields(const struct part *restrict parts, struct cache_props* list,
+INLINE void cache_read_particle_fields_density(const struct part *restrict parts, struct cache_props* list,
                           struct cache *restrict const ci_cache) {
 
   ci_cache->num_fields = 5;
@@ -190,6 +190,33 @@ INLINE void cache_read_particle_fields(const struct part *restrict parts, struct
   list[2] = cache_make_input_field("z", parts, x[2], ci_cache->z);
   list[3] = cache_make_input_field("h", parts, h, ci_cache->h);
   list[4] = cache_make_input_field("mass", parts, mass, ci_cache->m);
+}
+
+/**
+ * @brief Specifies which particle fields to read from a dataset (force).
+ *
+ * @param parts The particle array.
+ * @param list The list of i/o properties to read.
+ * @param num_fields The number of i/o fields to read.
+ */
+INLINE void cache_read_particle_fields_force(const struct part *restrict parts, struct cache_props* list,
+                          struct cache *restrict const ci_cache) {
+
+  ci_cache->num_fields = 12;
+
+  /* List what we want to read */
+  list[0] = cache_make_input_field("x", parts, x[0], ci_cache->x);
+  list[1] = cache_make_input_field("y", parts, x[1], ci_cache->y);
+  list[2] = cache_make_input_field("z", parts, x[2], ci_cache->z);
+  list[3] = cache_make_input_field("h", parts, h, ci_cache->h);
+  list[4] = cache_make_input_field("mass", parts, mass, ci_cache->m);
+  list[5] = cache_make_input_field("vx", parts, v[0], ci_cache->vx);
+  list[6] = cache_make_input_field("vy", parts, v[1], ci_cache->vy);
+  list[7] = cache_make_input_field("vz", parts, v[2], ci_cache->vz);
+  list[8] = cache_make_input_field("rho", parts, rho, ci_cache->vx);
+  list[9] = cache_make_input_field("pressure", parts, force.pressure, ci_cache->pressure);
+  list[10] = cache_make_input_field("grad_h", parts, force.f, ci_cache->grad_h);
+  list[11] = cache_make_input_field("soundspeed", parts, force.soundspeed, ci_cache->soundspeed);
 }
 
 /* Secondary cache struct to hold a list of interactions between two
@@ -217,6 +244,12 @@ INLINE static void reduction_add(vector field, float *pi_update) {
   VEC_HADD(field, *pi_update);
 }
 
+INLINE static void reduction_max(vector field, float *pi_update) {
+  float hmax = 0.f;
+  VEC_HMAX(field, hmax);
+  *pi_update = max(*pi_update, hmax);
+}
+
 /* List which particle density parameters are required as input. */
 enum input_params_density_types {
   input_params_density_hi_inv = 0,
@@ -236,17 +269,6 @@ enum input_params_force_types {
   input_params_force_length
 };
 
-/* List which particle force parameters need updating. */
-enum update_cache_force_types {
-  update_cache_force_a_hydro_x = 0,
-  update_cache_force_a_hydro_y,
-  update_cache_force_a_hydro_z,
-  update_cache_force_u_dt,
-  update_cache_force_h_dt,
-  update_cache_force_sig,
-  update_cache_force_length
-};
-
 /* Cache to hold a list of vectors used to update particle properties after a density interaction. */
 struct update_cache_density {
   vector v_rhoSum;
@@ -258,7 +280,13 @@ struct update_cache_density {
 
 /* Cache to hold a list of vectors used to update particle properties after a force interaction. */
 struct update_cache_force {
-  vector updates[update_cache_force_length];  
+  vector v_a_hydro_xSum;
+  vector v_a_hydro_ySum;
+  vector v_a_hydro_zSum;
+  vector v_u_dtSum;
+  vector v_h_dtSum;
+  vector v_sigSum;
+  int num_fields;
 };
 
 /* Input parameters needed for computing the density interaction. */
@@ -271,7 +299,7 @@ struct input_params_force {
   vector input[input_params_force_length];
 };
 
-INLINE static void cache_read_particle_update_fields(const struct part *restrict parts, struct cache_props* list,
+INLINE static void cache_read_particle_update_fields_density(const struct part *restrict parts, struct cache_props* list,
     struct update_cache_density *restrict const update_cache) {
 
   update_cache->num_fields = 4;
@@ -284,25 +312,30 @@ INLINE static void cache_read_particle_update_fields(const struct part *restrict
 
 }
 
-/**
- * @brief Reset the density update cache to zero.
- *
- * @param c The update cache.
- */
-__attribute__((always_inline)) INLINE void update_cache_density_init(struct update_cache_density *c, struct cache_props *props) {
+INLINE static void cache_read_particle_update_fields_force(const struct part *restrict parts, struct cache_props* list,
+    struct update_cache_force *restrict const update_cache) {
 
-  for(int i=0; i<c->num_fields; i++) ((vector *)props[i].cache_addr)->v = vec_setzero();
+  update_cache->num_fields = 6;
+  
+  /* List what we want to read */
+  list[0] = cache_make_output_field("a_hydro_x", parts, a_hydro[0], &update_cache->v_a_hydro_xSum.f[0], reduction_add);
+  list[1] = cache_make_output_field("a_hydro_y", parts, a_hydro[1], &update_cache->v_a_hydro_ySum.f[0], reduction_add);
+  list[2] = cache_make_output_field("a_hydro_z", parts, a_hydro[2], &update_cache->v_a_hydro_zSum.f[0], reduction_add);
+  list[3] = cache_make_output_field("u_dt", parts, u_dt, &update_cache->v_u_dtSum.f[0], reduction_add);
+  list[4] = cache_make_output_field("h_dt", parts, force.h_dt, &update_cache->v_h_dtSum.f[0], reduction_add);
+  list[5] = cache_make_output_field("v_sig", parts, force.v_sig, &update_cache->v_sigSum.f[0], reduction_max);
 
 }
 
 /**
- * @brief Reset the force update cache to zero.
+ * @brief Reset the update cache to zero.
  *
  * @param c The update cache.
  */
-__attribute__((always_inline)) INLINE void update_cache_force_init(struct update_cache_force *c) {
+__attribute__((always_inline)) INLINE void update_cache_init(const int num_fields, struct cache_props *props) {
 
-  for(int i=0; i<update_cache_force_length; i++) c->updates[i].v = vec_setzero();
+  for(int i=0; i<num_fields; i++) ((vector *)props[i].cache_addr)->v = vec_setzero();
+
 }
 
 /**
@@ -325,16 +358,11 @@ __attribute__((always_inline)) INLINE void update_density_particle(struct cache_
  * @param pi Particle to update.
  * @param c Update cache.
  */
-__attribute__((always_inline)) INLINE void update_force_particle(struct part *restrict pi, struct update_cache_force *c) {
+__attribute__((always_inline)) INLINE void update_force_particle(struct cache_props *props, const int pid, const int num_fields) {
 
-  VEC_HADD(c->updates[update_cache_force_a_hydro_x], pi->a_hydro[0]);
-  VEC_HADD(c->updates[update_cache_force_a_hydro_y], pi->a_hydro[1]);
-  VEC_HADD(c->updates[update_cache_force_a_hydro_z], pi->a_hydro[2]);
-  VEC_HADD(c->updates[update_cache_force_u_dt], pi->u_dt);
-  VEC_HADD(c->updates[update_cache_force_h_dt], pi->force.h_dt);
-  float max_v_sig = 0.f;
-  VEC_HMAX(c->updates[update_cache_force_sig], max_v_sig);
-  pi->force.v_sig = max(pi->force.v_sig, max_v_sig);
+  for(int i=0; i<num_fields; i++) {
+    props[i].reduction_f(*(vector*)props[i].cache_addr, (float *)&props[i].field[pid*props[i].partSize]);
+  }
 
 }
 
@@ -460,7 +488,7 @@ __attribute__((always_inline)) INLINE void cache_read_particles(
 
   const struct part *restrict parts = ci->parts;
   struct cache_props props[MAX_NUM_OF_CACHE_FIELDS];
-  cache_read_particle_fields(parts, props, ci_cache);
+  cache_read_particle_fields_density(parts, props, ci_cache);
 
   float *restrict fields[MAX_NUM_OF_CACHE_FIELDS];  
 
@@ -761,7 +789,7 @@ __attribute__((always_inline)) INLINE void cache_read_two_partial_cells_sorted(
   const double total_cj_shift[3] = {cj->loc[0], cj->loc[1], cj->loc[2]};
 
   struct cache_props props[MAX_NUM_OF_CACHE_FIELDS];
-  cache_read_particle_fields(parts_i, props, ci_cache);
+  cache_read_particle_fields_density(parts_i, props, ci_cache);
 
   float *restrict fields[MAX_NUM_OF_CACHE_FIELDS];  
 
@@ -854,7 +882,7 @@ __attribute__((always_inline)) INLINE void cache_read_two_partial_cells_sorted(
 
   }
 
-  cache_read_particle_fields(parts_j, props, cj_cache);
+  cache_read_particle_fields_density(parts_j, props, cj_cache);
  
   /* Let the compiler know that the data is aligned and create pointers to the
    * arrays inside the cache. */
