@@ -123,15 +123,12 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_density_sca
  */
 __attribute__((always_inline)) INLINE static void
 runner_iact_nonsym_1_vec_density(vector *r2, vector *dx, vector *dy, vector *dz,
-                                 const struct input_params_density *params, struct cache *cell_cache, const int cache_idx, struct update_cache_density *sum_cache, mask_t mask) {
+                                 const struct input_params_density *params, struct cache *restrict cell_cache, const int cache_idx, struct update_cache_density *restrict sum_cache, mask_t mask) {
 
   const int int_mask = vec_is_mask_true(mask);
 
   swift_align_information(cell_cache->m, SWIFT_CACHE_ALIGNMENT);
-#ifdef __ICC
-#pragma ivdep
-#pragma nounroll
-#endif
+
   for(int i=0; i<VEC_SIZE; i++) {
 
     float rho = 0.f, rho_dh = 0.f, wcount = 0.f, wcount_dh = 0.f;
@@ -142,7 +139,6 @@ runner_iact_nonsym_1_vec_density(vector *r2, vector *dx, vector *dy, vector *dz,
     sum_cache->v_rho_dhSum.f[i] += rho_dh;
     sum_cache->v_wcountSum.f[i] += wcount;
     sum_cache->v_wcount_dhSum.f[i] += wcount_dh;
-
   }
 
 }
@@ -152,14 +148,10 @@ runner_iact_nonsym_1_vec_density(vector *r2, vector *dx, vector *dy, vector *dz,
  * (non-symmetric vectorized version).
  */
 __attribute__((always_inline)) INLINE static void
-runner_iact_nonsym_2_vec_density(struct c2_cache *int_cache, const int int_cache_idx,
+runner_iact_nonsym_2_vec_density(struct c2_cache *restrict int_cache, const int int_cache_idx,
                                  const struct input_params_density *params, 
-                                 struct update_cache_density *sum_cache,
+                                 struct update_cache_density *restrict sum_cache,
                                  mask_t mask, mask_t mask2, short mask_cond) {
-#ifdef __ICC
-  swift_align_information(&int_cache->r2q[0], SWIFT_CACHE_ALIGNMENT);
-  swift_align_information(&int_cache->mq[0], SWIFT_CACHE_ALIGNMENT);
-#endif
   if(mask_cond) {
     const int int_mask = vec_is_mask_true(mask);
     const int int_mask2 = vec_is_mask_true(mask2);
@@ -491,10 +483,6 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force_scala
 
   /* Get the time derivative for h. */
   *h_dtSum -= mj * dvdr * r_inv / rhoj * wi_dr;
-
-  /* Update the signal velocity. */
-  //*sigSum = max(pi->force.v_sig, v_sig);
-  //*sigSum = v_sig;
 }
 
 static const vector const_viscosity_alpha_fac =
@@ -506,9 +494,18 @@ static const vector const_viscosity_alpha_fac =
  */
 __attribute__((always_inline)) INLINE static void
 runner_iact_nonsym_1_vec_force(
-    vector *r2, vector *dx, vector *dy, vector *dz, const struct input_params_force *params, const struct cache *cell_cache, const int cache_idx, vector hj_inv, struct update_cache_force *sum_cache, mask_t mask) {
+    vector *r2, vector *dx, vector *dy, vector *dz, const struct input_params_force *params, const struct cache *restrict cell_cache, const int cache_idx, vector hj_inv, struct update_cache_force *restrict sum_cache, mask_t mask) {
 
   const int int_mask = vec_is_mask_true(mask);
+  
+  swift_align_information(cell_cache->m, SWIFT_CACHE_ALIGNMENT);
+  swift_align_information(cell_cache->rho, SWIFT_CACHE_ALIGNMENT);
+  swift_align_information(cell_cache->pressure, SWIFT_CACHE_ALIGNMENT);
+  swift_align_information(cell_cache->grad_h, SWIFT_CACHE_ALIGNMENT);
+  swift_align_information(cell_cache->vx, SWIFT_CACHE_ALIGNMENT);
+  swift_align_information(cell_cache->vy, SWIFT_CACHE_ALIGNMENT);
+  swift_align_information(cell_cache->vz, SWIFT_CACHE_ALIGNMENT);
+  swift_align_information(cell_cache->soundspeed, SWIFT_CACHE_ALIGNMENT);
 
   for(int i=0; i<VEC_SIZE; i++) {
     float a_hydro_x = 0.f, a_hydro_y = 0.f, a_hydro_z = 0.f, u_dt = 0.f, h_dt = 0.f, sig = 0.f;
@@ -521,7 +518,6 @@ runner_iact_nonsym_1_vec_force(
     sum_cache->v_u_dtSum.f[i] += u_dt;
     sum_cache->v_h_dtSum.f[i] += h_dt;
     sum_cache->v_sigSum.f[i] = max(sum_cache->v_sigSum.f[i], sig);
-
   }
 
 }
