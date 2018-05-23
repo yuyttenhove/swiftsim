@@ -320,8 +320,7 @@ __attribute__((always_inline)) INLINE static void kernel_deval_dWdx_force(
   *dW_dx = (*dW_dx) * x + c4;
 #endif
 
-  w = max(w, 0.f);
-  dw_dx = min(dw_dx, 0.f);
+  *dW_dx = min(*dW_dx, 0.f);
 
   /* Return everything */
   *dW_dx *= (float)kernel_constant * (float)kernel_gamma_inv_dim_plus_one;

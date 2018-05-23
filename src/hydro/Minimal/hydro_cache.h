@@ -484,22 +484,22 @@ __attribute__((always_inline)) INLINE void cache_read_particles(
    * arrays inside the cache. */
   for(int i=0; i<ci_cache->num_fields; i++) {
     fields[i] = props[i].cache_addr;
-    //swift_align_information(fields[i], SWIFT_CACHE_ALIGNMENT);
+    //swift_align_information(float,fields[i], SWIFT_CACHE_ALIGNMENT);
   }
  
   const double loc[3] = {ci->loc[0], ci->loc[1], ci->loc[2]};
  
-  swift_align_information(fields[0], SWIFT_CACHE_ALIGNMENT);
-  swift_align_information(fields[1], SWIFT_CACHE_ALIGNMENT);
-  swift_align_information(fields[2], SWIFT_CACHE_ALIGNMENT);
-  swift_align_information(fields[3], SWIFT_CACHE_ALIGNMENT);
-  swift_align_information(fields[4], SWIFT_CACHE_ALIGNMENT);
+  swift_align_information(float, fields[0], SWIFT_CACHE_ALIGNMENT);
+  swift_align_information(float, fields[1], SWIFT_CACHE_ALIGNMENT);
+  swift_align_information(float, fields[2], SWIFT_CACHE_ALIGNMENT);
+  swift_align_information(float, fields[3], SWIFT_CACHE_ALIGNMENT);
+  swift_align_information(float, fields[4], SWIFT_CACHE_ALIGNMENT);
 
 
   /* Shift the particles positions to a local frame so single precision can be
    * used instead of double precision. */
 #ifdef __ICC
-#pragma simd
+//#pragma simd
 #endif
   for (int i = 0; i < ci_count; i++) {
     fields[0][i] = (float)(*(double *)&(props[0].field[i*props[0].partSize]) - loc[0]);
@@ -509,7 +509,7 @@ __attribute__((always_inline)) INLINE void cache_read_particles(
     fields[4][i] = *(float *)&(props[4].field[i*props[4].partSize]);
 //#pragma unroll
 //    for(int j = 3; j < ci_cache->num_fields; j++) {
-//      swift_align_information(&fields[j][i], SWIFT_CACHE_ALIGNMENT);
+//      swift_align_information(float, &fields[j][i], SWIFT_CACHE_ALIGNMENT);
 //      fields[j][i] = *(float *)&(props[j].field[i*props[j].partSize]);
 //    }
   }
@@ -562,7 +562,7 @@ __attribute__((always_inline)) INLINE void cache_read_particles_subset(
    * arrays inside the cache. */
   for(int i=0; i<ci_cache->num_fields; i++) {
     fields[i] = props[i].cache_addr;
-    swift_align_information(fields[i], SWIFT_CACHE_ALIGNMENT);
+    swift_align_information(float, fields[i], SWIFT_CACHE_ALIGNMENT);
   }
  
   /* The cell is on the right so read the particles
@@ -579,7 +579,7 @@ __attribute__((always_inline)) INLINE void cache_read_particles_subset(
     /* Shift the particles positions to a local frame so single precision can be
      * used instead of double precision. */
 #ifdef __ICC
-#pragma simd
+//#pragma simd
 #endif
     for (int i = 0; i < *last_pi; i++) {
       const int idx = sort_i[i].i;
@@ -623,7 +623,7 @@ __attribute__((always_inline)) INLINE void cache_read_particles_subset(
     /* Shift the particles positions to a local frame so single precision can be
      * used instead of double precision. */
 #ifdef __ICC
-#pragma simd
+//#pragma simd
 #endif
     for (int i = 0; i < ci_cache_count; i++) {
       const int idx = sort_i[i + *first_pi].i;
@@ -677,7 +677,7 @@ __attribute__((always_inline)) INLINE void cache_read_force_particles(
    * arrays inside the cache. */
   for(int i=0; i<ci_cache->num_fields; i++) {
     fields[i] = props[i].cache_addr;
-    swift_align_information(fields[i], SWIFT_CACHE_ALIGNMENT);
+    swift_align_information(float, fields[i], SWIFT_CACHE_ALIGNMENT);
   }
  
   const double loc[3] = {ci->loc[0], ci->loc[1], ci->loc[2]};
@@ -685,7 +685,7 @@ __attribute__((always_inline)) INLINE void cache_read_force_particles(
   /* Shift the particles positions to a local frame so single precision can be
    * used instead of double precision. */
 #ifdef __ICC
-#pragma simd
+//#pragma simd
 #endif
   for (int i = 0; i < ci_count; i++) {
     fields[0][i] = (float)(*(double *)&(props[0].field[i*props[0].partSize]) - loc[0]);
@@ -693,7 +693,7 @@ __attribute__((always_inline)) INLINE void cache_read_force_particles(
     fields[2][i] = (float)(*(double *)&(props[2].field[i*props[2].partSize]) - loc[2]);
 #pragma unroll
     for(int j = 3; j < ci_cache->num_fields; j++) {
-      swift_align_information(&fields[j][i], SWIFT_CACHE_ALIGNMENT);
+      swift_align_information(float, &fields[j][i], SWIFT_CACHE_ALIGNMENT);
       fields[j][i] = *(float *)&(props[j].field[i*props[j].partSize]);
     }
   }
@@ -780,16 +780,16 @@ __attribute__((always_inline)) INLINE void cache_read_two_partial_cells_sorted(
    * arrays inside the cache. */
   for(int i=0; i<ci_cache->num_fields; i++) {
     fields[i] = props[i].cache_addr;
-    //swift_align_information(fields[i], SWIFT_CACHE_ALIGNMENT);
+    //swift_align_information(float, fields[i], SWIFT_CACHE_ALIGNMENT);
   }
   
   int ci_cache_count = ci->count - first_pi_align;
 
-  swift_align_information(fields[0], SWIFT_CACHE_ALIGNMENT);
-  swift_align_information(fields[1], SWIFT_CACHE_ALIGNMENT);
-  swift_align_information(fields[2], SWIFT_CACHE_ALIGNMENT);
-  swift_align_information(fields[3], SWIFT_CACHE_ALIGNMENT);
-  swift_align_information(fields[4], SWIFT_CACHE_ALIGNMENT);
+  swift_align_information(float, fields[0], SWIFT_CACHE_ALIGNMENT);
+  swift_align_information(float, fields[1], SWIFT_CACHE_ALIGNMENT);
+  swift_align_information(float, fields[2], SWIFT_CACHE_ALIGNMENT);
+  swift_align_information(float, fields[3], SWIFT_CACHE_ALIGNMENT);
+  swift_align_information(float, fields[4], SWIFT_CACHE_ALIGNMENT);
 
   /* Shift the particles positions to a local frame (ci frame) so single
    * precision can be used instead of double precision.  */
@@ -871,14 +871,14 @@ __attribute__((always_inline)) INLINE void cache_read_two_partial_cells_sorted(
    * arrays inside the cache. */
   for(int i=0; i<cj_cache->num_fields; i++) {
     fields[i] = props[i].cache_addr;
-    //swift_align_information(fields[i], SWIFT_CACHE_ALIGNMENT);
+    //swift_align_information(float, fields[i], SWIFT_CACHE_ALIGNMENT);
   }
   
-  swift_align_information(fields[0], SWIFT_CACHE_ALIGNMENT);
-  swift_align_information(fields[1], SWIFT_CACHE_ALIGNMENT);
-  swift_align_information(fields[2], SWIFT_CACHE_ALIGNMENT);
-  swift_align_information(fields[3], SWIFT_CACHE_ALIGNMENT);
-  swift_align_information(fields[4], SWIFT_CACHE_ALIGNMENT);
+  swift_align_information(float, fields[0], SWIFT_CACHE_ALIGNMENT);
+  swift_align_information(float, fields[1], SWIFT_CACHE_ALIGNMENT);
+  swift_align_information(float, fields[2], SWIFT_CACHE_ALIGNMENT);
+  swift_align_information(float, fields[3], SWIFT_CACHE_ALIGNMENT);
+  swift_align_information(float, fields[4], SWIFT_CACHE_ALIGNMENT);
  
 #ifdef __ICC
 //#pragma simd
@@ -1006,7 +1006,7 @@ cache_read_two_partial_cells_sorted_force(
    * arrays inside the cache. */
   for(int i=0; i<ci_cache->num_fields; i++) {
     fields[i] = props[i].cache_addr;
-    swift_align_information(fields[i], SWIFT_CACHE_ALIGNMENT);
+    swift_align_information(float, fields[i], SWIFT_CACHE_ALIGNMENT);
   }
 
   int ci_cache_count = ci->count - first_pi_align;
@@ -1052,7 +1052,7 @@ cache_read_two_partial_cells_sorted_force(
    * arrays inside the cache. */
   for(int i=0; i<cj_cache->num_fields; i++) {
     fields[i] = props[i].cache_addr;
-    swift_align_information(fields[i], SWIFT_CACHE_ALIGNMENT);
+    swift_align_information(float, fields[i], SWIFT_CACHE_ALIGNMENT);
   }
 
 #ifdef __ICC
