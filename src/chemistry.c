@@ -36,7 +36,7 @@
 void chemistry_init(const struct swift_params* parameter_file,
                     const struct unit_system* us,
                     const struct phys_const* phys_const,
-                    struct chemistry_data* data) {
+                    struct chemistry_global_data* data) {
 
   chemistry_init_backend(parameter_file, us, phys_const, data);
 }
@@ -46,8 +46,34 @@ void chemistry_init(const struct swift_params* parameter_file,
  *
  * Calls chemistry_print_backend for the chosen chemistry model.
  *
- * @brief The #chemistry_data containing information about the current model.
+ * @brief The #chemistry_global_data containing information about the current
+ * model.
  */
-void chemistry_print(const struct chemistry_data* data) {
+void chemistry_print(const struct chemistry_global_data* data) {
   chemistry_print_backend(data);
+}
+
+/**
+ * @brief Write a chemistry struct to the given FILE as a stream of bytes.
+ *
+ * @param chemistry the struct
+ * @param stream the file stream
+ */
+void chemistry_struct_dump(const struct chemistry_global_data* chemistry,
+                           FILE* stream) {
+  restart_write_blocks((void*)chemistry, sizeof(struct chemistry_global_data),
+                       1, stream, "chemistry", "chemistry function");
+}
+
+/**
+ * @brief Restore a hydro_props struct from the given FILE as a stream of
+ * bytes.
+ *
+ * @param chemistry the struct
+ * @param stream the file stream
+ */
+void chemistry_struct_restore(const struct chemistry_global_data* chemistry,
+                              FILE* stream) {
+  restart_read_blocks((void*)chemistry, sizeof(struct chemistry_global_data), 1,
+                      stream, NULL, "chemistry function");
 }

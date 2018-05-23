@@ -54,6 +54,7 @@ struct exact_force_data {
 static float fewald_x[Newald + 1][Newald + 1][Newald + 1];
 static float fewald_y[Newald + 1][Newald + 1][Newald + 1];
 static float fewald_z[Newald + 1][Newald + 1][Newald + 1];
+static float potewald[Newald + 1][Newald + 1][Newald + 1];
 
 /* Factor used to normalize the access to the Ewald table */
 float ewald_fac;
@@ -72,133 +73,228 @@ float ewald_fac;
 void gravity_exact_force_ewald_init(double boxSize) {
 
 #ifdef SWIFT_GRAVITY_FORCE_CHECKS
-  const ticks tic = getticks();
-  message("Computing Ewald correction table...");
 
-  /* Level of correction  (Hernquist et al. 1991)*/
-  const float alpha = 2.f;
-
-  /* some useful constants */
-  const float alpha2 = alpha * alpha;
-  const float factor_exp1 = 2.f * alpha / sqrt(M_PI);
-  const float factor_exp2 = -M_PI * M_PI / alpha2;
-  const float factor_sin = 2.f * M_PI;
+  const float boxSize_inv = 1.f / boxSize;
   const float boxSize_inv2 = 1.f / (boxSize * boxSize);
 
-  /* Ewald factor to access the table */
-  ewald_fac = (double)(2 * Newald) / boxSize;
+  int use_file = 0;
 
-  /* Zero everything */
-  bzero(fewald_x, (Newald + 1) * (Newald + 1) * (Newald + 1) * sizeof(float));
-  bzero(fewald_y, (Newald + 1) * (Newald + 1) * (Newald + 1) * sizeof(float));
-  bzero(fewald_z, (Newald + 1) * (Newald + 1) * (Newald + 1) * sizeof(float));
+#ifdef HAVE_HDF5
+  if (access("Ewald.hdf5", R_OK) != -1) use_file = 1;
+#endif
 
-  /* Compute the values in one of the octants */
-  for (int i = 0; i <= Newald; ++i) {
-    for (int j = 0; j <= Newald; ++j) {
-      for (int k = 0; k <= Newald; ++k) {
+  /* Can we use the stored HDF5 file? */
+  if (use_file) {
 
-        if (i == 0 && j == 0 && k == 0) continue;
+    const ticks tic = getticks();
+    message("Reading Ewald correction table from file...");
 
-        /* Distance vector */
-        const float r_x = 0.5f * ((float)i) / Newald;
-        const float r_y = 0.5f * ((float)j) / Newald;
-        const float r_z = 0.5f * ((float)k) / Newald;
+#ifdef HAVE_HDF5
+    const hid_t h_file = H5Fopen("Ewald.hdf5", H5F_ACC_RDONLY, H5P_DEFAULT);
+    if (h_file < 0) error("Error opening the old 'Ewald.hdf5' file.");
 
-        /* Norm of distance vector */
-        const float r2 = r_x * r_x + r_y * r_y + r_z * r_z;
-        const float r_inv = 1.f / sqrtf(r2);
-        const float r_inv3 = r_inv * r_inv * r_inv;
+    /* Check the table size */
+    const hid_t h_grp = H5Gopen1(h_file, "Info");
+    const hid_t h_attr = H5Aopen(h_grp, "Ewald_size", H5P_DEFAULT);
+    int size;
+    H5Aread(h_attr, H5T_NATIVE_INT, &size);
+    if (size != Newald)
+      error("File 'Ewald.hdf5' contains arrays of the wrong size");
+    H5Aclose(h_attr);
+    H5Gclose(h_grp);
 
-        /* Normal gravity potential term */
-        float f_x = r_x * r_inv3;
-        float f_y = r_y * r_inv3;
-        float f_z = r_z * r_inv3;
+    /* Now read the tables themselves */
+    hid_t h_data;
+    h_data = H5Dopen(h_file, "Ewald_x", H5P_DEFAULT);
+    H5Dread(h_data, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT,
+            &(fewald_x[0][0][0]));
+    H5Dclose(h_data);
+    h_data = H5Dopen(h_file, "Ewald_y", H5P_DEFAULT);
+    H5Dread(h_data, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT,
+            &(fewald_y[0][0][0]));
+    H5Dclose(h_data);
+    h_data = H5Dopen(h_file, "Ewald_z", H5P_DEFAULT);
+    H5Dread(h_data, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT,
+            &(fewald_z[0][0][0]));
+    H5Dclose(h_data);
+    h_data = H5Dopen(h_file, "Ewald_pot", H5P_DEFAULT);
+    H5Dread(h_data, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT,
+            &(potewald[0][0][0]));
+    H5Dclose(h_data);
 
-        for (int n_i = -4; n_i <= 4; ++n_i) {
-          for (int n_j = -4; n_j <= 4; ++n_j) {
-            for (int n_k = -4; n_k <= 4; ++n_k) {
+    /* Done */
+    H5Fclose(h_file);
+#endif
 
-              const float d_x = r_x - n_i;
-              const float d_y = r_y - n_j;
-              const float d_z = r_z - n_k;
+    /* Report time this took */
+    message("Ewald correction table read in (took %.3f %s). ",
+            clocks_from_ticks(getticks() - tic), clocks_getunit());
+  } else {
 
-              /* Discretised distance */
-              const float r_tilde2 = d_x * d_x + d_y * d_y + d_z * d_z;
-              const float r_tilde_inv = 1.f / sqrtf(r_tilde2);
-              const float r_tilde = r_tilde_inv * r_tilde2;
-              const float r_tilde_inv3 =
-                  r_tilde_inv * r_tilde_inv * r_tilde_inv;
+    /* Ok.. let's recompute everything */
+    const ticks tic = getticks();
+    message("Computing Ewald correction table...");
 
-              const float val =
-                  erfcf(alpha * r_tilde) +
-                  factor_exp1 * r_tilde * expf(-alpha2 * r_tilde2);
+    /* Level of correction  (Hernquist et al. 1991)*/
+    const float alpha = 2.f;
 
-              /* First correction term */
-              const float f = val * r_tilde_inv3;
-              f_x -= f * d_x;
-              f_y -= f * d_y;
-              f_z -= f * d_z;
+    /* some useful constants */
+    const float alpha2 = alpha * alpha;
+    const float factor_exp1 = 2.f * alpha / sqrt(M_PI);
+    const float factor_exp2 = -M_PI * M_PI / alpha2;
+    const float factor_sin = 2.f * M_PI;
+    const float factor_cos = 2.f * M_PI;
+    const float factor_pot = M_PI / alpha2;
+
+    /* Zero everything */
+    bzero(fewald_x, (Newald + 1) * (Newald + 1) * (Newald + 1) * sizeof(float));
+    bzero(fewald_y, (Newald + 1) * (Newald + 1) * (Newald + 1) * sizeof(float));
+    bzero(fewald_z, (Newald + 1) * (Newald + 1) * (Newald + 1) * sizeof(float));
+    bzero(potewald, (Newald + 1) * (Newald + 1) * (Newald + 1) * sizeof(float));
+
+    potewald[0][0][0] = 2.8372975f;
+
+    /* Compute the values in one of the octants */
+    for (int i = 0; i <= Newald; ++i) {
+      for (int j = 0; j <= Newald; ++j) {
+        for (int k = 0; k <= Newald; ++k) {
+
+          if (i == 0 && j == 0 && k == 0) continue;
+
+          /* Distance vector */
+          const float r_x = 0.5f * ((float)i) / Newald;
+          const float r_y = 0.5f * ((float)j) / Newald;
+          const float r_z = 0.5f * ((float)k) / Newald;
+
+          /* Norm of distance vector */
+          const float r2 = r_x * r_x + r_y * r_y + r_z * r_z;
+          const float r_inv = 1.f / sqrtf(r2);
+          const float r_inv3 = r_inv * r_inv * r_inv;
+
+          /* Normal gravity potential term */
+          float f_x = r_x * r_inv3;
+          float f_y = r_y * r_inv3;
+          float f_z = r_z * r_inv3;
+          float pot = r_inv + factor_pot;
+
+          for (int n_i = -4; n_i <= 4; ++n_i) {
+            for (int n_j = -4; n_j <= 4; ++n_j) {
+              for (int n_k = -4; n_k <= 4; ++n_k) {
+
+                const float d_x = r_x - n_i;
+                const float d_y = r_y - n_j;
+                const float d_z = r_z - n_k;
+
+                /* Discretised distance */
+                const float r_tilde2 = d_x * d_x + d_y * d_y + d_z * d_z;
+                const float r_tilde_inv = 1.f / sqrtf(r_tilde2);
+                const float r_tilde = r_tilde_inv * r_tilde2;
+                const float r_tilde_inv3 =
+                    r_tilde_inv * r_tilde_inv * r_tilde_inv;
+
+                const float val_pot = erfcf(alpha * r_tilde);
+
+                const float val_f =
+                    val_pot + factor_exp1 * r_tilde * expf(-alpha2 * r_tilde2);
+
+                /* First correction term */
+                const float f = val_f * r_tilde_inv3;
+                f_x -= f * d_x;
+                f_y -= f * d_y;
+                f_z -= f * d_z;
+                pot -= val_pot * r_tilde_inv;
+              }
             }
           }
-        }
 
-        for (int h_i = -4; h_i <= 4; ++h_i) {
-          for (int h_j = -4; h_j <= 4; ++h_j) {
-            for (int h_k = -4; h_k <= 4; ++h_k) {
+          for (int h_i = -4; h_i <= 4; ++h_i) {
+            for (int h_j = -4; h_j <= 4; ++h_j) {
+              for (int h_k = -4; h_k <= 4; ++h_k) {
 
-              const float h2 = h_i * h_i + h_j * h_j + h_k * h_k;
+                const float h2 = h_i * h_i + h_j * h_j + h_k * h_k;
 
-              const float h2_inv = 1.f / (h2 + FLT_MIN);
-              const float h_dot_x = h_i * r_x + h_j * r_y + h_k * r_z;
+                if (h2 == 0.f) continue;
 
-              const float val = 2.f * h2_inv * expf(h2 * factor_exp2) *
-                                sinf(factor_sin * h_dot_x);
+                const float h2_inv = 1.f / (h2 + FLT_MIN);
+                const float h_dot_x = h_i * r_x + h_j * r_y + h_k * r_z;
 
-              /* Second correction term */
-              f_x -= val * h_i;
-              f_y -= val * h_j;
-              f_z -= val * h_k;
+                const float common = h2_inv * expf(h2 * factor_exp2);
+
+                const float val_pot =
+                    (float)M_1_PI * common * cosf(factor_cos * h_dot_x);
+
+                const float val_f = 2.f * common * sinf(factor_sin * h_dot_x);
+
+                /* Second correction term */
+                f_x -= val_f * h_i;
+                f_y -= val_f * h_j;
+                f_z -= val_f * h_k;
+                pot -= val_pot;
+              }
             }
           }
-        }
 
-        /* Save back to memory */
-        fewald_x[i][j][k] = f_x;
-        fewald_y[i][j][k] = f_y;
-        fewald_z[i][j][k] = f_z;
+          /* Save back to memory */
+          fewald_x[i][j][k] = f_x;
+          fewald_y[i][j][k] = f_y;
+          fewald_z[i][j][k] = f_z;
+          potewald[i][j][k] = pot;
+        }
       }
     }
-  }
 
 /* Dump the Ewald table to a file */
 #ifdef HAVE_HDF5
-  hid_t h_file =
-      H5Fcreate("Ewald.hdf5", H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
-  if (h_file < 0) error("Error while opening file for Ewald dump.");
+    hid_t h_file =
+        H5Fcreate("Ewald.hdf5", H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
+    if (h_file < 0) error("Error while opening file for Ewald dump.");
 
-  /* Create dataspace */
-  hsize_t dim[3] = {Newald + 1, Newald + 1, Newald + 1};
-  hid_t h_space = H5Screate_simple(3, dim, NULL);
-  hid_t h_data;
-  h_data = H5Dcreate(h_file, "Ewald_x", H5T_NATIVE_FLOAT, h_space, H5P_DEFAULT,
-                     H5P_DEFAULT, H5P_DEFAULT);
-  H5Dwrite(h_data, H5T_NATIVE_FLOAT, h_space, H5S_ALL, H5P_DEFAULT,
-           &(fewald_x[0][0][0]));
-  H5Dclose(h_data);
-  h_data = H5Dcreate(h_file, "Ewald_y", H5T_NATIVE_FLOAT, h_space, H5P_DEFAULT,
-                     H5P_DEFAULT, H5P_DEFAULT);
-  H5Dwrite(h_data, H5T_NATIVE_FLOAT, h_space, H5S_ALL, H5P_DEFAULT,
-           &(fewald_y[0][0][0]));
-  H5Dclose(h_data);
-  h_data = H5Dcreate(h_file, "Ewald_z", H5T_NATIVE_FLOAT, h_space, H5P_DEFAULT,
-                     H5P_DEFAULT, H5P_DEFAULT);
-  H5Dwrite(h_data, H5T_NATIVE_FLOAT, h_space, H5S_ALL, H5P_DEFAULT,
-           &(fewald_z[0][0][0]));
-  H5Dclose(h_data);
-  H5Sclose(h_space);
-  H5Fclose(h_file);
+    /* Write the Ewald table size */
+    const int size = Newald;
+    const hid_t h_grp = H5Gcreate1(h_file, "Info", 0);
+    const hid_t h_aspace = H5Screate(H5S_SCALAR);
+    hid_t h_att =
+        H5Acreate1(h_grp, "Ewald_size", H5T_NATIVE_INT, h_aspace, H5P_DEFAULT);
+    H5Awrite(h_att, H5T_NATIVE_INT, &size);
+    H5Aclose(h_att);
+    H5Gclose(h_grp);
+    H5Sclose(h_aspace);
+
+    /* Create dataspace and write arrays */
+    hsize_t dim[3] = {Newald + 1, Newald + 1, Newald + 1};
+    hid_t h_space = H5Screate_simple(3, dim, NULL);
+    hid_t h_data;
+    h_data = H5Dcreate(h_file, "Ewald_x", H5T_NATIVE_FLOAT, h_space,
+                       H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    H5Dwrite(h_data, H5T_NATIVE_FLOAT, h_space, H5S_ALL, H5P_DEFAULT,
+             &(fewald_x[0][0][0]));
+    H5Dclose(h_data);
+    h_data = H5Dcreate(h_file, "Ewald_y", H5T_NATIVE_FLOAT, h_space,
+                       H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    H5Dwrite(h_data, H5T_NATIVE_FLOAT, h_space, H5S_ALL, H5P_DEFAULT,
+             &(fewald_y[0][0][0]));
+    H5Dclose(h_data);
+    h_data = H5Dcreate(h_file, "Ewald_z", H5T_NATIVE_FLOAT, h_space,
+                       H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    H5Dwrite(h_data, H5T_NATIVE_FLOAT, h_space, H5S_ALL, H5P_DEFAULT,
+             &(fewald_z[0][0][0]));
+    H5Dclose(h_data);
+    h_data = H5Dcreate(h_file, "Ewald_pot", H5T_NATIVE_FLOAT, h_space,
+                       H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    H5Dwrite(h_data, H5T_NATIVE_FLOAT, h_space, H5S_ALL, H5P_DEFAULT,
+             &(potewald[0][0][0]));
+    H5Dclose(h_data);
+    H5Sclose(h_space);
+    H5Fclose(h_file);
 #endif
+
+    /* Report time this took */
+    message("Ewald correction table computed (took %.3f %s). ",
+            clocks_from_ticks(getticks() - tic), clocks_getunit());
+  }
+
+  /* Ewald factor to access the table */
+  ewald_fac = (double)(2 * Newald) / boxSize;
 
   /* Apply the box-size correction */
   for (int i = 0; i <= Newald; ++i) {
@@ -207,19 +303,15 @@ void gravity_exact_force_ewald_init(double boxSize) {
         fewald_x[i][j][k] *= boxSize_inv2;
         fewald_y[i][j][k] *= boxSize_inv2;
         fewald_z[i][j][k] *= boxSize_inv2;
+        potewald[i][j][k] *= boxSize_inv;
       }
     }
   }
-
-  /* Say goodbye */
-  message("Ewald correction table computed (took %.3f %s). ",
-          clocks_from_ticks(getticks() - tic), clocks_getunit());
 #else
   error("Gravity checking function called without the corresponding flag.");
 #endif
 }
 
-#ifdef SWIFT_GRAVITY_FORCE_CHECKS
 /**
  * @brief Compute the Ewald correction for a given distance vector r.
  *
@@ -229,11 +321,13 @@ void gravity_exact_force_ewald_init(double boxSize) {
  * @param rx x-coordinate of distance vector.
  * @param ry y-coordinate of distance vector.
  * @param rz z-coordinate of distance vector.
- * @param corr (return) The Ewald correction.
+ * @param corr_f (return) The Ewald correction for the force.
+ * @param corr_p (return) The Ewald correction for the potential.
  */
-__attribute__((always_inline)) INLINE static void
-gravity_exact_force_ewald_evaluate(double rx, double ry, double rz,
-                                   double corr[3]) {
+void gravity_exact_force_ewald_evaluate(double rx, double ry, double rz,
+                                        double corr_f[3], double *corr_p) {
+
+#ifdef SWIFT_GRAVITY_FORCE_CHECKS
 
   const double s_x = (rx < 0.) ? 1. : -1.;
   const double s_y = (ry < 0.) ? 1. : -1.;
@@ -258,42 +352,56 @@ gravity_exact_force_ewald_evaluate(double rx, double ry, double rz,
   const double tz = 1. - dz;
 
   /* Interpolation in X */
-  corr[0] = 0.;
-  corr[0] += fewald_x[i + 0][j + 0][k + 0] * tx * ty * tz;
-  corr[0] += fewald_x[i + 0][j + 0][k + 1] * tx * ty * dz;
-  corr[0] += fewald_x[i + 0][j + 1][k + 0] * tx * dy * tz;
-  corr[0] += fewald_x[i + 0][j + 1][k + 1] * tx * dy * dz;
-  corr[0] += fewald_x[i + 1][j + 0][k + 0] * dx * ty * tz;
-  corr[0] += fewald_x[i + 1][j + 0][k + 1] * dx * ty * dz;
-  corr[0] += fewald_x[i + 1][j + 1][k + 0] * dx * dy * tz;
-  corr[0] += fewald_x[i + 1][j + 1][k + 1] * dx * dy * dz;
-  corr[0] *= s_x;
+  corr_f[0] = 0.;
+  corr_f[0] += fewald_x[i + 0][j + 0][k + 0] * tx * ty * tz;
+  corr_f[0] += fewald_x[i + 0][j + 0][k + 1] * tx * ty * dz;
+  corr_f[0] += fewald_x[i + 0][j + 1][k + 0] * tx * dy * tz;
+  corr_f[0] += fewald_x[i + 0][j + 1][k + 1] * tx * dy * dz;
+  corr_f[0] += fewald_x[i + 1][j + 0][k + 0] * dx * ty * tz;
+  corr_f[0] += fewald_x[i + 1][j + 0][k + 1] * dx * ty * dz;
+  corr_f[0] += fewald_x[i + 1][j + 1][k + 0] * dx * dy * tz;
+  corr_f[0] += fewald_x[i + 1][j + 1][k + 1] * dx * dy * dz;
+  corr_f[0] *= s_x;
 
   /* Interpolation in Y */
-  corr[1] = 0.;
-  corr[1] += fewald_y[i + 0][j + 0][k + 0] * tx * ty * tz;
-  corr[1] += fewald_y[i + 0][j + 0][k + 1] * tx * ty * dz;
-  corr[1] += fewald_y[i + 0][j + 1][k + 0] * tx * dy * tz;
-  corr[1] += fewald_y[i + 0][j + 1][k + 1] * tx * dy * dz;
-  corr[1] += fewald_y[i + 1][j + 0][k + 0] * dx * ty * tz;
-  corr[1] += fewald_y[i + 1][j + 0][k + 1] * dx * ty * dz;
-  corr[1] += fewald_y[i + 1][j + 1][k + 0] * dx * dy * tz;
-  corr[1] += fewald_y[i + 1][j + 1][k + 1] * dx * dy * dz;
-  corr[1] *= s_y;
+  corr_f[1] = 0.;
+  corr_f[1] += fewald_y[i + 0][j + 0][k + 0] * tx * ty * tz;
+  corr_f[1] += fewald_y[i + 0][j + 0][k + 1] * tx * ty * dz;
+  corr_f[1] += fewald_y[i + 0][j + 1][k + 0] * tx * dy * tz;
+  corr_f[1] += fewald_y[i + 0][j + 1][k + 1] * tx * dy * dz;
+  corr_f[1] += fewald_y[i + 1][j + 0][k + 0] * dx * ty * tz;
+  corr_f[1] += fewald_y[i + 1][j + 0][k + 1] * dx * ty * dz;
+  corr_f[1] += fewald_y[i + 1][j + 1][k + 0] * dx * dy * tz;
+  corr_f[1] += fewald_y[i + 1][j + 1][k + 1] * dx * dy * dz;
+  corr_f[1] *= s_y;
 
   /* Interpolation in Z */
-  corr[2] = 0.;
-  corr[2] += fewald_z[i + 0][j + 0][k + 0] * tx * ty * tz;
-  corr[2] += fewald_z[i + 0][j + 0][k + 1] * tx * ty * dz;
-  corr[2] += fewald_z[i + 0][j + 1][k + 0] * tx * dy * tz;
-  corr[2] += fewald_z[i + 0][j + 1][k + 1] * tx * dy * dz;
-  corr[2] += fewald_z[i + 1][j + 0][k + 0] * dx * ty * tz;
-  corr[2] += fewald_z[i + 1][j + 0][k + 1] * dx * ty * dz;
-  corr[2] += fewald_z[i + 1][j + 1][k + 0] * dx * dy * tz;
-  corr[2] += fewald_z[i + 1][j + 1][k + 1] * dx * dy * dz;
-  corr[2] *= s_z;
-}
+  corr_f[2] = 0.;
+  corr_f[2] += fewald_z[i + 0][j + 0][k + 0] * tx * ty * tz;
+  corr_f[2] += fewald_z[i + 0][j + 0][k + 1] * tx * ty * dz;
+  corr_f[2] += fewald_z[i + 0][j + 1][k + 0] * tx * dy * tz;
+  corr_f[2] += fewald_z[i + 0][j + 1][k + 1] * tx * dy * dz;
+  corr_f[2] += fewald_z[i + 1][j + 0][k + 0] * dx * ty * tz;
+  corr_f[2] += fewald_z[i + 1][j + 0][k + 1] * dx * ty * dz;
+  corr_f[2] += fewald_z[i + 1][j + 1][k + 0] * dx * dy * tz;
+  corr_f[2] += fewald_z[i + 1][j + 1][k + 1] * dx * dy * dz;
+  corr_f[2] *= s_z;
+
+  /* Interpolation for potential */
+  *corr_p = 0.;
+  *corr_p += potewald[i + 0][j + 0][k + 0] * tx * ty * tz;
+  *corr_p += potewald[i + 0][j + 0][k + 1] * tx * ty * dz;
+  *corr_p += potewald[i + 0][j + 1][k + 0] * tx * dy * tz;
+  *corr_p += potewald[i + 0][j + 1][k + 1] * tx * dy * dz;
+  *corr_p += potewald[i + 1][j + 0][k + 0] * dx * ty * tz;
+  *corr_p += potewald[i + 1][j + 0][k + 1] * dx * ty * dz;
+  *corr_p += potewald[i + 1][j + 1][k + 0] * dx * dy * tz;
+  *corr_p += potewald[i + 1][j + 1][k + 1] * dx * dy * dz;
+
+#else
+  error("Gravity checking function called without the corresponding flag.");
 #endif
+}
 
 /**
  * @brief Checks whether the file containing the exact accelerations for
@@ -337,7 +445,9 @@ int gravity_exact_force_file_exits(const struct engine *e) {
 
     /* Check whether it matches the current parameters */
     if (N == SWIFT_GRAVITY_FORCE_CHECKS && periodic == e->s->periodic &&
-        (fabs(epsilon - e->gravity_properties->epsilon) / epsilon < 1e-5) &&
+        (fabs(epsilon - gravity_get_softening(0, e->gravity_properties)) /
+             epsilon <
+         1e-5) &&
         (fabs(newton_G - e->physical_constants->const_newton_G) / newton_G <
          1e-5)) {
       return 1;
@@ -361,6 +471,8 @@ void gravity_exact_force_compute_mapper(void *map_data, int nr_gparts,
   struct gpart *restrict gparts = (struct gpart *)map_data;
   struct exact_force_data *data = (struct exact_force_data *)extra_data;
   const struct space *s = data->s;
+  const struct part *parts = s->parts;
+  const struct spart *sparts = s->sparts;
   const struct engine *e = data->e;
   const int periodic = s->periodic;
   const double dim[3] = {s->dim[0], s->dim[1], s->dim[2]};
@@ -371,23 +483,33 @@ void gravity_exact_force_compute_mapper(void *map_data, int nr_gparts,
 
     struct gpart *gpi = &gparts[i];
 
+    long long id = 0;
+    if (gpi->type == swift_type_gas)
+      id = parts[-gpi->id_or_neg_offset].id;
+    else if (gpi->type == swift_type_star)
+      id = sparts[-gpi->id_or_neg_offset].id;
+    else if (gpi->type == swift_type_black_hole)
+      error("Unexisting type");
+    else
+      id = gpi->id_or_neg_offset;
+
     /* Is the particle active and part of the subset to be tested ? */
-    if (gpi->id_or_neg_offset % SWIFT_GRAVITY_FORCE_CHECKS == 0 &&
-        gpart_is_active(gpi, e)) {
+    if (id % SWIFT_GRAVITY_FORCE_CHECKS == 0 && gpart_is_active(gpi, e)) {
 
       /* Get some information about the particle */
       const double pix[3] = {gpi->x[0], gpi->x[1], gpi->x[2]};
-      const double hi = gpi->epsilon;
+      const double hi = gravity_get_softening(gpi, e->gravity_properties);
       const double hi_inv = 1. / hi;
       const double hi_inv3 = hi_inv * hi_inv * hi_inv;
 
       /* Be ready for the calculation */
       double a_grav[3] = {0., 0., 0.};
+      double pot = 0.;
 
       /* Interact it with all other particles in the space.*/
       for (int j = 0; j < (int)s->nr_gparts; ++j) {
 
-        struct gpart *gpj = &s->gparts[j];
+        const struct gpart *gpj = &s->gparts[j];
 
         /* No self interaction */
         if (gpi == gpj) continue;
@@ -408,37 +530,42 @@ void gravity_exact_force_compute_mapper(void *map_data, int nr_gparts,
         const double r_inv = 1. / sqrt(r2);
         const double r = r2 * r_inv;
         const double mj = gpj->mass;
-        double f;
+        double f, phi;
 
         if (r >= hi) {
 
           /* Get Newtonian gravity */
           f = mj * r_inv * r_inv * r_inv;
+          phi = -mj * r_inv;
 
         } else {
 
           const double ui = r * hi_inv;
-          double W;
+          double Wf, Wp;
 
-          kernel_grav_eval_double(ui, &W);
+          kernel_grav_eval_force_double(ui, &Wf);
+          kernel_grav_eval_pot_double(ui, &Wp);
 
           /* Get softened gravity */
-          f = mj * hi_inv3 * W;
+          f = mj * hi_inv3 * Wf;
+          phi = mj * hi_inv * Wp;
         }
 
         a_grav[0] += f * dx;
         a_grav[1] += f * dy;
         a_grav[2] += f * dz;
+        pot += phi;
 
         /* Apply Ewald correction for periodic BC */
         if (periodic && r > 1e-5 * hi) {
 
-          double corr[3];
-          gravity_exact_force_ewald_evaluate(dx, dy, dz, corr);
+          double corr_f[3], corr_pot;
+          gravity_exact_force_ewald_evaluate(dx, dy, dz, corr_f, &corr_pot);
 
-          a_grav[0] += mj * corr[0];
-          a_grav[1] += mj * corr[1];
-          a_grav[2] += mj * corr[2];
+          a_grav[0] += mj * corr_f[0];
+          a_grav[1] += mj * corr_f[1];
+          a_grav[2] += mj * corr_f[2];
+          pot += mj * corr_pot;
         }
       }
 
@@ -446,6 +573,7 @@ void gravity_exact_force_compute_mapper(void *map_data, int nr_gparts,
       gpi->a_grav_exact[0] = a_grav[0] * const_G;
       gpi->a_grav_exact[1] = a_grav[1] * const_G;
       gpi->a_grav_exact[2] = a_grav[2] * const_G;
+      gpi->potential_exact = pot * const_G;
 
       counter++;
     }
@@ -514,36 +642,55 @@ void gravity_exact_force_check(struct space *s, const struct engine *e,
 
 #ifdef SWIFT_GRAVITY_FORCE_CHECKS
 
+  const struct part *parts = s->parts;
+  const struct spart *sparts = s->sparts;
+
   /* File name */
   char file_name_swift[100];
   sprintf(file_name_swift, "gravity_checks_swift_step%d_order%d.dat", e->step,
           SELF_GRAVITY_MULTIPOLE_ORDER);
 
   /* Creare files and write header */
+  const double epsilon = gravity_get_softening(0, e->gravity_properties);
   FILE *file_swift = fopen(file_name_swift, "w");
   fprintf(file_swift, "# Gravity accuracy test - SWIFT FORCES\n");
   fprintf(file_swift, "# G= %16.8e\n", e->physical_constants->const_newton_G);
   fprintf(file_swift, "# N= %d\n", SWIFT_GRAVITY_FORCE_CHECKS);
-  fprintf(file_swift, "# epsilon= %16.8e\n", e->gravity_properties->epsilon);
+  fprintf(file_swift, "# epsilon= %16.8e\n", epsilon);
   fprintf(file_swift, "# periodic= %d\n", s->periodic);
   fprintf(file_swift, "# theta= %16.8e\n", e->gravity_properties->theta_crit);
   fprintf(file_swift, "# Git Branch: %s\n", git_branch());
   fprintf(file_swift, "# Git Revision: %s\n", git_revision());
-  fprintf(file_swift, "# %16s %16s %16s %16s %16s %16s %16s\n", "id", "pos[0]",
-          "pos[1]", "pos[2]", "a_swift[0]", "a_swift[1]", "a_swift[2]");
+  fprintf(file_swift,
+          "# %16s %16s %16s %16s %16s %16s %16s %16s %16s %16s %16s %16s\n",
+          "id", "pos[0]", "pos[1]", "pos[2]", "a_swift[0]", "a_swift[1]",
+          "a_swift[2]", "potential", "a_PM[0]", "a_PM[1]", "a_PM[2]",
+          "potentialPM");
 
   /* Output particle SWIFT accelerations  */
   for (size_t i = 0; i < s->nr_gparts; ++i) {
 
     struct gpart *gpi = &s->gparts[i];
 
-    /* Is the particle was active and part of the subset to be tested ? */
-    if (gpi->id_or_neg_offset % SWIFT_GRAVITY_FORCE_CHECKS == 0 &&
-        gpart_is_starting(gpi, e)) {
+    long long id = 0;
+    if (gpi->type == swift_type_gas)
+      id = parts[-gpi->id_or_neg_offset].id;
+    else if (gpi->type == swift_type_star)
+      id = sparts[-gpi->id_or_neg_offset].id;
+    else if (gpi->type == swift_type_black_hole)
+      error("Unexisting type");
+    else
+      id = gpi->id_or_neg_offset;
 
-      fprintf(file_swift, "%18lld %16.8e %16.8e %16.8e %16.8e %16.8e %16.8e \n",
-              gpi->id_or_neg_offset, gpi->x[0], gpi->x[1], gpi->x[2],
-              gpi->a_grav[0], gpi->a_grav[1], gpi->a_grav[2]);
+    /* Is the particle was active and part of the subset to be tested ? */
+    if (id % SWIFT_GRAVITY_FORCE_CHECKS == 0 && gpart_is_starting(gpi, e)) {
+
+      fprintf(file_swift,
+              "%18lld %16.8e %16.8e %16.8e %16.8e %16.8e %16.8e %16.8e %16.8e "
+              "%16.8e %16.8e %16.8e\n",
+              id, gpi->x[0], gpi->x[1], gpi->x[2], gpi->a_grav[0],
+              gpi->a_grav[1], gpi->a_grav[2], gpi->potential, gpi->a_grav_PM[0],
+              gpi->a_grav_PM[1], gpi->a_grav_PM[2], gpi->potential_PM);
     }
   }
 
@@ -565,27 +712,37 @@ void gravity_exact_force_check(struct space *s, const struct engine *e,
     fprintf(file_exact, "# Gravity accuracy test - EXACT FORCES\n");
     fprintf(file_exact, "# G= %16.8e\n", e->physical_constants->const_newton_G);
     fprintf(file_exact, "# N= %d\n", SWIFT_GRAVITY_FORCE_CHECKS);
-    fprintf(file_exact, "# epsilon=%16.8e\n", e->gravity_properties->epsilon);
+    fprintf(file_exact, "# epsilon=%16.8e\n", epsilon);
     fprintf(file_exact, "# periodic= %d\n", s->periodic);
     fprintf(file_exact, "# Git Branch: %s\n", git_branch());
     fprintf(file_exact, "# Git Revision: %s\n", git_revision());
-    fprintf(file_exact, "# %16s %16s %16s %16s %16s %16s %16s\n", "id",
+    fprintf(file_exact, "# %16s %16s %16s %16s %16s %16s %16s %16s\n", "id",
             "pos[0]", "pos[1]", "pos[2]", "a_exact[0]", "a_exact[1]",
-            "a_exact[2]");
+            "a_exact[2]", "potential");
 
     /* Output particle exact accelerations  */
     for (size_t i = 0; i < s->nr_gparts; ++i) {
 
       struct gpart *gpi = &s->gparts[i];
 
-      /* Is the particle was active and part of the subset to be tested ? */
-      if (gpi->id_or_neg_offset % SWIFT_GRAVITY_FORCE_CHECKS == 0 &&
-          gpart_is_starting(gpi, e)) {
+      long long id = 0;
+      if (gpi->type == swift_type_gas)
+        id = parts[-gpi->id_or_neg_offset].id;
+      else if (gpi->type == swift_type_star)
+        id = sparts[-gpi->id_or_neg_offset].id;
+      else if (gpi->type == swift_type_black_hole)
+        error("Unexisting type");
+      else
+        id = gpi->id_or_neg_offset;
 
-        fprintf(
-            file_exact, "%18lld %16.8e %16.8e %16.8e %16.8e %16.8e %16.8e \n",
-            gpi->id_or_neg_offset, gpi->x[0], gpi->x[1], gpi->x[2],
-            gpi->a_grav_exact[0], gpi->a_grav_exact[1], gpi->a_grav_exact[2]);
+      /* Is the particle was active and part of the subset to be tested ? */
+      if (id % SWIFT_GRAVITY_FORCE_CHECKS == 0 && gpart_is_starting(gpi, e)) {
+
+        fprintf(file_exact,
+                "%18lld %16.8e %16.8e %16.8e %16.8e %16.8e %16.8e %16.8e\n", id,
+                gpi->x[0], gpi->x[1], gpi->x[2], gpi->a_grav_exact[0],
+                gpi->a_grav_exact[1], gpi->a_grav_exact[2],
+                gpi->potential_exact);
       }
     }
 

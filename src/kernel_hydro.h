@@ -38,6 +38,7 @@
 #include "dimension.h"
 #include "error.h"
 #include "inline.h"
+#include "minmax.h"
 #include "vector.h"
 
 /* ------------------------------------------------------------------------- */
@@ -319,6 +320,9 @@ __attribute__((always_inline)) INLINE static void kernel_deval_dWdx_force(
   *dW_dx = (*dW_dx) * x + c4;
 #endif
 
+  w = max(w, 0.f);
+  dw_dx = min(dw_dx, 0.f);
+
   /* Return everything */
   *dW_dx *= (float)kernel_constant * (float)kernel_gamma_inv_dim_plus_one;
 
@@ -400,6 +404,8 @@ __attribute__((always_inline)) INLINE static void kernel_eval(
   /* ... and the rest of them */
   for (int k = 2; k <= kernel_degree; k++) w = x * w + coeffs[k];
 
+  w = max(w, 0.f);
+
   /* Return everything */
   *W = w * kernel_constant * kernel_gamma_inv_dim;
 }
@@ -431,9 +437,10 @@ __attribute__((always_inline)) INLINE static void kernel_eval_dWdx(
                 (float)(kernel_degree - 1) * coeffs[1];
 
   /* ... and the rest of them */
-  for (int k = 2; k < kernel_degree; k++) {
+  for (int k = 2; k < kernel_degree; k++)
     dw_dx = dw_dx * x + (float)(kernel_degree - k) * coeffs[k];
-  }
+
+  dw_dx = min(dw_dx, 0.f);
 
   /* Return everything */
   *dW_dx = dw_dx * kernel_constant * kernel_gamma_inv_dim_plus_one;

@@ -28,7 +28,7 @@
 /**
  * @brief The unit system used internally.
  *
- * This structure contains the conversion factors to the 7 cgs base units to the
+ * This structure contains the conversion factors to the 5 cgs base units to the
  * internal units. It is used everytime a conversion is performed or an i/o
  * function is called.
  **/
@@ -73,6 +73,7 @@ enum unit_conversion_factor {
   UNIT_CONV_DENSITY,
   UNIT_CONV_SPEED,
   UNIT_CONV_ACCELERATION,
+  UNIT_CONV_POTENTIAL,
   UNIT_CONV_FORCE,
   UNIT_CONV_ENERGY,
   UNIT_CONV_ENERGY_PER_UNIT_MASS,
@@ -95,8 +96,10 @@ enum unit_conversion_factor {
 };
 
 void units_init_cgs(struct unit_system*);
-void units_init(struct unit_system*, const struct swift_params*,
-                const char* category);
+void units_init(struct unit_system* us, double U_M_in_cgs, double U_L_in_cgs,
+                double U_t_in_cgs, double U_C_in_cgs, double U_T_in_cgs);
+void units_init_from_params(struct unit_system*, const struct swift_params*,
+                            const char* category);
 void units_init_default(struct unit_system* us,
                         const struct swift_params* params, const char* category,
                         const struct unit_system* def);
@@ -138,5 +141,9 @@ double units_conversion_factor(const struct unit_system* from,
                                enum unit_conversion_factor unit);
 
 void units_print(const struct unit_system* us);
+
+/* Dump/restore. */
+void units_struct_dump(const struct unit_system* us, FILE* stream);
+void units_struct_restore(const struct unit_system* us, FILE* stream);
 
 #endif /* SWIFT_UNITS_H */

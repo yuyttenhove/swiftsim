@@ -21,21 +21,6 @@
 /* Config parameters. */
 #include "../config.h"
 
-#if defined(HAVE_HDF5)
-
-/* Some standard headers. */
-#include <hdf5.h>
-#include <math.h>
-#include <stddef.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
-/* MPI headers. */
-#ifdef WITH_MPI
-#include <mpi.h>
-#endif
-
 /* This object's header. */
 #include "common_io.h"
 
@@ -49,6 +34,22 @@
 #include "threadpool.h"
 #include "units.h"
 #include "version.h"
+
+/* Some standard headers. */
+#include <math.h>
+#include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#if defined(HAVE_HDF5)
+
+#include <hdf5.h>
+
+/* MPI headers. */
+#ifdef WITH_MPI
+#include <mpi.h>
+#endif
 
 /**
  * @brief Converts a C data type to the HDF5 equivalent.
@@ -85,36 +86,6 @@ hid_t io_hdf5_type(enum IO_DATA_TYPE type) {
 }
 
 /**
- * @brief Returns the memory size of the data type
- */
-size_t io_sizeof_type(enum IO_DATA_TYPE type) {
-
-  switch (type) {
-    case INT:
-      return sizeof(int);
-    case UINT:
-      return sizeof(unsigned int);
-    case LONG:
-      return sizeof(long);
-    case ULONG:
-      return sizeof(unsigned long);
-    case LONGLONG:
-      return sizeof(long long);
-    case ULONGLONG:
-      return sizeof(unsigned long long);
-    case FLOAT:
-      return sizeof(float);
-    case DOUBLE:
-      return sizeof(double);
-    case CHAR:
-      return sizeof(char);
-    default:
-      error("Unknown type");
-      return 0;
-  }
-}
-
-/**
  * @brief Return 1 if the type has double precision
  *
  * Returns an error if the type is not FLOAT or DOUBLE
@@ -142,19 +113,14 @@ int io_is_double_precision(enum IO_DATA_TYPE type) {
  *
  * Calls #error() if an error occurs.
  */
-void io_read_attribute(hid_t grp, char* name, enum IO_DATA_TYPE type,
+void io_read_attribute(hid_t grp, const char* name, enum IO_DATA_TYPE type,
                        void* data) {
-  hid_t h_attr = 0, h_err = 0;
 
-  h_attr = H5Aopen(grp, name, H5P_DEFAULT);
-  if (h_attr < 0) {
-    error("Error while opening attribute '%s'", name);
-  }
+  const hid_t h_attr = H5Aopen(grp, name, H5P_DEFAULT);
+  if (h_attr < 0) error("Error while opening attribute '%s'", name);
 
-  h_err = H5Aread(h_attr, io_hdf5_type(type), data);
-  if (h_err < 0) {
-    error("Error while reading attribute '%s'", name);
-  }
+  const hid_t h_err = H5Aread(h_attr, io_hdf5_type(type), data);
+  if (h_err < 0) error("Error while reading attribute '%s'", name);
 
   H5Aclose(h_attr);
 }
@@ -172,28 +138,22 @@ void io_read_attribute(hid_t grp, char* name, enum IO_DATA_TYPE type,
  */
 void io_write_attribute(hid_t grp, const char* name, enum IO_DATA_TYPE type,
                         void* data, int num) {
-  hid_t h_space = 0, h_attr = 0, h_err = 0;
-  hsize_t dim[1] = {num};
 
-  h_space = H5Screate(H5S_SIMPLE);
-  if (h_space < 0) {
+  const hid_t h_space = H5Screate(H5S_SIMPLE);
+  if (h_space < 0)
     error("Error while creating dataspace for attribute '%s'.", name);
-  }
 
-  h_err = H5Sset_extent_simple(h_space, 1, dim, NULL);
-  if (h_err < 0) {
+  hsize_t dim[1] = {(hsize_t)num};
+  const hid_t h_err = H5Sset_extent_simple(h_space, 1, dim, NULL);
+  if (h_err < 0)
     error("Error while changing dataspace shape for attribute '%s'.", name);
-  }
 
-  h_attr = H5Acreate1(grp, name, io_hdf5_type(type), h_space, H5P_DEFAULT);
-  if (h_attr < 0) {
-    error("Error while creating attribute '%s'.", name);
-  }
+  const hid_t h_attr =
+      H5Acreate1(grp, name, io_hdf5_type(type), h_space, H5P_DEFAULT);
+  if (h_attr < 0) error("Error while creating attribute '%s'.", name);
 
-  h_err = H5Awrite(h_attr, io_hdf5_type(type), data);
-  if (h_err < 0) {
-    error("Error while reading attribute '%s'.", name);
-  }
+  const hid_t h_err2 = H5Awrite(h_attr, io_hdf5_type(type), data);
+  if (h_err2 < 0) error("Error while reading attribute '%s'.", name);
 
   H5Sclose(h_space);
   H5Aclose(h_attr);
@@ -211,32 +171,22 @@ void io_write_attribute(hid_t grp, const char* name, enum IO_DATA_TYPE type,
  */
 void io_writeStringAttribute(hid_t grp, const char* name, const char* str,
                              int length) {
-  hid_t h_space = 0, h_attr = 0, h_err = 0, h_type = 0;
 
-  h_space = H5Screate(H5S_SCALAR);
-  if (h_space < 0) {
+  const hid_t h_space = H5Screate(H5S_SCALAR);
+  if (h_space < 0)
     error("Error while creating dataspace for attribute '%s'.", name);
-  }
 
-  h_type = H5Tcopy(H5T_C_S1);
-  if (h_type < 0) {
-    error("Error while copying datatype 'H5T_C_S1'.");
-  }
+  const hid_t h_type = H5Tcopy(H5T_C_S1);
+  if (h_type < 0) error("Error while copying datatype 'H5T_C_S1'.");
 
-  h_err = H5Tset_size(h_type, length);
-  if (h_err < 0) {
-    error("Error while resizing attribute type to '%i'.", length);
-  }
+  const hid_t h_err = H5Tset_size(h_type, length);
+  if (h_err < 0) error("Error while resizing attribute type to '%i'.", length);
 
-  h_attr = H5Acreate1(grp, name, h_type, h_space, H5P_DEFAULT);
-  if (h_attr < 0) {
-    error("Error while creating attribute '%s'.", name);
-  }
+  const hid_t h_attr = H5Acreate1(grp, name, h_type, h_space, H5P_DEFAULT);
+  if (h_attr < 0) error("Error while creating attribute '%s'.", name);
 
-  h_err = H5Awrite(h_attr, h_type, str);
-  if (h_err < 0) {
-    error("Error while reading attribute '%s'.", name);
-  }
+  const hid_t h_err2 = H5Awrite(h_attr, h_type, str);
+  if (h_err2 < 0) error("Error while reading attribute '%s'.", name);
 
   H5Tclose(h_type);
   H5Sclose(h_space);
@@ -352,8 +302,7 @@ void io_read_unit_system(hid_t h_file, struct unit_system* us, int mpi_rank) {
 void io_write_unit_system(hid_t h_file, const struct unit_system* us,
                           const char* groupName) {
 
-  hid_t h_grpunit = 0;
-  h_grpunit = H5Gcreate1(h_file, groupName, 0);
+  const hid_t h_grpunit = H5Gcreate1(h_file, groupName, 0);
   if (h_grpunit < 0) error("Error while creating Unit System group");
 
   io_write_attribute_d(h_grpunit, "Unit mass in cgs (U_M)",
@@ -375,9 +324,8 @@ void io_write_unit_system(hid_t h_file, const struct unit_system* us,
  * @param h_file The (opened) HDF5 file in which to write
  */
 void io_write_code_description(hid_t h_file) {
-  hid_t h_grpcode = 0;
 
-  h_grpcode = H5Gcreate1(h_file, "/Code", 0);
+  const hid_t h_grpcode = H5Gcreate1(h_file, "/Code", 0);
   if (h_grpcode < 0) error("Error while creating code group");
 
   io_write_attribute_s(h_grpcode, "Code", "SWIFT");
@@ -395,6 +343,9 @@ void io_write_code_description(hid_t h_file) {
 #ifdef HAVE_FFTW
   io_write_attribute_s(h_grpcode, "FFTW library version", fftw3_version());
 #endif
+#ifdef HAVE_LIBGSL
+  io_write_attribute_s(h_grpcode, "GSL library version", libgsl_version());
+#endif
 #ifdef WITH_MPI
   io_write_attribute_s(h_grpcode, "MPI library", mpi_version());
 #ifdef HAVE_METIS
@@ -406,7 +357,56 @@ void io_write_code_description(hid_t h_file) {
   H5Gclose(h_grpcode);
 }
 
+/**
+ * @brief Write the #engine policy to the file.
+ * @param h_file File to write to.
+ * @param e The #engine to read the policy from.
+ */
+void io_write_engine_policy(hid_t h_file, const struct engine* e) {
+
+  const hid_t h_grp = H5Gcreate1(h_file, "/Policy", 0);
+  if (h_grp < 0) error("Error while creating policy group");
+
+  for (int i = 1; i <= engine_maxpolicy; ++i)
+    if (e->policy & (1 << i))
+      io_write_attribute_i(h_grp, engine_policy_names[i + 1], 1);
+    else
+      io_write_attribute_i(h_grp, engine_policy_names[i + 1], 0);
+
+  H5Gclose(h_grp);
+}
+
 #endif /* HAVE_HDF5 */
+
+/**
+ * @brief Returns the memory size of the data type
+ */
+size_t io_sizeof_type(enum IO_DATA_TYPE type) {
+
+  switch (type) {
+    case INT:
+      return sizeof(int);
+    case UINT:
+      return sizeof(unsigned int);
+    case LONG:
+      return sizeof(long);
+    case ULONG:
+      return sizeof(unsigned long);
+    case LONGLONG:
+      return sizeof(long long);
+    case ULONGLONG:
+      return sizeof(unsigned long long);
+    case FLOAT:
+      return sizeof(float);
+    case DOUBLE:
+      return sizeof(double);
+    case CHAR:
+      return sizeof(char);
+    default:
+      error("Unknown type");
+      return 0;
+  }
+}
 
 /**
  * @brief Mapper function to copy #part or #gpart fields into a buffer.
@@ -418,7 +418,7 @@ void io_copy_mapper(void* restrict temp, int N, void* restrict extra_data) {
   const size_t copySize = typeSize * props.dimension;
 
   /* How far are we with this chunk? */
-  char* restrict temp_c = temp;
+  char* restrict temp_c = (char*)temp;
   const ptrdiff_t delta = (temp_c - props.start_temp_c) / copySize;
 
   for (int k = 0; k < N; k++) {
@@ -436,15 +436,17 @@ void io_convert_part_f_mapper(void* restrict temp, int N,
 
   const struct io_props props = *((const struct io_props*)extra_data);
   const struct part* restrict parts = props.parts;
+  const struct xpart* restrict xparts = props.xparts;
   const struct engine* e = props.e;
   const size_t dim = props.dimension;
 
   /* How far are we with this chunk? */
-  float* restrict temp_f = temp;
+  float* restrict temp_f = (float*)temp;
   const ptrdiff_t delta = (temp_f - props.start_temp_f) / dim;
 
   for (int i = 0; i < N; i++)
-    props.convert_part_f(e, parts + delta + i, &temp_f[i * dim]);
+    props.convert_part_f(e, parts + delta + i, xparts + delta + i,
+                         &temp_f[i * dim]);
 }
 
 /**
@@ -456,15 +458,17 @@ void io_convert_part_d_mapper(void* restrict temp, int N,
 
   const struct io_props props = *((const struct io_props*)extra_data);
   const struct part* restrict parts = props.parts;
+  const struct xpart* restrict xparts = props.xparts;
   const struct engine* e = props.e;
   const size_t dim = props.dimension;
 
   /* How far are we with this chunk? */
-  double* restrict temp_d = temp;
+  double* restrict temp_d = (double*)temp;
   const ptrdiff_t delta = (temp_d - props.start_temp_d) / dim;
 
   for (int i = 0; i < N; i++)
-    props.convert_part_d(e, parts + delta + i, &temp_d[i * dim]);
+    props.convert_part_d(e, parts + delta + i, xparts + delta + i,
+                         &temp_d[i * dim]);
 }
 
 /**
@@ -480,7 +484,7 @@ void io_convert_gpart_f_mapper(void* restrict temp, int N,
   const size_t dim = props.dimension;
 
   /* How far are we with this chunk? */
-  float* restrict temp_f = temp;
+  float* restrict temp_f = (float*)temp;
   const ptrdiff_t delta = (temp_f - props.start_temp_f) / dim;
 
   for (int i = 0; i < N; i++)
@@ -500,7 +504,7 @@ void io_convert_gpart_d_mapper(void* restrict temp, int N,
   const size_t dim = props.dimension;
 
   /* How far are we with this chunk? */
-  double* restrict temp_d = temp;
+  double* restrict temp_d = (double*)temp;
   const ptrdiff_t delta = (temp_d - props.start_temp_d) / dim;
 
   for (int i = 0; i < N; i++)
@@ -531,7 +535,7 @@ void io_copy_temp_buffer(void* temp, const struct engine* e,
   if (props.conversion == 0) { /* No conversion */
 
     /* Prepare some parameters */
-    char* temp_c = temp;
+    char* temp_c = (char*)temp;
     props.start_temp_c = temp_c;
 
     /* Copy the whole thing into a buffer */
@@ -543,8 +547,8 @@ void io_copy_temp_buffer(void* temp, const struct engine* e,
     if (props.convert_part_f != NULL) {
 
       /* Prepare some parameters */
-      float* temp_f = temp;
-      props.start_temp_f = temp;
+      float* temp_f = (float*)temp;
+      props.start_temp_f = (float*)temp;
       props.e = e;
 
       /* Copy the whole thing into a buffer */
@@ -555,8 +559,8 @@ void io_copy_temp_buffer(void* temp, const struct engine* e,
     } else if (props.convert_part_d != NULL) {
 
       /* Prepare some parameters */
-      double* temp_d = temp;
-      props.start_temp_d = temp;
+      double* temp_d = (double*)temp;
+      props.start_temp_d = (double*)temp;
       props.e = e;
 
       /* Copy the whole thing into a buffer */
@@ -567,8 +571,8 @@ void io_copy_temp_buffer(void* temp, const struct engine* e,
     } else if (props.convert_gpart_f != NULL) {
 
       /* Prepare some parameters */
-      float* temp_f = temp;
-      props.start_temp_f = temp;
+      float* temp_f = (float*)temp;
+      props.start_temp_f = (float*)temp;
       props.e = e;
 
       /* Copy the whole thing into a buffer */
@@ -579,8 +583,8 @@ void io_copy_temp_buffer(void* temp, const struct engine* e,
     } else if (props.convert_gpart_d != NULL) {
 
       /* Prepare some parameters */
-      double* temp_d = temp;
-      props.start_temp_d = temp;
+      double* temp_d = (double*)temp;
+      props.start_temp_d = (double*)temp;
       props.e = e;
 
       /* Copy the whole thing into a buffer */
@@ -601,10 +605,12 @@ void io_copy_temp_buffer(void* temp, const struct engine* e,
     /* message("Converting ! factor=%e", factor); */
 
     if (io_is_double_precision(props.type)) {
-      swift_declare_aligned_ptr(double, temp_d, temp, IO_BUFFER_ALIGNMENT);
+      swift_declare_aligned_ptr(double, temp_d, (double*)temp,
+                                IO_BUFFER_ALIGNMENT);
       for (size_t i = 0; i < num_elements; ++i) temp_d[i] *= factor;
     } else {
-      swift_declare_aligned_ptr(float, temp_f, temp, IO_BUFFER_ALIGNMENT);
+      swift_declare_aligned_ptr(float, temp_f, (float*)temp,
+                                IO_BUFFER_ALIGNMENT);
       for (size_t i = 0; i < num_elements; ++i) temp_f[i] *= factor;
     }
   }
@@ -681,7 +687,7 @@ void io_duplicate_hydro_gparts_mapper(void* restrict data, int Ngas,
     gparts[i + Ndm].type = swift_type_gas;
 
     /* Link the particles */
-    gparts[i + Ndm].id_or_neg_offset = -i;
+    gparts[i + Ndm].id_or_neg_offset = -(long long)(offset + i);
     parts[i].gpart = &gparts[i + Ndm];
   }
 }
@@ -737,7 +743,7 @@ void io_duplicate_hydro_sparts_mapper(void* restrict data, int Nstars,
     gparts[i + Ndm].type = swift_type_star;
 
     /* Link the particles */
-    gparts[i + Ndm].id_or_neg_offset = -i;
+    gparts[i + Ndm].id_or_neg_offset = -(long long)(offset + i);
     sparts[i].gpart = &gparts[i + Ndm];
   }
 }

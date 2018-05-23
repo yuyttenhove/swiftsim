@@ -931,6 +931,7 @@ void runner_doself2_force_vec(struct runner *r, struct cell *restrict c) {
 #if defined(WITH_VECTORIZATION)
 
   const struct engine *e = r->e;
+  const struct cosmology *restrict cosmo = e->cosmology;
   const timebin_t max_active_bin = e->max_active_bin;
   struct part *restrict parts = c->parts;
   const int count = c->count;
@@ -958,6 +959,10 @@ void runner_doself2_force_vec(struct runner *r, struct cell *restrict c) {
 
   /* Read the particles from the cell and store them locally in the cache. */
   cache_read_force_particles(c, cell_cache, count);
+
+  /* Cosmological terms */
+  const float a = cosmo->a;
+  const float H = cosmo->H;
 
   /* Loop over the particles in the cell. */
   for (int pid = 0; pid < count; pid++) {
@@ -1042,7 +1047,7 @@ void runner_doself2_force_vec(struct runner *r, struct cell *restrict c) {
 
         runner_iact_nonsym_1_vec_force(
             &v_r2, &v_dx, &v_dy, &v_dz, &params, cell_cache, pjd,
-            v_hj_inv, &sum_cache, v_doi_mask);
+            v_hj_inv, a, H, &sum_cache, v_doi_mask);
       }
 
     } /* Loop over all other particles. */
@@ -1420,7 +1425,7 @@ void runner_dopair_subset_density_vec(struct runner *r,
                                       struct cell *restrict cj, const int sid,
                                       const int flipped, const double *shift) {
 
-#ifdef WITH_VECTORIZATION
+#if defined(WITH_VECTORIZATION) && (defined(GADGET2_SPH) || defined(MINIMAL_SPH))
 
   TIMER_TIC;
 
@@ -1686,6 +1691,7 @@ void runner_dopair2_force_vec(struct runner *r, struct cell *ci,
 #if defined(WITH_VECTORIZATION) && (defined(GADGET2_SPH) || defined(MINIMAL_SPH))
 
   const struct engine *restrict e = r->e;
+  const struct cosmology *restrict cosmo = e->cosmology;
   const timebin_t max_active_bin = e->max_active_bin;
 
   TIMER_TIC;
@@ -1716,6 +1722,10 @@ void runner_dopair2_force_vec(struct runner *r, struct cell *ci,
   const float dx_max = (ci->dx_max_sort + cj->dx_max_sort);
   const int active_ci = cell_is_active_hydro(ci, e) && ci_local;
   const int active_cj = cell_is_active_hydro(cj, e) && cj_local;
+
+  /* Cosmological terms */
+  const float a = cosmo->a;
+  const float H = cosmo->H;
 
 #ifdef SWIFT_DEBUG_CHECKS
   /* Check that particles have been drifted to the current time */
@@ -1895,7 +1905,7 @@ void runner_dopair2_force_vec(struct runner *r, struct cell *ci,
           runner_iact_nonsym_1_vec_force(
               &v_r2, &v_dx, &v_dy, &v_dz, &params,
               cj_cache, cj_cache_idx,
-              v_hj_inv, &sum_cache,
+              v_hj_inv, a, H, &sum_cache,
               v_doi_mask);
         }
 
@@ -2009,7 +2019,7 @@ void runner_dopair2_force_vec(struct runner *r, struct cell *ci,
           runner_iact_nonsym_1_vec_force(
               &v_r2, &v_dx, &v_dy, &v_dz, &params,
               ci_cache, ci_cache_idx, 
-              v_hi_inv, &sum_cache,
+              v_hi_inv, a, H, &sum_cache,
               v_doj_mask);
         }
       } /* loop over the parts in ci. */

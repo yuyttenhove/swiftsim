@@ -1,4 +1,3 @@
-
 /*******************************************************************************
  * This file is part of SWIFT.
  * Copyright (C) 2016 Matthieu Schaller (matthieu.schaller@durham.ac.uk).
@@ -48,7 +47,7 @@
 #define DOPAIR2_NAME "runner_dopair2_force"
 #endif
 
-#define NODE_ID 1
+#define NODE_ID 0
 
 enum velocity_field {
   velocity_zero,
@@ -121,7 +120,9 @@ void set_energy_state(struct part *part, enum pressure_field press, float size,
   part->u = pressure / (hydro_gamma_minus_one * density);
 #elif defined(MINIMAL_SPH)
   part->u = pressure / (hydro_gamma_minus_one * density);
-#elif defined(GIZMO_SPH) || defined(SHADOWFAX_SPH)
+#elif defined(MINIMAL_MULTI_MAT_SPH)
+  part->u = pressure / (hydro_gamma_minus_one * density);
+#elif defined(GIZMO_MFV_SPH) || defined(SHADOWFAX_SPH)
   part->primitives.P = pressure;
 #else
   error("Need to define pressure here !");
@@ -221,9 +222,9 @@ void reset_particles(struct cell *c, struct hydro_space *hs,
 
     hydro_init_part(p, hs);
 
-#if defined(GIZMO_SPH) || defined(SHADOWFAX_SPH)
+#if defined(GIZMO_MFV_SPH) || defined(SHADOWFAX_SPH)
     float volume = p->conserved.mass / density;
-#if defined(GIZMO_SPH)
+#if defined(GIZMO_MFV_SPH)
     p->geometry.volume = volume;
 #else
     p->cell.volume = volume;
@@ -299,7 +300,7 @@ struct cell *make_cell(size_t n, const double offset[3], double size, double h,
         part->h = size * h / (float)n;
         h_max = fmax(h_max, part->h);
 
-#if defined(GIZMO_SPH) || defined(SHADOWFAX_SPH)
+#if defined(GIZMO_MFV_SPH) || defined(SHADOWFAX_SPH)
         part->conserved.mass = density * volume / count;
 #else
         part->mass = density * volume / count;
@@ -313,7 +314,7 @@ struct cell *make_cell(size_t n, const double offset[3], double size, double h,
         part->id = ++(*partId);
         part->time_bin = 1;
 
-#if defined(GIZMO_SPH)
+#if defined(GIZMO_MFV_SPH)
         part->geometry.volume = part->conserved.mass / density;
         part->primitives.rho = density;
         part->primitives.v[0] = part->v[0];
@@ -403,16 +404,17 @@ void dump_particle_fields(char *fileName, struct cell *main_cell,
             main_cell->parts[pid].x[1], main_cell->parts[pid].x[2],
             main_cell->parts[pid].v[0], main_cell->parts[pid].v[1],
             main_cell->parts[pid].v[2], main_cell->parts[pid].h,
-            hydro_get_density(&main_cell->parts[pid]),
-#if defined(MINIMAL_SPH) || defined(SHADOWFAX_SPH)
+            hydro_get_comoving_density(&main_cell->parts[pid]),
+#if defined(MINIMAL_SPH) || defined(MINIMAL_MULTI_MAT_SPH) || \
+    defined(GIZMO_MFV_SPH) || defined(SHADOWFAX_SPH)
             0.f,
 #else
             main_cell->parts[pid].density.div_v,
 #endif
-            hydro_get_entropy(&main_cell->parts[pid]),
-            hydro_get_internal_energy(&main_cell->parts[pid]),
-            hydro_get_pressure(&main_cell->parts[pid]),
-            hydro_get_soundspeed(&main_cell->parts[pid]),
+            hydro_get_comoving_entropy(&main_cell->parts[pid]),
+            hydro_get_comoving_internal_energy(&main_cell->parts[pid]),
+            hydro_get_comoving_pressure(&main_cell->parts[pid]),
+            hydro_get_comoving_soundspeed(&main_cell->parts[pid]),
             main_cell->parts[pid].a_hydro[0], main_cell->parts[pid].a_hydro[1],
             main_cell->parts[pid].a_hydro[2], main_cell->parts[pid].force.h_dt,
 #if defined(GADGET2_SPH)
@@ -464,11 +466,14 @@ void runner_doself2_force_vec(struct runner *r, struct cell *ci);
 /* And go... */
 int main(int argc, char *argv[]) {
 
+#ifdef HAVE_SETAFFINITY
   engine_pin();
+#endif
+
   size_t runs = 0, particles = 0;
   double h = 1.23485, size = 1., rho = 2.5;
   double perturbation = 0.;
-  char outputFileNameExtension[200] = "";
+  char outputFileNameExtension[100] = "";
   char outputFileName[200] = "";
   enum velocity_field vel = velocity_zero;
   enum pressure_field press = pressure_const;
@@ -594,6 +599,10 @@ int main(int argc, char *argv[]) {
   engine.max_active_bin = num_time_bins;
   engine.nodeID = NODE_ID;
 
+  struct cosmology cosmo;
+  cosmology_init_no_cosmo(&cosmo);
+  engine.cosmology = &cosmo;
+
   struct runner runner;
   runner.e = &engine;
 
@@ -654,6 +663,7 @@ int main(int argc, char *argv[]) {
       runner_do_sort(&runner, cells[j], 0x1FFF, 0, 0);
 
     /* Do the density calculation */
+
 #ifdef WITH_VECTORIZATION
     /* Initialise the particle cache. */
     runner.ci_cache.count = 0;
@@ -700,6 +710,7 @@ int main(int argc, char *argv[]) {
     for (int j = 0; j < 27; ++j) runner_do_ghost(&runner, inner_cells[j], 0);
 
     /* Do the force calculation */
+
 #ifdef WITH_VECTORIZATION
     /* Initialise the cache. */
     runner.ci_cache.count = 0;
@@ -779,17 +790,17 @@ int main(int argc, char *argv[]) {
 
   const ticks tic = getticks();
 
-/* Kick the central cell */
-// runner_do_kick1(&runner, main_cell, 0);
+  /* Kick the central cell */
+  // runner_do_kick1(&runner, main_cell, 0);
 
-/* And drift it */
-// runner_do_drift_particles(&runner, main_cell, 0);
+  /* And drift it */
+  // runner_do_drift_particles(&runner, main_cell, 0);
 
-/* Initialise the particles */
-// for (int j = 0; j < 125; ++j) runner_do_drift_particles(&runner, cells[j],
-// 0);
+  /* Initialise the particles */
+  // for (int j = 0; j < 125; ++j) runner_do_drift_particles(&runner, cells[j],
+  // 0);
 
-/* Do the density calculation */
+  /* Do the density calculation */
 
   /* Run all the pairs (only once !)*/
   for (int i = 0; i < 5; i++) {
@@ -827,7 +838,7 @@ int main(int argc, char *argv[]) {
   /* Ghost to finish everything on the central cells */
   for (int j = 0; j < 27; ++j) runner_do_ghost(&runner, inner_cells[j], 0);
 
-/* Do the force calculation */
+  /* Do the force calculation */
 
   /* Do the pairs (for the central 27 cells) */
   for (int i = 1; i < 4; i++) {

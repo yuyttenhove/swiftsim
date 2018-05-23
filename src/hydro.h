@@ -23,8 +23,10 @@
 #include "../config.h"
 
 /* Local headers. */
+#include "const.h"
 #include "hydro_properties.h"
 #include "kernel_hydro.h"
+#include "part.h"
 
 /* Import the right functions */
 #if defined(MINIMAL_SPH)
@@ -46,15 +48,23 @@
 #include "./hydro/Default/hydro_iact.h"
 #include "./hydro/Gadget2/hydro_cache.h"
 #define SPH_IMPLEMENTATION "Default version of SPH"
-#elif defined(GIZMO_SPH)
-#include "./hydro/Gizmo/hydro.h"
-#include "./hydro/Gizmo/hydro_iact.h"
-#define SPH_IMPLEMENTATION "GIZMO (Hopkins 2015)"
+#elif defined(GIZMO_MFV_SPH)
+#include "./hydro/GizmoMFV/hydro.h"
+#include "./hydro/GizmoMFV/hydro_iact.h"
+#define SPH_IMPLEMENTATION "GIZMO MFV (Hopkins 2015)"
+#elif defined(GIZMO_MFM_SPH)
+#include "./hydro/GizmoMFM/hydro.h"
+#include "./hydro/GizmoMFM/hydro_iact.h"
+#define SPH_IMPLEMENTATION "GIZMO MFM (Hopkins 2015)"
 #elif defined(SHADOWFAX_SPH)
 #include "./hydro/Shadowswift/hydro.h"
 #include "./hydro/Shadowswift/hydro_iact.h"
 #define SPH_IMPLEMENTATION \
   "Shadowfax moving mesh (Vandenbroucke and De Rijcke 2016)"
+#elif defined(MINIMAL_MULTI_MAT_SPH)
+#include "./hydro/MinimalMultiMat/hydro.h"
+#include "./hydro/MinimalMultiMat/hydro_iact.h"
+#define SPH_IMPLEMENTATION "Minimal version of SPH with multiple materials"
 #else
 #error "Invalid choice of SPH variant"
 #endif

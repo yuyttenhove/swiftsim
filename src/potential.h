@@ -38,6 +38,10 @@
 #include "./potential/disc_patch/potential.h"
 #elif defined(EXTERNAL_POTENTIAL_SINE_WAVE)
 #include "./potential/sine_wave/potential.h"
+#elif defined(EXTERNAL_POTENTIAL_POINTMASS_RING)
+#include "./potential/point_mass_ring/potential.h"
+#elif defined(EXTERNAL_POTENTIAL_POINTMASS_SOFT)
+#include "./potential/point_mass_softened/potential.h"
 #else
 #error "Invalid choice of external potential"
 #endif
@@ -49,5 +53,11 @@ void potential_init(const struct swift_params* parameter_file,
                     struct external_potential* potential);
 
 void potential_print(const struct external_potential* potential);
+
+/* Dump/restore. */
+void potential_struct_dump(const struct external_potential* potential,
+                           FILE* stream);
+void potential_struct_restore(const struct external_potential* potential,
+                              FILE* stream);
 
 #endif /* SWIFT_POTENTIAL_H */

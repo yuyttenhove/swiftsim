@@ -36,10 +36,20 @@
 #include "hydro_cache.h"
 
 /**
- * @brief Density loop
+ * @brief Density interaction between two particles.
+ *
+ * @param r2 Comoving square distance between the two particles.
+ * @param dx Comoving vector separating both particles (pi - pj).
+ * @param hi Comoving smoothing-length of particle i.
+ * @param hj Comoving smoothing-length of particle j.
+ * @param pi First particle.
+ * @param pj Second particle.
+ * @param a Current scale factor.
+ * @param H Current Hubble parameter.
  */
 __attribute__((always_inline)) INLINE static void runner_iact_density(
-    float r2, float *dx, float hi, float hj, struct part *pi, struct part *pj) {
+    float r2, const float *dx, float hi, float hj, struct part *restrict pi,
+    struct part *restrict pj, float a, float H) {
 
   float wi, wi_dx;
   float wj, wj_dx;
@@ -49,9 +59,9 @@ __attribute__((always_inline)) INLINE static void runner_iact_density(
   const float mi = pi->mass;
   const float mj = pj->mass;
 
-  /* Get r and r inverse. */
-  const float r = sqrtf(r2);
-  const float r_inv = 1.0f / r;
+  /* Get r and 1/r. */
+  const float r_inv = 1.0f / sqrtf(r2);
+  const float r = r2 * r_inv;
 
   /* Compute the kernel function for pi */
   const float hi_inv = 1.f / hi;
@@ -117,10 +127,20 @@ __attribute__((always_inline)) INLINE static void runner_iact_density(
 }
 
 /**
- * @brief Density loop (non-symmetric version)
+ * @brief Density interaction between two particles (non-symmetric).
+ *
+ * @param r2 Comoving square distance between the two particles.
+ * @param dx Comoving vector separating both particles (pi - pj).
+ * @param hi Comoving smoothing-length of particle i.
+ * @param hj Comoving smoothing-length of particle j.
+ * @param pi First particle.
+ * @param pj Second particle (not updated).
+ * @param a Current scale factor.
+ * @param H Current Hubble parameter.
  */
 __attribute__((always_inline)) INLINE static void runner_iact_nonsym_density(
-    float r2, float *dx, float hi, float hj, struct part *pi, struct part *pj) {
+    float r2, const float *dx, float hi, float hj, struct part *restrict pi,
+    const struct part *restrict pj, float a, float H) {
 
   float wi, wi_dx;
   float dv[3], curlvr[3];
@@ -128,9 +148,9 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_density(
   /* Get the masses. */
   const float mj = pj->mass;
 
-  /* Get r and r inverse. */
-  const float r = sqrtf(r2);
-  const float r_inv = 1.0f / r;
+  /* Get r and 1/r. */
+  const float r_inv = 1.0f / sqrtf(r2);
+  const float r = r2 * r_inv;
 
   /* Compute the kernel function */
   const float hi_inv = 1.0f / hi;
@@ -390,17 +410,30 @@ runner_iact_nonsym_2_vec_density(struct c2_cache *int_cache, const int int_cache
 #endif
 
 /**
- * @brief Force loop
+ * @brief Force interaction between two particles.
+ *
+ * @param r2 Comoving square distance between the two particles.
+ * @param dx Comoving vector separating both particles (pi - pj).
+ * @param hi Comoving smoothing-length of particle i.
+ * @param hj Comoving smoothing-length of particle j.
+ * @param pi First particle.
+ * @param pj Second particle.
+ * @param a Current scale factor.
+ * @param H Current Hubble parameter.
  */
 __attribute__((always_inline)) INLINE static void runner_iact_force(
-    float r2, float *dx, float hi, float hj, struct part *pi, struct part *pj) {
+    float r2, const float *dx, float hi, float hj, struct part *restrict pi,
+    struct part *restrict pj, float a, float H) {
 
   float wi, wj, wi_dx, wj_dx;
 
-  const float fac_mu = 1.f; /* Will change with cosmological integration */
+  /* Cosmological factors entering the EoMs */
+  const float fac_mu = pow_three_gamma_minus_five_over_two(a);
+  const float a2_Hubble = a * a * H;
 
-  const float r = sqrtf(r2);
-  const float r_inv = 1.0f / r;
+  /* Get r and 1/r. */
+  const float r_inv = 1.0f / sqrtf(r2);
+  const float r = r2 * r_inv;
 
   /* Get some values in local variables. */
   const float mi = pi->mass;
@@ -437,7 +470,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_force(
   /* Compute dv dot r. */
   const float dvdr = (pi->v[0] - pj->v[0]) * dx[0] +
                      (pi->v[1] - pj->v[1]) * dx[1] +
-                     (pi->v[2] - pj->v[2]) * dx[2];
+                     (pi->v[2] - pj->v[2]) * dx[2] + a2_Hubble * r2;
 
   /* Balsara term */
   const float balsara_i = pi->force.balsara;
@@ -477,8 +510,8 @@ __attribute__((always_inline)) INLINE static void runner_iact_force(
   pj->force.h_dt -= mi * dvdr * r_inv / rhoi * wj_dr;
 
   /* Update the signal velocity. */
-  pi->force.v_sig = (pi->force.v_sig > v_sig) ? pi->force.v_sig : v_sig;
-  pj->force.v_sig = (pj->force.v_sig > v_sig) ? pj->force.v_sig : v_sig;
+  pi->force.v_sig = max(pi->force.v_sig, v_sig);
+  pj->force.v_sig = max(pj->force.v_sig, v_sig);
 
   /* Change in entropy */
   pi->entropy_dt += mj * visc_term * dvdr;
@@ -497,17 +530,30 @@ __attribute__((always_inline)) INLINE static void runner_iact_force(
 }
 
 /**
- * @brief Force loop (non-symmetric version)
+ * @brief Force interaction between two particles (non-symmetric).
+ *
+ * @param r2 Comoving square distance between the two particles.
+ * @param dx Comoving vector separating both particles (pi - pj).
+ * @param hi Comoving smoothing-length of particle i.
+ * @param hj Comoving smoothing-length of particle j.
+ * @param pi First particle.
+ * @param pj Second particle (not updated).
+ * @param a Current scale factor.
+ * @param H Current Hubble parameter.
  */
 __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force(
-    float r2, float *dx, float hi, float hj, struct part *pi, struct part *pj) {
+    float r2, const float *dx, float hi, float hj, struct part *restrict pi,
+    const struct part *restrict pj, float a, float H) {
 
   float wi, wj, wi_dx, wj_dx;
 
-  const float fac_mu = 1.f; /* Will change with cosmological integration */
+  /* Cosmological factors entering the EoMs */
+  const float fac_mu = pow_three_gamma_minus_five_over_two(a);
+  const float a2_Hubble = a * a * H;
 
-  const float r = sqrtf(r2);
-  const float r_inv = 1.0f / r;
+  /* Get r and 1/r. */
+  const float r_inv = 1.0f / sqrtf(r2);
+  const float r = r2 * r_inv;
 
   /* Get some values in local variables. */
   // const float mi = pi->mass;
@@ -544,7 +590,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force(
   /* Compute dv dot r. */
   const float dvdr = (pi->v[0] - pj->v[0]) * dx[0] +
                      (pi->v[1] - pj->v[1]) * dx[1] +
-                     (pi->v[2] - pj->v[2]) * dx[2];
+                     (pi->v[2] - pj->v[2]) * dx[2] + a2_Hubble * r2;
 
   /* Balsara term */
   const float balsara_i = pi->force.balsara;
@@ -579,7 +625,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force(
   pi->force.h_dt -= mj * dvdr * r_inv / rhoj * wi_dr;
 
   /* Update the signal velocity. */
-  pi->force.v_sig = (pi->force.v_sig > v_sig) ? pi->force.v_sig : v_sig;
+  pi->force.v_sig = max(pi->force.v_sig, v_sig);
 
   /* Change in entropy */
   pi->entropy_dt += mj * visc_term * dvdr;
@@ -628,8 +674,11 @@ runner_iact_nonsym_1_vec_force(
   const vector balsara_j = vector_load(&cell_cache->balsara[cache_idx]);
   const vector cj = vector_load(&cell_cache->soundspeed[cache_idx]);
 
-  const vector fac_mu =
-      vector_set1(1.f); /* Will change with cosmological integration */
+  /* Cosmological terms */
+  const float fac_mu = pow_three_gamma_minus_five_over_two(a);
+  const float a2_Hubble = a * a * H;
+  const vector v_fac_mu = vector_set1(fac_mu);
+  const vector v_a2_Hubble = vector_set1(a2_Hubble);
 
   /* Load stuff. */
   balsara.v = vec_add(params->v_balsara_i.v, balsara_j.v);
@@ -659,13 +708,16 @@ runner_iact_nonsym_1_vec_force(
   dvz.v = vec_sub(params->v_viz.v, vjz.v);
 
   /* Compute dv dot r. */
-  dvdr.v = vec_fma(dvx.v, dx->v, vec_fma(dvy.v, dy->v, vec_mul(dvz.v, dz->v)));
+  dvdr.v =
+      vec_fma(dvx.v, dx->v,
+              vec_fma(dvy.v, dy->v,
+                      vec_fma(dvz.v, dz->v, vec_mul(v_a2_Hubble.v, r2->v))));
 
   /* Compute the relative velocity. (This is 0 if the particles move away from
    * each other and negative otherwise) */
   omega_ij.v = vec_fmin(dvdr.v, vec_setzero());
-  mu_ij.v =
-      vec_mul(fac_mu.v, vec_mul(ri.v, omega_ij.v)); /* This is 0 or negative */
+  mu_ij.v = vec_mul(v_fac_mu.v,
+                    vec_mul(ri.v, omega_ij.v)); /* This is 0 or negative */
 
   /* Compute signal velocity */
   v_sig.v = vec_fnma(vec_set1(3.f), mu_ij.v, vec_add(params->v_ci.v, cj.v));
@@ -728,9 +780,10 @@ runner_iact_nonsym_2_vec_force(
     vector viz, vector pirho, vector grad_hi, vector piPOrho2, vector balsara_i,
     vector ci, float *Vjx, float *Vjy, float *Vjz, float *Pjrho, float *Grad_hj,
     float *PjPOrho2, float *Balsara_j, float *Cj, float *Mj, vector hi_inv,
-    float *Hj_inv, vector *a_hydro_xSum, vector *a_hydro_ySum,
-    vector *a_hydro_zSum, vector *h_dtSum, vector *v_sigSum,
-    vector *entropy_dtSum, mask_t mask, mask_t mask_2, short mask_cond) {
+    float *Hj_inv, const float a, const float H, vector *a_hydro_xSum,
+    vector *a_hydro_ySum, vector *a_hydro_zSum, vector *h_dtSum,
+    vector *v_sigSum, vector *entropy_dtSum, mask_t mask, mask_t mask_2,
+    short mask_cond) {
 
 #ifdef WITH_VECTORIZATION
 
@@ -794,8 +847,11 @@ runner_iact_nonsym_2_vec_force(
   const vector hj_inv = vector_load(Hj_inv);
   const vector hj_inv_2 = vector_load(&Hj_inv[VEC_SIZE]);
 
-  const vector fac_mu =
-      vector_set1(1.f); /* Will change with cosmological integration */
+  /* Cosmological terms */
+  const float fac_mu = pow_three_gamma_minus_five_over_two(a);
+  const float a2_Hubble = a * a * H;
+  const vector v_fac_mu = vector_set1(fac_mu);
+  const vector v_a2_Hubble = vector_set1(a2_Hubble);
 
   /* Find the balsara switch. */
   balsara.v = vec_add(balsara_i.v, balsara_j.v);
@@ -832,18 +888,22 @@ runner_iact_nonsym_2_vec_force(
   dvz_2.v = vec_sub(viz.v, vjz_2.v);
 
   /* Compute dv dot r. */
-  dvdr.v = vec_fma(dvx.v, dx.v, vec_fma(dvy.v, dy.v, vec_mul(dvz.v, dz.v)));
-  dvdr_2.v = vec_fma(dvx_2.v, dx_2.v,
-                     vec_fma(dvy_2.v, dy_2.v, vec_mul(dvz_2.v, dz_2.v)));
+  dvdr.v = vec_fma(
+      dvx.v, dx.v,
+      vec_fma(dvy.v, dy.v, vec_fma(dvz.v, dz.v, vec_mul(v_a2_Hubble.v, r2.v))));
+  dvdr_2.v = vec_fma(
+      dvx_2.v, dx_2.v,
+      vec_fma(dvy_2.v, dy_2.v,
+              vec_fma(dvz_2.v, dz_2.v, vec_mul(v_a2_Hubble.v, r2_2.v))));
 
   /* Compute the relative velocity. (This is 0 if the particles move away from
    * each other and negative otherwise) */
   omega_ij.v = vec_fmin(dvdr.v, vec_setzero());
   omega_ij_2.v = vec_fmin(dvdr_2.v, vec_setzero());
-  mu_ij.v =
-      vec_mul(fac_mu.v, vec_mul(ri.v, omega_ij.v)); /* This is 0 or negative */
+  mu_ij.v = vec_mul(v_fac_mu.v,
+                    vec_mul(ri.v, omega_ij.v)); /* This is 0 or negative */
   mu_ij_2.v = vec_mul(
-      fac_mu.v, vec_mul(ri_2.v, omega_ij_2.v)); /* This is 0 or negative */
+      v_fac_mu.v, vec_mul(ri_2.v, omega_ij_2.v)); /* This is 0 or negative */
 
   /* Compute signal velocity */
   v_sig.v = vec_fnma(vec_set1(3.f), mu_ij.v, vec_add(ci.v, cj.v));

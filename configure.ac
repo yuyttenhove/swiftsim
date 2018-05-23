@@ -16,7 +16,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 # Init the project.
-AC_INIT([SWIFT],[0.6.0],[https://gitlab.cosma.dur.ac.uk/swift/swiftsim])
+AC_INIT([SWIFT],[0.7.0],[https://gitlab.cosma.dur.ac.uk/swift/swiftsim])
 swift_config_flags="$*"
 
 #  Need to define this, instead of using fifth argument of AC_INIT, until 2.64.
@@ -41,6 +41,47 @@ AX_CHECK_ENABLE_DEBUG
 AC_PROG_CC
 AM_PROG_CC_C_O
 
+
+# Master subgrid options
+# If you add a restriction (e.g. no cooling, chemistry or hydro)
+# you will need to check for overwrite after reading the additional options.
+# As an example for this, see the call to AC_ARG_WITH for cooling.
+AC_ARG_WITH([subgrid],
+	[AS_HELP_STRING([--with-subgrid=<subgrid>],
+		[Master switch for subgrid methods. Inexperienced user should start from here @<:@none, GEAR, EAGLE default: none@:>@]
+	)],
+	[with_subgrid="$withval"],
+	[with_subgrid=none]
+)
+
+# Default values
+with_subgrid_cooling=none
+with_subgrid_chemistry=none
+with_subgrid_hydro=none
+
+case "$with_subgrid" in
+   yes)
+      AC_MSG_ERROR([Invalid option. A subgrid model must be chosen.])
+   ;;
+   none)
+   ;;
+   GEAR)
+	with_subgrid_cooling=grackle
+	with_subgrid_chemistry=GEAR
+	with_subgrid_hydro=gadget2
+   ;;
+   EAGLE)
+	with_subgrid_cooling=EAGLE
+	with_subgrid_chemistry=EAGLE
+	with_subgrid_hydro=gadget2
+   ;;
+   *)
+      AC_MSG_ERROR([Unknown subgrid choice: $with_subgrid])
+   ;;
+esac
+
+
+
 # If debug is selected then we also define SWIFT_DEVELOP_MODE to control
 # any developer code options.
 if test "x$ax_enable_debug" != "xno"; then
@@ -53,6 +94,9 @@ AC_USE_SYSTEM_EXTENSIONS
 # Check for compiler version and vendor.
 AX_COMPILER_VENDOR
 AX_COMPILER_VERSION
+
+#  Restrict support.
+AC_C_RESTRICT
 
 # Interprocedural optimization support. Needs special handling for linking and
 # archiving as well as compilation with Intels, needs to be done before
@@ -404,6 +448,52 @@ AC_HEADER_STDC
 # Check for the libraries we will need.
 AC_CHECK_LIB(m,sqrt,,AC_MSG_ERROR(something is wrong with the math library!))
 
+# Check for GSL. We test for this in the standard directories by default,
+# and only disable if using --with-gsl=no or --without-gsl. When a value
+# is given GSL must be found.
+have_gsl="no"
+AC_ARG_WITH([gsl],
+    [AS_HELP_STRING([--with-gsl=PATH],
+       [root directory where GSL is installed @<:@yes/no@:>@]
+    )],
+    [with_gsl="$withval"],
+    [with_gsl="test"]
+)
+if test "x$with_gsl" != "xno"; then
+   if test "x$with_gsl" != "xyes" -a "x$with_gsl" != "xtest" -a "x$with_gsl" != "x"; then
+      GSL_LIBS="-L$with_gsl/lib -lgsl -lgslcblas"
+      GSL_INCS="-I$with_gsl/include"
+   else
+      GSL_LIBS="-lgsl -lgslcblas"
+      GSL_INCS=""
+   fi
+   #  GSL is not specified, so just check if we have it.
+   if test "x$with_gsl" = "xtest"; then
+      AC_CHECK_LIB([gslcblas],[cblas_dgemm],[have_gsl="yes"],[have_gsl="no"],$GSL_LIBS)
+      if test "x$have_gsl" != "xno"; then
+         AC_DEFINE([HAVE_LIBGSLCBLAS],1,[The GSL CBLAS library appears to be present.])
+         AC_CHECK_LIB([gsl],[gsl_integration_qag],
+            AC_DEFINE([HAVE_LIBGSL],1,[The GSL library appears to be present.]),
+            [have_gsl="no"],$GSL_LIBS)
+      fi
+   else
+      AC_CHECK_LIB([gslcblas],[cblas_dgemm],
+         AC_DEFINE([HAVE_LIBGSLCBLAS],1,[The GSL CBLAS library appears to be present.]),
+         AC_MSG_ERROR(something is wrong with the GSL CBLAS library!), $GSL_LIBS)
+      AC_CHECK_LIB([gsl],[gsl_integration_qag],
+         AC_DEFINE([HAVE_LIBGSL],1,[The GSL library appears to be present.]),
+         AC_MSG_ERROR(something is wrong with the GSL library!), $GSL_LIBS)
+      have_gsl="yes"
+   fi
+   if test "$have_gsl" = "no"; then
+      GSL_LIBS=""
+      GSL_INCS=""
+   fi
+fi
+AC_SUBST([GSL_LIBS])
+AC_SUBST([GSL_INCS])
+AM_CONDITIONAL([HAVEGSL],[test -n "$GSL_LIBS"])
+
 # Check for pthreads.
 AX_PTHREAD([LIBS="$PTHREAD_LIBS $LIBS" CFLAGS="$CFLAGS $PTHREAD_CFLAGS"
     CC="$PTHREAD_CC" LDFLAGS="$LDFLAGS $PTHREAD_LIBS $LIBS"],
@@ -434,7 +524,7 @@ AC_ARG_WITH([metis],
     [AS_HELP_STRING([--with-metis=PATH],
        [root directory where metis is installed @<:@yes/no@:>@]
     )],
-    [],
+    [with_metis="$withval"],
     [with_metis="no"]
 )
 if test "x$with_metis" != "xno"; then
@@ -454,13 +544,21 @@ AC_SUBST([METIS_LIBS])
 AC_SUBST([METIS_INCS])
 AM_CONDITIONAL([HAVEMETIS],[test -n "$METIS_LIBS"])
 
-# Check for grackle. 
+# METIS fixed width integer printing can require this, so define. Only needed
+# for some non C99 compilers, i.e. C++ pre C++11.
+AH_VERBATIM([__STDC_FORMAT_MACROS],
+            [/* Needed to get PRIxxx macros from stdint.h when not using C99 */
+#ifndef __STDC_FORMAT_MACROS
+#define __STDC_FORMAT_MACROS 1
+#endif])
+
+# Check for grackle.
 have_grackle="no"
 AC_ARG_WITH([grackle],
     [AS_HELP_STRING([--with-grackle=PATH],
        [root directory where grackle is installed @<:@yes/no@:>@]
     )],
-    [],
+    [with_grackle="$withval"],
     [with_grackle="no"]
 )
 if test "x$with_grackle" != "xno"; then
@@ -473,9 +571,9 @@ if test "x$with_grackle" != "xno"; then
       GRACKLE_LIBS="-lgrackle"
       GRACKLE_INCS=""
    fi
-   
+
    have_grackle="yes"
-      
+
    AC_CHECK_LIB(
       [grackle],
       [initialize_chemistry_data],
@@ -490,6 +588,45 @@ AC_SUBST([GRACKLE_LIBS])
 AC_SUBST([GRACKLE_INCS])
 AM_CONDITIONAL([HAVEGRACKLE],[test -n "$GRACKLE_LIBS"])
 
+# Check for FFTW. We test for this in the standard directories by default,
+# and only disable if using --with-fftw=no or --without-fftw. When a value
+# is given GSL must be found.
+have_fftw="no"
+AC_ARG_WITH([fftw],
+    [AS_HELP_STRING([--with-fftw=PATH],
+       [root directory where fftw is installed @<:@yes/no@:>@]
+    )],
+    [with_fftw="$withval"],
+    [with_fftw="test"]
+)
+if test "x$with_fftw" != "xno"; then
+   if test "x$with_fftw" != "xyes" -a "x$with_fftw" != "xtest" -a "x$with_fftw" != "x"; then
+      FFTW_LIBS="-L$with_fftw/lib -lfftw3"
+      FFTW_INCS="-I$with_fftw/include"
+   else
+      FFTW_LIBS="-lfftw3"
+      FFTW_INCS=""
+   fi
+   #  FFTW is not specified, so just check if we have it.
+   if test "x$with_fftw" = "xtest"; then
+      AC_CHECK_LIB([fftw3],[fftw_malloc],[have_fftw="yes"],[have_fftw="no"],$FFTW_LIBS)
+      if test "x$have_fftw" != "xno"; then
+      	 AC_DEFINE([HAVE_FFTW],1,[The FFTW library appears to be present.])
+      fi
+   else
+      AC_CHECK_LIB([fftw3],[fftw_malloc],
+         AC_DEFINE([HAVE_FFTW],1,[The FFTW library appears to be present.]),
+         AC_MSG_ERROR(something is wrong with the FFTW library!), $FFTW_LIBS)
+      have_fftw="yes"
+   fi
+   if test "$have_fftw" = "no"; then
+      FFTW_LIBS=""
+      FFTW_INCS=""
+   fi
+fi
+AC_SUBST([FFTW_LIBS])
+AC_SUBST([FFTW_INCS])
+AM_CONDITIONAL([HAVEFFTW],[test -n "$FFTW_LIBS"])
 
 #  Check for tcmalloc a fast malloc that is part of the gperftools.
 have_tcmalloc="no"
@@ -541,7 +678,7 @@ AC_ARG_WITH([profiler],
       [use cpu profiler library or specify the directory with lib @<:@yes/no@:>@]
    )],
    [with_profiler="$withval"],
-   [with_profiler="yes"]
+   [with_profiler="no"]
 )
 if test "x$with_profiler" != "xno"; then
    if test "x$with_profiler" != "xyes" -a "x$with_profiler" != "x"; then
@@ -549,8 +686,10 @@ if test "x$with_profiler" != "xno"; then
    else
       proflibs="-lprofiler"
    fi
-   AC_CHECK_LIB([profiler],[ProfilerFlush],[have_profiler="yes"],[have_profiler="no"],
-                $proflibs)
+   AC_CHECK_LIB([profiler],[ProfilerFlush],
+    [have_profiler="yes" 
+      AC_DEFINE([WITH_PROFILER],1,[Link against the gperftools profiling library.])],
+    [have_profiler="no"], $proflibs)
 
    if test "$have_profiler" = "yes"; then
       PROFILER_LIBS="$proflibs"
@@ -651,16 +790,6 @@ if test "$ac_cv_func_pthread_setaffinity_np" = "yes"; then
   fi
 fi
 
-# Check for FFTW
-have_fftw3="no"
-AC_CHECK_HEADER([fftw3.h])
-if test "$ac_cv_header_fftw3_h" = "yes"; then
-   AC_CHECK_LIB([fftw3],[fftw_malloc], [AC_DEFINE([HAVE_FFTW],
-   [1],[Defined if FFTW 3.x exists.])] )
-   FFTW_LIBS="-lfftw3"
-   have_fftw3="yes"
-fi
-AC_SUBST([FFTW_LIBS])
 
 # Check for Intel and PowerPC intrinsics header optionally used by vector.h.
 AC_CHECK_HEADERS([immintrin.h])
@@ -726,30 +855,45 @@ fi
 # Hydro scheme.
 AC_ARG_WITH([hydro],
    [AS_HELP_STRING([--with-hydro=<scheme>],
-      [Hydro dynamics to use @<:@gadget2, minimal, hopkins, default, gizmo, shadowfax debug default: gadget2@:>@]
+      [Hydro dynamics to use @<:@gadget2, minimal, hopkins, default, gizmo-mfv, gizmo-mfm, shadowfax, minimal-multi-mat, debug default: gadget2@:>@]
    )],
    [with_hydro="$withval"],
    [with_hydro="gadget2"]
 )
+
+if test "$with_subgrid" != "none"; then
+   if test "$with_hydro" != "gadget2"; then
+      AC_MSG_ERROR([Cannot provide with-subgrid and with-hydro together])
+   else
+      with_hydro="$with_subgrid_hydro"
+   fi
+fi
+
 case "$with_hydro" in
    gadget2)
       AC_DEFINE([GADGET2_SPH], [1], [Gadget-2 SPH])
-   ;; 
+   ;;
    minimal)
       AC_DEFINE([MINIMAL_SPH], [1], [Minimal SPH])
-   ;; 
+   ;;
    hopkins)
       AC_DEFINE([HOPKINS_PE_SPH], [1], [Pressure-Entropy SPH])
-   ;; 
+   ;;
    default)
       AC_DEFINE([DEFAULT_SPH], [1], [Default SPH])
-   ;; 
-   gizmo)
-      AC_DEFINE([GIZMO_SPH], [1], [GIZMO SPH])
-   ;; 
+   ;;
+   gizmo-mfv)
+      AC_DEFINE([GIZMO_MFV_SPH], [1], [GIZMO MFV SPH])
+   ;;
+   gizmo-mfm)
+      AC_DEFINE([GIZMO_MFM_SPH], [1], [GIZMO MFM SPH])
+   ;;
    shadowfax)
       AC_DEFINE([SHADOWFAX_SPH], [1], [Shadowfax SPH])
-   ;; 
+   ;;
+   minimal-multi-mat)
+      AC_DEFINE([MINIMAL_MULTI_MAT_SPH], [1], [Minimal Multiple Material SPH])
+   ;;
 
    *)
       AC_MSG_ERROR([Unknown hydrodynamics scheme: $with_hydro])
@@ -774,7 +918,7 @@ if test "$enable_debug_interactions" != "no"; then
       AC_DEFINE_UNQUOTED([MAX_NUM_OF_NEIGHBOURS], [$enableval] ,[The maximum number of particle neighbours to be logged])
       [enable_debug_interactions="yes (Logging up to $enableval neighbours)"]
     fi
-  else 
+  else
     [enable_debug_interactions="no (only available for gadget2 hydro scheme)"]
   fi
 fi
@@ -790,22 +934,22 @@ AC_ARG_WITH([kernel],
 case "$with_kernel" in
    cubic-spline)
       AC_DEFINE([CUBIC_SPLINE_KERNEL], [1], [Cubic spline kernel])
-   ;;    
+   ;;
    quartic-spline)
       AC_DEFINE([QUARTIC_SPLINE_KERNEL], [1], [Quartic spline kernel])
-   ;;    
+   ;;
    quintic-spline)
       AC_DEFINE([QUINTIC_SPLINE_KERNEL], [1], [Quintic spline kernel])
-   ;;    
+   ;;
    wendland-C2)
       AC_DEFINE([WENDLAND_C2_KERNEL], [1], [Wendland-C2 kernel])
-   ;;    
+   ;;
    wendland-C4)
       AC_DEFINE([WENDLAND_C4_KERNEL], [1], [Wendland-C4 kernel])
-   ;;    
+   ;;
    wendland-C6)
       AC_DEFINE([WENDLAND_C6_KERNEL], [1], [Wendland-C6 kernel])
-   ;;    
+   ;;
    *)
       AC_MSG_ERROR([Unknown kernel function: $with_kernel])
    ;;
@@ -822,13 +966,13 @@ AC_ARG_WITH([hydro-dimension],
 case "$with_dimension" in
    1)
       AC_DEFINE([HYDRO_DIMENSION_1D], [1], [1D solver])
-   ;; 
+   ;;
    2)
       AC_DEFINE([HYDRO_DIMENSION_2D], [2], [2D solver])
-   ;; 
+   ;;
    3)
       AC_DEFINE([HYDRO_DIMENSION_3D], [3], [3D solver])
-   ;; 
+   ;;
    *)
       AC_MSG_ERROR([Dimensionality must be 1, 2 or 3])
    ;;
@@ -837,7 +981,7 @@ esac
 #  Equation of state
 AC_ARG_WITH([equation-of-state],
    [AS_HELP_STRING([--with-equation-of-state=<EoS>],
-      [equation of state @<:@ideal-gas, isothermal-gas default: ideal-gas@:>@]
+      [equation of state @<:@ideal-gas, isothermal-gas, planetary default: ideal-gas@:>@]
    )],
    [with_eos="$withval"],
    [with_eos="ideal-gas"]
@@ -845,10 +989,13 @@ AC_ARG_WITH([equation-of-state],
 case "$with_eos" in
    ideal-gas)
       AC_DEFINE([EOS_IDEAL_GAS], [1], [Ideal gas equation of state])
-   ;; 
+   ;;
    isothermal-gas)
       AC_DEFINE([EOS_ISOTHERMAL_GAS], [1], [Isothermal gas equation of state])
-   ;; 
+   ;;
+   planetary)
+      AC_DEFINE([EOS_PLANETARY], [1], [All planetary equations of state])
+   ;;
    *)
       AC_MSG_ERROR([Unknown equation of state: $with_eos])
    ;;
@@ -865,16 +1012,16 @@ AC_ARG_WITH([adiabatic-index],
 case "$with_gamma" in
    5/3)
       AC_DEFINE([HYDRO_GAMMA_5_3], [5./3.], [Adiabatic index is 5/3])
-   ;; 
+   ;;
    7/5)
       AC_DEFINE([HYDRO_GAMMA_7_5], [7./5.], [Adiabatic index is 7/5])
-   ;; 
+   ;;
    4/3)
       AC_DEFINE([HYDRO_GAMMA_4_3], [4./3.], [Adiabatic index is 4/3])
-   ;; 
+   ;;
    2)
       AC_DEFINE([HYDRO_GAMMA_2_1], [2.], [Adiabatic index is 2])
-   ;; 
+   ;;
    *)
       AC_MSG_ERROR([Unknown adiabatic index: $with_gamma])
    ;;
@@ -891,16 +1038,16 @@ AC_ARG_WITH([riemann-solver],
 case "$with_riemann" in
    none)
       AC_DEFINE([RIEMANN_SOLVER_NONE], [1], [No Riemann solver])
-   ;; 
+   ;;
    exact)
       AC_DEFINE([RIEMANN_SOLVER_EXACT], [1], [Exact Riemann solver])
-   ;; 
+   ;;
    trrs)
       AC_DEFINE([RIEMANN_SOLVER_TRRS], [1], [Two Rarefaction Riemann Solver])
-   ;; 
+   ;;
    hllc)
       AC_DEFINE([RIEMANN_SOLVER_HLLC], [1], [Harten-Lax-van Leer-Contact Riemann solver])
-   ;; 
+   ;;
    *)
       AC_MSG_ERROR([Unknown Riemann solver: $with_riemann])
    ;;
@@ -909,27 +1056,49 @@ esac
 #  Cooling function
 AC_ARG_WITH([cooling],
    [AS_HELP_STRING([--with-cooling=<function>],
-      [cooling function @<:@none, const-du, const-lambda, grackle default: none@:>@]
+      [cooling function @<:@none, const-du, const-lambda, EAGLE, grackle, grackle1, grackle2, grackle3 default: none@:>@]
    )],
    [with_cooling="$withval"],
    [with_cooling="none"]
 )
+
+if test "$with_subgrid" != "none"; then
+   if test "$with_cooling" != "none"; then
+      AC_MSG_ERROR([Cannot provide with-subgrid and with-cooling together])
+   else
+      with_cooling="$with_subgrid_cooling"
+   fi
+fi
+
 case "$with_cooling" in
    none)
       AC_DEFINE([COOLING_NONE], [1], [No cooling function])
-   ;; 
+   ;;
    const-du)
       AC_DEFINE([COOLING_CONST_DU], [1], [Const du/dt cooling function])
-   ;; 
+   ;;
    const-lambda)
       AC_DEFINE([COOLING_CONST_LAMBDA], [1], [Const Lambda cooling function])
-   ;; 
+   ;;
    grackle)
       AC_DEFINE([COOLING_GRACKLE], [1], [Cooling via the grackle library])
-   ;; 
+      AC_DEFINE([COOLING_GRACKLE_MODE], [0], [Grackle chemistry network, mode 0])
+   ;;
+   grackle1)
+      AC_DEFINE([COOLING_GRACKLE], [1], [Cooling via the grackle library])
+      AC_DEFINE([COOLING_GRACKLE_MODE], [1], [Grackle chemistry network, mode 1])
+   ;;
+   grackle2)
+      AC_DEFINE([COOLING_GRACKLE], [1], [Cooling via the grackle library])
+      AC_DEFINE([COOLING_GRACKLE_MODE], [2], [Grackle chemistry network, mode 2])
+   ;;
+   grackle3)
+      AC_DEFINE([COOLING_GRACKLE], [1], [Cooling via the grackle library])
+      AC_DEFINE([COOLING_GRACKLE_MODE], [3], [Grackle chemistry network, mode 3])
+   ;;
    EAGLE)
       AC_DEFINE([COOLING_EAGLE], [1], [Cooling following the EAGLE model])
-   ;; 
+   ;;
    *)
       AC_MSG_ERROR([Unknown cooling function: $with_cooling])
    ;;
@@ -938,21 +1107,30 @@ esac
 #  chemistry function
 AC_ARG_WITH([chemistry],
    [AS_HELP_STRING([--with-chemistry=<function>],
-      [chemistry function @<:@none, gear, EAGLE default: none@:>@]
+      [chemistry function @<:@none, GEAR, EAGLE default: none@:>@]
    )],
    [with_chemistry="$withval"],
    [with_chemistry="none"]
 )
+
+if test "$with_subgrid" != "none"; then
+   if test "$with_chemistry" != "none"; then
+      AC_MSG_ERROR([Cannot provide with-subgrid and with-chemistry together])
+   else
+      with_chemistry="$with_subgrid_chemistry"
+   fi
+fi
+
 case "$with_chemistry" in
    none)
       AC_DEFINE([CHEMISTRY_NONE], [1], [No chemistry function])
-   ;; 
-   gear)
+   ;;
+   GEAR)
       AC_DEFINE([CHEMISTRY_GEAR], [1], [Chemistry taken from the GEAR model])
-   ;; 
+   ;;
    EAGLE)
       AC_DEFINE([CHEMISTRY_EAGLE], [1], [Chemistry taken from the EAGLE model])
-   ;; 
+   ;;
    *)
       AC_MSG_ERROR([Unknown chemistry function: $with_chemistry])
    ;;
@@ -961,7 +1139,7 @@ esac
 #  External potential
 AC_ARG_WITH([ext-potential],
    [AS_HELP_STRING([--with-ext-potential=<pot>],
-      [external potential @<:@none, point-mass, isothermal, softened-isothermal, disc-patch, sine-wave default: none@:>@]
+      [external potential @<:@none, point-mass, point-mass-ring, point-mass-softened, isothermal, softened-isothermal, disc-patch, sine-wave, default: none@:>@]
    )],
    [with_potential="$withval"],
    [with_potential="none"]
@@ -969,19 +1147,25 @@ AC_ARG_WITH([ext-potential],
 case "$with_potential" in
    none)
       AC_DEFINE([EXTERNAL_POTENTIAL_NONE], [1], [No external potential])
-   ;; 
+   ;;
    point-mass)
       AC_DEFINE([EXTERNAL_POTENTIAL_POINTMASS], [1], [Point-mass external potential])
-   ;; 
+   ;;
    isothermal)
       AC_DEFINE([EXTERNAL_POTENTIAL_ISOTHERMAL], [1], [Isothermal external potential])
-   ;; 
+   ;;
    disc-patch)
       AC_DEFINE([EXTERNAL_POTENTIAL_DISC_PATCH], [1], [Disc-patch external potential])
-   ;; 
+   ;;
    sine-wave)
       AC_DEFINE([EXTERNAL_POTENTIAL_SINE_WAVE], [1], [Sine wave external potential in 1D])
-   ;; 
+   ;;
+   point-mass-ring)
+      AC_DEFINE([EXTERNAL_POTENTIAL_POINTMASS_RING], [1], [Point mass potential for Keplerian Ring (Hopkins 2015).])
+   ;;
+   point-mass-softened)
+      AC_DEFINE([EXTERNAL_POTENTIAL_POINTMASS_SOFT], [1], [Softened point-mass potential with form 1/(r^2 + softening^2).])
+   ;;
    *)
       AC_MSG_ERROR([Unknown external potential: $with_potential])
    ;;
@@ -996,7 +1180,6 @@ AC_ARG_WITH([multipole-order],
    [with_multipole_order="5"]
 )
 AC_DEFINE_UNQUOTED([SELF_GRAVITY_MULTIPOLE_ORDER], [$with_multipole_order], [Multipole order])
-
 
 # Check for git, needed for revision stamps.
 AC_PATH_PROG([GIT_CMD], [git])
@@ -1029,7 +1212,7 @@ touch src/version.c
 AC_OUTPUT
 
 # Report general configuration.
-AC_MSG_RESULT([ 
+AC_MSG_RESULT([
  ------- Summary --------
 
    $PACKAGE_NAME v.$PACKAGE_VERSION
@@ -1042,7 +1225,8 @@ AC_MSG_RESULT([
    HDF5 enabled     : $with_hdf5
     - parallel      : $have_parallel_hdf5
    Metis enabled    : $have_metis
-   FFTW3 enabled    : $have_fftw3
+   FFTW3 enabled    : $have_fftw
+   GSL enabled      : $have_gsl
    libNUMA enabled  : $have_numa
    GRACKLE enabled  : $have_grackle
    Using tcmalloc   : $have_tcmalloc
@@ -1058,7 +1242,7 @@ AC_MSG_RESULT([
    Riemann solver     : $with_riemann
    Cooling function   : $with_cooling
    Chemistry          : $with_chemistry
-   
+
    External potential  : $with_potential
    Multipole order     : $with_multipole_order
    No gravity below ID : $no_gravity_below_id

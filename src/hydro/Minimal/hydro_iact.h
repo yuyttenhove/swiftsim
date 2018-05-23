@@ -37,14 +37,26 @@
 #include "hydro_cache.h"
 
 /**
- * @brief Density loop
+ * @brief Density interaction between two particles.
+ *
+ * @param r2 Comoving square distance between the two particles.
+ * @param dx Comoving vector separating both particles (pi - pj).
+ * @param hi Comoving smoothing-length of particle i.
+ * @param hj Comoving smoothing-length of particle j.
+ * @param pi First particle.
+ * @param pj Second particle.
+ * @param a Current scale factor.
+ * @param H Current Hubble parameter.
  */
 __attribute__((always_inline)) INLINE static void runner_iact_density(
-    float r2, float *dx, float hi, float hj, struct part *pi, struct part *pj) {
+    float r2, const float *dx, float hi, float hj, struct part *restrict pi,
+    struct part *restrict pj, float a, float H) {
 
   float wi, wj, wi_dx, wj_dx;
 
-  const float r = sqrtf(r2);
+  /* Get r. */
+  const float r_inv = 1.0f / sqrtf(r2);
+  const float r = r2 * r_inv;
 
   /* Get the masses. */
   const float mi = pi->mass;
@@ -72,18 +84,29 @@ __attribute__((always_inline)) INLINE static void runner_iact_density(
 }
 
 /**
- * @brief Density loop (non-symmetric version)
+ * @brief Density interaction between two particles (non-symmetric).
+ *
+ * @param r2 Comoving square distance between the two particles.
+ * @param dx Comoving vector separating both particles (pi - pj).
+ * @param hi Comoving smoothing-length of particle i.
+ * @param hj Comoving smoothing-length of particle j.
+ * @param pi First particle.
+ * @param pj Second particle (not updated).
+ * @param a Current scale factor.
+ * @param H Current Hubble parameter.
  */
 __attribute__((always_inline)) INLINE static void runner_iact_nonsym_density(
-    float r2, float *dx, float hi, float hj, struct part *pi, struct part *pj) {
+    float r2, const float *dx, float hi, float hj, struct part *restrict pi,
+    const struct part *restrict pj, float a, float H) {
 
   float wi, wi_dx;
 
   /* Get the masses. */
   const float mj = pj->mass;
 
-  /* Get r and r inverse. */
-  const float r = sqrtf(r2);
+  /* Get r. */
+  const float r_inv = 1.0f / sqrtf(r2);
+  const float r = r2 * r_inv;
 
   const float h_inv = 1.f / hi;
   const float ui = r * h_inv;
@@ -127,7 +150,7 @@ runner_iact_nonsym_1_vec_density(vector *r2, vector *dx, vector *dy, vector *dz,
 
   const int int_mask = vec_is_mask_true(mask);
 
-  swift_align_information(cell_cache->m, SWIFT_CACHE_ALIGNMENT);
+  swift_align_information(float, cell_cache->m, SWIFT_CACHE_ALIGNMENT);
 
   for(int i=0; i<VEC_SIZE; i++) {
 
@@ -212,15 +235,28 @@ runner_iact_nonsym_2_vec_density(struct c2_cache *restrict int_cache, const int 
 #endif
 
 /**
- * @brief Force loop
+ * @brief Force interaction between two particles.
+ *
+ * @param r2 Comoving square distance between the two particles.
+ * @param dx Comoving vector separating both particles (pi - pj).
+ * @param hi Comoving smoothing-length of particle i.
+ * @param hj Comoving smoothing-length of particle j.
+ * @param pi First particle.
+ * @param pj Second particle.
+ * @param a Current scale factor.
+ * @param H Current Hubble parameter.
  */
 __attribute__((always_inline)) INLINE static void runner_iact_force(
-    float r2, float *dx, float hi, float hj, struct part *pi, struct part *pj) {
+    float r2, const float *dx, float hi, float hj, struct part *restrict pi,
+    struct part *restrict pj, float a, float H) {
 
-  const float fac_mu = 1.f; /* Will change with cosmological integration */
+  /* Cosmological factors entering the EoMs */
+  const float fac_mu = pow_three_gamma_minus_five_over_two(a);
+  const float a2_Hubble = a * a * H;
 
-  const float r = sqrtf(r2);
-  const float r_inv = 1.0f / r;
+  /* Get r and r inverse. */
+  const float r_inv = 1.0f / sqrtf(r2);
+  const float r = r2 * r_inv;
 
   /* Recover some data */
   const float mi = pi->mass;
@@ -253,7 +289,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_force(
   /* Compute dv dot r. */
   const float dvdr = (pi->v[0] - pj->v[0]) * dx[0] +
                      (pi->v[1] - pj->v[1]) * dx[1] +
-                     (pi->v[2] - pj->v[2]) * dx[2];
+                     (pi->v[2] - pj->v[2]) * dx[2] + a2_Hubble * r2;
 
   /* Are the particles moving towards each others ? */
   const float omega_ij = min(dvdr, 0.f);
@@ -312,15 +348,28 @@ __attribute__((always_inline)) INLINE static void runner_iact_force(
 }
 
 /**
- * @brief Force loop (non-symmetric version)
+ * @brief Force interaction between two particles (non-symmetric).
+ *
+ * @param r2 Comoving square distance between the two particles.
+ * @param dx Comoving vector separating both particles (pi - pj).
+ * @param hi Comoving smoothing-length of particle i.
+ * @param hj Comoving smoothing-length of particle j.
+ * @param pi First particle.
+ * @param pj Second particle (not updated).
+ * @param a Current scale factor.
+ * @param H Current Hubble parameter.
  */
 __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force(
-    float r2, float *dx, float hi, float hj, struct part *pi, struct part *pj) {
+    float r2, const float *dx, float hi, float hj, struct part *restrict pi,
+    const struct part *restrict pj, float a, float H) {
 
-  const float fac_mu = 1.f; /* Will change with cosmological integration */
+  /* Cosmological factors entering the EoMs */
+  const float fac_mu = pow_three_gamma_minus_five_over_two(a);
+  const float a2_Hubble = a * a * H;
 
-  const float r = sqrtf(r2);
-  const float r_inv = 1.0f / r;
+  /* Get r and r inverse. */
+  const float r_inv = 1.0f / sqrtf(r2);
+  const float r = r2 * r_inv;
 
   /* Recover some data */
   // const float mi = pi->mass;
@@ -353,7 +402,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force(
   /* Compute dv dot r. */
   const float dvdr = (pi->v[0] - pj->v[0]) * dx[0] +
                      (pi->v[1] - pj->v[1]) * dx[1] +
-                     (pi->v[2] - pj->v[2]) * dx[2];
+                     (pi->v[2] - pj->v[2]) * dx[2] + a2_Hubble * r2;
 
   /* Are the particles moving towards each others ? */
   const float omega_ij = min(dvdr, 0.f);
@@ -407,9 +456,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force(
  * @brief Force loop (non-symmetric version)
  */
 __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force_scalar(
-     float r2, float dx, float dy, float dz, float hj_inv, const struct input_params_force *params, const struct cache *cell_cache, const int cache_idx, float *restrict a_hydro_xSum, float *restrict a_hydro_ySum, float *restrict a_hydro_zSum, float *restrict u_dtSum, float *restrict h_dtSum, float *restrict sigSum) {
-
-  const float fac_mu = 1.f; /* Will change with cosmological integration */
+     float r2, float dx, float dy, float dz, float hj_inv, const struct input_params_force *params, const struct cache *cell_cache, const int cache_idx, const float a2_Hubble, const float fac_mu, float *restrict a_hydro_xSum, float *restrict a_hydro_ySum, float *restrict a_hydro_zSum, float *restrict u_dtSum, float *restrict h_dtSum, float *restrict sigSum) {
 
   const float r = sqrtf(r2);
   const float r_inv = 1.0f / r;
@@ -439,7 +486,8 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force_scala
   /* Compute dv dot r. */
   const float dvdr = (params->input[input_params_force_vix].f[0] - cell_cache->vx[cache_idx]) * dx +
                      (params->input[input_params_force_viy].f[0] - cell_cache->vy[cache_idx]) * dy +
-                     (params->input[input_params_force_viz].f[0] - cell_cache->vz[cache_idx]) * dz;
+                     (params->input[input_params_force_viz].f[0] - cell_cache->vz[cache_idx]) * dz + 
+                     a2_Hubble * r2;
 
   /* Are the particles moving towards each others ? */
   const float omega_ij = min(dvdr, 0.f);
@@ -494,23 +542,27 @@ static const vector const_viscosity_alpha_fac =
  */
 __attribute__((always_inline)) INLINE static void
 runner_iact_nonsym_1_vec_force(
-    vector *r2, vector *dx, vector *dy, vector *dz, const struct input_params_force *params, const struct cache *restrict cell_cache, const int cache_idx, vector hj_inv, struct update_cache_force *restrict sum_cache, mask_t mask) {
+    vector *r2, vector *dx, vector *dy, vector *dz, const struct input_params_force *params, const struct cache *restrict cell_cache, const int cache_idx, vector hj_inv, const float a, const float H, struct update_cache_force *restrict sum_cache, mask_t mask) {
 
   const int int_mask = vec_is_mask_true(mask);
   
-  swift_align_information(cell_cache->m, SWIFT_CACHE_ALIGNMENT);
-  swift_align_information(cell_cache->rho, SWIFT_CACHE_ALIGNMENT);
-  swift_align_information(cell_cache->pressure, SWIFT_CACHE_ALIGNMENT);
-  swift_align_information(cell_cache->grad_h, SWIFT_CACHE_ALIGNMENT);
-  swift_align_information(cell_cache->vx, SWIFT_CACHE_ALIGNMENT);
-  swift_align_information(cell_cache->vy, SWIFT_CACHE_ALIGNMENT);
-  swift_align_information(cell_cache->vz, SWIFT_CACHE_ALIGNMENT);
-  swift_align_information(cell_cache->soundspeed, SWIFT_CACHE_ALIGNMENT);
+  /* Cosmological terms */
+  const float fac_mu = pow_three_gamma_minus_five_over_two(a);
+  const float a2_Hubble = a * a * H;
+  
+  swift_align_information(float, cell_cache->m, SWIFT_CACHE_ALIGNMENT);
+  swift_align_information(float, cell_cache->rho, SWIFT_CACHE_ALIGNMENT);
+  swift_align_information(float, cell_cache->pressure, SWIFT_CACHE_ALIGNMENT);
+  swift_align_information(float, cell_cache->grad_h, SWIFT_CACHE_ALIGNMENT);
+  swift_align_information(float, cell_cache->vx, SWIFT_CACHE_ALIGNMENT);
+  swift_align_information(float, cell_cache->vy, SWIFT_CACHE_ALIGNMENT);
+  swift_align_information(float, cell_cache->vz, SWIFT_CACHE_ALIGNMENT);
+  swift_align_information(float, cell_cache->soundspeed, SWIFT_CACHE_ALIGNMENT);
 
   for(int i=0; i<VEC_SIZE; i++) {
     float a_hydro_x = 0.f, a_hydro_y = 0.f, a_hydro_z = 0.f, u_dt = 0.f, h_dt = 0.f, sig = 0.f;
     if (int_mask & (1 << i)) {
-      runner_iact_nonsym_force_scalar(r2->f[i], dx->f[i], dy->f[i], dz->f[i], hj_inv.f[i], params, cell_cache, cache_idx + i, &a_hydro_x, &a_hydro_y, &a_hydro_z, &u_dt, &h_dt, &sig);
+      runner_iact_nonsym_force_scalar(r2->f[i], dx->f[i], dy->f[i], dz->f[i], hj_inv.f[i], params, cell_cache, cache_idx + i, a2_Hubble, fac_mu, &a_hydro_x, &a_hydro_y, &a_hydro_z, &u_dt, &h_dt, &sig);
     }
     sum_cache->v_a_hydro_xSum.f[i] += a_hydro_x;
     sum_cache->v_a_hydro_ySum.f[i] += a_hydro_y;

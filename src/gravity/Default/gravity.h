@@ -21,7 +21,10 @@
 #define SWIFT_DEFAULT_GRAVITY_H
 
 #include <float.h>
+
+#include "cosmology.h"
 #include "gravity_properties.h"
+#include "kernel_gravity.h"
 #include "minmax.h"
 
 /**
@@ -39,22 +42,36 @@ __attribute__((always_inline)) INLINE static float gravity_get_mass(
  * @brief Returns the softening of a particle
  *
  * @param gp The particle of interest
+ * @param grav_props The global gravity properties.
  */
 __attribute__((always_inline)) INLINE static float gravity_get_softening(
-    const struct gpart* restrict gp) {
+    const struct gpart* gp, const struct gravity_props* restrict grav_props) {
 
-  return gp->epsilon;
+  return grav_props->epsilon_cur;
 }
 
 /**
- * @brief Returns the potential of a particle
+ * @brief Returns the comoving potential of a particle
  *
  * @param gp The particle of interest
  */
-__attribute__((always_inline)) INLINE static float gravity_get_potential(
-    const struct gpart* restrict gp) {
+__attribute__((always_inline)) INLINE static float
+gravity_get_comoving_potential(const struct gpart* restrict gp) {
 
   return gp->potential;
+}
+
+/**
+ * @brief Returns the physical potential of a particle
+ *
+ * @param gp The particle of interest.
+ * @param cosmo The cosmological model.
+ */
+__attribute__((always_inline)) INLINE static float
+gravity_get_physical_potential(const struct gpart* restrict gp,
+                               const struct cosmology* cosmo) {
+
+  return gp->potential * cosmo->a_inv;
 }
 
 /**
@@ -63,22 +80,35 @@ __attribute__((always_inline)) INLINE static float gravity_get_potential(
  * We use Gadget-2's type 0 time-step criterion.
  *
  * @param gp Pointer to the g-particle data.
+ * @param a_hydro The accelerations coming from the hydro scheme (can be 0).
  * @param grav_props Constants used in the gravity scheme.
+ * @param cosmo The current cosmological model.
  */
 __attribute__((always_inline)) INLINE static float
 gravity_compute_timestep_self(const struct gpart* const gp,
-                              const struct gravity_props* restrict grav_props) {
+                              const float a_hydro[3],
+                              const struct gravity_props* restrict grav_props,
+                              const struct cosmology* cosmo) {
 
-  const float ac2 = gp->a_grav[0] * gp->a_grav[0] +
-                    gp->a_grav[1] * gp->a_grav[1] +
-                    gp->a_grav[2] * gp->a_grav[2];
+  /* Get physical acceleration (gravity contribution) */
+  float a_phys_x = gp->a_grav[0] * cosmo->a_factor_grav_accel;
+  float a_phys_y = gp->a_grav[1] * cosmo->a_factor_grav_accel;
+  float a_phys_z = gp->a_grav[2] * cosmo->a_factor_grav_accel;
+
+  /* Get physical acceleration (hydro contribution) */
+  a_phys_x += a_hydro[0] * cosmo->a_factor_hydro_accel;
+  a_phys_y += a_hydro[1] * cosmo->a_factor_hydro_accel;
+  a_phys_z += a_hydro[2] * cosmo->a_factor_hydro_accel;
+
+  const float ac2 =
+      a_phys_x * a_phys_x + a_phys_y * a_phys_y + a_phys_z * a_phys_z;
 
   const float ac_inv = (ac2 > 0.f) ? 1.f / sqrtf(ac2) : FLT_MAX;
 
-  const float epsilon = gravity_get_softening(gp);
+  const float epsilon = gravity_get_softening(gp, grav_props);
 
-  /* Note that 0.66666667 = 2. (from Gadget) / 3. (Plummer softening) */
-  const float dt = sqrtf(0.66666667f * grav_props->eta * epsilon * ac_inv);
+  const float dt = sqrtf(2. * kernel_gravity_softening_plummer_equivalent_inv *
+                         cosmo->a * grav_props->eta * epsilon * ac_inv);
 
   return dt;
 }
@@ -100,6 +130,13 @@ __attribute__((always_inline)) INLINE static void gravity_init_gpart(
   gp->a_grav[2] = 0.f;
   gp->potential = 0.f;
 
+#ifdef SWIFT_GRAVITY_FORCE_CHECKS
+  gp->potential_PM = 0.f;
+  gp->a_grav_PM[0] = 0.f;
+  gp->a_grav_PM[1] = 0.f;
+  gp->a_grav_PM[2] = 0.f;
+#endif
+
 #ifdef SWIFT_DEBUG_CHECKS
   gp->num_interacted = 0;
 #endif
@@ -120,6 +157,14 @@ __attribute__((always_inline)) INLINE static void gravity_end_force(
   gp->a_grav[0] *= const_G;
   gp->a_grav[1] *= const_G;
   gp->a_grav[2] *= const_G;
+  gp->potential *= const_G;
+
+#ifdef SWIFT_GRAVITY_FORCE_CHECKS
+  gp->potential_PM *= const_G;
+  gp->a_grav_PM[0] *= const_G;
+  gp->a_grav_PM[1] *= const_G;
+  gp->a_grav_PM[2] *= const_G;
+#endif
 }
 
 /**
@@ -153,7 +198,6 @@ __attribute__((always_inline)) INLINE static void gravity_first_init_gpart(
     struct gpart* gp, const struct gravity_props* grav_props) {
 
   gp->time_bin = 0;
-  gp->epsilon = grav_props->epsilon;
 
   gravity_init_gpart(gp);
 }

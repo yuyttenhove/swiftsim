@@ -20,9 +20,12 @@
 #define SWIFT_COOLING_EAGLE_H
 
 /**
- * @file src/cooling/none/cooling.h
- * @brief Empty infrastructure for the cases without cooling function
+ * @file src/cooling/EAGLE/cooling.h
+ * @brief EAGLE cooling function
  */
+
+/* Config parameters. */
+#include "../config.h"
 
 /* Some standard headers. */
 #include <float.h>
@@ -31,27 +34,17 @@
 /* Local includes. */
 #include "error.h"
 #include "hydro.h"
-#include "io_properties.h"
 #include "parser.h"
 #include "part.h"
 #include "physical_constants.h"
 #include "units.h"
 
 /**
- * @brief Writes the current model of SPH to the file
- * @param h_grpsph The HDF5 group in which to write
- */
-__attribute__((always_inline)) INLINE static void cooling_write_flavour(
-    hid_t h_grpsph) {
-
-  io_write_attribute_s(h_grpsph, "Cooling Model", "EAGLE");
-}
-
-/**
  * @brief Apply the cooling function to a particle.
  *
  * @param phys_const The physical constants in internal units.
  * @param us The internal system of units.
+ * @param cosmo The current cosmological model.
  * @param cooling The #cooling_function_data used in the run.
  * @param p Pointer to the particle data.
  * @param xp Pointer to the extended particle data.
@@ -60,6 +53,7 @@ __attribute__((always_inline)) INLINE static void cooling_write_flavour(
 __attribute__((always_inline)) INLINE static void cooling_cool_part(
     const struct phys_const* restrict phys_const,
     const struct unit_system* restrict us,
+    const struct cosmology* restrict cosmo,
     const struct cooling_function_data* restrict cooling,
     struct part* restrict p, struct xpart* restrict xp, float dt) {}
 
@@ -69,11 +63,13 @@ __attribute__((always_inline)) INLINE static void cooling_cool_part(
  * @param cooling The #cooling_function_data used in the run.
  * @param phys_const The physical constants in internal units.
  * @param us The internal system of units.
+ * @param cosmo The current cosmological model.
  * @param p Pointer to the particle data.
  */
 __attribute__((always_inline)) INLINE static float cooling_timestep(
     const struct cooling_function_data* restrict cooling,
     const struct phys_const* restrict phys_const,
+    const struct cosmology* restrict cosmo,
     const struct unit_system* restrict us, const struct part* restrict p) {
 
   return FLT_MAX;
@@ -88,8 +84,11 @@ __attribute__((always_inline)) INLINE static float cooling_timestep(
  * @param cooling The properties of the cooling function.
  */
 __attribute__((always_inline)) INLINE static void cooling_first_init_part(
-    const struct part* restrict p, struct xpart* restrict xp,
-    const struct cooling_function_data* cooling) {}
+    const struct phys_const* restrict phys_const,
+    const struct unit_system* restrict us,
+    const struct cosmology* restrict cosmo,
+    const struct cooling_function_data* restrict cooling,
+    const struct part* restrict p, struct xpart* restrict xp) {}
 
 /**
  * @brief Returns the total radiated energy by this particle.

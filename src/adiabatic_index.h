@@ -33,7 +33,6 @@
 #include <math.h>
 
 /* Local headers. */
-#include "debug.h"
 #include "error.h"
 #include "inline.h"
 
@@ -42,6 +41,7 @@
 
 #define hydro_gamma 1.66666666666666667f
 #define hydro_gamma_minus_one 0.66666666666666667f
+#define hydro_gamma_plus_one 2.66666666666666667f
 #define hydro_one_over_gamma_minus_one 1.5f
 #define hydro_gamma_plus_one_over_two_gamma 0.8f
 #define hydro_gamma_minus_one_over_two_gamma 0.2f
@@ -56,6 +56,7 @@
 
 #define hydro_gamma 1.4f
 #define hydro_gamma_minus_one 0.4f
+#define hydro_gamma_plus_one 2.4f
 #define hydro_one_over_gamma_minus_one 2.5f
 #define hydro_gamma_plus_one_over_two_gamma 0.857142857f
 #define hydro_gamma_minus_one_over_two_gamma 0.142857143f
@@ -70,6 +71,7 @@
 
 #define hydro_gamma 1.33333333333333333f
 #define hydro_gamma_minus_one 0.33333333333333333f
+#define hydro_gamma_plus_one 2.33333333333333333f
 #define hydro_one_over_gamma_minus_one 3.f
 #define hydro_gamma_plus_one_over_two_gamma 0.875f
 #define hydro_gamma_minus_one_over_two_gamma 0.125f
@@ -84,6 +86,7 @@
 
 #define hydro_gamma 2.f
 #define hydro_gamma_minus_one 1.f
+#define hydro_gamma_plus_one 3.f
 #define hydro_one_over_gamma_minus_one 1.f
 #define hydro_gamma_plus_one_over_two_gamma 0.75f
 #define hydro_gamma_minus_one_over_two_gamma 0.25f
@@ -418,6 +421,75 @@ __attribute__((always_inline)) INLINE static float pow_one_over_gamma(float x) {
 #elif defined(HYDRO_GAMMA_4_3)
 
   return powf(x, hydro_one_over_gamma); /* x^(3/4) */
+
+#elif defined(HYDRO_GAMMA_2_1)
+
+  return sqrtf(x); /* x^(1/2) */
+
+#else
+
+  error("The adiabatic index is not defined !");
+  return 0.f;
+
+#endif
+}
+
+/**
+ * @brief Return the argument to the power three adiabatic index minus two.
+ *
+ * Computes \f$x^{3\gamma - 2}\f$.
+ *
+ * @param x Argument
+ */
+__attribute__((always_inline)) INLINE static float pow_three_gamma_minus_two(
+    float x) {
+
+#if defined(HYDRO_GAMMA_5_3)
+
+  return x * x * x; /* x^(3) */
+
+#elif defined(HYDRO_GAMMA_7_5)
+
+  return powf(x, 2.2f); /* x^(11/5) */
+
+#elif defined(HYDRO_GAMMA_4_3)
+
+  return x * x; /* x^(2) */
+
+#elif defined(HYDRO_GAMMA_2_1)
+
+  return x * x * x * x; /* x^(4) */
+
+#else
+
+  error("The adiabatic index is not defined !");
+  return 0.f;
+
+#endif
+}
+
+/**
+ * @brief Return the argument to the power three adiabatic index minus five over
+ * two.
+ *
+ * Computes \f$x^{(3\gamma - 5)/2}\f$.
+ *
+ * @param x Argument
+ */
+__attribute__((always_inline)) INLINE static float
+pow_three_gamma_minus_five_over_two(float x) {
+
+#if defined(HYDRO_GAMMA_5_3)
+
+  return 1.f; /* x^(0) */
+
+#elif defined(HYDRO_GAMMA_7_5)
+
+  return powf(x, -0.4f); /* x^(-2/5) */
+
+#elif defined(HYDRO_GAMMA_4_3)
+
+  return 1.f / sqrtf(x); /* x^(-1/2) */
 
 #elif defined(HYDRO_GAMMA_2_1)
 

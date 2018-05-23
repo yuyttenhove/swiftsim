@@ -30,6 +30,7 @@
 
 /* Local includes. */
 #include "chemistry_struct.h"
+#include "cosmology.h"
 #include "error.h"
 #include "hydro.h"
 #include "parser.h"
@@ -38,18 +39,15 @@
 #include "units.h"
 
 /**
- * @brief Sets the chemistry properties of the (x-)particles to a valid start
- * state.
- *
- * Nothing to do here.
- *
- * @param p Pointer to the particle data.
- * @param xp Pointer to the extended particle data.
- * @param data The global chemistry information used for this run.
+ * @brief Return a string containing the name of a given #chemistry_element.
  */
-__attribute__((always_inline)) INLINE static void chemistry_first_init_part(
-    const struct part* restrict p, struct xpart* restrict xp,
-    const struct chemistry_data* data) {}
+__attribute__((always_inline)) INLINE static const char*
+chemistry_get_element_name(enum chemistry_element elem) {
+
+  static const char* chemistry_element_names[chemistry_element_count] = {};
+
+  return chemistry_element_names[elem];
+}
 
 /**
  * @brief Initialises the chemistry properties.
@@ -63,16 +61,61 @@ __attribute__((always_inline)) INLINE static void chemistry_first_init_part(
  */
 static INLINE void chemistry_init_backend(
     const struct swift_params* parameter_file, const struct unit_system* us,
-    const struct phys_const* phys_const, struct chemistry_data* data) {}
+    const struct phys_const* phys_const, struct chemistry_global_data* data) {}
 
 /**
  * @brief Prints the properties of the chemistry model to stdout.
  *
- * @brief The #chemistry_data containing information about the current model.
+ * @brief The #chemistry_global_data containing information about the current
+ * model.
  */
-static INLINE void chemistry_print_backend(const struct chemistry_data* data) {
+static INLINE void chemistry_print_backend(
+    const struct chemistry_global_data* data) {
 
   message("Chemistry function is 'No chemistry'.");
 }
+
+/**
+ * @brief Finishes the density calculation.
+ *
+ * @param p The particle to act upon
+ * @param cd The global chemistry information.
+ * @param cosmo The current cosmological model.
+ */
+__attribute__((always_inline)) INLINE static void chemistry_end_density(
+    struct part* restrict p, const struct chemistry_global_data* cd,
+    const struct cosmology* cosmo) {}
+
+/**
+ * @brief Sets the chemistry properties of the (x-)particles to a valid start
+ * state.
+ *
+ * Nothing to do here.
+ *
+ * @param phys_const The physical constant in internal units.
+ * @param us The unit system.
+ * @param cosmo The current cosmological model.
+ * @param data The global chemistry information used for this run.
+ * @param p Pointer to the particle data.
+ * @param xp Pointer to the extended particle data.
+ */
+__attribute__((always_inline)) INLINE static void chemistry_first_init_part(
+    const struct phys_const* restrict phys_const,
+    const struct unit_system* restrict us,
+    const struct cosmology* restrict cosmo,
+    const struct chemistry_global_data* data, const struct part* restrict p,
+    struct xpart* restrict xp) {}
+
+/**
+ * @brief Sets the chemistry properties of the (x-)particles to a valid start
+ * state.
+ *
+ * Nothing to do here.
+ *
+ * @param p Pointer to the particle data.
+ * @param data The global chemistry information.
+ */
+__attribute__((always_inline)) INLINE static void chemistry_init_part(
+    struct part* restrict p, const struct chemistry_global_data* data) {}
 
 #endif /* SWIFT_CHEMISTRY_NONE_H */

@@ -28,17 +28,13 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* MPI headers. */
-#ifdef WITH_MPI
-#include <mpi.h>
-#endif
-
 /* This object's header. */
 #include "units.h"
 
 /* Includes. */
 #include "adiabatic_index.h"
 #include "error.h"
+#include "restart.h"
 
 /**
  * @brief Initialises the unit_system structure with CGS system
@@ -55,6 +51,25 @@ void units_init_cgs(struct unit_system* us) {
 }
 
 /**
+ * @brief Initialise the unit_system with values for the base units.
+ *
+ * @param us The #unit_system to initialise.
+ * @param U_M_in_cgs The mass unit in [g].
+ * @param U_L_in_cgs The length unit in [cm].
+ * @param U_t_in_cgs The time unit in [s].
+ * @param U_C_in_cgs The current unit in [A].
+ * @param U_T_in_cgs The temperature unit in [K].
+ */
+void units_init(struct unit_system* us, double U_M_in_cgs, double U_L_in_cgs,
+                double U_t_in_cgs, double U_C_in_cgs, double U_T_in_cgs) {
+  us->UnitMass_in_cgs = U_M_in_cgs;
+  us->UnitLength_in_cgs = U_L_in_cgs;
+  us->UnitTime_in_cgs = U_t_in_cgs;
+  us->UnitCurrent_in_cgs = U_C_in_cgs;
+  us->UnitTemperature_in_cgs = U_T_in_cgs;
+}
+
+/**
  * @brief Initialises the unit_system structure with the constants given in
  * the parameter file.
  *
@@ -62,8 +77,9 @@ void units_init_cgs(struct unit_system* us) {
  * @param params The parsed parameter file.
  * @param category The section of the parameter file to read from.
  */
-void units_init(struct unit_system* us, const struct swift_params* params,
-                const char* category) {
+void units_init_from_params(struct unit_system* us,
+                            const struct swift_params* params,
+                            const char* category) {
 
   char buffer[200];
   sprintf(buffer, "%s:UnitMass_in_cgs", category);
@@ -216,6 +232,11 @@ void units_get_base_unit_exponants_array(float baseUnitsExp[5],
 
     case UNIT_CONV_ACCELERATION:
       baseUnitsExp[UNIT_LENGTH] = 1.f;
+      baseUnitsExp[UNIT_TIME] = -2.f;
+      break;
+
+    case UNIT_CONV_POTENTIAL:
+      baseUnitsExp[UNIT_LENGTH] = 2.f;
       baseUnitsExp[UNIT_TIME] = -2.f;
       break;
 
@@ -601,4 +622,26 @@ void units_print(const struct unit_system* us) {
   message("\tUnit Time:        %g", us->UnitTime_in_cgs);
   message("\tUnit Current:     %g", us->UnitCurrent_in_cgs);
   message("\tUnit Temperature: %g", us->UnitTemperature_in_cgs);
+}
+
+/**
+ * @brief Write a units struct to the given FILE as a stream of bytes.
+ *
+ * @param us the units
+ * @param stream the file stream
+ */
+void units_struct_dump(const struct unit_system* us, FILE* stream) {
+  restart_write_blocks((void*)us, sizeof(struct unit_system), 1, stream,
+                       "units", "units");
+}
+
+/**
+ * @brief Restore a units struct from the given FILE as a stream of bytes.
+ *
+ * @param us the units
+ * @param stream the file stream
+ */
+void units_struct_restore(const struct unit_system* us, FILE* stream) {
+  restart_read_blocks((void*)us, sizeof(struct unit_system), 1, stream, NULL,
+                      "units");
 }
