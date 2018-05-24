@@ -152,6 +152,7 @@ runner_iact_nonsym_1_vec_density(vector *r2, vector *dx, vector *dy, vector *dz,
 
   swift_align_information(float, cell_cache->m, SWIFT_CACHE_ALIGNMENT);
 
+#pragma ivdep
   for(int i=0; i<VEC_SIZE; i++) {
 
     float rho = 0.f, rho_dh = 0.f, wcount = 0.f, wcount_dh = 0.f;
@@ -559,6 +560,7 @@ runner_iact_nonsym_1_vec_force(
   swift_align_information(float, cell_cache->vz, SWIFT_CACHE_ALIGNMENT);
   swift_align_information(float, cell_cache->soundspeed, SWIFT_CACHE_ALIGNMENT);
 
+#pragma ivdep
   for(int i=0; i<VEC_SIZE; i++) {
     float a_hydro_x = 0.f, a_hydro_y = 0.f, a_hydro_z = 0.f, u_dt = 0.f, h_dt = 0.f, sig = 0.f;
     if (int_mask & (1 << i)) {

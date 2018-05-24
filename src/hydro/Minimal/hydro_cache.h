@@ -32,7 +32,10 @@
 
 #define NUM_VEC_PROC 2
 #define C2_CACHE_SIZE (NUM_VEC_PROC * VEC_SIZE * 6) + (NUM_VEC_PROC * VEC_SIZE)
-#define MAX_NUM_OF_CACHE_FIELDS 20
+#define NUM_OF_DENSITY_CACHE_FIELDS 1
+#define NUM_OF_DENSITY_UPDATE_CACHE_FIELDS 4
+#define NUM_OF_FORCE_CACHE_FIELDS 8
+#define NUM_OF_FORCE_UPDATE_CACHE_FIELDS 6
 #define CACHE_FIELD_BUFFER_SIZE 200
 
 #ifdef WITH_VECTORIZATION
@@ -84,9 +87,6 @@ struct cache {
 
   /* Cache size. */
   int count;
-  
-  /* No. of cache fields. */
-  int num_fields;
 };
 
 /**
@@ -106,9 +106,6 @@ struct cache_props {
   /* Pointer to cache field */
   float* cache_addr;
 
-  /* The size of the particles */
-  size_t partSize;
-
   /* Function pointer to reduction function */
   reduction_func reduction_f;
   
@@ -118,7 +115,7 @@ struct cache_props {
  * @brief Constructs an #cache_props from its parameters
  */
 #define cache_make_input_field(name, part, field, cache_addr) \
-  cache_make_input_field_(name, (char*)(&(part[0]).field), sizeof(part[0]), cache_addr)
+  cache_make_input_field_(name, (char*)(&(part[0]).field), cache_addr)
 
 /**
  * @brief Construct an #cache_props from its parameters
@@ -129,23 +126,21 @@ struct cache_props {
  * @param importance Is this dataset compulsory ?
  * @param units The units of the dataset
  * @param field Pointer to the field of the first particle
- * @param partSize The size in byte of the particle
  *
  * Do not call this function directly. Use the macro defined above.
  */
 INLINE struct cache_props cache_make_input_field_(
-    char name[CACHE_FIELD_BUFFER_SIZE], char* field, size_t partSize, float* cache_addr) {
+    char name[CACHE_FIELD_BUFFER_SIZE], char* field, float* cache_addr) {
   struct cache_props r;
   strcpy(r.name, name);
   r.field = field;
-  r.partSize = partSize;
   r.cache_addr = cache_addr;
 
   return r;
 }
 
 #define cache_make_output_field(name, part, field, cache_addr, reduction_op) \
-  cache_make_output_field_(name, (char*)(&(part[0]).field), sizeof(part[0]), cache_addr, reduction_op)
+  cache_make_output_field_(name, (char*)(&(part[0]).field), cache_addr, reduction_op)
 
 /**
  * @brief Construct an #cache_props from its parameters
@@ -156,16 +151,14 @@ INLINE struct cache_props cache_make_input_field_(
  * @param importance Is this dataset compulsory ?
  * @param units The units of the dataset
  * @param field Pointer to the field of the first particle
- * @param partSize The size in byte of the particle
  *
  * Do not call this function directly. Use the macro defined above.
  */
 INLINE struct cache_props cache_make_output_field_(
-    char name[CACHE_FIELD_BUFFER_SIZE], char* field, size_t partSize, float* cache_addr, reduction_func funcPtr) {
+    char name[CACHE_FIELD_BUFFER_SIZE], char* field, float* cache_addr, reduction_func funcPtr) {
   struct cache_props r;
   strcpy(r.name, name);
   r.field = field;
-  r.partSize = partSize;
   r.cache_addr = cache_addr;
   r.reduction_f = funcPtr;
 
@@ -177,19 +170,13 @@ INLINE struct cache_props cache_make_output_field_(
  *
  * @param parts The particle array.
  * @param list The list of i/o properties to read.
- * @param num_fields The number of i/o fields to read.
+ * @param ci_cache Particle cache to populate.
  */
 INLINE void cache_read_particle_fields_density(const struct part *restrict parts, struct cache_props* list,
                           struct cache *restrict const ci_cache) {
 
-  ci_cache->num_fields = 5;
-
   /* List what we want to read */
-  list[0] = cache_make_input_field("x", parts, x[0], ci_cache->x);
-  list[1] = cache_make_input_field("y", parts, x[1], ci_cache->y);
-  list[2] = cache_make_input_field("z", parts, x[2], ci_cache->z);
-  list[3] = cache_make_input_field("h", parts, h, ci_cache->h);
-  list[4] = cache_make_input_field("mass", parts, mass, ci_cache->m);
+  list[0] = cache_make_input_field("mass", parts, mass, ci_cache->m);
 }
 
 /**
@@ -197,26 +184,20 @@ INLINE void cache_read_particle_fields_density(const struct part *restrict parts
  *
  * @param parts The particle array.
  * @param list The list of i/o properties to read.
- * @param num_fields The number of i/o fields to read.
+ * @param ci_cache Particle cache to populate.
  */
 INLINE void cache_read_particle_fields_force(const struct part *restrict parts, struct cache_props* list,
                           struct cache *restrict const ci_cache) {
 
-  ci_cache->num_fields = 12;
-
   /* List what we want to read */
-  list[0] = cache_make_input_field("x", parts, x[0], ci_cache->x);
-  list[1] = cache_make_input_field("y", parts, x[1], ci_cache->y);
-  list[2] = cache_make_input_field("z", parts, x[2], ci_cache->z);
-  list[3] = cache_make_input_field("h", parts, h, ci_cache->h);
-  list[4] = cache_make_input_field("mass", parts, mass, ci_cache->m);
-  list[5] = cache_make_input_field("vx", parts, v[0], ci_cache->vx);
-  list[6] = cache_make_input_field("vy", parts, v[1], ci_cache->vy);
-  list[7] = cache_make_input_field("vz", parts, v[2], ci_cache->vz);
-  list[8] = cache_make_input_field("rho", parts, rho, ci_cache->rho);
-  list[9] = cache_make_input_field("pressure", parts, force.pressure, ci_cache->pressure);
-  list[10] = cache_make_input_field("grad_h", parts, force.f, ci_cache->grad_h);
-  list[11] = cache_make_input_field("soundspeed", parts, force.soundspeed, ci_cache->soundspeed);
+  list[0] = cache_make_input_field("mass", parts, mass, ci_cache->m);
+  list[1] = cache_make_input_field("vx", parts, v[0], ci_cache->vx);
+  list[2] = cache_make_input_field("vy", parts, v[1], ci_cache->vy);
+  list[3] = cache_make_input_field("vz", parts, v[2], ci_cache->vz);
+  list[4] = cache_make_input_field("rho", parts, rho, ci_cache->rho);
+  list[5] = cache_make_input_field("pressure", parts, force.pressure, ci_cache->pressure);
+  list[6] = cache_make_input_field("grad_h", parts, force.f, ci_cache->grad_h);
+  list[7] = cache_make_input_field("soundspeed", parts, force.soundspeed, ci_cache->soundspeed);
 }
 
 /* Secondary cache struct to hold a list of interactions between two
@@ -277,7 +258,6 @@ struct update_cache_density {
   vector v_rho_dhSum;
   vector v_wcountSum;
   vector v_wcount_dhSum;
-  int num_fields;
 };
 
 /* Cache to hold a list of vectors used to update particle properties after a force interaction. */
@@ -288,7 +268,6 @@ struct update_cache_force {
   vector v_u_dtSum;
   vector v_h_dtSum;
   vector v_sigSum;
-  int num_fields;
 };
 
 /* Input parameters needed for computing the density interaction. */
@@ -304,8 +283,6 @@ struct input_params_force {
 INLINE static void cache_read_particle_update_fields_density(const struct part *restrict parts, struct cache_props* list,
     struct update_cache_density *restrict const update_cache) {
 
-  update_cache->num_fields = 4;
-  
   /* List what we want to read */
   list[0] = cache_make_output_field("rho", parts, rho, &update_cache->v_rhoSum.f[0], reduction_add);
   list[1] = cache_make_output_field("rho_dh", parts, density.rho_dh, &update_cache->v_rho_dhSum.f[0], reduction_add);
@@ -317,8 +294,6 @@ INLINE static void cache_read_particle_update_fields_density(const struct part *
 INLINE static void cache_read_particle_update_fields_force(const struct part *restrict parts, struct cache_props* list,
     struct update_cache_force *restrict const update_cache) {
 
-  update_cache->num_fields = 6;
-  
   /* List what we want to read */
   list[0] = cache_make_output_field("a_hydro_x", parts, a_hydro[0], &update_cache->v_a_hydro_xSum.f[0], reduction_add);
   list[1] = cache_make_output_field("a_hydro_y", parts, a_hydro[1], &update_cache->v_a_hydro_ySum.f[0], reduction_add);
@@ -348,8 +323,10 @@ __attribute__((always_inline)) INLINE void update_cache_init(const int num_field
  */
 __attribute__((always_inline)) INLINE void update_particle(struct cache_props *props, const int pid, const int num_fields) {
 
+  const size_t sizePart = sizeof(struct part);
+
   for(int i=0; i<num_fields; i++) {
-    props[i].reduction_f(*(vector*)props[i].cache_addr, (float *)&props[i].field[pid*props[i].partSize]);
+    props[i].reduction_f(*(vector*)props[i].cache_addr, (float *)&props[i].field[pid*sizePart]);
   }
 
 }
@@ -475,43 +452,45 @@ __attribute__((always_inline)) INLINE void cache_read_particles(
     struct cache *restrict const ci_cache, const int ci_count) {
 
   const struct part *restrict parts = ci->parts;
-  struct cache_props props[MAX_NUM_OF_CACHE_FIELDS];
+  struct cache_props props[NUM_OF_DENSITY_CACHE_FIELDS];
   cache_read_particle_fields_density(parts, props, ci_cache);
 
-  float *restrict fields[MAX_NUM_OF_CACHE_FIELDS];  
+  float *restrict fields[NUM_OF_DENSITY_CACHE_FIELDS];  
 
   /* Let the compiler know that the data is aligned and create pointers to the
    * arrays inside the cache. */
-  for(int i=0; i<ci_cache->num_fields; i++) {
+  for(int i=0; i<NUM_OF_DENSITY_CACHE_FIELDS; i++) {
     fields[i] = props[i].cache_addr;
     //swift_align_information(float,fields[i], SWIFT_CACHE_ALIGNMENT);
   }
  
   const double loc[3] = {ci->loc[0], ci->loc[1], ci->loc[2]};
  
-  swift_align_information(float, fields[0], SWIFT_CACHE_ALIGNMENT);
-  swift_align_information(float, fields[1], SWIFT_CACHE_ALIGNMENT);
-  swift_align_information(float, fields[2], SWIFT_CACHE_ALIGNMENT);
-  swift_align_information(float, fields[3], SWIFT_CACHE_ALIGNMENT);
-  swift_align_information(float, fields[4], SWIFT_CACHE_ALIGNMENT);
+  swift_declare_aligned_ptr(float, x, ci_cache->x, SWIFT_CACHE_ALIGNMENT);
+  swift_declare_aligned_ptr(float, y, ci_cache->y, SWIFT_CACHE_ALIGNMENT);
+  swift_declare_aligned_ptr(float, z, ci_cache->z, SWIFT_CACHE_ALIGNMENT);
+  swift_declare_aligned_ptr(float, h, ci_cache->h, SWIFT_CACHE_ALIGNMENT);
 
+  swift_align_information(float, fields[0], SWIFT_CACHE_ALIGNMENT);
+
+  const size_t sizePart = sizeof(struct part);
 
   /* Shift the particles positions to a local frame so single precision can be
    * used instead of double precision. */
 #ifdef __ICC
-//#pragma simd
+#pragma ivdep
 #endif
   for (int i = 0; i < ci_count; i++) {
-    fields[0][i] = (float)(*(double *)&(props[0].field[i*props[0].partSize]) - loc[0]);
-    fields[1][i] = (float)(*(double *)&(props[1].field[i*props[1].partSize]) - loc[1]);
-    fields[2][i] = (float)(*(double *)&(props[2].field[i*props[2].partSize]) - loc[2]);
-    fields[3][i] = *(float *)&(props[3].field[i*props[3].partSize]);
-    fields[4][i] = *(float *)&(props[4].field[i*props[4].partSize]);
-//#pragma unroll
-//    for(int j = 3; j < ci_cache->num_fields; j++) {
-//      swift_align_information(float, &fields[j][i], SWIFT_CACHE_ALIGNMENT);
-//      fields[j][i] = *(float *)&(props[j].field[i*props[j].partSize]);
-//    }
+    x[i] = (float)(parts[i].x[0] - loc[0]);
+    y[i] = (float)(parts[i].x[1] - loc[1]);
+    z[i] = (float)(parts[i].x[2] - loc[2]);
+    h[i] = parts[i].h;
+    //fields[4][i] = *(float *)&(props[4].field[i*sizePart]);
+#pragma unroll
+    for(int j = 0; j < NUM_OF_DENSITY_CACHE_FIELDS; j++) {
+      swift_align_information(float, &fields[j][i], SWIFT_CACHE_ALIGNMENT);
+      fields[j][i] = *(float *)&(props[j].field[i*sizePart]);
+    }
   }
 
   /* Pad cache with fake particles that exist outside the cell so will not
@@ -525,11 +504,11 @@ __attribute__((always_inline)) INLINE void cache_read_particles(
   const int ci_count_padded = ci_count - (ci_count % (NUM_VEC_PROC * VEC_SIZE)) + NUM_VEC_PROC * VEC_SIZE;
 
   for (int i = ci_count; i < ci_count_padded; i++) {
-    fields[0][i] = pos_padded[0];
-    fields[1][i] = pos_padded[1];
-    fields[2][i] = pos_padded[2];
-    fields[3][i] = h_padded;
-    fields[4][i] = 1.f;
+    x[i] = pos_padded[0];
+    y[i] = pos_padded[1];
+    z[i] = pos_padded[2];
+    h[i] = h_padded;
+    for(int j = 0; j < NUM_OF_DENSITY_CACHE_FIELDS; j++) fields[j][i] = 1.f;
   }
 }
 
@@ -552,15 +531,16 @@ __attribute__((always_inline)) INLINE void cache_read_particles_subset(
     const struct entry *restrict sort_i, int *first_pi, int *last_pi,
     const double *loc, const int flipped) {
 
+  const size_t sizePart = sizeof(struct part);
   const struct part *restrict parts = ci->parts;
-  struct cache_props props[MAX_NUM_OF_CACHE_FIELDS];
+  struct cache_props props[NUM_OF_DENSITY_CACHE_FIELDS];
   cache_read_particle_fields_density(parts, props, ci_cache);
-
-  float *restrict fields[MAX_NUM_OF_CACHE_FIELDS];  
+  
+  float *restrict fields[NUM_OF_DENSITY_CACHE_FIELDS];  
 
   /* Let the compiler know that the data is aligned and create pointers to the
    * arrays inside the cache. */
-  for(int i=0; i<ci_cache->num_fields; i++) {
+  for(int i=0; i<NUM_OF_DENSITY_CACHE_FIELDS; i++) {
     fields[i] = props[i].cache_addr;
     swift_align_information(float, fields[i], SWIFT_CACHE_ALIGNMENT);
   }
@@ -576,6 +556,11 @@ __attribute__((always_inline)) INLINE void cache_read_particles_subset(
       if (*last_pi + pad < ci->count) *last_pi += pad;
     }
 
+    swift_declare_aligned_ptr(float, x, ci_cache->x, SWIFT_CACHE_ALIGNMENT);
+    swift_declare_aligned_ptr(float, y, ci_cache->y, SWIFT_CACHE_ALIGNMENT);
+    swift_declare_aligned_ptr(float, z, ci_cache->z, SWIFT_CACHE_ALIGNMENT);
+    swift_declare_aligned_ptr(float, h, ci_cache->h, SWIFT_CACHE_ALIGNMENT);
+
     /* Shift the particles positions to a local frame so single precision can be
      * used instead of double precision. */
 #ifdef __ICC
@@ -583,11 +568,11 @@ __attribute__((always_inline)) INLINE void cache_read_particles_subset(
 #endif
     for (int i = 0; i < *last_pi; i++) {
       const int idx = sort_i[i].i;
-      fields[0][i] = (float)(*(double *)&(props[0].field[idx*props[0].partSize]) - loc[0]);
-      fields[1][i] = (float)(*(double *)&(props[1].field[idx*props[1].partSize]) - loc[1]);
-      fields[2][i] = (float)(*(double *)&(props[2].field[idx*props[2].partSize]) - loc[2]);
-      fields[3][i] = *(float *)&(props[3].field[idx*props[3].partSize]);
-      fields[4][i] = *(float *)&(props[4].field[idx*props[4].partSize]);
+      x[i] = (float)(parts[idx].x[0] - loc[0]);
+      y[i] = (float)(parts[idx].x[1] - loc[1]);
+      z[i] = (float)(parts[idx].x[2] - loc[2]);
+      h[i] = parts[idx].h;
+      fields[0][i] = *(float *)&(props[0].field[idx*sizePart]);
      }
 
     /* Pad cache with fake particles that exist outside the cell so will not
@@ -600,11 +585,11 @@ __attribute__((always_inline)) INLINE void cache_read_particles_subset(
     const float h_padded = ci->parts[0].h;
 
     for (int i = *last_pi; i < *last_pi + VEC_SIZE; i++) {
-      fields[0][i] = pos_padded[0];
-      fields[1][i] = pos_padded[1];
-      fields[2][i] = pos_padded[2];
-      fields[3][i] = h_padded;
-      fields[4][i] = 1.f;
+      x[i] = pos_padded[0];
+      y[i] = pos_padded[1];
+      z[i] = pos_padded[2];
+      h[i] = h_padded;
+      fields[0][i] = 1.f;
     }
   }
   /* The cell is on the left so read the particles
@@ -620,6 +605,11 @@ __attribute__((always_inline)) INLINE void cache_read_particles_subset(
 
     const int ci_cache_count = ci->count - *first_pi;
 
+    swift_declare_aligned_ptr(float, x, ci_cache->x, SWIFT_CACHE_ALIGNMENT);
+    swift_declare_aligned_ptr(float, y, ci_cache->y, SWIFT_CACHE_ALIGNMENT);
+    swift_declare_aligned_ptr(float, z, ci_cache->z, SWIFT_CACHE_ALIGNMENT);
+    swift_declare_aligned_ptr(float, h, ci_cache->h, SWIFT_CACHE_ALIGNMENT);
+
     /* Shift the particles positions to a local frame so single precision can be
      * used instead of double precision. */
 #ifdef __ICC
@@ -627,11 +617,11 @@ __attribute__((always_inline)) INLINE void cache_read_particles_subset(
 #endif
     for (int i = 0; i < ci_cache_count; i++) {
       const int idx = sort_i[i + *first_pi].i;
-      fields[0][i] = (float)(*(double *)&(props[0].field[idx*props[0].partSize]) - loc[0]);
-      fields[1][i] = (float)(*(double *)&(props[1].field[idx*props[1].partSize]) - loc[1]);
-      fields[2][i] = (float)(*(double *)&(props[2].field[idx*props[2].partSize]) - loc[2]);
-      fields[3][i] = *(float *)&(props[3].field[idx*props[3].partSize]);
-      fields[4][i] = *(float *)&(props[4].field[idx*props[4].partSize]);
+      x[i] = (float)(parts[idx].x[0] - loc[0]);
+      y[i] = (float)(parts[idx].x[1] - loc[1]);
+      z[i] = (float)(parts[idx].x[2] - loc[2]);
+      h[i] = parts[idx].h;
+      fields[0][i] = *(float *)&(props[0].field[idx*sizePart]);
     }
 
     /* Pad cache with fake particles that exist outside the cell so will not
@@ -645,11 +635,11 @@ __attribute__((always_inline)) INLINE void cache_read_particles_subset(
 
     for (int i = ci->count - *first_pi; i < ci->count - *first_pi + VEC_SIZE;
          i++) {
-      fields[0][i] = pos_padded[0];
-      fields[1][i] = pos_padded[1];
-      fields[2][i] = pos_padded[2];
-      fields[3][i] = h_padded;
-      fields[4][i] = 1.f;
+      x[i] = pos_padded[0];
+      y[i] = pos_padded[1];
+      z[i] = pos_padded[2];
+      h[i] = h_padded;
+      fields[0][i] = 1.f;
     }
   }
 
@@ -666,35 +656,44 @@ __attribute__((always_inline)) INLINE void cache_read_force_particles(
     const struct cell *restrict const ci,
     struct cache *restrict const ci_cache, const int ci_count) {
 
+  const size_t sizePart = sizeof(struct part);
   const struct part *restrict parts = ci->parts;
   
-  struct cache_props props[MAX_NUM_OF_CACHE_FIELDS];
+  struct cache_props props[NUM_OF_FORCE_CACHE_FIELDS];
   cache_read_particle_fields_force(parts, props, ci_cache);
 
-  float *restrict fields[MAX_NUM_OF_CACHE_FIELDS];  
+  float *restrict fields[NUM_OF_FORCE_CACHE_FIELDS];  
 
   /* Let the compiler know that the data is aligned and create pointers to the
    * arrays inside the cache. */
-  for(int i=0; i<ci_cache->num_fields; i++) {
+  for(int i=0; i<NUM_OF_FORCE_CACHE_FIELDS; i++) {
     fields[i] = props[i].cache_addr;
     swift_align_information(float, fields[i], SWIFT_CACHE_ALIGNMENT);
   }
  
   const double loc[3] = {ci->loc[0], ci->loc[1], ci->loc[2]};
 
+  swift_declare_aligned_ptr(float, x, ci_cache->x, SWIFT_CACHE_ALIGNMENT);
+  swift_declare_aligned_ptr(float, y, ci_cache->y, SWIFT_CACHE_ALIGNMENT);
+  swift_declare_aligned_ptr(float, z, ci_cache->z, SWIFT_CACHE_ALIGNMENT);
+  swift_declare_aligned_ptr(float, h, ci_cache->h, SWIFT_CACHE_ALIGNMENT);
+  swift_align_information(float, fields[4], SWIFT_CACHE_ALIGNMENT);
+
   /* Shift the particles positions to a local frame so single precision can be
    * used instead of double precision. */
 #ifdef __ICC
 //#pragma simd
+#pragma ivdep
 #endif
   for (int i = 0; i < ci_count; i++) {
-    fields[0][i] = (float)(*(double *)&(props[0].field[i*props[0].partSize]) - loc[0]);
-    fields[1][i] = (float)(*(double *)&(props[1].field[i*props[1].partSize]) - loc[1]);
-    fields[2][i] = (float)(*(double *)&(props[2].field[i*props[2].partSize]) - loc[2]);
+    x[i] = (float)(parts[i].x[0] - loc[0]);
+    y[i] = (float)(parts[i].x[1] - loc[1]);
+    z[i] = (float)(parts[i].x[2] - loc[2]);
+    h[i] = parts[i].h;
 #pragma unroll
-    for(int j = 3; j < ci_cache->num_fields; j++) {
+    for(int j = 0; j < NUM_OF_FORCE_CACHE_FIELDS; j++) {
       swift_align_information(float, &fields[j][i], SWIFT_CACHE_ALIGNMENT);
-      fields[j][i] = *(float *)&(props[j].field[i*props[j].partSize]);
+      fields[j][i] = *(float *)&(props[j].field[i*sizePart]);
     }
   }
 
@@ -709,11 +708,11 @@ __attribute__((always_inline)) INLINE void cache_read_force_particles(
   const int ci_count_padded = ci_count - (ci_count % VEC_SIZE) + VEC_SIZE;
 
   for (int i = ci_count; i < ci_count_padded; i++) {
-    fields[0][i] = pos_padded[0];
-    fields[1][i] = pos_padded[1];
-    fields[2][i] = pos_padded[2];
-    fields[3][i] = h_padded;
-    for(int j = 4; j < ci_cache->num_fields; j++) fields[j][i] = 1.f;
+    x[i] = pos_padded[0];
+    y[i] = pos_padded[1];
+    z[i] = pos_padded[2];
+    h[i] = h_padded;
+    for(int j = 0; j < NUM_OF_FORCE_CACHE_FIELDS; j++) fields[j][i] = 1.f;
   }
 }
 
@@ -765,32 +764,34 @@ __attribute__((always_inline)) INLINE void cache_read_two_partial_cells_sorted(
   const int last_pj_align = *last_pj;
   const struct part *restrict parts_i = ci->parts;
   const struct part *restrict parts_j = cj->parts;
+  const size_t sizePart = sizeof(struct part);
 
   /* Shift particles to the local frame and account for boundary conditions.*/
   const double total_ci_shift[3] = {
       cj->loc[0] + shift[0], cj->loc[1] + shift[1], cj->loc[2] + shift[2]};
   const double total_cj_shift[3] = {cj->loc[0], cj->loc[1], cj->loc[2]};
 
-  struct cache_props props[MAX_NUM_OF_CACHE_FIELDS];
+  struct cache_props props[NUM_OF_DENSITY_CACHE_FIELDS];
   cache_read_particle_fields_density(parts_i, props, ci_cache);
 
-  float *restrict fields[MAX_NUM_OF_CACHE_FIELDS];  
+  float *restrict fields[NUM_OF_DENSITY_CACHE_FIELDS];  
 
   /* Let the compiler know that the data is aligned and create pointers to the
    * arrays inside the cache. */
-  for(int i=0; i<ci_cache->num_fields; i++) {
+  for(int i=0; i<NUM_OF_DENSITY_CACHE_FIELDS; i++) {
     fields[i] = props[i].cache_addr;
     //swift_align_information(float, fields[i], SWIFT_CACHE_ALIGNMENT);
   }
   
   int ci_cache_count = ci->count - first_pi_align;
 
+  swift_declare_aligned_ptr(float, x, ci_cache->x, SWIFT_CACHE_ALIGNMENT);
+  swift_declare_aligned_ptr(float, y, ci_cache->y, SWIFT_CACHE_ALIGNMENT);
+  swift_declare_aligned_ptr(float, z, ci_cache->z, SWIFT_CACHE_ALIGNMENT);
+  swift_declare_aligned_ptr(float, h, ci_cache->h, SWIFT_CACHE_ALIGNMENT);
+  
   swift_align_information(float, fields[0], SWIFT_CACHE_ALIGNMENT);
-  swift_align_information(float, fields[1], SWIFT_CACHE_ALIGNMENT);
-  swift_align_information(float, fields[2], SWIFT_CACHE_ALIGNMENT);
-  swift_align_information(float, fields[3], SWIFT_CACHE_ALIGNMENT);
-  swift_align_information(float, fields[4], SWIFT_CACHE_ALIGNMENT);
-
+  
   /* Shift the particles positions to a local frame (ci frame) so single
    * precision can be used instead of double precision.  */
 #ifdef __ICC
@@ -799,11 +800,11 @@ __attribute__((always_inline)) INLINE void cache_read_two_partial_cells_sorted(
 #endif
   for (int i = 0; i < ci_cache_count; i++) {
     const int idx = sort_i[i + first_pi_align].i;
-    fields[0][i] = (float)(*(double *)&(props[0].field[idx*props[0].partSize]) - total_ci_shift[0]);
-    fields[1][i] = (float)(*(double *)&(props[1].field[idx*props[1].partSize]) - total_ci_shift[1]);
-    fields[2][i] = (float)(*(double *)&(props[2].field[idx*props[2].partSize]) - total_ci_shift[2]);
-    fields[3][i] = *(float *)&(props[3].field[idx*props[3].partSize]);
-    fields[4][i] = *(float *)&(props[4].field[idx*props[4].partSize]);
+    x[i] = (float)(parts_i[idx].x[0] - total_ci_shift[0]);
+    y[i] = (float)(parts_i[idx].x[1] - total_ci_shift[1]);
+    z[i] = (float)(parts_i[idx].x[2] - total_ci_shift[2]);
+    h[i] = parts_i[idx].h;
+    fields[0][i] = *(float *)&(props[0].field[idx*sizePart]);
     //for(int j = 3; j < ci_cache->num_fields; j++) {
     //  fields[j][i] = *(float *)&(props[j].field[idx*props[j].partSize]);
     //}
@@ -857,28 +858,28 @@ __attribute__((always_inline)) INLINE void cache_read_two_partial_cells_sorted(
 
   for (int i = ci->count - first_pi_align;
        i < ci->count - first_pi_align + VEC_SIZE; i++) {
-    fields[0][i] = pos_padded[0];
-    fields[1][i] = pos_padded[1];
-    fields[2][i] = pos_padded[2];
-    fields[3][i] = h_padded;
-    fields[4][i] = 1.f;
-
+    x[i] = pos_padded[0];
+    y[i] = pos_padded[1];
+    z[i] = pos_padded[2];
+    h[i] = h_padded;
+    for(int j = 0; j < NUM_OF_DENSITY_CACHE_FIELDS; j++) fields[j][i] = 1.f;
   }
 
   cache_read_particle_fields_density(parts_j, props, cj_cache);
  
   /* Let the compiler know that the data is aligned and create pointers to the
    * arrays inside the cache. */
-  for(int i=0; i<cj_cache->num_fields; i++) {
+  for(int i=0; i<NUM_OF_DENSITY_CACHE_FIELDS; i++) {
     fields[i] = props[i].cache_addr;
     //swift_align_information(float, fields[i], SWIFT_CACHE_ALIGNMENT);
   }
   
+  swift_declare_aligned_ptr(float, xj, cj_cache->x, SWIFT_CACHE_ALIGNMENT);
+  swift_declare_aligned_ptr(float, yj, cj_cache->y, SWIFT_CACHE_ALIGNMENT);
+  swift_declare_aligned_ptr(float, zj, cj_cache->z, SWIFT_CACHE_ALIGNMENT);
+  swift_declare_aligned_ptr(float, hj, cj_cache->h, SWIFT_CACHE_ALIGNMENT);
+
   swift_align_information(float, fields[0], SWIFT_CACHE_ALIGNMENT);
-  swift_align_information(float, fields[1], SWIFT_CACHE_ALIGNMENT);
-  swift_align_information(float, fields[2], SWIFT_CACHE_ALIGNMENT);
-  swift_align_information(float, fields[3], SWIFT_CACHE_ALIGNMENT);
-  swift_align_information(float, fields[4], SWIFT_CACHE_ALIGNMENT);
  
 #ifdef __ICC
 //#pragma simd
@@ -886,11 +887,11 @@ __attribute__((always_inline)) INLINE void cache_read_two_partial_cells_sorted(
 #endif
   for (int i = 0; i <= last_pj_align; i++) {
     const int idx = sort_j[i].i;
-    fields[0][i] = (float)(*(double *)&(props[0].field[idx*props[0].partSize]) - total_cj_shift[0]);
-    fields[1][i] = (float)(*(double *)&(props[1].field[idx*props[1].partSize]) - total_cj_shift[1]);
-    fields[2][i] = (float)(*(double *)&(props[2].field[idx*props[2].partSize]) - total_cj_shift[2]);
-    fields[3][i] = *(float *)&(props[3].field[idx*props[3].partSize]);
-    fields[4][i] = *(float *)&(props[4].field[idx*props[4].partSize]);
+    xj[i] = (float)(parts_j[idx].x[0] - total_cj_shift[0]);
+    yj[i] = (float)(parts_j[idx].x[1] - total_cj_shift[1]);
+    zj[i] = (float)(parts_j[idx].x[2] - total_cj_shift[2]);
+    hj[i] = parts_j[idx].h;
+    fields[0][i] = *(float *)&(props[0].field[idx*sizePart]);
     //for(int j = 3; j < cj_cache->num_fields; j++) {
     //  fields[j][i] = *(float *)&(props[j].field[idx*props[j].partSize]);
     //}
@@ -935,11 +936,11 @@ __attribute__((always_inline)) INLINE void cache_read_two_partial_cells_sorted(
   const float h_padded_j = cj->parts[0].h;
 
   for (int i = last_pj_align + 1; i < last_pj_align + 1 + VEC_SIZE; i++) {
-    fields[0][i] = pos_padded_j[0];
-    fields[1][i] = pos_padded_j[1];
-    fields[2][i] = pos_padded_j[2];
-    fields[3][i] = h_padded_j;
-    fields[4][i] = 1.f;
+    xj[i] = pos_padded_j[0];
+    yj[i] = pos_padded_j[1];
+    zj[i] = pos_padded_j[2];
+    hj[i] = h_padded_j;
+    for(int j = 0; j < NUM_OF_DENSITY_CACHE_FIELDS; j++) fields[j][i] = 1.f;
  }
 }
 
@@ -991,23 +992,31 @@ cache_read_two_partial_cells_sorted_force(
   const int last_pj_align = *last_pj;
   const struct part *restrict parts_i = ci->parts;
   const struct part *restrict parts_j = cj->parts;
+  const size_t sizePart = sizeof(struct part);
 
   /* Shift particles to the local frame and account for boundary conditions.*/
   const double total_ci_shift[3] = {
       cj->loc[0] + shift[0], cj->loc[1] + shift[1], cj->loc[2] + shift[2]};
   const double total_cj_shift[3] = {cj->loc[0], cj->loc[1], cj->loc[2]};
 
-  struct cache_props props[MAX_NUM_OF_CACHE_FIELDS];
+  struct cache_props props[NUM_OF_FORCE_CACHE_FIELDS];
   cache_read_particle_fields_force(parts_i, props, ci_cache);
 
-  float *restrict fields[MAX_NUM_OF_CACHE_FIELDS];  
+  float *restrict fields[NUM_OF_FORCE_CACHE_FIELDS];  
 
   /* Let the compiler know that the data is aligned and create pointers to the
    * arrays inside the cache. */
-  for(int i=0; i<ci_cache->num_fields; i++) {
+  for(int i=0; i<NUM_OF_FORCE_CACHE_FIELDS; i++) {
     fields[i] = props[i].cache_addr;
     swift_align_information(float, fields[i], SWIFT_CACHE_ALIGNMENT);
   }
+
+  swift_declare_aligned_ptr(float, x, ci_cache->x, SWIFT_CACHE_ALIGNMENT);
+  swift_declare_aligned_ptr(float, y, ci_cache->y, SWIFT_CACHE_ALIGNMENT);
+  swift_declare_aligned_ptr(float, z, ci_cache->z, SWIFT_CACHE_ALIGNMENT);
+  swift_declare_aligned_ptr(float, h, ci_cache->h, SWIFT_CACHE_ALIGNMENT);
+
+  swift_align_information(float, fields[0], SWIFT_CACHE_ALIGNMENT);
 
   int ci_cache_count = ci->count - first_pi_align;
   /* Shift the particles positions to a local frame (ci frame) so single
@@ -1019,13 +1028,13 @@ cache_read_two_partial_cells_sorted_force(
   for (int i = 0; i < ci_cache_count; i++) {
 
     const int idx = sort_i[i + first_pi_align].i;
-    fields[0][i] = (float)(*(double *)&(props[0].field[idx*props[0].partSize]) - total_ci_shift[0]);
-    fields[1][i] = (float)(*(double *)&(props[1].field[idx*props[1].partSize]) - total_ci_shift[1]);
-    fields[2][i] = (float)(*(double *)&(props[2].field[idx*props[2].partSize]) - total_ci_shift[2]);
-    for(int j = 3; j < ci_cache->num_fields; j++) {
-      fields[j][i] = *(float *)&(props[j].field[idx*props[j].partSize]);
+    x[i] = (float)(parts_i[idx].x[0] - total_ci_shift[0]);
+    y[i] = (float)(parts_i[idx].x[1] - total_ci_shift[1]);
+    z[i] = (float)(parts_i[idx].x[2] - total_ci_shift[2]);
+    h[i] = parts_i[idx].h;
+    for(int j = 0; j < NUM_OF_FORCE_CACHE_FIELDS; j++) {
+      fields[j][i] = *(float *)&(props[j].field[idx*sizePart]);
     }
-
   }
 
   /* Pad cache with fake particles that exist outside the cell so will not
@@ -1039,21 +1048,26 @@ cache_read_two_partial_cells_sorted_force(
 
   for (int i = ci->count - first_pi_align;
        i < ci->count - first_pi_align + VEC_SIZE; i++) {
-    fields[0][i] = pos_padded[0];
-    fields[1][i] = pos_padded[1];
-    fields[2][i] = pos_padded[2];
-    fields[3][i] = h_padded;
-    for(int j = 4; j < ci_cache->num_fields; j++) fields[j][i] = 1.f;
+    x[i] = pos_padded[0];
+    y[i] = pos_padded[1];
+    z[i] = pos_padded[2];
+    h[i] = h_padded;
+    for(int j = 0; j < NUM_OF_FORCE_CACHE_FIELDS; j++) fields[j][i] = 1.f;
   }
 
   cache_read_particle_fields_force(parts_j, props, cj_cache);
  
   /* Let the compiler know that the data is aligned and create pointers to the
    * arrays inside the cache. */
-  for(int i=0; i<cj_cache->num_fields; i++) {
+  for(int i=0; i<NUM_OF_FORCE_CACHE_FIELDS; i++) {
     fields[i] = props[i].cache_addr;
     swift_align_information(float, fields[i], SWIFT_CACHE_ALIGNMENT);
   }
+  
+  swift_declare_aligned_ptr(float, xj, cj_cache->x, SWIFT_CACHE_ALIGNMENT);
+  swift_declare_aligned_ptr(float, yj, cj_cache->y, SWIFT_CACHE_ALIGNMENT);
+  swift_declare_aligned_ptr(float, zj, cj_cache->z, SWIFT_CACHE_ALIGNMENT);
+  swift_declare_aligned_ptr(float, hj, cj_cache->h, SWIFT_CACHE_ALIGNMENT);
 
 #ifdef __ICC
 //#pragma simd
@@ -1061,11 +1075,12 @@ cache_read_two_partial_cells_sorted_force(
 #endif
   for (int i = 0; i <= last_pj_align; i++) {
     const int idx = sort_j[i].i;
-    fields[0][i] = (float)(*(double *)&(props[0].field[idx*props[0].partSize]) - total_cj_shift[0]);
-    fields[1][i] = (float)(*(double *)&(props[1].field[idx*props[1].partSize]) - total_cj_shift[1]);
-    fields[2][i] = (float)(*(double *)&(props[2].field[idx*props[2].partSize]) - total_cj_shift[2]);
-    for(int j = 3; j < cj_cache->num_fields; j++) {
-      fields[j][i] = *(float *)&(props[j].field[idx*props[j].partSize]);
+    xj[i] = (float)(parts_j[idx].x[0] - total_cj_shift[0]);
+    yj[i] = (float)(parts_j[idx].x[1] - total_cj_shift[1]);
+    zj[i] = (float)(parts_j[idx].x[2] - total_cj_shift[2]);
+    hj[i] = parts_j[idx].h;
+    for(int j = 0; j < NUM_OF_FORCE_CACHE_FIELDS; j++) {
+      fields[j][i] = *(float *)&(props[j].field[idx*sizePart]);
     }
   }
 
@@ -1078,11 +1093,11 @@ cache_read_two_partial_cells_sorted_force(
   const float h_padded_j = cj->parts[0].h;
 
   for (int i = last_pj_align + 1; i < last_pj_align + 1 + VEC_SIZE; i++) {
-    fields[0][i] = pos_padded_j[0];
-    fields[1][i] = pos_padded_j[1];
-    fields[2][i] = pos_padded_j[2];
-    fields[3][i] = h_padded_j;
-    for(int j = 4; j < cj_cache->num_fields; j++) fields[j][i] = 1.f;
+    xj[i] = pos_padded_j[0];
+    yj[i] = pos_padded_j[1];
+    zj[i] = pos_padded_j[2];
+    hj[i] = h_padded_j;
+    for(int j = 0; j < NUM_OF_FORCE_CACHE_FIELDS; j++) fields[j][i] = 1.f;
   }
 }
 
