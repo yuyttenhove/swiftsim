@@ -38,6 +38,18 @@
 #define NUM_OF_FORCE_UPDATE_CACHE_FIELDS 6
 #define CACHE_FIELD_BUFFER_SIZE 200
 
+#ifdef __ICC
+#define PRAGMA_IVDEP _Pragma("ivdep")
+#define PRAGMA_NOUNROLL _Pragma("nounroll")
+#define PRAGMA_UNROLL _Pragma("unroll")
+#define PRAGMA_OMP_SIMD
+#else
+#define PRAGMA_IVDEP
+#define PRAGMA_NOUNROLL
+#define PRAGMA_UNROLL
+#define PRAGMA_OMP_SIMD _Pragma("omp simd")
+#endif
+
 #ifdef WITH_VECTORIZATION
 
 typedef void (*reduction_func)(vector,float*);
@@ -475,15 +487,14 @@ __attribute__((always_inline)) INLINE void cache_read_particles(
 
   /* Shift the particles positions to a local frame so single precision can be
    * used instead of double precision. */
-#ifdef __ICC
-#pragma ivdep
-#endif
+PRAGMA_IVDEP
+PRAGMA_OMP_SIMD
   for (int i = 0; i < ci_count; i++) {
     x[i] = (float)(parts[i].x[0] - loc[0]);
     y[i] = (float)(parts[i].x[1] - loc[1]);
     z[i] = (float)(parts[i].x[2] - loc[2]);
     h[i] = parts[i].h;
-#pragma unroll
+PRAGMA_UNROLL
     for(int j = 0; j < NUM_OF_DENSITY_CACHE_FIELDS; j++) {
       fields[j][i] = *(float *)&(props[j].field[i*sizePart]);
     }
@@ -559,7 +570,7 @@ __attribute__((always_inline)) INLINE void cache_read_particles_subset(
 
     /* Shift the particles positions to a local frame so single precision can be
      * used instead of double precision. */
-#pragma ivdep
+PRAGMA_IVDEP
     for (int i = 0; i < *last_pi; i++) {
       const int idx = sort_i[i].i;
       x[i] = (float)(parts[idx].x[0] - loc[0]);
@@ -608,7 +619,7 @@ __attribute__((always_inline)) INLINE void cache_read_particles_subset(
 
     /* Shift the particles positions to a local frame so single precision can be
      * used instead of double precision. */
-#pragma ivdep
+PRAGMA_IVDEP
     for (int i = 0; i < ci_cache_count; i++) {
       const int idx = sort_i[i + *first_pi].i;
       x[i] = (float)(parts[idx].x[0] - loc[0]);
@@ -676,13 +687,13 @@ __attribute__((always_inline)) INLINE void cache_read_force_particles(
 
   /* Shift the particles positions to a local frame so single precision can be
    * used instead of double precision. */
-#pragma ivdep
+PRAGMA_IVDEP
   for (int i = 0; i < ci_count; i++) {
     x[i] = (float)(parts[i].x[0] - loc[0]);
     y[i] = (float)(parts[i].x[1] - loc[1]);
     z[i] = (float)(parts[i].x[2] - loc[2]);
     h[i] = parts[i].h;
-#pragma unroll
+PRAGMA_UNROLL
     for(int j = 0; j < NUM_OF_FORCE_CACHE_FIELDS; j++) {
       fields[j][i] = *(float *)&(props[j].field[i*sizePart]);
     }
@@ -783,7 +794,7 @@ __attribute__((always_inline)) INLINE void cache_read_two_partial_cells_sorted(
   
   /* Shift the particles positions to a local frame (ci frame) so single
    * precision can be used instead of double precision.  */
-#pragma ivdep
+PRAGMA_IVDEP
   for (int i = 0; i < ci_cache_count; i++) {
     const int idx = sort_i[i + first_pi_align].i;
     x[i] = (float)(parts_i[idx].x[0] - total_ci_shift[0]);
@@ -864,7 +875,7 @@ __attribute__((always_inline)) INLINE void cache_read_two_partial_cells_sorted(
   swift_declare_aligned_ptr(float, zj, cj_cache->z, SWIFT_CACHE_ALIGNMENT);
   swift_declare_aligned_ptr(float, hj, cj_cache->h, SWIFT_CACHE_ALIGNMENT);
 
-#pragma ivdep
+PRAGMA_IVDEP
   for (int i = 0; i <= last_pj_align; i++) {
     const int idx = sort_j[i].i;
     xj[i] = (float)(parts_j[idx].x[0] - total_cj_shift[0]);
@@ -998,7 +1009,7 @@ cache_read_two_partial_cells_sorted_force(
   int ci_cache_count = ci->count - first_pi_align;
   /* Shift the particles positions to a local frame (ci frame) so single
    * precision can be  used instead of double precision.  */
-#pragma ivdep
+PRAGMA_IVDEP
   for (int i = 0; i < ci_cache_count; i++) {
 
     const int idx = sort_i[i + first_pi_align].i;
@@ -1043,7 +1054,7 @@ cache_read_two_partial_cells_sorted_force(
   swift_declare_aligned_ptr(float, zj, cj_cache->z, SWIFT_CACHE_ALIGNMENT);
   swift_declare_aligned_ptr(float, hj, cj_cache->h, SWIFT_CACHE_ALIGNMENT);
 
-#pragma ivdep
+PRAGMA_IVDEP
   for (int i = 0; i <= last_pj_align; i++) {
     const int idx = sort_j[i].i;
     xj[i] = (float)(parts_j[idx].x[0] - total_cj_shift[0]);
