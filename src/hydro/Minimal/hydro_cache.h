@@ -32,6 +32,7 @@
 
 #define NUM_VEC_PROC 2
 #define C2_CACHE_SIZE (NUM_VEC_PROC * VEC_SIZE * 6) + (NUM_VEC_PROC * VEC_SIZE)
+#define MAX_NUM_OF_CACHE_FIELDS 20
 #define NUM_OF_DENSITY_CACHE_FIELDS 1
 #define NUM_OF_DENSITY_UPDATE_CACHE_FIELDS 4
 #define NUM_OF_FORCE_CACHE_FIELDS 8
@@ -467,7 +468,7 @@ __attribute__((always_inline)) INLINE void cache_read_particles(
   struct cache_props props[NUM_OF_DENSITY_CACHE_FIELDS];
   cache_read_particle_fields_density(parts, props, ci_cache);
 
-  float *restrict fields[NUM_OF_DENSITY_CACHE_FIELDS];  
+  float *restrict fields[MAX_NUM_OF_CACHE_FIELDS];  
 
   /* Let the compiler know that the data is aligned and create pointers to the
    * arrays inside the cache. */
@@ -482,7 +483,8 @@ __attribute__((always_inline)) INLINE void cache_read_particles(
   swift_declare_aligned_ptr(float, y, ci_cache->y, SWIFT_CACHE_ALIGNMENT);
   swift_declare_aligned_ptr(float, z, ci_cache->z, SWIFT_CACHE_ALIGNMENT);
   swift_declare_aligned_ptr(float, h, ci_cache->h, SWIFT_CACHE_ALIGNMENT);
-
+  swift_align_information_loop(fields, MAX_NUM_OF_CACHE_FIELDS);
+  
   const size_t sizePart = sizeof(struct part);
 
   /* Shift the particles positions to a local frame so single precision can be
@@ -669,7 +671,7 @@ __attribute__((always_inline)) INLINE void cache_read_force_particles(
   struct cache_props props[NUM_OF_FORCE_CACHE_FIELDS];
   cache_read_particle_fields_force(parts, props, ci_cache);
 
-  float *restrict fields[NUM_OF_FORCE_CACHE_FIELDS];  
+  float *restrict fields[MAX_NUM_OF_CACHE_FIELDS];  
 
   /* Let the compiler know that the data is aligned and create pointers to the
    * arrays inside the cache. */
@@ -685,6 +687,8 @@ __attribute__((always_inline)) INLINE void cache_read_force_particles(
   swift_declare_aligned_ptr(float, z, ci_cache->z, SWIFT_CACHE_ALIGNMENT);
   swift_declare_aligned_ptr(float, h, ci_cache->h, SWIFT_CACHE_ALIGNMENT);
 
+  swift_align_information_loop(fields, MAX_NUM_OF_CACHE_FIELDS);
+  
   /* Shift the particles positions to a local frame so single precision can be
    * used instead of double precision. */
 PRAGMA_IVDEP

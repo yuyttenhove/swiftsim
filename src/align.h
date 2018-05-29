@@ -90,4 +90,23 @@
 #define swift_assume_size(var, size) ;
 #endif
 
+/* Creates an unrolled "loop" of alignment hints to the compiler. */
+#define ALIGN_LOOP1(a,n) swift_align_information(float, a[n-1], SWIFT_CACHE_ALIGNMENT);
+#define ALIGN_LOOP2(a,n) swift_align_information(float, a[n-1], SWIFT_CACHE_ALIGNMENT); ALIGN_LOOP1(a,n-1)
+#define ALIGN_LOOP3(a,n) swift_align_information(float, a[n-1], SWIFT_CACHE_ALIGNMENT); ALIGN_LOOP2(a,n-1)
+#define ALIGN_LOOP4(a,n) swift_align_information(float, a[n-1], SWIFT_CACHE_ALIGNMENT); ALIGN_LOOP3(a,n-1)
+#define ALIGN_LOOP5(a,n) swift_align_information(float, a[n-1], SWIFT_CACHE_ALIGNMENT); ALIGN_LOOP4(a,n-1)
+
+#define swift_align_information_loop(a,max_fields)   \
+{                                         \
+if(max_fields > 20) {         \
+error("The maximum number of cache fields have been exceeded. Align extra fields in swift_align_information_loop."); \
+}                                           \
+ ALIGN_LOOP5(a,5);                          \
+ ALIGN_LOOP5(a,10);                         \
+ ALIGN_LOOP5(a,15);                         \
+ ALIGN_LOOP5(a,20);                         \
+                                            \
+}
+
 #endif /* SWIFT_ALIGN_H */
