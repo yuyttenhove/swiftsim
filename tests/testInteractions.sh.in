@@ -2,7 +2,7 @@
 
 echo ""
 
-rm -f test_nonsym_density_serial.dat test_nonsym_density_1_vec.dat test_nonsym_density_2_vec.dat test_nonsym_force_1_vec.dat test_nonsym_force_2_vec.dat
+rm -f test_nonsym_density_serial.dat test_nonsym_density_1_vec.dat test_nonsym_density_2_vec.dat test_nonsym_force_1_vec.dat
 
 echo "Running ./testInteractions"
 
@@ -38,13 +38,6 @@ else
       echo "Calculating force using 1 vector accuracy test passed"
     else
       echo "Calculating force using 1 vector accuracy test failed"
-      exit 1
-    fi
-    if python @srcdir@/difffloat.py test_nonsym_force_serial.dat test_nonsym_force_2_vec.dat @srcdir@/tolerance_testInteractions.dat
-    then
-      echo "Calculating force using 2 vectors accuracy test passed"
-    else
-      echo "Calculating force using 2 vectors accuracy test failed"
       exit 1
     fi
   else

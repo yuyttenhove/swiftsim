@@ -105,16 +105,18 @@ struct part *make_particles(size_t count, double *offset, double spacing,
 void prepare_force(struct part *parts, size_t count) {
 
 #if !defined(GIZMO_MFV_SPH) && !defined(SHADOWFAX_SPH) && \
-    !defined(MINIMAL_SPH) && !defined(MINIMAL_MULTI_MAT_SPH)
+    !defined(MINIMAL_MULTI_MAT_SPH)
   struct part *p;
   for (size_t i = 0; i < count; ++i) {
     p = &parts[i];
     p->rho = i + 1;
-    p->force.balsara = random_uniform(0.0, 1.0);
-    p->force.P_over_rho2 = i + 1;
     p->force.soundspeed = random_uniform(2.0, 3.0);
     p->force.v_sig = 0.0f;
     p->force.h_dt = 0.0f;
+#if !defined(MINIMAL_SPH)
+    p->force.balsara = random_uniform(0.0, 1.0);
+    p->force.P_over_rho2 = i + 1;
+#endif
   }
 #endif
 }
@@ -241,19 +243,15 @@ void test_interactions(struct part test_part, struct part *parts, size_t count,
     pjq[k] = NULL;
   }
 
-  float r2q[count] __attribute__((aligned(array_align)));
   float hiq[count] __attribute__((aligned(array_align)));
-  float dxq[count] __attribute__((aligned(array_align)));
-
-  float dyq[count] __attribute__((aligned(array_align)));
-  float dzq[count] __attribute__((aligned(array_align)));
-  float mjq[count] __attribute__((aligned(array_align)));
+#ifdef GADGET2_SPH
   float vixq[count] __attribute__((aligned(array_align)));
   float viyq[count] __attribute__((aligned(array_align)));
   float vizq[count] __attribute__((aligned(array_align)));
   float vjxq[count] __attribute__((aligned(array_align)));
   float vjyq[count] __attribute__((aligned(array_align)));
   float vjzq[count] __attribute__((aligned(array_align)));
+#endif
 
   /* Call serial interaction a set number of times. */
   for (int r = 0; r < runs; r++) {
@@ -295,6 +293,11 @@ void test_interactions(struct part test_part, struct part *parts, size_t count,
     pi_vec = test_part;
     for (size_t i = 0; i < count; i++) pj_vec[i] = parts[i];
 
+    struct c2_cache int_cache;
+    struct cache cell_cache;
+    cell_cache.count = 0;
+    cache_init(&cell_cache, count);
+
     /* Setup arrays for vector interaction. */
     for (size_t i = 0; i < count; i++) {
       /* Compute the pairwise distance. */
@@ -305,45 +308,37 @@ void test_interactions(struct part test_part, struct part *parts, size_t count,
         my_r2 += my_dx[k] * my_dx[k];
       }
 
-      r2q[i] = my_r2;
-      dxq[i] = my_dx[0];
-      dyq[i] = my_dx[1];
-      dzq[i] = my_dx[2];
+      int_cache.r2q[i] = my_r2;
+      int_cache.dxq[i] = my_dx[0];
+      int_cache.dyq[i] = my_dx[1];
+      int_cache.dzq[i] = my_dx[2];
 
       hiq[i] = pi_vec.h;
       piq[i] = &pi_vec;
       pjq[i] = &pj_vec[i];
 
-      mjq[i] = pj_vec[i].mass;
+      int_cache.mq[i] = pj_vec[i].mass;
+      cell_cache.m[i] = pj_vec[i].mass;
+#ifdef GADGET2_SPH
       vixq[i] = pi_vec.v[0];
       viyq[i] = pi_vec.v[1];
       vizq[i] = pi_vec.v[2];
       vjxq[i] = pj_vec[i].v[0];
       vjyq[i] = pj_vec[i].v[1];
       vjzq[i] = pj_vec[i].v[2];
+#endif
     }
 
-    /* Perform vector interaction. */
-    vector hi_vec, hi_inv_vec, vix_vec, viy_vec, viz_vec;
-    vector rhoSum, rho_dhSum, wcountSum, wcount_dhSum, div_vSum, curlvxSum,
-        curlvySum, curlvzSum;
+    struct input_params_density params;
+    populate_input_params_density(piq[0], &params);
+
+    /* Reset cumulative sums of update vectors. */
+    struct update_cache_density sum_cache;
+    struct cache_props update_props[NUM_OF_DENSITY_UPDATE_CACHE_FIELDS];
+    cache_read_particle_update_fields_density(piq[0], update_props, &sum_cache);
+    update_cache_init(NUM_OF_DENSITY_UPDATE_CACHE_FIELDS, update_props);
+
     mask_t mask, mask2;
-
-    rhoSum.v = vec_set1(0.f);
-    rho_dhSum.v = vec_set1(0.f);
-    wcountSum.v = vec_set1(0.f);
-    wcount_dhSum.v = vec_set1(0.f);
-    div_vSum.v = vec_set1(0.f);
-    curlvxSum.v = vec_set1(0.f);
-    curlvySum.v = vec_set1(0.f);
-    curlvzSum.v = vec_set1(0.f);
-
-    hi_vec.v = vec_load(&hiq[0]);
-    vix_vec.v = vec_load(&vixq[0]);
-    viy_vec.v = vec_load(&viyq[0]);
-    viz_vec.v = vec_load(&vizq[0]);
-
-    hi_inv_vec = vec_reciprocal(hi_vec);
     vec_init_mask_true(mask);
     vec_init_mask_true(mask2);
 
@@ -354,34 +349,22 @@ void test_interactions(struct part test_part, struct part *parts, size_t count,
       /* Interleave two vectors for interaction. */
       if (num_vec_proc == 2) {
         runner_iact_nonsym_2_vec_density(
-            &(r2q[i]), &(dxq[i]), &(dyq[i]), &(dzq[i]), (hi_inv_vec), (vix_vec),
-            (viy_vec), (viz_vec), &(vjxq[i]), &(vjyq[i]), &(vjzq[i]), &(mjq[i]),
-            &rhoSum, &rho_dhSum, &wcountSum, &wcount_dhSum, &div_vSum,
-            &curlvxSum, &curlvySum, &curlvzSum, mask, mask2, 0);
+            &int_cache, i, &params, &sum_cache, mask, mask2, 0);
       } else { /* Only use one vector for interaction. */
 
         vector my_r2, my_dx, my_dy, my_dz;
-        my_r2.v = vec_load(&(r2q[i]));
-        my_dx.v = vec_load(&(dxq[i]));
-        my_dy.v = vec_load(&(dyq[i]));
-        my_dz.v = vec_load(&(dzq[i]));
+        my_r2.v = vec_load(&(int_cache.r2q[i]));
+        my_dx.v = vec_load(&(int_cache.dxq[i]));
+        my_dy.v = vec_load(&(int_cache.dyq[i]));
+        my_dz.v = vec_load(&(int_cache.dzq[i]));
 
         runner_iact_nonsym_1_vec_density(
-            &my_r2, &my_dx, &my_dy, &my_dz, (hi_inv_vec), (vix_vec), (viy_vec),
-            (viz_vec), &(vjxq[i]), &(vjyq[i]), &(vjzq[i]), &(mjq[i]), &rhoSum,
-            &rho_dhSum, &wcountSum, &wcount_dhSum, &div_vSum, &curlvxSum,
-            &curlvySum, &curlvzSum, mask);
+            &my_r2, &my_dx, &my_dy, &my_dz, &params, &cell_cache, i, &sum_cache, mask);
       }
     }
 
-    VEC_HADD(rhoSum, piq[0]->rho);
-    VEC_HADD(rho_dhSum, piq[0]->density.rho_dh);
-    VEC_HADD(wcountSum, piq[0]->density.wcount);
-    VEC_HADD(wcount_dhSum, piq[0]->density.wcount_dh);
-    VEC_HADD(div_vSum, piq[0]->density.div_v);
-    VEC_HADD(curlvxSum, piq[0]->density.rot_v[0]);
-    VEC_HADD(curlvySum, piq[0]->density.rot_v[1]);
-    VEC_HADD(curlvzSum, piq[0]->density.rot_v[2]);
+    /* Perform horizontal adds on vector sums and store result in particle pi.*/
+    update_particle(update_props, 0, NUM_OF_DENSITY_UPDATE_CACHE_FIELDS);
 
     vec_time += getticks() - vec_tic;
   }
@@ -391,9 +374,11 @@ void test_interactions(struct part test_part, struct part *parts, size_t count,
   for (size_t i = 0; i < count; i++)
     dump_indv_particle_fields(vec_filename, pjq[i]);
 
+#ifdef GADGET2_SPH
   /* Check serial results against the vectorised results. */
   if (check_results(pi_serial, pj_serial, pi_vec, pj_vec, count))
     message("Differences found...");
+#endif
 
   message("The serial interactions took     : %15lli ticks.",
           serial_time / runs);
@@ -451,28 +436,8 @@ void test_force_interactions(struct part test_part, struct part *parts,
   float dxq[count] __attribute__((aligned(array_align)));
   float dyq[count] __attribute__((aligned(array_align)));
   float dzq[count] __attribute__((aligned(array_align)));
-
-  float hiq[count] __attribute__((aligned(array_align)));
-  float vixq[count] __attribute__((aligned(array_align)));
-  float viyq[count] __attribute__((aligned(array_align)));
-  float vizq[count] __attribute__((aligned(array_align)));
-  float rhoiq[count] __attribute__((aligned(array_align)));
-  float grad_hiq[count] __attribute__((aligned(array_align)));
-  float pOrhoi2q[count] __attribute__((aligned(array_align)));
-  float balsaraiq[count] __attribute__((aligned(array_align)));
-  float ciq[count] __attribute__((aligned(array_align)));
-
   float hj_invq[count] __attribute__((aligned(array_align)));
-  float mjq[count] __attribute__((aligned(array_align)));
-  float vjxq[count] __attribute__((aligned(array_align)));
-  float vjyq[count] __attribute__((aligned(array_align)));
-  float vjzq[count] __attribute__((aligned(array_align)));
-  float rhojq[count] __attribute__((aligned(array_align)));
-  float grad_hjq[count] __attribute__((aligned(array_align)));
-  float pOrhoj2q[count] __attribute__((aligned(array_align)));
-  float balsarajq[count] __attribute__((aligned(array_align)));
-  float cjq[count] __attribute__((aligned(array_align)));
-
+  
   /* Call serial interaction a set number of times. */
   for (int r = 0; r < runs; r++) {
     /* Reset particle to initial setup */
@@ -525,6 +490,12 @@ void test_force_interactions(struct part test_part, struct part *parts,
     pi_vec = test_part;
     for (size_t i = 0; i < count; i++) pj_vec[i] = parts[i];
 
+    struct cache cell_cache, cj_cache;
+    cell_cache.count = 0;
+    cj_cache.count = 0;
+    cache_init(&cell_cache, count);
+    cache_init(&cj_cache, count);
+
     /* Setup arrays for vector interaction. */
     for (size_t i = 0; i < count; i++) {
       /* Compute the pairwise distance. */
@@ -543,26 +514,30 @@ void test_force_interactions(struct part test_part, struct part *parts,
       dyq[i] = my_dx[1];
       dzq[i] = my_dx[2];
 
-      hiq[i] = pi_vec.h;
-      vixq[i] = pi_vec.v[0];
-      viyq[i] = pi_vec.v[1];
-      vizq[i] = pi_vec.v[2];
-      rhoiq[i] = pi_vec.rho;
-      grad_hiq[i] = pi_vec.force.f;
-      pOrhoi2q[i] = pi_vec.force.P_over_rho2;
-      balsaraiq[i] = pi_vec.force.balsara;
-      ciq[i] = pi_vec.force.soundspeed;
+      cell_cache.h[i] = pi_vec.h;
+      cell_cache.vx[i] = pi_vec.v[0];
+      cell_cache.vy[i] = pi_vec.v[1];
+      cell_cache.vz[i] = pi_vec.v[2];
+      cell_cache.rho[i] = pi_vec.rho;
+      cell_cache.grad_h[i] = pi_vec.force.f;
+      cell_cache.soundspeed[i] = pi_vec.force.soundspeed;
+#ifdef GADGET2_SPH
+      cell_cache.pOrho2[i] = pi_vec.force.P_over_rho2;
+      cell_cache.balsara[i] = pi_vec.force.balsara;
+#endif
 
       hj_invq[i] = 1.f / pj_vec[i].h;
-      mjq[i] = pj_vec[i].mass;
-      vjxq[i] = pj_vec[i].v[0];
-      vjyq[i] = pj_vec[i].v[1];
-      vjzq[i] = pj_vec[i].v[2];
-      rhojq[i] = pj_vec[i].rho;
-      grad_hjq[i] = pj_vec[i].force.f;
-      pOrhoj2q[i] = pj_vec[i].force.P_over_rho2;
-      balsarajq[i] = pj_vec[i].force.balsara;
-      cjq[i] = pj_vec[i].force.soundspeed;
+      cj_cache.m[i] = pj_vec[i].mass;
+      cj_cache.vx[i] = pj_vec[i].v[0];
+      cj_cache.vy[i] = pj_vec[i].v[1];
+      cj_cache.vz[i] = pj_vec[i].v[2];
+      cj_cache.rho[i] = pj_vec[i].rho;
+      cj_cache.grad_h[i] = pj_vec[i].force.f;
+      cj_cache.soundspeed[i] = pj_vec[i].force.soundspeed;
+#ifdef GADGET2_SPH
+      cj_cache.pOrho2[i] = pj_vec[i].force.P_over_rho2;
+      cj_cache.balsara[i] = pj_vec[i].force.balsara;
+#endif
     }
 
     /* Only dump data on first run. */
@@ -573,49 +548,22 @@ void test_force_interactions(struct part test_part, struct part *parts,
         dump_indv_particle_fields(vec_filename, pjq[i]);
     }
 
+    struct input_params_force params;
+    populate_input_params_force_cache(&cell_cache, 0, &params);
+    
+    /* Reset cumulative sums of update vectors. */
+    struct update_cache_force sum_cache;
+    struct cache_props update_props[NUM_OF_FORCE_UPDATE_CACHE_FIELDS];
+    cache_read_particle_update_fields_force(piq[0], update_props, &sum_cache);
+    update_cache_init(NUM_OF_FORCE_UPDATE_CACHE_FIELDS, update_props);
+
     /* Perform vector interaction. */
-    vector hi_vec, hi_inv_vec, vix_vec, viy_vec, viz_vec, rhoi_vec, grad_hi_vec,
-        pOrhoi2_vec, balsara_i_vec, ci_vec;
-    vector a_hydro_xSum, a_hydro_ySum, a_hydro_zSum, h_dtSum, v_sigSum,
-        entropy_dtSum;
-
-    a_hydro_xSum.v = vec_setzero();
-    a_hydro_ySum.v = vec_setzero();
-    a_hydro_zSum.v = vec_setzero();
-    h_dtSum.v = vec_setzero();
-    v_sigSum.v = vec_setzero();
-    entropy_dtSum.v = vec_setzero();
-
-    hi_vec.v = vec_load(&hiq[0]);
-    vix_vec.v = vec_load(&vixq[0]);
-    viy_vec.v = vec_load(&viyq[0]);
-    viz_vec.v = vec_load(&vizq[0]);
-    rhoi_vec.v = vec_load(&rhoiq[0]);
-    grad_hi_vec.v = vec_load(&grad_hiq[0]);
-    pOrhoi2_vec.v = vec_load(&pOrhoi2q[0]);
-    balsara_i_vec.v = vec_load(&balsaraiq[0]);
-    ci_vec.v = vec_load(&ciq[0]);
-
-    hi_inv_vec = vec_reciprocal(hi_vec);
-
-    mask_t mask, mask2;
+    mask_t mask;
     vec_init_mask_true(mask);
-    vec_init_mask_true(mask2);
 
     const ticks vec_tic = getticks();
 
     for (size_t i = 0; i < count; i += num_vec_proc * VEC_SIZE) {
-
-      if (num_vec_proc == 2) {
-        runner_iact_nonsym_2_vec_force(
-            &(r2q[i]), &(dxq[i]), &(dyq[i]), &(dzq[i]), (vix_vec), (viy_vec),
-            (viz_vec), rhoi_vec, grad_hi_vec, pOrhoi2_vec, balsara_i_vec,
-            ci_vec, &(vjxq[i]), &(vjyq[i]), &(vjzq[i]), &(rhojq[i]),
-            &(grad_hjq[i]), &(pOrhoj2q[i]), &(balsarajq[i]), &(cjq[i]),
-            &(mjq[i]), hi_inv_vec, &(hj_invq[i]), a, H, &a_hydro_xSum,
-            &a_hydro_ySum, &a_hydro_zSum, &h_dtSum, &v_sigSum, &entropy_dtSum,
-            mask, mask2, 0);
-      } else { /* Only use one vector for interaction. */
 
         vector my_r2, my_dx, my_dy, my_dz, hj, hj_inv;
         my_r2.v = vec_load(&(r2q[i]));
@@ -626,21 +574,11 @@ void test_force_interactions(struct part test_part, struct part *parts,
         hj_inv = vec_reciprocal(hj);
 
         runner_iact_nonsym_1_vec_force(
-            &my_r2, &my_dx, &my_dy, &my_dz, vix_vec, viy_vec, viz_vec, rhoi_vec,
-            grad_hi_vec, pOrhoi2_vec, balsara_i_vec, ci_vec, &(vjxq[i]),
-            &(vjyq[i]), &(vjzq[i]), &(rhojq[i]), &(grad_hjq[i]), &(pOrhoj2q[i]),
-            &(balsarajq[i]), &(cjq[i]), &(mjq[i]), hi_inv_vec, hj_inv, a, H,
-            &a_hydro_xSum, &a_hydro_ySum, &a_hydro_zSum, &h_dtSum, &v_sigSum,
-            &entropy_dtSum, mask);
-      }
+            &my_r2, &my_dx, &my_dy, &my_dz, &params, &cj_cache, i, hj_inv, a, H, &sum_cache, mask);
     }
 
-    VEC_HADD(a_hydro_xSum, piq[0]->a_hydro[0]);
-    VEC_HADD(a_hydro_ySum, piq[0]->a_hydro[1]);
-    VEC_HADD(a_hydro_zSum, piq[0]->a_hydro[2]);
-    VEC_HADD(h_dtSum, piq[0]->force.h_dt);
-    VEC_HMAX(v_sigSum, piq[0]->force.v_sig);
-    VEC_HADD(entropy_dtSum, piq[0]->entropy_dt);
+    /* Perform horizontal adds on vector sums and store result in particle pi.*/
+    update_particle(update_props, 0, NUM_OF_FORCE_UPDATE_CACHE_FIELDS);
 
     vec_time += getticks() - vec_tic;
   }
@@ -654,9 +592,11 @@ void test_force_interactions(struct part test_part, struct part *parts,
   for (size_t i = 0; i < count; i++)
     dump_indv_particle_fields(vec_filename, pjq[i]);
 
+#ifdef GADGET2_SPH
   /* Check serial results against the vectorised results. */
   if (check_results(pi_serial, pj_serial, pi_vec, pj_vec, count))
     message("Differences found...");
+#endif
 
   message("The serial interactions took     : %15lli ticks.",
           serial_time / runs);
@@ -669,7 +609,7 @@ int main(int argc, char *argv[]) {
   size_t runs = 10000;
   double h = 1.0, spacing = 0.5;
   double offset[3] = {0.0, 0.0, 0.0};
-  size_t count = 256;
+  size_t count = 112;
 
   /* Get some randomness going */
   srand(0);
@@ -730,8 +670,6 @@ int main(int argc, char *argv[]) {
 
   test_force_interactions(test_particle, &particles[1], count - 1,
                           "test_nonsym_force", runs, 1);
-  test_force_interactions(test_particle, &particles[1], count - 1,
-                          "test_nonsym_force", runs, 2);
 
   return 0;
 }
