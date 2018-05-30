@@ -32,6 +32,7 @@
 #include "runner.h"
 #include "timers.h"
 #include "vector.h"
+#include "cache.h"
 
 /* Function prototypes. */
 void runner_doself_subset_density_vec(struct runner *r,
