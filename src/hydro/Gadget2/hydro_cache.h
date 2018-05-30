@@ -1,6 +1,6 @@
 /*******************************************************************************
  * This file is part of SWIFT.
- * Copyright (c) 2016 James Willis (jame.s.willis@durham.ac.uk)
+ * Copyright (c) 2016 James Willis (james.s.willis@durham.ac.uk)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published
@@ -16,8 +16,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  ******************************************************************************/
-#ifndef SWIFT_CACHE_H
-#define SWIFT_CACHE_H
+#ifndef SWIFT_GADGET2_HYDRO_CACHE_H
+#define SWIFT_GADGET2_HYDRO_CACHE_H
 
 /* Config parameters. */
 #include "../config.h"
@@ -1138,4 +1138,4 @@ static INLINE void cache_clean(struct cache *c) {
 
 #endif /* WITH_VECTORIZATION */
 
-#endif /* SWIFT_CACHE_H */
+#endif /* SWIFT_GADGET2_HYDRO_CACHE_H */
