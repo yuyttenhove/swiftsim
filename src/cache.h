@@ -158,7 +158,7 @@ __attribute__((always_inline)) INLINE void cache_read_particles_subset(
   cache_read_particle_fields_density(parts, props, ci_cache);
   
   /* Construct a list of pointers to the arrays inside the cache. */
-  float *restrict fields[NUM_OF_DENSITY_CACHE_FIELDS];  
+  float *restrict fields[MAX_NUM_OF_CACHE_FIELDS];  
 
   for(int i=0; i<NUM_OF_DENSITY_CACHE_FIELDS; i++) {
     fields[i] = props[i].cache_addr;
@@ -436,30 +436,30 @@ PRAGMA_IVDEP
 
   /* Make sure that particle positions have been shifted correctly. */
   for (int i = 0; i < ci_cache_count; i++) {
-    if (fields[0][i] > shift_threshold_x || fields[0][i] < -shift_threshold_x)
+    if (x[i] > shift_threshold_x || x[i] < -shift_threshold_x)
       error(
           "Error: ci->loc[%lf,%lf,%lf],cj->loc[%lf,%lf,%lf] Particle %d x pos "
           "is not within "
           "[-4*ci->width*(1 + 2*space_maxreldx), 4*ci->width*(1 + "
           "2*space_maxreldx)]. x=%f, ci->width[0]=%f",
           ci->loc[0], ci->loc[1], ci->loc[2], cj->loc[0], cj->loc[1],
-          cj->loc[2], i, fields[0][i], ci->width[0]);
-    if (fields[1][i] > shift_threshold_y || fields[1][i] < -shift_threshold_y)
+          cj->loc[2], i, x[i], ci->width[0]);
+    if (y[i] > shift_threshold_y || y[i] < -shift_threshold_y)
       error(
           "Error: ci->loc[%lf,%lf,%lf], cj->loc[%lf,%lf,%lf] Particle %d y pos "
           "is not within "
           "[-4*ci->width*(1 + 2*space_maxreldx), 4*ci->width*(1 + "
           "2*space_maxreldx)]. y=%f, ci->width[1]=%f",
           ci->loc[0], ci->loc[1], ci->loc[2], cj->loc[0], cj->loc[1],
-          cj->loc[2], i, fields[1][i], ci->width[1]);
-    if (fields[2][i] > shift_threshold_z || fields[2][i] < -shift_threshold_z)
+          cj->loc[2], i, y[i], ci->width[1]);
+    if (z[i] > shift_threshold_z || z[i] < -shift_threshold_z)
       error(
           "Error: ci->loc[%lf,%lf,%lf], cj->loc[%lf,%lf,%lf] Particle %d z pos "
           "is not within "
           "[-4*ci->width*(1 + 2*space_maxreldx), 4*ci->width*(1 + "
           "2*space_maxreldx)]. z=%f, ci->width[2]=%f",
           ci->loc[0], ci->loc[1], ci->loc[2], cj->loc[0], cj->loc[1],
-          cj->loc[2], i, fields[2][i], ci->width[2]);
+          cj->loc[2], i, z[i], ci->width[2]);
   }
 #endif
 
@@ -512,30 +512,30 @@ PRAGMA_IVDEP
 #ifdef SWIFT_DEBUG_CHECKS
   /* Make sure that particle positions have been shifted correctly. */
   for (int i = 0; i <= last_pj_align; i++) {
-    if (fields[0][i] > shift_threshold_x || fields[0][i] < -shift_threshold_x)
+    if (x[i] > shift_threshold_x || x[i] < -shift_threshold_x)
       error(
           "Error: ci->loc[%lf,%lf,%lf], cj->loc[%lf,%lf,%lf] Particle %d xj "
           "pos is not within "
           "[-4*ci->width*(1 + 2*space_maxreldx), 4*ci->width*(1 + "
           "2*space_maxreldx)]. xj=%f, ci->width[0]=%f",
           ci->loc[0], ci->loc[1], ci->loc[2], cj->loc[0], cj->loc[1],
-          cj->loc[2], i, fields[0][i], ci->width[0]);
-    if (fields[1][i] > shift_threshold_y || fields[1][i] < -shift_threshold_y)
+          cj->loc[2], i, x[i], ci->width[0]);
+    if (y[i] > shift_threshold_y || y[i] < -shift_threshold_y)
       error(
           "Error: ci->loc[%lf,%lf,%lf], cj->loc[%lf,%lf,%lf] Particle %d yj "
           "pos is not within "
           "[-4*ci->width*(1 + 2*space_maxreldx), 4*ci->width*(1 + "
           "2*space_maxreldx)]. yj=%f, ci->width[1]=%f",
           ci->loc[0], ci->loc[1], ci->loc[2], cj->loc[0], cj->loc[1],
-          cj->loc[2], i, fields[1][i], ci->width[1]);
-    if (fields[2][i] > shift_threshold_z || fields[2][i] < -shift_threshold_z)
+          cj->loc[2], i, y[i], ci->width[1]);
+    if (z[i] > shift_threshold_z || z[i] < -shift_threshold_z)
       error(
           "Error: ci->loc[%lf,%lf,%lf], cj->loc[%lf,%lf,%lf] Particle %d zj "
           "pos is not within "
           "[-4*ci->width*(1 + 2*space_maxreldx), 4*ci->width*(1 + "
           "2*space_maxreldx)]. zj=%f, ci->width[2]=%f",
           ci->loc[0], ci->loc[1], ci->loc[2], cj->loc[0], cj->loc[1],
-          cj->loc[2], i, fields[2][i], ci->width[2]);
+          cj->loc[2], i, z[i], ci->width[2]);
   }
 #endif
 
@@ -616,7 +616,7 @@ cache_read_two_partial_cells_sorted_force(
   cache_read_particle_fields_force(parts_i, props, ci_cache);
 
   /* Construct a list of pointers to the arrays inside the cache. */
-  float *restrict fields[NUM_OF_FORCE_CACHE_FIELDS];  
+  float *restrict fields[MAX_NUM_OF_CACHE_FIELDS];  
 
   for(int i=0; i<NUM_OF_FORCE_CACHE_FIELDS; i++) {
     fields[i] = props[i].cache_addr;
