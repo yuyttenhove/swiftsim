@@ -203,6 +203,7 @@ struct input_params_force {
   vector input[input_params_force_length];
 };
 
+/* List which particle fields that need updating in the density interaction. */
 INLINE static void cache_read_particle_update_fields_density(const struct part *restrict parts, struct cache_props* list,
     struct update_cache_density *restrict const update_cache) {
 
@@ -214,6 +215,7 @@ INLINE static void cache_read_particle_update_fields_density(const struct part *
 
 }
 
+/* List which particle fields that need updating in the force interaction. */
 INLINE static void cache_read_particle_update_fields_force(const struct part *restrict parts, struct cache_props* list,
     struct update_cache_force *restrict const update_cache) {
 

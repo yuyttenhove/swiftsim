@@ -217,15 +217,15 @@ runner_iact_nonsym_1_vec_density(vector *r2, vector *dx, vector *dy, vector *dz,
   ri = vec_reciprocal_sqrt(*r2);
   r.v = vec_mul(r2->v, ri.v);
 
-  ui.v = vec_mul(r.v, params->v_hi_inv.v);
+  ui.v = vec_mul(r.v, params->input[input_params_density_hi_inv].v);
 
   /* Calculate the kernel for two particles. */
   kernel_deval_1_vec(&ui, &wi, &wi_dx);
 
   /* Compute dv. */
-  dvx.v = vec_sub(params->v_vix.v, vjx.v);
-  dvy.v = vec_sub(params->v_viy.v, vjy.v);
-  dvz.v = vec_sub(params->v_viz.v, vjz.v);
+  dvx.v = vec_sub(params->input[input_params_density_vix].v, vjx.v);
+  dvy.v = vec_sub(params->input[input_params_density_viy].v, vjy.v);
+  dvz.v = vec_sub(params->input[input_params_density_viz].v, vjz.v);
 
   /* Compute dv dot r */
   dvdr.v = vec_fma(dvx.v, dx->v, vec_fma(dvy.v, dy->v, vec_mul(dvz.v, dz->v)));
@@ -305,19 +305,19 @@ runner_iact_nonsym_2_vec_density(struct c2_cache *int_cache, const int int_cache
   r.v = vec_mul(r2.v, ri.v);
   r_2.v = vec_mul(r2_2.v, ri2.v);
 
-  ui.v = vec_mul(r.v, params->v_hi_inv.v);
-  ui2.v = vec_mul(r_2.v, params->v_hi_inv.v);
+  ui.v = vec_mul(r.v, params->input[input_params_density_hi_inv].v);
+  ui2.v = vec_mul(r_2.v, params->input[input_params_density_hi_inv].v);
 
   /* Calculate the kernel for two particles. */
   kernel_deval_2_vec(&ui, &wi, &wi_dx, &ui2, &wi2, &wi_dx2);
 
   /* Compute dv. */
-  dvx.v = vec_sub(params->v_vix.v, vjx.v);
-  dvx2.v = vec_sub(params->v_vix.v, vjx2.v);
-  dvy.v = vec_sub(params->v_viy.v, vjy.v);
-  dvy2.v = vec_sub(params->v_viy.v, vjy2.v);
-  dvz.v = vec_sub(params->v_viz.v, vjz.v);
-  dvz2.v = vec_sub(params->v_viz.v, vjz2.v);
+  dvx.v = vec_sub(params->input[input_params_density_vix].v, vjx.v);
+  dvx2.v = vec_sub(params->input[input_params_density_vix].v, vjx2.v);
+  dvy.v = vec_sub(params->input[input_params_density_viy].v, vjy.v);
+  dvy2.v = vec_sub(params->input[input_params_density_viy].v, vjy2.v);
+  dvz.v = vec_sub(params->input[input_params_density_viz].v, vjz.v);
+  dvz2.v = vec_sub(params->input[input_params_density_viz].v, vjz2.v);
 
   /* Compute dv dot r */
   dvdr.v = vec_fma(dvx.v, dx.v, vec_fma(dvy.v, dy.v, vec_mul(dvz.v, dz.v)));
@@ -648,7 +648,7 @@ static const vector const_viscosity_alpha_fac =
  */
 __attribute__((always_inline)) INLINE static void
 runner_iact_nonsym_1_vec_force(
-    vector *r2, vector *dx, vector *dy, vector *dz, const struct input_params_force *params, const struct cache *cell_cache, const int cache_idx, vector hj_inv, struct update_cache_force *sum_cache, mask_t mask) {
+    vector *r2, vector *dx, vector *dy, vector *dz, const struct input_params_force *params, const struct cache *cell_cache, const int cache_idx, vector hj_inv, const float a, const float H, struct update_cache_force *sum_cache, mask_t mask) {
 
 #ifdef WITH_VECTORIZATION
 
@@ -681,15 +681,15 @@ runner_iact_nonsym_1_vec_force(
   const vector v_a2_Hubble = vector_set1(a2_Hubble);
 
   /* Load stuff. */
-  balsara.v = vec_add(params->v_balsara_i.v, balsara_j.v);
+  balsara.v = vec_add(params->input[input_params_force_balsarai].v, balsara_j.v);
 
   /* Get the radius and inverse radius. */
   ri = vec_reciprocal_sqrt(*r2);
   r.v = vec_mul(r2->v, ri.v);
 
   /* Get the kernel for hi. */
-  hid_inv = pow_dimension_plus_one_vec(params->v_hi_inv);
-  xi.v = vec_mul(r.v, params->v_hi_inv.v);
+  hid_inv = pow_dimension_plus_one_vec(params->input[input_params_force_hi_inv]);
+  xi.v = vec_mul(r.v, params->input[input_params_force_hi_inv].v);
   kernel_eval_dWdx_force_vec(&xi, &wi_dx);
   wi_dr.v = vec_mul(hid_inv.v, wi_dx.v);
 
@@ -703,9 +703,9 @@ runner_iact_nonsym_1_vec_force(
   wj_dr.v = vec_mul(hjd_inv.v, wj_dx.v);
 
   /* Compute dv. */
-  dvx.v = vec_sub(params->v_vix.v, vjx.v);
-  dvy.v = vec_sub(params->v_viy.v, vjy.v);
-  dvz.v = vec_sub(params->v_viz.v, vjz.v);
+  dvx.v = vec_sub(params->input[input_params_force_vix].v, vjx.v);
+  dvy.v = vec_sub(params->input[input_params_force_viy].v, vjy.v);
+  dvz.v = vec_sub(params->input[input_params_force_viz].v, vjz.v);
 
   /* Compute dv dot r. */
   dvdr.v =
@@ -720,10 +720,10 @@ runner_iact_nonsym_1_vec_force(
                     vec_mul(ri.v, omega_ij.v)); /* This is 0 or negative */
 
   /* Compute signal velocity */
-  v_sig.v = vec_fnma(vec_set1(3.f), mu_ij.v, vec_add(params->v_ci.v, cj.v));
+  v_sig.v = vec_fnma(vec_set1(3.f), mu_ij.v, vec_add(params->input[input_params_force_ci].v, cj.v));
 
   /* Now construct the full viscosity term */
-  rho_ij.v = vec_mul(vec_set1(0.5f), vec_add(params->v_rhoi.v, pjrho.v));
+  rho_ij.v = vec_mul(vec_set1(0.5f), vec_add(params->input[input_params_force_rhoi].v, pjrho.v));
   visc.v = vec_div(vec_mul(const_viscosity_alpha_fac.v,
                            vec_mul(v_sig.v, vec_mul(mu_ij.v, balsara.v))),
                    rho_ij.v);
@@ -734,7 +734,7 @@ runner_iact_nonsym_1_vec_force(
               vec_mul(visc.v, vec_mul(vec_add(wi_dr.v, wj_dr.v), ri.v)));
 
   sph_term.v =
-      vec_mul(vec_fma(vec_mul(params->v_grad_hi.v, params->v_pOrhoi2.v), wi_dr.v,
+      vec_mul(vec_fma(vec_mul(params->input[input_params_force_grad_hi].v, params->input[input_params_force_pOrhoi2].v), wi_dr.v,
                       vec_mul(grad_hj.v, vec_mul(pjPOrho2.v, wj_dr.v))),
               ri.v);
 

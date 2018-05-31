@@ -24,6 +24,8 @@
 #include <unistd.h>
 #include "swift.h"
 
+#include "cache.h"
+
 #ifdef WITH_VECTORIZATION
 
 #define array_align sizeof(float) * VEC_SIZE
@@ -243,16 +245,6 @@ void test_interactions(struct part test_part, struct part *parts, size_t count,
     pjq[k] = NULL;
   }
 
-  float hiq[count] __attribute__((aligned(array_align)));
-#ifdef GADGET2_SPH
-  float vixq[count] __attribute__((aligned(array_align)));
-  float viyq[count] __attribute__((aligned(array_align)));
-  float vizq[count] __attribute__((aligned(array_align)));
-  float vjxq[count] __attribute__((aligned(array_align)));
-  float vjyq[count] __attribute__((aligned(array_align)));
-  float vjzq[count] __attribute__((aligned(array_align)));
-#endif
-
   /* Call serial interaction a set number of times. */
   for (int r = 0; r < runs; r++) {
     /* Reset particle to initial setup */
@@ -313,19 +305,18 @@ void test_interactions(struct part test_part, struct part *parts, size_t count,
       int_cache.dyq[i] = my_dx[1];
       int_cache.dzq[i] = my_dx[2];
 
-      hiq[i] = pi_vec.h;
       piq[i] = &pi_vec;
       pjq[i] = &pj_vec[i];
 
       int_cache.mq[i] = pj_vec[i].mass;
       cell_cache.m[i] = pj_vec[i].mass;
 #ifdef GADGET2_SPH
-      vixq[i] = pi_vec.v[0];
-      viyq[i] = pi_vec.v[1];
-      vizq[i] = pi_vec.v[2];
-      vjxq[i] = pj_vec[i].v[0];
-      vjyq[i] = pj_vec[i].v[1];
-      vjzq[i] = pj_vec[i].v[2];
+      int_cache.vxq[i] = pj_vec[i].v[0];
+      int_cache.vyq[i] = pj_vec[i].v[1];
+      int_cache.vzq[i] = pj_vec[i].v[2];
+      cell_cache.vx[i] = pj_vec[i].v[0];
+      cell_cache.vy[i] = pj_vec[i].v[1];
+      cell_cache.vz[i] = pj_vec[i].v[2];
 #endif
     }
 

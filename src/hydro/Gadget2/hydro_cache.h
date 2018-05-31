@@ -29,11 +29,18 @@
 #include "part.h"
 #include "sort_part.h"
 #include "vector.h"
+#include "generic_cache.h"
 
 #define NUM_VEC_PROC 2
 #define C2_CACHE_SIZE (NUM_VEC_PROC * VEC_SIZE * 6) + (NUM_VEC_PROC * VEC_SIZE)
+#define MAX_NUM_OF_CACHE_FIELDS 20
+#define NUM_OF_DENSITY_CACHE_FIELDS 4
+#define NUM_OF_DENSITY_UPDATE_CACHE_FIELDS 8
+#define NUM_OF_FORCE_CACHE_FIELDS 9
+#define NUM_OF_FORCE_UPDATE_CACHE_FIELDS 6
 
 #ifdef WITH_VECTORIZATION
+
 /* Cache struct to hold a local copy of a cells' particle
  * properties required for density/force calculations.*/
 struct cache {
@@ -84,6 +91,45 @@ struct cache {
   int count;
 };
 
+/**
+ * @brief Specifies which particle fields to read from a dataset (density).
+ *
+ * @param parts The particle array.
+ * @param list The list of i/o properties to read.
+ * @param ci_cache Particle cache to populate.
+ */
+INLINE void cache_read_particle_fields_density(const struct part *restrict parts, struct cache_props* list,
+                          struct cache *restrict const ci_cache) {
+
+  /* List what we want to read */
+  list[0] = cache_make_input_field("mass", parts, mass, ci_cache->m);
+  list[1] = cache_make_input_field("vx", parts, v[0], ci_cache->vx);
+  list[2] = cache_make_input_field("vy", parts, v[1], ci_cache->vy);
+  list[3] = cache_make_input_field("vz", parts, v[2], ci_cache->vz);
+}
+
+/**
+ * @brief Specifies which particle fields to read from a dataset (force).
+ *
+ * @param parts The particle array.
+ * @param list The list of i/o properties to read.
+ * @param ci_cache Particle cache to populate.
+ */
+INLINE void cache_read_particle_fields_force(const struct part *restrict parts, struct cache_props* list,
+                          struct cache *restrict const ci_cache) {
+
+  /* List what we want to read */
+  list[0] = cache_make_input_field("mass", parts, mass, ci_cache->m);
+  list[1] = cache_make_input_field("vx", parts, v[0], ci_cache->vx);
+  list[2] = cache_make_input_field("vy", parts, v[1], ci_cache->vy);
+  list[3] = cache_make_input_field("vz", parts, v[2], ci_cache->vz);
+  list[4] = cache_make_input_field("rho", parts, rho, ci_cache->rho);
+  list[5] = cache_make_input_field("pOrho2", parts, force.P_over_rho2, ci_cache->pOrho2);
+  list[6] = cache_make_input_field("grad_h", parts, force.f, ci_cache->grad_h);
+  list[7] = cache_make_input_field("balsara", parts, force.f, ci_cache->balsara);
+  list[8] = cache_make_input_field("soundspeed", parts, force.soundspeed, ci_cache->soundspeed);
+}
+
 /* Secondary cache struct to hold a list of interactions between two
  * particles.*/
 struct c2_cache {
@@ -113,6 +159,29 @@ struct c2_cache {
   float vzq[C2_CACHE_SIZE] SWIFT_CACHE_ALIGN;
 };
 
+/* List which particle density parameters are required as input. */
+enum input_params_density_types {
+  input_params_density_hi_inv = 0,
+  input_params_density_vix,
+  input_params_density_viy,
+  input_params_density_viz,
+  input_params_density_length
+};
+
+/* List which particle force parameters are required as input. */
+enum input_params_force_types {
+  input_params_force_hi_inv = 0,
+  input_params_force_vix,
+  input_params_force_viy,
+  input_params_force_viz,
+  input_params_force_rhoi,
+  input_params_force_grad_hi,
+  input_params_force_pOrhoi2,
+  input_params_force_balsarai,
+  input_params_force_ci,
+  input_params_force_length
+};
+
 /* Cache to hold a list of vectors used to update particle properties after a density interaction. */
 struct update_cache_density {
   vector v_rhoSum;
@@ -137,94 +206,41 @@ struct update_cache_force {
 
 /* Input parameters needed for computing the density interaction. */
 struct input_params_density {
-  vector v_vix;
-  vector v_viy;
-  vector v_viz;
-  vector v_hi_inv;
+  vector input[input_params_density_length];
 };
 
 /* Input parameters needed for computing the force interaction. */
 struct input_params_force {
-  vector v_vix;
-  vector v_viy;
-  vector v_viz;
-  vector v_hi_inv;
-  vector v_rhoi;
-  vector v_grad_hi;
-  vector v_pOrhoi2;
-  vector v_balsara_i;
-  vector v_ci;
+  vector input[input_params_force_length];
 };
 
-/**
- * @brief Reset the density update cache to zero.
- *
- * @param c The update cache.
- */
-__attribute__((always_inline)) INLINE void update_cache_density_init(struct update_cache_density *c) {
+/* List which particle fields that need updating in the density interaction. */
+INLINE static void cache_read_particle_update_fields_density(const struct part *restrict parts, struct cache_props* list,
+    struct update_cache_density *restrict const update_cache) {
 
-  c->v_rhoSum.v = vec_setzero();
-  c->v_rho_dhSum.v = vec_setzero();
-  c->v_wcountSum.v = vec_setzero();
-  c->v_wcount_dhSum.v = vec_setzero();
-  c->v_div_vSum.v = vec_setzero();
-  c->v_curlvxSum.v = vec_setzero();
-  c->v_curlvySum.v = vec_setzero();
-  c->v_curlvzSum.v = vec_setzero();
+  /* List what we want to read */
+  list[0] = cache_make_output_field("rho", parts, rho, &update_cache->v_rhoSum.f[0], reduction_add);
+  list[1] = cache_make_output_field("rho_dh", parts, density.rho_dh, &update_cache->v_rho_dhSum.f[0], reduction_add);
+  list[2] = cache_make_output_field("wcount", parts, density.wcount, &update_cache->v_wcountSum.f[0], reduction_add);
+  list[3] = cache_make_output_field("wcount_dh", parts, density.wcount_dh, &update_cache->v_wcount_dhSum.f[0], reduction_add);
+  list[4] = cache_make_output_field("div_v", parts, density.div_v, &update_cache->v_div_vSum.f[0], reduction_add);
+  list[5] = cache_make_output_field("curl_vx", parts, density.rot_v[0], &update_cache->v_curlvxSum.f[0], reduction_add);
+  list[6] = cache_make_output_field("curl_vy", parts, density.rot_v[1], &update_cache->v_curlvySum.f[0], reduction_add);
+  list[7] = cache_make_output_field("curl_vz", parts, density.rot_v[2], &update_cache->v_curlvzSum.f[0], reduction_add);
 
 }
 
-/**
- * @brief Reset the force update cache to zero.
- *
- * @param c The update cache.
- */
-__attribute__((always_inline)) INLINE void update_cache_force_init(struct update_cache_force *c) {
+/* List which particle fields that need updating in the force interaction. */
+INLINE static void cache_read_particle_update_fields_force(const struct part *restrict parts, struct cache_props* list,
+    struct update_cache_force *restrict const update_cache) {
 
-  c->v_a_hydro_xSum.v = vec_setzero();
-  c->v_a_hydro_ySum.v = vec_setzero();
-  c->v_a_hydro_zSum.v = vec_setzero();
-  c->v_h_dtSum.v = vec_setzero();
-  c->v_sigSum.v = vec_setzero();
-  c->v_entropy_dtSum.v = vec_setzero();
-
-}
-
-/**
- * @brief Perform horizontal adds on vector sums and store result in particle pi. Density interaction.
- *
- * @param pi Particle to update.
- * @param c Update cache.
- */
-__attribute__((always_inline)) INLINE void update_density_particle(struct part *restrict pi, struct update_cache_density *c) {
-
-  VEC_HADD(c->v_rhoSum, pi->rho);
-  VEC_HADD(c->v_rho_dhSum, pi->density.rho_dh);
-  VEC_HADD(c->v_wcountSum, pi->density.wcount);
-  VEC_HADD(c->v_wcount_dhSum, pi->density.wcount_dh);
-  VEC_HADD(c->v_div_vSum, pi->density.div_v);
-  VEC_HADD(c->v_curlvxSum, pi->density.rot_v[0]);
-  VEC_HADD(c->v_curlvySum, pi->density.rot_v[1]);
-  VEC_HADD(c->v_curlvzSum, pi->density.rot_v[2]);
-
-}
-
-/**
- * @brief Perform horizontal adds on vector sums and store result in particle pi. Force interaction.
- *
- * @param pi Particle to update.
- * @param c Update cache.
- */
-__attribute__((always_inline)) INLINE void update_force_particle(struct part *restrict pi, struct update_cache_force *c) {
-
-  VEC_HADD(c->v_a_hydro_xSum, pi->a_hydro[0]);
-  VEC_HADD(c->v_a_hydro_ySum, pi->a_hydro[1]);
-  VEC_HADD(c->v_a_hydro_zSum, pi->a_hydro[2]);
-  VEC_HADD(c->v_h_dtSum, pi->force.h_dt);
-  float max_v_sig = 0.f;
-  VEC_HMAX(c->v_sigSum, max_v_sig);
-  pi->force.v_sig = max(pi->force.v_sig, max_v_sig);
-  VEC_HADD(c->v_entropy_dtSum, pi->entropy_dt);
+  /* List what we want to read */
+  list[0] = cache_make_output_field("a_hydro_x", parts, a_hydro[0], &update_cache->v_a_hydro_xSum.f[0], reduction_add);
+  list[1] = cache_make_output_field("a_hydro_y", parts, a_hydro[1], &update_cache->v_a_hydro_ySum.f[0], reduction_add);
+  list[2] = cache_make_output_field("a_hydro_z", parts, a_hydro[2], &update_cache->v_a_hydro_zSum.f[0], reduction_add);
+  list[3] = cache_make_output_field("h_dt", parts, force.h_dt, &update_cache->v_h_dtSum.f[0], reduction_add);
+  list[4] = cache_make_output_field("v_sig", parts, force.v_sig, &update_cache->v_sigSum.f[0], reduction_max);
+  list[5] = cache_make_output_field("entropy_dt", parts, entropy_dt, &update_cache->v_entropy_dtSum.f[0], reduction_add);
 
 }
 
@@ -240,10 +256,11 @@ __attribute__((always_inline)) INLINE void populate_input_params_density_cache(c
   const float hi = c->h[cache_index];
   const float hi_inv = 1.f / hi;
   
-  params->v_vix = vector_set1(c->vx[cache_index]);
-  params->v_viy = vector_set1(c->vy[cache_index]);
-  params->v_viz = vector_set1(c->vz[cache_index]);
-  params->v_hi_inv = vector_set1(hi_inv);
+  params->input[input_params_density_hi_inv] = vector_set1(hi_inv);
+  params->input[input_params_density_vix] = vector_set1(c->vx[cache_index]);
+  params->input[input_params_density_viy] = vector_set1(c->vy[cache_index]);
+  params->input[input_params_density_viz] = vector_set1(c->vz[cache_index]);
+
 }
 
 /**
@@ -258,15 +275,15 @@ __attribute__((always_inline)) INLINE void populate_input_params_force_cache(con
   const float hi = c->h[cache_index];
   const float hi_inv = 1.f / hi;
   
-  params->v_vix = vector_set1(c->vx[cache_index]);
-  params->v_viy = vector_set1(c->vy[cache_index]);
-  params->v_viz = vector_set1(c->vz[cache_index]);
-  params->v_hi_inv = vector_set1(hi_inv); 
-  params->v_rhoi = vector_set1(c->rho[cache_index]);
-  params->v_grad_hi = vector_set1(c->grad_h[cache_index]);
-  params->v_pOrhoi2 = vector_set1(c->pOrho2[cache_index]);
-  params->v_balsara_i = vector_set1(c->balsara[cache_index]);
-  params->v_ci = vector_set1(c->soundspeed[cache_index]);
+  params->input[input_params_force_hi_inv] = vector_set1(hi_inv); 
+  params->input[input_params_force_vix] = vector_set1(c->vx[cache_index]);
+  params->input[input_params_force_viy] = vector_set1(c->vy[cache_index]);
+  params->input[input_params_force_viz] = vector_set1(c->vz[cache_index]);
+  params->input[input_params_force_rhoi] = vector_set1(c->rho[cache_index]);
+  params->input[input_params_force_grad_hi] = vector_set1(c->grad_h[cache_index]);
+  params->input[input_params_force_pOrhoi2] = vector_set1(c->pOrho2[cache_index]);
+  params->input[input_params_force_balsarai] = vector_set1(c->balsara[cache_index]);
+  params->input[input_params_force_ci] = vector_set1(c->soundspeed[cache_index]);
 
 }
 
@@ -281,10 +298,11 @@ __attribute__((always_inline)) INLINE void populate_input_params_density(struct 
   const float hi = pi->h;
   const float hi_inv = 1.f / hi;
   
-  params->v_vix = vector_set1(pi->v[0]);
-  params->v_viy = vector_set1(pi->v[1]);
-  params->v_viz = vector_set1(pi->v[2]);
-  params->v_hi_inv = vector_set1(hi_inv);
+  params->input[input_params_density_hi_inv] = vector_set1(hi_inv);
+  params->input[input_params_density_vix] = vector_set1(pi->v[0]);
+  params->input[input_params_density_viy] = vector_set1(pi->v[1]);
+  params->input[input_params_density_viz] = vector_set1(pi->v[2]);
+
 }
 
 /**
@@ -346,686 +364,6 @@ __attribute__((always_inline)) INLINE void cache_init(struct cache *c,
   if (error != 0)
     error("Couldn't allocate cache, no. of particles: %d", (int)count);
   c->count = count;
-}
-
-/**
- * @brief Populate cache by reading in the particles in unsorted order.
- *
- * @param ci The #cell.
- * @param ci_cache The cache.
- */
-__attribute__((always_inline)) INLINE void cache_read_particles(
-    const struct cell *restrict const ci,
-    struct cache *restrict const ci_cache, const int ci_count) {
-
-#if defined(GADGET2_SPH)
-
-  /* Let the compiler know that the data is aligned and create pointers to the
-   * arrays inside the cache. */
-  swift_declare_aligned_ptr(float, x, ci_cache->x, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, y, ci_cache->y, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, z, ci_cache->z, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, h, ci_cache->h, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, m, ci_cache->m, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, vx, ci_cache->vx, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, vy, ci_cache->vy, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, vz, ci_cache->vz, SWIFT_CACHE_ALIGNMENT);
-
-  const struct part *restrict parts = ci->parts;
-  const double loc[3] = {ci->loc[0], ci->loc[1], ci->loc[2]};
-
-  /* Shift the particles positions to a local frame so single precision can be
-   * used instead of double precision. */
-  for (int i = 0; i < ci_count; i++) {
-    x[i] = (float)(parts[i].x[0] - loc[0]);
-    y[i] = (float)(parts[i].x[1] - loc[1]);
-    z[i] = (float)(parts[i].x[2] - loc[2]);
-    h[i] = parts[i].h;
-    m[i] = parts[i].mass;
-    vx[i] = parts[i].v[0];
-    vy[i] = parts[i].v[1];
-    vz[i] = parts[i].v[2];
-  }
-
-  /* Pad cache with fake particles that exist outside the cell so will not
-   * interact. We use values of the same magnitude (but negative!) as the real
-   * particles to avoid overflow problems. */
-  const double max_dx = ci->dx_max_part;
-  const float pos_padded[3] = {-(2. * ci->width[0] + max_dx),
-                               -(2. * ci->width[1] + max_dx),
-                               -(2. * ci->width[2] + max_dx)};
-  const float h_padded = ci->parts[0].h;
-  const int ci_count_padded = ci_count - (ci_count % (NUM_VEC_PROC * VEC_SIZE)) + NUM_VEC_PROC * VEC_SIZE;
-
-  for (int i = ci_count; i < ci_count_padded; i++) {
-    x[i] = pos_padded[0];
-    y[i] = pos_padded[1];
-    z[i] = pos_padded[2];
-    h[i] = h_padded;
-    m[i] = 1.f;
-    vx[i] = 1.f;
-    vy[i] = 1.f;
-    vz[i] = 1.f;
-  }
-#endif
-}
-
-/**
- * @brief Populate cache by only reading particles that are within range of
- * each other within the adjoining cell. Also read the particles into the cache
- * in sorted order.
- *
- * @param ci The i #cell.
- * @param ci_cache The #cache for cell ci.
- * @param sort_i The array of sorted particle indices for cell ci.
- * @param first_pi The first particle in cell ci that is in range.
- * @param last_pi The last particle in cell ci that is in range.
- * @param last_pi The last particle in cell ci that is in range.
- * @param loc The cell location to remove from the particle positions.
- * @param flipped Flag to check whether the cells have been flipped or not.
- */
-__attribute__((always_inline)) INLINE void cache_read_particles_subset(
-    const struct cell *restrict const ci, struct cache *restrict const ci_cache,
-    const struct entry *restrict sort_i, int *first_pi, int *last_pi,
-    const double *loc, const int flipped) {
-
-#if defined(GADGET2_SPH)
-
-  /* Let the compiler know that the data is aligned and create pointers to the
-   * arrays inside the cache. */
-  swift_declare_aligned_ptr(float, x, ci_cache->x, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, y, ci_cache->y, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, z, ci_cache->z, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, h, ci_cache->h, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, m, ci_cache->m, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, vx, ci_cache->vx, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, vy, ci_cache->vy, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, vz, ci_cache->vz, SWIFT_CACHE_ALIGNMENT);
-
-  const struct part *restrict parts = ci->parts;
-
-  /* The cell is on the right so read the particles
-   * into the cache from the start of the cell. */
-  if (!flipped) {
-    const int rem = (*last_pi + 1) % VEC_SIZE;
-    if (rem != 0) {
-      const int pad = VEC_SIZE - rem;
-
-      /* Increase last_pi if there are particles in the cell left to read. */
-      if (*last_pi + pad < ci->count) *last_pi += pad;
-    }
-
-    /* Shift the particles positions to a local frame so single precision can be
-     * used instead of double precision. */
-    for (int i = 0; i < *last_pi; i++) {
-      const int idx = sort_i[i].i;
-      x[i] = (float)(parts[idx].x[0] - loc[0]);
-      y[i] = (float)(parts[idx].x[1] - loc[1]);
-      z[i] = (float)(parts[idx].x[2] - loc[2]);
-      h[i] = parts[idx].h;
-      m[i] = parts[idx].mass;
-      vx[i] = parts[idx].v[0];
-      vy[i] = parts[idx].v[1];
-      vz[i] = parts[idx].v[2];
-    }
-
-    /* Pad cache with fake particles that exist outside the cell so will not
-     * interact. We use values of the same magnitude (but negative!) as the real
-     * particles to avoid overflow problems. */
-    const double max_dx = ci->dx_max_part;
-    const float pos_padded[3] = {-(2. * ci->width[0] + max_dx),
-                                 -(2. * ci->width[1] + max_dx),
-                                 -(2. * ci->width[2] + max_dx)};
-    const float h_padded = ci->parts[0].h;
-
-    for (int i = *last_pi; i < *last_pi + VEC_SIZE; i++) {
-      x[i] = pos_padded[0];
-      y[i] = pos_padded[1];
-      z[i] = pos_padded[2];
-      h[i] = h_padded;
-
-      m[i] = 1.f;
-      vx[i] = 1.f;
-      vy[i] = 1.f;
-      vz[i] = 1.f;
-    }
-  }
-  /* The cell is on the left so read the particles
-   * into the cache from the end of the cell. */
-  else {
-    const int rem = (ci->count - *first_pi) % VEC_SIZE;
-    if (rem != 0) {
-      const int pad = VEC_SIZE - rem;
-
-      /* Decrease first_pi if there are particles in the cell left to read. */
-      if (*first_pi - pad >= 0) *first_pi -= pad;
-    }
-
-    const int ci_cache_count = ci->count - *first_pi;
-
-    /* Shift the particles positions to a local frame so single precision can be
-     * used instead of double precision. */
-    for (int i = 0; i < ci_cache_count; i++) {
-      const int idx = sort_i[i + *first_pi].i;
-      x[i] = (float)(parts[idx].x[0] - loc[0]);
-      y[i] = (float)(parts[idx].x[1] - loc[1]);
-      z[i] = (float)(parts[idx].x[2] - loc[2]);
-      h[i] = parts[idx].h;
-      m[i] = parts[idx].mass;
-      vx[i] = parts[idx].v[0];
-      vy[i] = parts[idx].v[1];
-      vz[i] = parts[idx].v[2];
-    }
-
-    /* Pad cache with fake particles that exist outside the cell so will not
-     * interact. We use values of the same magnitude (but negative!) as the real
-     * particles to avoid overflow problems. */
-    const double max_dx = ci->dx_max_part;
-    const float pos_padded[3] = {-(2. * ci->width[0] + max_dx),
-                                 -(2. * ci->width[1] + max_dx),
-                                 -(2. * ci->width[2] + max_dx)};
-    const float h_padded = ci->parts[0].h;
-
-    for (int i = ci->count - *first_pi; i < ci->count - *first_pi + VEC_SIZE;
-         i++) {
-      x[i] = pos_padded[0];
-      y[i] = pos_padded[1];
-      z[i] = pos_padded[2];
-      h[i] = h_padded;
-
-      m[i] = 1.f;
-      vx[i] = 1.f;
-      vy[i] = 1.f;
-      vz[i] = 1.f;
-    }
-  }
-
-#endif
-}
-
-/**
- * @brief Populate cache for force interactions by reading in the particles in
- * unsorted order.
- *
- * @param ci The #cell.
- * @param ci_cache The cache.
- */
-__attribute__((always_inline)) INLINE void cache_read_force_particles(
-    const struct cell *restrict const ci,
-    struct cache *restrict const ci_cache, const int ci_count) {
-
-#if defined(GADGET2_SPH)
-
-  /* Let the compiler know that the data is aligned and create pointers to the
-   * arrays inside the cache. */
-  swift_declare_aligned_ptr(float, x, ci_cache->x, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, y, ci_cache->y, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, z, ci_cache->z, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, h, ci_cache->h, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, m, ci_cache->m, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, vx, ci_cache->vx, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, vy, ci_cache->vy, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, vz, ci_cache->vz, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, rho, ci_cache->rho, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, grad_h, ci_cache->grad_h,
-                            SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, pOrho2, ci_cache->pOrho2,
-                            SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, balsara, ci_cache->balsara,
-                            SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, soundspeed, ci_cache->soundspeed,
-                            SWIFT_CACHE_ALIGNMENT);
-
-  const struct part *restrict parts = ci->parts;
-  const double loc[3] = {ci->loc[0], ci->loc[1], ci->loc[2]};
-
-  /* Shift the particles positions to a local frame so single precision can be
-   * used instead of double precision. */
-  for (int i = 0; i < ci_count; i++) {
-    x[i] = (float)(parts[i].x[0] - loc[0]);
-    y[i] = (float)(parts[i].x[1] - loc[1]);
-    z[i] = (float)(parts[i].x[2] - loc[2]);
-    h[i] = parts[i].h;
-    m[i] = parts[i].mass;
-    vx[i] = parts[i].v[0];
-    vy[i] = parts[i].v[1];
-    vz[i] = parts[i].v[2];
-    rho[i] = parts[i].rho;
-    grad_h[i] = parts[i].force.f;
-    pOrho2[i] = parts[i].force.P_over_rho2;
-    balsara[i] = parts[i].force.balsara;
-    soundspeed[i] = parts[i].force.soundspeed;
-  }
-
-  /* Pad cache with fake particles that exist outside the cell so will not
-   * interact. We use values of the same magnitude (but negative!) as the real
-   * particles to avoid overflow problems. */
-  const double max_dx = ci->dx_max_part;
-  const float pos_padded[3] = {-(2. * ci->width[0] + max_dx),
-                               -(2. * ci->width[1] + max_dx),
-                               -(2. * ci->width[2] + max_dx)};
-  const float h_padded = ci->parts[0].h;
-  const int ci_count_padded = ci_count - (ci_count % VEC_SIZE) + VEC_SIZE;
-
-  for (int i = ci_count; i < ci_count_padded; i++) {
-    x[i] = pos_padded[0];
-    y[i] = pos_padded[1];
-    z[i] = pos_padded[2];
-    h[i] = h_padded;
-    m[i] = 1.f;
-    vx[i] = 1.f;
-    vy[i] = 1.f;
-    vz[i] = 1.f;
-    rho[i] = 1.f;
-    grad_h[i] = 1.f;
-    pOrho2[i] = 1.f;
-    balsara[i] = 1.f;
-    soundspeed[i] = 1.f;
-  }
-#endif
-}
-
-/**
- * @brief Populate caches by only reading particles that are within range of
- * each other within the adjoining cell.Also read the particles into the cache
- * in sorted order.
- *
- * @param ci The i #cell.
- * @param cj The j #cell.
- * @param ci_cache The #cache for cell ci.
- * @param cj_cache The #cache for cell cj.
- * @param sort_i The array of sorted particle indices for cell ci.
- * @param sort_j The array of sorted particle indices for cell ci.
- * @param shift The amount to shift the particle positions to account for BCs
- * @param first_pi The first particle in cell ci that is in range.
- * @param last_pj The last particle in cell cj that is in range.
- */
-__attribute__((always_inline)) INLINE void cache_read_two_partial_cells_sorted(
-    const struct cell *restrict const ci, const struct cell *restrict const cj,
-    struct cache *restrict const ci_cache,
-    struct cache *restrict const cj_cache, const struct entry *restrict sort_i,
-    const struct entry *restrict sort_j, const double *restrict const shift,
-    int *first_pi, int *last_pj) {
-
-  /* Make the number of particles to be read a multiple of the vector size.
-   * This eliminates serial remainder loops where possible when populating the
-   * cache. */
-
-  /* Is the number of particles to read a multiple of the vector size? */
-  int rem = (ci->count - *first_pi) % VEC_SIZE;
-  if (rem != 0) {
-    int pad = VEC_SIZE - rem;
-
-    /* Decrease first_pi if there are particles in the cell left to read. */
-    if (*first_pi - pad >= 0) *first_pi -= pad;
-  }
-
-  rem = (*last_pj + 1) % VEC_SIZE;
-  if (rem != 0) {
-    int pad = VEC_SIZE - rem;
-
-    /* Increase last_pj if there are particles in the cell left to read. */
-    if (*last_pj + pad < cj->count) *last_pj += pad;
-  }
-
-  /* Get some local pointers */
-  const int first_pi_align = *first_pi;
-  const int last_pj_align = *last_pj;
-  const struct part *restrict parts_i = ci->parts;
-  const struct part *restrict parts_j = cj->parts;
-
-  /* Shift particles to the local frame and account for boundary conditions.*/
-  const double total_ci_shift[3] = {
-      cj->loc[0] + shift[0], cj->loc[1] + shift[1], cj->loc[2] + shift[2]};
-  const double total_cj_shift[3] = {cj->loc[0], cj->loc[1], cj->loc[2]};
-
-  /* Let the compiler know that the data is aligned and create pointers to the
-   * arrays inside the cache. */
-  swift_declare_aligned_ptr(float, x, ci_cache->x, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, y, ci_cache->y, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, z, ci_cache->z, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, h, ci_cache->h, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, m, ci_cache->m, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, vx, ci_cache->vx, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, vy, ci_cache->vy, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, vz, ci_cache->vz, SWIFT_CACHE_ALIGNMENT);
-
-  int ci_cache_count = ci->count - first_pi_align;
-
-  /* Shift the particles positions to a local frame (ci frame) so single
-   * precision can be used instead of double precision.  */
-  for (int i = 0; i < ci_cache_count; i++) {
-    const int idx = sort_i[i + first_pi_align].i;
-    x[i] = (float)(parts_i[idx].x[0] - total_ci_shift[0]);
-    y[i] = (float)(parts_i[idx].x[1] - total_ci_shift[1]);
-    z[i] = (float)(parts_i[idx].x[2] - total_ci_shift[2]);
-    h[i] = parts_i[idx].h;
-    vx[i] = parts_i[idx].v[0];
-    vy[i] = parts_i[idx].v[1];
-    vz[i] = parts_i[idx].v[2];
-#ifdef GADGET2_SPH
-    m[i] = parts_i[idx].mass;
-#endif
-  }
-
-#ifdef SWIFT_DEBUG_CHECKS
-  const float shift_threshold_x =
-      2. * ci->width[0] + 2. * max(ci->dx_max_part, cj->dx_max_part);
-  const float shift_threshold_y =
-      2. * ci->width[1] + 2. * max(ci->dx_max_part, cj->dx_max_part);
-  const float shift_threshold_z =
-      2. * ci->width[2] + 2. * max(ci->dx_max_part, cj->dx_max_part);
-
-  /* Make sure that particle positions have been shifted correctly. */
-  for (int i = 0; i < ci_cache_count; i++) {
-    if (x[i] > shift_threshold_x || x[i] < -shift_threshold_x)
-      error(
-          "Error: ci->loc[%lf,%lf,%lf],cj->loc[%lf,%lf,%lf] Particle %d x pos "
-          "is not within "
-          "[-4*ci->width*(1 + 2*space_maxreldx), 4*ci->width*(1 + "
-          "2*space_maxreldx)]. x=%f, ci->width[0]=%f",
-          ci->loc[0], ci->loc[1], ci->loc[2], cj->loc[0], cj->loc[1],
-          cj->loc[2], i, x[i], ci->width[0]);
-    if (y[i] > shift_threshold_y || y[i] < -shift_threshold_y)
-      error(
-          "Error: ci->loc[%lf,%lf,%lf], cj->loc[%lf,%lf,%lf] Particle %d y pos "
-          "is not within "
-          "[-4*ci->width*(1 + 2*space_maxreldx), 4*ci->width*(1 + "
-          "2*space_maxreldx)]. y=%f, ci->width[1]=%f",
-          ci->loc[0], ci->loc[1], ci->loc[2], cj->loc[0], cj->loc[1],
-          cj->loc[2], i, y[i], ci->width[1]);
-    if (z[i] > shift_threshold_z || z[i] < -shift_threshold_z)
-      error(
-          "Error: ci->loc[%lf,%lf,%lf], cj->loc[%lf,%lf,%lf] Particle %d z pos "
-          "is not within "
-          "[-4*ci->width*(1 + 2*space_maxreldx), 4*ci->width*(1 + "
-          "2*space_maxreldx)]. z=%f, ci->width[2]=%f",
-          ci->loc[0], ci->loc[1], ci->loc[2], cj->loc[0], cj->loc[1],
-          cj->loc[2], i, z[i], ci->width[2]);
-  }
-#endif
-
-  /* Pad cache with fake particles that exist outside the cell so will not
-   * interact. We use values of the same magnitude (but negative!) as the real
-   * particles to avoid overflow problems. */
-  const double max_dx = max(ci->dx_max_part, cj->dx_max_part);
-  const float pos_padded[3] = {-(2. * ci->width[0] + max_dx),
-                               -(2. * ci->width[1] + max_dx),
-                               -(2. * ci->width[2] + max_dx)};
-  const float h_padded = ci->parts[0].h;
-
-  for (int i = ci->count - first_pi_align;
-       i < ci->count - first_pi_align + VEC_SIZE; i++) {
-    x[i] = pos_padded[0];
-    y[i] = pos_padded[1];
-    z[i] = pos_padded[2];
-    h[i] = h_padded;
-    m[i] = 1.f;
-    vx[i] = 1.f;
-    vy[i] = 1.f;
-    vz[i] = 1.f;
-  }
-
-  /* Let the compiler know that the data is aligned and create pointers to the
-   * arrays inside the cache. */
-  swift_declare_aligned_ptr(float, xj, cj_cache->x, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, yj, cj_cache->y, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, zj, cj_cache->z, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, hj, cj_cache->h, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, mj, cj_cache->m, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, vxj, cj_cache->vx, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, vyj, cj_cache->vy, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, vzj, cj_cache->vz, SWIFT_CACHE_ALIGNMENT);
-
-  for (int i = 0; i <= last_pj_align; i++) {
-    const int idx = sort_j[i].i;
-    xj[i] = (float)(parts_j[idx].x[0] - total_cj_shift[0]);
-    yj[i] = (float)(parts_j[idx].x[1] - total_cj_shift[1]);
-    zj[i] = (float)(parts_j[idx].x[2] - total_cj_shift[2]);
-    hj[i] = parts_j[idx].h;
-    vxj[i] = parts_j[idx].v[0];
-    vyj[i] = parts_j[idx].v[1];
-    vzj[i] = parts_j[idx].v[2];
-#ifdef GADGET2_SPH
-    mj[i] = parts_j[idx].mass;
-#endif
-  }
-
-#ifdef SWIFT_DEBUG_CHECKS
-  /* Make sure that particle positions have been shifted correctly. */
-  for (int i = 0; i <= last_pj_align; i++) {
-    if (xj[i] > shift_threshold_x || xj[i] < -shift_threshold_x)
-      error(
-          "Error: ci->loc[%lf,%lf,%lf], cj->loc[%lf,%lf,%lf] Particle %d xj "
-          "pos is not within "
-          "[-4*ci->width*(1 + 2*space_maxreldx), 4*ci->width*(1 + "
-          "2*space_maxreldx)]. xj=%f, ci->width[0]=%f",
-          ci->loc[0], ci->loc[1], ci->loc[2], cj->loc[0], cj->loc[1],
-          cj->loc[2], i, xj[i], ci->width[0]);
-    if (yj[i] > shift_threshold_y || yj[i] < -shift_threshold_y)
-      error(
-          "Error: ci->loc[%lf,%lf,%lf], cj->loc[%lf,%lf,%lf] Particle %d yj "
-          "pos is not within "
-          "[-4*ci->width*(1 + 2*space_maxreldx), 4*ci->width*(1 + "
-          "2*space_maxreldx)]. yj=%f, ci->width[1]=%f",
-          ci->loc[0], ci->loc[1], ci->loc[2], cj->loc[0], cj->loc[1],
-          cj->loc[2], i, yj[i], ci->width[1]);
-    if (zj[i] > shift_threshold_z || zj[i] < -shift_threshold_z)
-      error(
-          "Error: ci->loc[%lf,%lf,%lf], cj->loc[%lf,%lf,%lf] Particle %d zj "
-          "pos is not within "
-          "[-4*ci->width*(1 + 2*space_maxreldx), 4*ci->width*(1 + "
-          "2*space_maxreldx)]. zj=%f, ci->width[2]=%f",
-          ci->loc[0], ci->loc[1], ci->loc[2], cj->loc[0], cj->loc[1],
-          cj->loc[2], i, zj[i], ci->width[2]);
-  }
-#endif
-
-  /* Pad cache with fake particles that exist outside the cell so will not
-   * interact. We use values of the same magnitude (but negative!) as the real
-   * particles to avoid overflow problems. */
-  const float pos_padded_j[3] = {-(2. * cj->width[0] + max_dx),
-                                 -(2. * cj->width[1] + max_dx),
-                                 -(2. * cj->width[2] + max_dx)};
-  const float h_padded_j = cj->parts[0].h;
-
-  for (int i = last_pj_align + 1; i < last_pj_align + 1 + VEC_SIZE; i++) {
-    xj[i] = pos_padded_j[0];
-    yj[i] = pos_padded_j[1];
-    zj[i] = pos_padded_j[2];
-    hj[i] = h_padded_j;
-    mj[i] = 1.f;
-    vxj[i] = 1.f;
-    vyj[i] = 1.f;
-    vzj[i] = 1.f;
-  }
-}
-
-/**
- * @brief Populate caches by only reading particles that are within range of
- * each other within the adjoining cell.Also read the particles into the cache
- * in sorted order.
- *
- * @param ci The i #cell.
- * @param cj The j #cell.
- * @param ci_cache The #cache for cell ci.
- * @param cj_cache The #cache for cell cj.
- * @param sort_i The array of sorted particle indices for cell ci.
- * @param sort_j The array of sorted particle indices for cell ci.
- * @param shift The amount to shift the particle positions to account for BCs
- * @param first_pi The first particle in cell ci that is in range.
- * @param last_pj The last particle in cell cj that is in range.
- */
-__attribute__((always_inline)) INLINE void
-cache_read_two_partial_cells_sorted_force(
-    const struct cell *const ci, const struct cell *const cj,
-    struct cache *const ci_cache, struct cache *const cj_cache,
-    const struct entry *restrict sort_i, const struct entry *restrict sort_j,
-    const double *const shift, int *first_pi, int *last_pj) {
-
-  /* Make the number of particles to be read a multiple of the vector size.
-   * This eliminates serial remainder loops where possible when populating the
-   * cache. */
-
-  /* Is the number of particles to read a multiple of the vector size? */
-  int rem = (ci->count - *first_pi) % VEC_SIZE;
-  if (rem != 0) {
-    int pad = VEC_SIZE - rem;
-
-    /* Decrease first_pi if there are particles in the cell left to read. */
-    if (*first_pi - pad >= 0) *first_pi -= pad;
-  }
-
-  rem = (*last_pj + 1) % VEC_SIZE;
-  if (rem != 0) {
-    int pad = VEC_SIZE - rem;
-
-    /* Increase last_pj if there are particles in the cell left to read. */
-    if (*last_pj + pad < cj->count) *last_pj += pad;
-  }
-
-  /* Get some local pointers */
-  const int first_pi_align = *first_pi;
-  const int last_pj_align = *last_pj;
-  const struct part *restrict parts_i = ci->parts;
-  const struct part *restrict parts_j = cj->parts;
-
-  /* Shift particles to the local frame and account for boundary conditions.*/
-  const double total_ci_shift[3] = {
-      cj->loc[0] + shift[0], cj->loc[1] + shift[1], cj->loc[2] + shift[2]};
-  const double total_cj_shift[3] = {cj->loc[0], cj->loc[1], cj->loc[2]};
-
-  /* Let the compiler know that the data is aligned and create pointers to the
-   * arrays inside the cache. */
-  swift_declare_aligned_ptr(float, x, ci_cache->x, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, y, ci_cache->y, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, z, ci_cache->z, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, h, ci_cache->h, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, m, ci_cache->m, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, vx, ci_cache->vx, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, vy, ci_cache->vy, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, vz, ci_cache->vz, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, rho, ci_cache->rho, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, grad_h, ci_cache->grad_h,
-                            SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, pOrho2, ci_cache->pOrho2,
-                            SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, balsara, ci_cache->balsara,
-                            SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, soundspeed, ci_cache->soundspeed,
-                            SWIFT_CACHE_ALIGNMENT);
-
-  int ci_cache_count = ci->count - first_pi_align;
-  /* Shift the particles positions to a local frame (ci frame) so single
-   * precision can be  used instead of double precision.  */
-  for (int i = 0; i < ci_cache_count; i++) {
-
-    const int idx = sort_i[i + first_pi_align].i;
-    x[i] = (float)(parts_i[idx].x[0] - total_ci_shift[0]);
-    y[i] = (float)(parts_i[idx].x[1] - total_ci_shift[1]);
-    z[i] = (float)(parts_i[idx].x[2] - total_ci_shift[2]);
-    h[i] = parts_i[idx].h;
-    vx[i] = parts_i[idx].v[0];
-    vy[i] = parts_i[idx].v[1];
-    vz[i] = parts_i[idx].v[2];
-#ifdef GADGET2_SPH
-    m[i] = parts_i[idx].mass;
-    rho[i] = parts_i[idx].rho;
-    grad_h[i] = parts_i[idx].force.f;
-    pOrho2[i] = parts_i[idx].force.P_over_rho2;
-    balsara[i] = parts_i[idx].force.balsara;
-    soundspeed[i] = parts_i[idx].force.soundspeed;
-#endif
-  }
-
-  /* Pad cache with fake particles that exist outside the cell so will not
-   * interact. We use values of the same magnitude (but negative!) as the real
-   * particles to avoid overflow problems. */
-  const double max_dx = max(ci->dx_max_part, cj->dx_max_part);
-  const float pos_padded[3] = {-(2. * ci->width[0] + max_dx),
-                               -(2. * ci->width[1] + max_dx),
-                               -(2. * ci->width[2] + max_dx)};
-  const float h_padded = ci->parts[0].h;
-
-  for (int i = ci->count - first_pi_align;
-       i < ci->count - first_pi_align + VEC_SIZE; i++) {
-    x[i] = pos_padded[0];
-    y[i] = pos_padded[1];
-    z[i] = pos_padded[2];
-    h[i] = h_padded;
-    m[i] = 1.f;
-    vx[i] = 1.f;
-    vy[i] = 1.f;
-    vz[i] = 1.f;
-    rho[i] = 1.f;
-    grad_h[i] = 1.f;
-    pOrho2[i] = 1.f;
-    balsara[i] = 1.f;
-    soundspeed[i] = 1.f;
-  }
-
-  /* Let the compiler know that the data is aligned and create pointers to the
-   * arrays inside the cache. */
-  swift_declare_aligned_ptr(float, xj, cj_cache->x, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, yj, cj_cache->y, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, zj, cj_cache->z, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, hj, cj_cache->h, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, mj, cj_cache->m, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, vxj, cj_cache->vx, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, vyj, cj_cache->vy, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, vzj, cj_cache->vz, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, rhoj, cj_cache->rho, SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, grad_hj, cj_cache->grad_h,
-                            SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, pOrho2j, cj_cache->pOrho2,
-                            SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, balsaraj, cj_cache->balsara,
-                            SWIFT_CACHE_ALIGNMENT);
-  swift_declare_aligned_ptr(float, soundspeedj, cj_cache->soundspeed,
-                            SWIFT_CACHE_ALIGNMENT);
-
-  for (int i = 0; i <= last_pj_align; i++) {
-    const int idx = sort_j[i].i;
-    xj[i] = (float)(parts_j[idx].x[0] - total_cj_shift[0]);
-    yj[i] = (float)(parts_j[idx].x[1] - total_cj_shift[1]);
-    zj[i] = (float)(parts_j[idx].x[2] - total_cj_shift[2]);
-    hj[i] = parts_j[idx].h;
-    vxj[i] = parts_j[idx].v[0];
-    vyj[i] = parts_j[idx].v[1];
-    vzj[i] = parts_j[idx].v[2];
-#ifdef GADGET2_SPH
-    mj[i] = parts_j[idx].mass;
-    rhoj[i] = parts_j[idx].rho;
-    grad_hj[i] = parts_j[idx].force.f;
-    pOrho2j[i] = parts_j[idx].force.P_over_rho2;
-    balsaraj[i] = parts_j[idx].force.balsara;
-    soundspeedj[i] = parts_j[idx].force.soundspeed;
-#endif
-  }
-
-  /* Pad cache with fake particles that exist outside the cell so will not
-   * interact. We use values of the same magnitude (but negative!) as the real
-   * particles to avoid overflow problems. */
-  const float pos_padded_j[3] = {-(2. * cj->width[0] + max_dx),
-                                 -(2. * cj->width[1] + max_dx),
-                                 -(2. * cj->width[2] + max_dx)};
-  const float h_padded_j = cj->parts[0].h;
-
-  for (int i = last_pj_align + 1; i < last_pj_align + 1 + VEC_SIZE; i++) {
-    xj[i] = pos_padded_j[0];
-    yj[i] = pos_padded_j[1];
-    zj[i] = pos_padded_j[2];
-    hj[i] = h_padded_j;
-    mj[i] = 1.f;
-    vxj[i] = 1.f;
-    vyj[i] = 1.f;
-    vzj[i] = 1.f;
-    rhoj[i] = 1.f;
-    grad_hj[i] = 1.f;
-    pOrho2j[i] = 1.f;
-    balsaraj[i] = 1.f;
-    soundspeedj[i] = 1.f;
-  }
 }
 
 /* @brief Pads the secondary cache so that there are no contributions in the interaction
