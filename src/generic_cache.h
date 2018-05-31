@@ -33,6 +33,8 @@
 
 #define CACHE_FIELD_BUFFER_SIZE 200
 
+#ifdef WITH_VECTORIZATION
+
 typedef void (*reduction_func)(vector,float*);
 
 /**
@@ -127,5 +129,7 @@ INLINE static void reduction_max(vector field, float *pi_update) {
   VEC_HMAX(field, hmax);
   *pi_update = max(*pi_update, hmax);
 }
+
+#endif /* WITH_VECTORIZATION */
 
 #endif /* SWIFT_GENERIC_CACHE_H */
