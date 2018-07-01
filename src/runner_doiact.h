@@ -1703,7 +1703,7 @@ void DOPAIR2_BRANCH(struct runner *r, struct cell *ci, struct cell *cj) {
 #ifdef SWIFT_USE_NAIVE_INTERACTIONS
   DOPAIR2_NAIVE(r, ci, cj);
 #elif defined(WITH_VECTORIZATION) && (defined(GADGET2_SPH) || defined(MINIMAL_SPH)) && \
-    (FUNCTION_TASK_LOOP == TASK_LOOP_DENSITY)
+    (FUNCTION_TASK_LOOP == TASK_LOOP_FORCE)
   if (!sort_is_corner(sid))
     runner_dopair2_force_vec(r, ci, cj, sid, shift);
   else
@@ -2050,7 +2050,7 @@ void DOSELF2_BRANCH(struct runner *r, struct cell *c) {
 #if defined(SWIFT_USE_NAIVE_INTERACTIONS)
   DOSELF2_NAIVE(r, c);
 #elif defined(WITH_VECTORIZATION) && (defined(GADGET2_SPH) || defined(MINIMAL_SPH)) && \
-    (FUNCTION_TASK_LOOP == TASK_LOOP_DENSITY)
+    (FUNCTION_TASK_LOOP == TASK_LOOP_FORCE)
   runner_doself2_force_vec(r, c);
 #else
   DOSELF2(r, c);
