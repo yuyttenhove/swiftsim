@@ -581,6 +581,10 @@ void runner_doself1_density_vec(struct runner *r, struct cell *restrict c) {
   /* Create secondary cache to store particle interactions. */
   struct c2_cache int_cache;
 
+  struct update_cache_density sum_cache;
+  struct cache_props update_props[NUM_OF_DENSITY_UPDATE_CACHE_FIELDS];
+  cache_read_particle_update_fields_density(parts, update_props, &sum_cache);
+
   /* Loop over the particles in the cell. */
   for (int pid = 0; pid < count; pid++) {
 
@@ -603,9 +607,7 @@ void runner_doself1_density_vec(struct runner *r, struct cell *restrict c) {
     struct input_params_density params;
     populate_input_params_density_cache(cell_cache, pid, &params);
     
-    struct update_cache_density sum_cache;
-    struct cache_props update_props[NUM_OF_DENSITY_UPDATE_CACHE_FIELDS];
-    cache_read_particle_update_fields_density(parts, update_props, &sum_cache);
+    /* Reset cumulative sums of update vectors. */
     update_cache_init(NUM_OF_DENSITY_UPDATE_CACHE_FIELDS, update_props);
 
     /* The number of interactions for pi. */
@@ -706,7 +708,7 @@ void runner_doself1_density_vec(struct runner *r, struct cell *restrict c) {
     }
 
     /* Perform horizontal adds on vector sums and store result in particle pi. */
-    update_particle(update_props, pid, NUM_OF_DENSITY_UPDATE_CACHE_FIELDS);
+    update_particle_density_cache(pi, &sum_cache);
     
     /* Reset interaction count. */
     icount = 0;
@@ -735,7 +737,7 @@ void runner_doself_subset_density_vec(struct runner *r, struct cell *restrict c,
                                       struct part *restrict parts,
                                       int *restrict ind, int pi_count) {
 
-#if defined(WITH_VECTORIZATION)
+#if defined(WITH_VECTORIZATION) && (defined(GADGET2_SPH) || defined(MINIMAL_SPH))
 
   const int count = c->count;
 
@@ -752,6 +754,10 @@ void runner_doself_subset_density_vec(struct runner *r, struct cell *restrict c,
 
   /* Create secondary cache to store particle interactions. */
   struct c2_cache int_cache;
+
+  struct update_cache_density sum_cache;
+  struct cache_props update_props[NUM_OF_DENSITY_UPDATE_CACHE_FIELDS];
+  cache_read_particle_update_fields_density(parts, update_props, &sum_cache);
 
   /* Loop over the subset of particles in the parts that need updating. */
   for (int pid = 0; pid < pi_count; pid++) {
@@ -778,9 +784,6 @@ void runner_doself_subset_density_vec(struct runner *r, struct cell *restrict c,
     populate_input_params_density(pi, &params);
 
     /* Reset cumulative sums of update vectors. */
-    struct update_cache_density sum_cache;
-    struct cache_props update_props[NUM_OF_DENSITY_UPDATE_CACHE_FIELDS];
-    cache_read_particle_update_fields_density(parts, update_props, &sum_cache);
     update_cache_init(NUM_OF_DENSITY_UPDATE_CACHE_FIELDS, update_props);
 
     /* Pad cache if there is a serial remainder. */
@@ -904,7 +907,7 @@ void runner_doself_subset_density_vec(struct runner *r, struct cell *restrict c,
     }
 
     /* Perform horizontal adds on vector sums and store result in particle pi.*/
-    update_particle(update_props, ind[pid], NUM_OF_DENSITY_UPDATE_CACHE_FIELDS);
+    update_particle_density_cache(pi, &sum_cache);
 
     /* Reset interaction count. */
     icount = 0;
@@ -928,7 +931,7 @@ void runner_doself_subset_density_vec(struct runner *r, struct cell *restrict c,
  */
 void runner_doself2_force_vec(struct runner *r, struct cell *restrict c) {
 
-#if defined(WITH_VECTORIZATION)
+#if defined(WITH_VECTORIZATION) && (defined(GADGET2_SPH) || defined(MINIMAL_SPH))
 
   const struct engine *e = r->e;
   const struct cosmology *restrict cosmo = e->cosmology;
@@ -964,6 +967,10 @@ void runner_doself2_force_vec(struct runner *r, struct cell *restrict c) {
   const float a = cosmo->a;
   const float H = cosmo->H;
 
+  struct update_cache_force sum_cache;
+  struct cache_props update_props[NUM_OF_FORCE_UPDATE_CACHE_FIELDS];
+  cache_read_particle_update_fields_force(parts, update_props, &sum_cache);
+
   /* Loop over the particles in the cell. */
   for (int pid = 0; pid < count; pid++) {
 
@@ -986,9 +993,6 @@ void runner_doself2_force_vec(struct runner *r, struct cell *restrict c) {
     populate_input_params_force_cache(cell_cache, pid, &params);
     
     /* Reset cumulative sums of update vectors. */
-    struct update_cache_force sum_cache;
-    struct cache_props update_props[NUM_OF_FORCE_UPDATE_CACHE_FIELDS];
-    cache_read_particle_update_fields_force(parts, update_props, &sum_cache);
     update_cache_init(NUM_OF_FORCE_UPDATE_CACHE_FIELDS, update_props);
 
     /* Find all of particle pi's interacions and store needed values in the
@@ -1052,8 +1056,8 @@ void runner_doself2_force_vec(struct runner *r, struct cell *restrict c) {
 
     } /* Loop over all other particles. */
 
-    /* Perform horizontal adds on vector sums and store result in pj. */
-    update_particle(update_props, pid, NUM_OF_FORCE_UPDATE_CACHE_FIELDS);
+    /* Perform horizontal adds on vector sums and store result in particle pi. */
+    update_particle_force_cache(pi, &sum_cache);
     
   } /* loop over all particles. */
 
@@ -1190,6 +1194,10 @@ void runner_dopair1_density_vec(struct runner *r, struct cell *ci,
 
   if (active_ci) {
 
+    struct update_cache_density sum_cache;
+    struct cache_props update_props[NUM_OF_DENSITY_UPDATE_CACHE_FIELDS];
+    cache_read_particle_update_fields_density(parts_i, update_props, &sum_cache);
+
     /* Loop over the parts in ci until nothing is within range in cj. */
     for (int pid = count_i - 1; pid >= first_pi_loop; pid--) {
 
@@ -1221,9 +1229,6 @@ void runner_dopair1_density_vec(struct runner *r, struct cell *ci,
       populate_input_params_density_cache(ci_cache, ci_cache_idx, &params);
       
       /* Reset cumulative sums of update vectors. */
-      struct update_cache_density sum_cache;
-      struct cache_props update_props[NUM_OF_DENSITY_UPDATE_CACHE_FIELDS];
-      cache_read_particle_update_fields_density(parts_i, update_props, &sum_cache);
       update_cache_init(NUM_OF_DENSITY_UPDATE_CACHE_FIELDS, update_props);
 
       /* Loop over the parts in cj. Making sure to perform an iteration of the
@@ -1282,13 +1287,18 @@ void runner_dopair1_density_vec(struct runner *r, struct cell *ci,
 
       } /* loop over the parts in cj. */
 
-      /* Perform horizontal adds on vector sums and store result in particle pi.*/
-      update_particle(update_props, sort_i[pid].i, NUM_OF_DENSITY_UPDATE_CACHE_FIELDS);
-      
+
+      /* Perform horizontal adds on vector sums and store result in pi. */
+      update_particle_density_cache(pi, &sum_cache);
+    
     } /* loop over the parts in ci. */
   }
 
   if (active_cj) {
+
+    struct update_cache_density sum_cache;
+    struct cache_props update_props[NUM_OF_DENSITY_UPDATE_CACHE_FIELDS];
+    cache_read_particle_update_fields_density(parts_j, update_props, &sum_cache);
 
     /* Loop over the parts in cj until nothing is within range in ci. */
     for (int pjd = 0; pjd < last_pj_loop_end; pjd++) {
@@ -1320,9 +1330,6 @@ void runner_dopair1_density_vec(struct runner *r, struct cell *ci,
       populate_input_params_density_cache(cj_cache, cj_cache_idx, &params);
       
       /* Reset cumulative sums of update vectors. */
-      struct update_cache_density sum_cache;
-      struct cache_props update_props[NUM_OF_DENSITY_UPDATE_CACHE_FIELDS];
-      cache_read_particle_update_fields_density(parts_j, update_props, &sum_cache);
       update_cache_init(NUM_OF_DENSITY_UPDATE_CACHE_FIELDS, update_props);
 
       /* Convert exit iteration to cache indices. */
@@ -1389,8 +1396,8 @@ void runner_dopair1_density_vec(struct runner *r, struct cell *ci,
 
       } /* loop over the parts in ci. */
 
-      /* Perform horizontal adds on vector sums and store result in particle pj.*/
-      update_particle(update_props, sort_j[pjd].i, NUM_OF_DENSITY_UPDATE_CACHE_FIELDS);
+      /* Perform horizontal adds on vector sums and store result in pj. */
+      update_particle_density_cache(pj, &sum_cache);
     
     } /* loop over the parts in cj. */
   }
@@ -1473,6 +1480,10 @@ void runner_dopair_subset_density_vec(struct runner *r,
 
     const double dj_min = sort_j[0].d;
 
+    struct update_cache_density sum_cache;
+    struct cache_props update_props[NUM_OF_DENSITY_UPDATE_CACHE_FIELDS];
+    cache_read_particle_update_fields_density(parts_i, update_props, &sum_cache);
+
     /* Loop over the parts_i. */
     for (int pid = 0; pid < count; pid++) {
 
@@ -1501,9 +1512,6 @@ void runner_dopair_subset_density_vec(struct runner *r,
       populate_input_params_density(pi, &params);
       
       /* Reset cumulative sums of update vectors. */
-      struct update_cache_density sum_cache;
-      struct cache_props update_props[NUM_OF_DENSITY_UPDATE_CACHE_FIELDS];
-      cache_read_particle_update_fields_density(parts_i, update_props, &sum_cache);
       update_cache_init(NUM_OF_DENSITY_UPDATE_CACHE_FIELDS, update_props);
 
       int exit_iteration_end = max_index_i[pid] + 1;
@@ -1555,8 +1563,8 @@ void runner_dopair_subset_density_vec(struct runner *r,
 
       } /* loop over the parts in cj. */
 
-      /* Perform horizontal adds on vector sums and store result in particle pi.*/
-      update_particle(update_props, ind[pid], NUM_OF_DENSITY_UPDATE_CACHE_FIELDS);
+      /* Perform horizontal adds on vector sums and store result in pi. */
+      update_particle_density_cache(pi, &sum_cache);
       
     } /* loop over the parts in ci. */
   }
@@ -1575,6 +1583,10 @@ void runner_dopair_subset_density_vec(struct runner *r,
     const int cj_cache_count = count_j - first_pj;
 
     const double dj_max = sort_j[count_j - 1].d;
+
+    struct update_cache_density sum_cache;
+    struct cache_props update_props[NUM_OF_DENSITY_UPDATE_CACHE_FIELDS];
+    cache_read_particle_update_fields_density(parts_i, update_props, &sum_cache);
 
     /* Loop over the parts_i. */
     for (int pid = 0; pid < count; pid++) {
@@ -1604,9 +1616,6 @@ void runner_dopair_subset_density_vec(struct runner *r,
       populate_input_params_density(pi, &params);
 
       /* Reset cumulative sums of update vectors. */
-      struct update_cache_density sum_cache;
-      struct cache_props update_props[NUM_OF_DENSITY_UPDATE_CACHE_FIELDS];
-      cache_read_particle_update_fields_density(parts_i, update_props, &sum_cache);
       update_cache_init(NUM_OF_DENSITY_UPDATE_CACHE_FIELDS, update_props);
 
       /* Convert exit iteration to cache indices. */
@@ -1664,8 +1673,8 @@ void runner_dopair_subset_density_vec(struct runner *r,
 
       } /* loop over the parts in cj. */
 
-      /* Perform horizontal adds on vector sums and store result in particle pi.*/
-      update_particle(update_props, ind[pid], NUM_OF_DENSITY_UPDATE_CACHE_FIELDS);
+      /* Perform horizontal adds on vector sums and store result in pi. */
+      update_particle_density_cache(pi, &sum_cache);
       
     } /* loop over the parts in ci. */
   }
@@ -1809,6 +1818,10 @@ void runner_dopair2_force_vec(struct runner *r, struct cell *ci,
 
   if (active_ci) {
 
+    struct update_cache_force sum_cache;
+    struct cache_props update_props[NUM_OF_FORCE_UPDATE_CACHE_FIELDS];
+    cache_read_particle_update_fields_force(parts_i, update_props, &sum_cache);
+
     /* Loop over the parts in ci until nothing is within range in cj. */
     for (int pid = count_i - 1; pid >= first_pi_loop; pid--) {
 
@@ -1840,9 +1853,6 @@ void runner_dopair2_force_vec(struct runner *r, struct cell *ci,
       populate_input_params_force_cache(ci_cache, ci_cache_idx, &params);
       
       /* Reset cumulative sums of update vectors. */
-      struct update_cache_force sum_cache;
-      struct cache_props update_props[NUM_OF_FORCE_UPDATE_CACHE_FIELDS];
-      cache_read_particle_update_fields_force(parts_i, update_props, &sum_cache);
       update_cache_init(NUM_OF_FORCE_UPDATE_CACHE_FIELDS, update_props);
       
       /* Loop over the parts in cj. Making sure to perform an iteration of the
@@ -1911,14 +1921,18 @@ void runner_dopair2_force_vec(struct runner *r, struct cell *ci,
 
       } /* loop over the parts in cj. */
 
-      /* Perform horizontal adds on vector sums and store result in pi. */
-      update_particle(update_props, sort_i[pid].i, NUM_OF_FORCE_UPDATE_CACHE_FIELDS);
+      /* Perform horizontal adds on vector sums and store result in particle pi. */
+      update_particle_force_cache(pi, &sum_cache);
 
     } /* loop over the parts in ci. */
   }
 
   if (active_cj) {
 
+    struct update_cache_force sum_cache;
+    struct cache_props update_props[NUM_OF_FORCE_UPDATE_CACHE_FIELDS];
+    cache_read_particle_update_fields_force(parts_j, update_props, &sum_cache);
+      
     /* Loop over the parts in cj until nothing is within range in ci. */
     for (int pjd = 0; pjd < last_pj_loop_end; pjd++) {
 
@@ -1950,9 +1964,6 @@ void runner_dopair2_force_vec(struct runner *r, struct cell *ci,
       populate_input_params_force_cache(cj_cache, cj_cache_idx, &params);
       
       /* Reset cumulative sums of update vectors. */
-      struct update_cache_force sum_cache;
-      struct cache_props update_props[NUM_OF_FORCE_UPDATE_CACHE_FIELDS];
-      cache_read_particle_update_fields_force(parts_j, update_props, &sum_cache);
       update_cache_init(NUM_OF_FORCE_UPDATE_CACHE_FIELDS, update_props);
 
       /* Convert exit iteration to cache indices. */
@@ -2025,7 +2036,7 @@ void runner_dopair2_force_vec(struct runner *r, struct cell *ci,
       } /* loop over the parts in ci. */
 
       /* Perform horizontal adds on vector sums and store result in pj. */
-      update_particle(update_props, sort_j[pjd].i, NUM_OF_FORCE_UPDATE_CACHE_FIELDS);
+      update_particle_force_cache(pj, &sum_cache);
       
     } /* loop over the parts in cj. */
 
