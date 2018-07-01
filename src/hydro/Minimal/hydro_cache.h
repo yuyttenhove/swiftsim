@@ -203,6 +203,40 @@ struct input_params_force {
   vector input[input_params_force_length];
 };
 
+/**
+ * @brief Perform reduction operations on sum vectors and store result in particle pi (density).
+ *
+ * @param pi #part to update
+ * @param update_cache #update_cache_density stores sum vectors
+ */
+__attribute__((always_inline)) INLINE void update_particle_density(struct part *restrict pi,
+    struct update_cache_density *restrict update_cache) {
+
+  VEC_HADD(update_cache->v_rhoSum, pi->rho);
+  VEC_HADD(update_cache->v_rho_dhSum, pi->density.rho_dh);
+  VEC_HADD(update_cache->v_wcountSum, pi->density.wcount);
+  VEC_HADD(update_cache->v_wcount_dhSum, pi->density.wcount_dh);
+
+}
+
+/**
+ * @brief Perform reduction operations on sum vectors and store result in particle pi (force).
+ *
+ * @param pi #part to update
+ * @param update_cache #update_cache_density stores sum vectors
+ */
+__attribute__((always_inline)) INLINE void update_particle_force(struct part *restrict pi,
+    struct update_cache_force *restrict update_cache) {
+
+  VEC_HADD(update_cache->v_a_hydro_xSum, pi->a_hydro[0]);
+  VEC_HADD(update_cache->v_a_hydro_ySum, pi->a_hydro[1]);
+  VEC_HADD(update_cache->v_a_hydro_zSum, pi->a_hydro[2]);
+  VEC_HMAX(update_cache->v_u_dtSum, pi->u_dt);
+  VEC_HADD(update_cache->v_h_dtSum, pi->force.h_dt);
+  VEC_HMAX(update_cache->v_sigSum, pi->force.v_sig);
+
+}
+
 /* List which particle fields that need updating in the density interaction. */
 INLINE static void cache_read_particle_update_fields_density(const struct part *restrict parts, struct cache_props* list,
     struct update_cache_density *restrict const update_cache) {
