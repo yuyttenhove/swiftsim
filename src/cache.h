@@ -396,7 +396,7 @@ __attribute__((always_inline)) INLINE void cache_read_two_partial_cells_sorted(
   cache_read_particle_fields_density(parts_i, props, ci_cache);
 
   /* Construct a list of pointers to the arrays inside the cache. */
-  float *restrict fields[NUM_OF_DENSITY_CACHE_FIELDS];  
+  float *restrict fields[MAX_NUM_OF_CACHE_FIELDS];  
 
   for(int i=0; i<NUM_OF_DENSITY_CACHE_FIELDS; i++) {
     fields[i] = props[i].cache_addr;
