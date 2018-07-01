@@ -236,7 +236,7 @@ INLINE static void cache_read_particle_update_fields_density(const struct part *
  * @param pi #part to update
  * @param update_cache #update_cache_density stores sum vectors
  */
-__attribute__((always_inline)) INLINE void update_particle_density_cache(struct part *restrict pi,
+__attribute__((always_inline)) INLINE void update_particle_density(struct part *restrict pi,
     struct update_cache_density *restrict update_cache) {
 
   VEC_HADD(update_cache->v_rhoSum, pi->rho);
@@ -255,7 +255,7 @@ __attribute__((always_inline)) INLINE void update_particle_density_cache(struct 
  * @param pi #part to update
  * @param update_cache #update_cache_density stores sum vectors
  */
-__attribute__((always_inline)) INLINE void update_particle_force_cache(struct part *restrict pi,
+__attribute__((always_inline)) INLINE void update_particle_force(struct part *restrict pi,
     struct update_cache_force *restrict update_cache) {
 
   VEC_HADD(update_cache->v_a_hydro_xSum, pi->a_hydro[0]);
