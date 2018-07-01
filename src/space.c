@@ -2354,7 +2354,7 @@ void space_first_init_parts_mapper(void *restrict map_data, int count,
   const struct cosmology *cosmo = s->e->cosmology;
   const struct phys_const *phys_const = s->e->physical_constants;
   const struct unit_system *us = s->e->internal_units;
-  const float a_factor_vel = cosmo->a * cosmo->a;
+  const float a_factor_vel = cosmo->a;
 
   const struct hydro_props *hydro_props = s->e->hydro_properties;
   const float u_init = hydro_props->initial_internal_energy;
@@ -2429,7 +2429,7 @@ void space_first_init_gparts_mapper(void *restrict map_data, int count,
   const struct space *restrict s = (struct space *)extra_data;
 
   const struct cosmology *cosmo = s->e->cosmology;
-  const float a_factor_vel = cosmo->a * cosmo->a;
+  const float a_factor_vel = cosmo->a;
   const struct gravity_props *grav_props = s->e->gravity_properties;
 
   for (int k = 0; k < count; k++) {
@@ -2486,7 +2486,7 @@ void space_first_init_sparts_mapper(void *restrict map_data, int count,
 #endif
 
   const struct cosmology *cosmo = s->e->cosmology;
-  const float a_factor_vel = cosmo->a * cosmo->a;
+  const float a_factor_vel = cosmo->a;
 
   for (int k = 0; k < count; k++) {
     /* Convert velocities to internal units */
@@ -2641,7 +2641,7 @@ void space_convert_quantities(struct space *s, int verbose) {
  * parts with a cutoff below half the cell width are then split
  * recursively.
  */
-void space_init(struct space *s, const struct swift_params *params,
+void space_init(struct space *s, struct swift_params *params,
                 const struct cosmology *cosmo, double dim[3],
                 struct part *parts, struct gpart *gparts, struct spart *sparts,
                 size_t Npart, size_t Ngpart, size_t Nspart, int periodic,
@@ -2758,12 +2758,8 @@ void space_init(struct space *s, const struct swift_params *params,
 
   /* Apply shift */
   double shift[3] = {0.0, 0.0, 0.0};
-  shift[0] =
-      parser_get_opt_param_double(params, "InitialConditions:shift_x", 0.0);
-  shift[1] =
-      parser_get_opt_param_double(params, "InitialConditions:shift_y", 0.0);
-  shift[2] =
-      parser_get_opt_param_double(params, "InitialConditions:shift_z", 0.0);
+  parser_get_opt_param_double_array(params, "InitialConditions:shift", 3,
+                                    shift);
   if ((shift[0] != 0. || shift[1] != 0. || shift[2] != 0.) && !dry_run) {
     message("Shifting particles by [%e %e %e]", shift[0], shift[1], shift[2]);
     for (size_t k = 0; k < Npart; k++) {
@@ -3108,7 +3104,7 @@ void space_check_cosmology(struct space *s, const struct cosmology *cosmo,
     if (fabs(Omega_m - cosmo->Omega_m) > 1e-3)
       error(
           "The matter content of the simulation does not match the cosmology "
-          "in the parameter file comso.Omega_m=%e Omega_m=%e",
+          "in the parameter file cosmo.Omega_m=%e Omega_m=%e",
           cosmo->Omega_m, Omega_m);
   }
 }

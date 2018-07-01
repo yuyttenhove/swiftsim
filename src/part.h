@@ -51,6 +51,9 @@
 #elif defined(HOPKINS_PE_SPH)
 #include "./hydro/PressureEntropy/hydro_part.h"
 #define hydro_need_extra_init_loop 1
+#elif defined(HOPKINS_PU_SPH)
+#include "./hydro/PressureEnergy/hydro_part.h"
+#define hydro_need_extra_init_loop 0
 #elif defined(DEFAULT_SPH)
 #include "./hydro/Default/hydro_part.h"
 #define hydro_need_extra_init_loop 0
@@ -101,7 +104,7 @@ extern MPI_Datatype gpart_mpi_type;
 extern MPI_Datatype spart_mpi_type;
 extern MPI_Datatype multipole_mpi_type;
 
-void part_create_mpi_types();
+void part_create_mpi_types(void);
 #endif
 
 #endif /* SWIFT_PART_H */

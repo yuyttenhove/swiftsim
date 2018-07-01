@@ -23,10 +23,12 @@
 #include <string.h>
 #include <unistd.h>
 #include "swift.h"
-
 #include "cache.h"
 
-#ifdef WITH_VECTORIZATION
+/* Other schemes need to be added here if they are not vectorized, otherwise
+ * this test will simply not compile. */
+
+#if defined(WITH_VECTORIZATION) && (defined(GADGET2_SPH) || defined(MINIMAL_SPH))
 
 #define array_align sizeof(float) * VEC_SIZE
 #define ACC_THRESHOLD 1e-5
@@ -94,7 +96,7 @@ struct part *make_particles(size_t count, double *offset, double spacing,
 
     p->h = h;
     p->id = ++(*partId);
-#if !defined(GIZMO_MFV_SPH) && !defined(SHADOWFAX_SPH)
+#if !defined(GIZMO_SPH) && !defined(SHADOWFAX_SPH)
     p->mass = 1.0f;
 #endif
   }
@@ -106,8 +108,9 @@ struct part *make_particles(size_t count, double *offset, double spacing,
  */
 void prepare_force(struct part *parts, size_t count) {
 
-#if !defined(GIZMO_MFV_SPH) && !defined(SHADOWFAX_SPH) && \
-    !defined(MINIMAL_MULTI_MAT_SPH)
+#if !defined(GIZMO_MFV_SPH) && !defined(SHADOWFAX_SPH) &&       \
+    !defined(MINIMAL_SPH) && !defined(MINIMAL_MULTI_MAT_SPH) && \
+    !defined(HOPKINS_PU_SPH)
   struct part *p;
   for (size_t i = 0; i < count; ++i) {
     p = &parts[i];
@@ -149,7 +152,7 @@ void dump_indv_particle_fields(char *fileName, struct part *p) {
           p->force.v_sig, p->entropy_dt, 0.f
 #elif defined(DEFAULT_SPH)
           p->force.v_sig, 0.f, p->force.u_dt
-#elif defined(MINIMAL_SPH)
+#elif defined(MINIMAL_SPH) || defined(HOPKINS_PU_SPH)
           p->force.v_sig, 0.f, p->u_dt
 #else
           0.f, 0.f, 0.f
@@ -529,6 +532,7 @@ void test_force_interactions(struct part test_part, struct part *parts,
       cj_cache.pOrho2[i] = pj_vec[i].force.P_over_rho2;
       cj_cache.balsara[i] = pj_vec[i].force.balsara;
 #endif
+    
     }
 
     /* Only dump data on first run. */
@@ -667,6 +671,6 @@ int main(int argc, char *argv[]) {
 
 #else
 
-int main() { return 1; }
+int main(int argc, char *argv[]) { return 1; }
 
 #endif

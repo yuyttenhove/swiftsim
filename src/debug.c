@@ -46,6 +46,8 @@
 #include "./hydro/Gadget2/hydro_debug.h"
 #elif defined(HOPKINS_PE_SPH)
 #include "./hydro/PressureEntropy/hydro_debug.h"
+#elif defined(HOPKINS_PU_SPH)
+#include "./hydro/PressureEnergy/hydro_debug.h"
 #elif defined(DEFAULT_SPH)
 #include "./hydro/Default/hydro_debug.h"
 #elif defined(GIZMO_MFV_SPH)
@@ -640,7 +642,7 @@ void getProcMemUse(long *size, long *resident, long *share, long *trs,
 /**
  * @brief Print the current memory use of the process. A la "top".
  */
-void printProcMemUse() {
+void printProcMemUse(void) {
   long size;
   long resident;
   long share;

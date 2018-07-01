@@ -77,8 +77,7 @@ void units_init(struct unit_system* us, double U_M_in_cgs, double U_L_in_cgs,
  * @param params The parsed parameter file.
  * @param category The section of the parameter file to read from.
  */
-void units_init_from_params(struct unit_system* us,
-                            const struct swift_params* params,
+void units_init_from_params(struct unit_system* us, struct swift_params* params,
                             const char* category) {
 
   char buffer[200];
@@ -104,9 +103,8 @@ void units_init_from_params(struct unit_system* us,
  * @param category The section of the parameter file to read from.
  * @param def The default unit system to copy from if required.
  */
-void units_init_default(struct unit_system* us,
-                        const struct swift_params* params, const char* category,
-                        const struct unit_system* def) {
+void units_init_default(struct unit_system* us, struct swift_params* params,
+                        const char* category, const struct unit_system* def) {
 
   if (!def) error("Default unit_system not allocated");
 
@@ -128,6 +126,21 @@ void units_init_default(struct unit_system* us,
   sprintf(buffer, "%s:UnitTemp_in_cgs", category);
   us->UnitTemperature_in_cgs =
       parser_get_opt_param_double(params, buffer, def->UnitTemperature_in_cgs);
+}
+
+/**
+ * @brief Copy the content of a #unit_system to another one.
+ *
+ * @param dest The destination of the copy.
+ * @param src The source of the copy.
+ */
+void units_copy(struct unit_system* dest, const struct unit_system* src) {
+
+  dest->UnitMass_in_cgs = src->UnitMass_in_cgs;
+  dest->UnitLength_in_cgs = src->UnitLength_in_cgs;
+  dest->UnitTime_in_cgs = src->UnitTime_in_cgs;
+  dest->UnitCurrent_in_cgs = src->UnitCurrent_in_cgs;
+  dest->UnitTemperature_in_cgs = src->UnitTemperature_in_cgs;
 }
 
 /**

@@ -26,18 +26,23 @@ examples/swift_mpi
 examples/*/*.xmf
 examples/*/*.h5
 examples/*/*.png
+examples/*/*.mp4
 examples/*/*.txt
 examples/*/*.dot
+examples/*/restart/*
 examples/*/used_parameters.yml
+examples/*/unused_parameters.yml
 examples/*/*/*.xmf
 examples/*/*/*.png
+examples/*/*/*.mp4
 examples/*/*/*.txt
 examples/*/*/*.dot
 examples/*/*/*.rst
 examples/*/*/*.hdf5
 examples/*/snapshots*
-examples/*/restart
+examples/*/restart/*
 examples/*/*/used_parameters.yml
+examples/*/*/unused_parameters.yml
 examples/*/*.mpg
 examples/*/gravity_checks_*.dat
 
@@ -77,6 +82,7 @@ tests/test_nonsym_force_1_vec.dat
 tests/test_nonsym_force_2_vec.dat
 tests/potential.dat
 tests/testGreetings
+tests/testSelectOutput
 tests/testReading
 tests/testSingle
 tests/testTimeIntegration
@@ -99,6 +105,7 @@ tests/test125cells.sh
 tests/test125cellsPerturbed.sh
 tests/testParser.sh
 tests/testReading.sh
+tests/testSelectOutput.sh
 tests/testAdiabaticIndex
 tests/testRiemannExact
 tests/testRiemannTRRS
@@ -298,3 +305,6 @@ sympy-plots-for-*.tex/
 
 # macOS
 *.DS_Store
+
+#ctags
+*tags

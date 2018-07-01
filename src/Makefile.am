@@ -25,7 +25,7 @@ AM_LDFLAGS = $(HDF5_LDFLAGS) $(FFTW_LIBS) -version-info 0:0:0
 GIT_CMD = @GIT_CMD@
 
 # Additional dependencies for shared libraries.
-EXTRA_LIBS = $(HDF5_LIBS) $(PROFILER_LIBS) $(TCMALLOC_LIBS) $(JEMALLOC_LIBS) $(GRACKLE_LIB) $(GSL_LIBS)
+EXTRA_LIBS = $(HDF5_LIBS) $(FFTW_LIBS) $(PROFILER_LIBS) $(TCMALLOC_LIBS) $(JEMALLOC_LIBS) $(TBBMALLOC_LIBS) $(GRACKLE_LIB) $(GSL_LIBS)
 
 # MPI libraries.
 MPI_LIBS = $(METIS_LIBS) $(MPI_THREAD_LIBS)
@@ -48,7 +48,7 @@ include_HEADERS = space.h runner.h queue.h task.h lock.h cell.h part.h const.h \
     dump.h logger.h active.h timeline.h xmf.h gravity_properties.h gravity_derivatives.h \
     gravity_softened_derivatives.h vector_power.h collectgroup.h hydro_space.h sort_part.h \
     chemistry.h chemistry_io.h chemistry_struct.h cosmology.h restart.h space_getsid.h utilities.h \
-		generic_cache.h cache.h 
+		generic_cache.h cache.h cbrt.h
 
 # Common source files
 AM_SOURCES = space.c runner.c queue.c task.c cell.c engine.c \

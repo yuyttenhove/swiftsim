@@ -98,7 +98,7 @@ struct cell *make_cell(size_t n, double *offset, double size, double h,
   const size_t count = n * n * n;
   const double volume = size * size * size;
   float h_max = 0.f;
-  struct cell *cell = malloc(sizeof(struct cell));
+  struct cell *cell = (struct cell *)malloc(sizeof(struct cell));
   bzero(cell, sizeof(struct cell));
 
   if (posix_memalign((void **)&cell->parts, part_align,
@@ -263,12 +263,15 @@ void dump_particle_fields(char *fileName, struct cell *main_cell,
             hydro_get_comoving_density(&main_cell->parts[pid]),
 #if defined(GIZMO_MFV_SPH) || defined(SHADOWFAX_SPH)
             0.f,
+#elif defined(HOPKINS_PU_SPH)
+            main_cell->parts[pid].density.pressure_bar_dh,
 #else
             main_cell->parts[pid].density.rho_dh,
 #endif
             main_cell->parts[pid].density.wcount,
             main_cell->parts[pid].density.wcount_dh,
-#if defined(GADGET2_SPH) || defined(DEFAULT_SPH) || defined(HOPKINS_PE_SPH)
+#if defined(GADGET2_SPH) || defined(DEFAULT_SPH) || defined(HOPKINS_PE_SPH) || \
+    defined(HOPKINS_PU_SPH)
             main_cell->parts[pid].density.div_v,
             main_cell->parts[pid].density.rot_v[0],
             main_cell->parts[pid].density.rot_v[1],
@@ -499,7 +502,7 @@ int main(int argc, char *argv[]) {
 #if defined(TEST_DOSELF_SUBSET) || defined(TEST_DOPAIR_SUBSET)
     int *pid = NULL;
     int count = 0;
-    if ((pid = malloc(sizeof(int) * main_cell->count)) == NULL)
+    if ((pid = (int *)malloc(sizeof(int) * main_cell->count)) == NULL)
       error("Can't allocate memory for pid.");
     for (int k = 0; k < main_cell->count; k++)
       if (part_is_active(&main_cell->parts[k], &engine)) {
@@ -543,7 +546,7 @@ int main(int argc, char *argv[]) {
 
     /* Dump if necessary */
     if (i % 50 == 0) {
-      sprintf(outputFileName, "swift_dopair_27_%s.dat",
+      sprintf(outputFileName, "swift_dopair_27_%.150s.dat",
               outputFileNameExtension);
       dump_particle_fields(outputFileName, main_cell, cells);
     }
@@ -586,7 +589,7 @@ int main(int argc, char *argv[]) {
   end_calculation(main_cell, &cosmo);
 
   /* Dump */
-  sprintf(outputFileName, "brute_force_27_%s.dat", outputFileNameExtension);
+  sprintf(outputFileName, "brute_force_27_%.150s.dat", outputFileNameExtension);
   dump_particle_fields(outputFileName, main_cell, cells);
 
   /* Output timing */
