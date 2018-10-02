@@ -20,10 +20,11 @@
 #ifndef SWIFT_VECTOR_H
 #define SWIFT_VECTOR_H
 
-/* Have I already read this file? */
-#ifndef VEC_MACRO
-
+/* Config parameters. */
 #include "../config.h"
+
+/* Local headers */
+#include "inline.h"
 
 #ifdef WITH_VECTORIZATION
 
@@ -60,9 +61,13 @@
 #define vec_dbl_set(a, b, c, d, e, f, g, h) \
   _mm512_set_pd(h, g, f, e, d, c, b, a)
 #define vec_add(a, b) _mm512_add_ps(a, b)
+#define vec_mask_add(a, b, mask) _mm512_mask_add_ps(a, mask, b, a)
 #define vec_sub(a, b) _mm512_sub_ps(a, b)
+#define vec_mask_sub(a, b, mask) _mm512_mask_sub_ps(a, mask, a, b)
 #define vec_mul(a, b) _mm512_mul_ps(a, b)
+#define vec_div(a, b) _mm512_div_ps(a, b)
 #define vec_fma(a, b, c) _mm512_fmadd_ps(a, b, c)
+#define vec_fnma(a, b, c) _mm512_fnmadd_ps(a, b, c)
 #define vec_sqrt(a) _mm512_sqrt_ps(a)
 #define vec_rcp(a) _mm512_rcp14_ps(a)
 #define vec_rsqrt(a) _mm512_rsqrt14_ps(a)
@@ -75,7 +80,18 @@
 #define vec_cmp_lt(a, b) _mm512_cmp_ps_mask(a, b, _CMP_LT_OQ)
 #define vec_cmp_lte(a, b) _mm512_cmp_ps_mask(a, b, _CMP_LE_OQ)
 #define vec_cmp_gte(a, b) _mm512_cmp_ps_mask(a, b, _CMP_GE_OQ)
+#define vec_cmp_result(a) ({ a; })
+#define vec_is_mask_true(a) ({ a; })
 #define vec_and(a, b) _mm512_and_ps(a, b)
+#define vec_mask_and(a, b) _mm512_kand(a, b)
+#define vec_and_mask(a, mask) _mm512_maskz_mov_ps(mask, a)
+#define vec_init_mask_true(mask) ({ mask = 0xFFFF; })
+#define vec_zero_mask(mask) ({ mask = 0; })
+#define vec_create_mask(mask, cond) ({ mask = cond; })
+#define vec_combine_masks(mask1, mask2) \
+  ({ mask1 = vec_mask_and(mask1, mask2); })
+#define vec_pad_mask(mask, pad) ({ mask = mask >> (pad); })
+#define vec_blend(mask, a, b) _mm512_mask_blend_ps(mask, a, b)
 #define vec_todbl_lo(a) _mm512_cvtps_pd(_mm512_extract128_ps(a, 0))
 #define vec_todbl_hi(a) _mm512_cvtps_pd(_mm512_extract128_ps(a, 1))
 #define vec_dbl_tofloat(a, b) _mm512_insertf128(_mm512_castps128_ps512(a), b, 1)
@@ -116,10 +132,13 @@
     for (int i = 0; i < VEC_SIZE; i++) b += a.f[i]; \
   }
 #endif
-/* Calculates the number of set bits in the mask and adds the result to an int.
- */
-#define VEC_FORM_PACKED_MASK(mask, v_mask, pack) \
-  pack += __builtin_popcount(mask);
+
+/* Do nothing in the case of AVX-512 as there are already
+ * instructions for left-packing.*/
+#define VEC_FORM_PACKED_MASK(mask, packed_mask) packed_mask = mask
+
+/* Finds the horizontal maximum of vector b and returns a float. */
+#define VEC_HMAX(a, b) b = _mm512_reduce_max_ps(a.v)
 
 /* Performs a left-pack on a vector based upon a mask and returns the result. */
 #define VEC_LEFT_PACK(a, mask, result) \
@@ -142,8 +161,11 @@
 #define vec_set(a, b, c, d, e, f, g, h) _mm256_set_ps(h, g, f, e, d, c, b, a)
 #define vec_dbl_set(a, b, c, d) _mm256_set_pd(d, c, b, a)
 #define vec_add(a, b) _mm256_add_ps(a, b)
+#define vec_mask_add(a, b, mask) vec_add(a, vec_and(b, mask.v))
 #define vec_sub(a, b) _mm256_sub_ps(a, b)
+#define vec_mask_sub(a, b, mask) vec_sub(a, vec_and(b, mask.v))
 #define vec_mul(a, b) _mm256_mul_ps(a, b)
+#define vec_div(a, b) _mm256_div_ps(a, b)
 #define vec_sqrt(a) _mm256_sqrt_ps(a)
 #define vec_rcp(a) _mm256_rcp_ps(a)
 #define vec_rsqrt(a) _mm256_rsqrt_ps(a)
@@ -157,7 +179,18 @@
 #define vec_cmp_lte(a, b) _mm256_cmp_ps(a, b, _CMP_LE_OQ)
 #define vec_cmp_gte(a, b) _mm256_cmp_ps(a, b, _CMP_GE_OQ)
 #define vec_cmp_result(a) _mm256_movemask_ps(a)
+#define vec_is_mask_true(a) _mm256_movemask_ps(a.v)
 #define vec_and(a, b) _mm256_and_ps(a, b)
+#define vec_mask_and(a, b) _mm256_and_ps(a.v, b.v)
+#define vec_and_mask(a, mask) _mm256_and_ps(a, mask.v)
+#define vec_init_mask_true(mask) mask.m = vec_setint1(0xFFFFFFFF)
+#define vec_create_mask(mask, cond) mask.v = cond
+#define vec_combine_masks(mask1, mask2) \
+  ({ mask1.v = vec_mask_and(mask1, mask2); })
+#define vec_zero_mask(mask) mask.v = vec_setzero()
+#define vec_pad_mask(mask, pad) \
+  for (int i = VEC_SIZE - (pad); i < VEC_SIZE; i++) mask.i[i] = 0
+#define vec_blend(mask, a, b) _mm256_blendv_ps(a, b, mask.v)
 #define vec_todbl_lo(a) _mm256_cvtps_pd(_mm256_extract128_ps(a, 0))
 #define vec_todbl_hi(a) _mm256_cvtps_pd(_mm256_extract128_ps(a, 1))
 #define vec_dbl_tofloat(a, b) _mm256_insertf128(_mm256_castps128_ps256(a), b, 1)
@@ -183,6 +216,13 @@
   a.v = _mm256_hadd_ps(a.v, a.v); \
   b += a.f[0] + a.f[4];
 
+/* Performs a horizontal maximum on the vector and takes the maximum of the
+ * result with a float, b. */
+#define VEC_HMAX(a, b)                                     \
+  {                                                        \
+    for (int k = 0; k < VEC_SIZE; k++) b = max(b, a.f[k]); \
+  }
+
 /* Returns the lower 128-bits of the 256-bit vector. */
 #define VEC_GET_LOW(a) _mm256_castps256_ps128(a)
 
@@ -192,6 +232,7 @@
 /* Check if we have AVX2 intrinsics alongside AVX */
 #ifdef HAVE_AVX2
 #define vec_fma(a, b, c) _mm256_fmadd_ps(a, b, c)
+#define vec_fnma(a, b, c) _mm256_fnmadd_ps(a, b, c)
 
 /* Used in VEC_FORM_PACKED_MASK */
 #define identity_indices 0x0706050403020100
@@ -201,24 +242,28 @@
 /* Takes an integer mask and forms a left-packed integer vector
  * containing indices of the set bits in the integer mask.
  * Also returns the total number of bits set in the mask. */
-#define VEC_FORM_PACKED_MASK(mask, v_mask, pack)                               \
+#define VEC_FORM_PACKED_MASK(mask, packed_mask)                                \
   {                                                                            \
     unsigned long expanded_mask = _pdep_u64(mask, 0x0101010101010101);         \
     expanded_mask *= 0xFF;                                                     \
     unsigned long wanted_indices = _pext_u64(identity_indices, expanded_mask); \
     __m128i bytevec = _mm_cvtsi64_si128(wanted_indices);                       \
-    v_mask = _mm256_cvtepu8_epi32(bytevec);                                    \
-    pack += __builtin_popcount(mask);                                          \
+    packed_mask.m = _mm256_cvtepu8_epi32(bytevec);                             \
   }
 
 /* Performs a left-pack on a vector based upon a mask and returns the result. */
 #define VEC_LEFT_PACK(a, mask, result) \
-  vec_unaligned_store(_mm256_permutevar8x32_ps(a, mask), result)
+  vec_unaligned_store(_mm256_permutevar8x32_ps(a, mask.m), result)
 #endif /* HAVE_AVX2 */
 
 /* Create an FMA using vec_add and vec_mul if AVX2 is not present. */
 #ifndef vec_fma
 #define vec_fma(a, b, c) vec_add(vec_mul(a, b), c)
+#endif
+
+/* Create a negated FMA using vec_sub and vec_mul if AVX2 is not present. */
+#ifndef vec_fnma
+#define vec_fnma(a, b, c) vec_sub(c, vec_mul(a, b))
 #endif
 
 /* Form a packed mask without intrinsics if AVX2 is not present. */
@@ -282,8 +327,11 @@
 #define vec_set(a, b, c, d) _mm_set_ps(d, c, b, a)
 #define vec_dbl_set(a, b) _mm_set_pd(b, a)
 #define vec_add(a, b) _mm_add_ps(a, b)
+#define vec_mask_add(a, b, mask) vec_add(a, vec_and(b, mask.v))
 #define vec_sub(a, b) _mm_sub_ps(a, b)
+#define vec_mask_sub(a, b, mask) vec_sub(a, vec_and(b, mask.v))
 #define vec_mul(a, b) _mm_mul_ps(a, b)
+#define vec_div(a, b) _mm_div_ps(a, b)
 #define vec_sqrt(a) _mm_sqrt_ps(a)
 #define vec_rcp(a) _mm_rcp_ps(a)
 #define vec_rsqrt(a) _mm_rsqrt_ps(a)
@@ -294,9 +342,27 @@
 #define vec_floor(a) _mm_floor_ps(a)
 #define vec_cmp_gt(a, b) _mm_cmpgt_ps(a, b)
 #define vec_cmp_lt(a, b) _mm_cmplt_ps(a, b)
-#define vec_cmp_lte(a, b) _mm_cmp_ps(a, b, _CMP_LE_OQ)
+#define vec_cmp_lte(a, b) _mm_cmple_ps(a, b)
+#define vec_cmp_gte(a, b) _mm_cmpge_ps(a, b)
 #define vec_cmp_result(a) _mm_movemask_ps(a)
+#define vec_is_mask_true(a) _mm_movemask_ps(a.v)
 #define vec_and(a, b) _mm_and_ps(a, b)
+#define vec_mask_and(a, b) _mm_and_ps(a.v, b.v)
+#define vec_and_mask(a, mask) _mm_and_ps(a, mask.v)
+#define vec_init_mask_true(mask) mask.m = vec_setint1(0xFFFFFFFF)
+#define vec_create_mask(mask, cond) mask.v = cond
+#define vec_combine_masks(mask1, mask2) \
+  ({ mask1.v = vec_mask_and(mask1, mask2); })
+#define vec_zero_mask(mask) mask.v = vec_setzero()
+#define vec_pad_mask(mask, pad) \
+  for (int i = VEC_SIZE - (pad); i < VEC_SIZE; i++) mask.i[i] = 0
+/* If SSE4.1 doesn't exist on architecture use alternative blend strategy. */
+#ifdef HAVE_SSE4_1
+#define vec_blend(mask, a, b) _mm_blendv_ps(a, b, mask.v)
+#else
+#define vec_blend(mask, a, b) \
+  _mm_or_ps(_mm_and_ps(mask.v, b), _mm_andnot_ps(mask.v, a))
+#endif
 #define vec_todbl_lo(a) _mm_cvtps_pd(a)
 #define vec_todbl_hi(a) _mm_cvtps_pd(_mm_movehl_ps(a, a))
 #define vec_dbl_tofloat(a, b) _mm_movelh_ps(_mm_cvtpd_ps(a), _mm_cvtpd_ps(b))
@@ -318,10 +384,23 @@
   a.v = _mm_hadd_ps(a.v, a.v); \
   b += a.f[0] + a.f[1];
 
+/* Performs a horizontal maximum on the vector and takes the maximum of the
+ * result with a float, b. */
+#define VEC_HMAX(a, b)                                     \
+  {                                                        \
+    for (int k = 0; k < VEC_SIZE; k++) b = max(b, a.f[k]); \
+  }
+
 /* Create an FMA using vec_add and vec_mul if AVX2 is not present. */
 #ifndef vec_fma
 #define vec_fma(a, b, c) vec_add(vec_mul(a, b), c)
 #endif
+
+/* Create a negated FMA using vec_sub and vec_mul if AVX2 is not present. */
+#ifndef vec_fnma
+#define vec_fnma(a, b, c) vec_sub(c, vec_mul(a, b))
+#endif
+
 #else
 #define VEC_SIZE 4
 #endif /* HAVE_SSE2 */
@@ -335,6 +414,13 @@ typedef union {
   double d[VEC_SIZE / 2];
   int i[VEC_SIZE];
 } vector;
+
+/* Define the mask type depending on the instruction set used. */
+#ifdef HAVE_AVX512_F
+typedef __mmask16 mask_t;
+#else
+typedef vector mask_t;
+#endif
 
 /**
  * @brief Calculates the inverse ($1/x$) of a vector using intrinsics and a
@@ -375,11 +461,48 @@ __attribute__((always_inline)) INLINE vector vec_reciprocal_sqrt(vector x) {
   return x_inv;
 }
 
+/**
+ * @brief Returns a new vector with data loaded from a memory address.
+ *
+ * @param x memory address to load from.
+ * @return Loaded #vector.
+ */
+__attribute__((always_inline)) INLINE vector vector_load(float *const x) {
+
+  vector temp;
+  temp.v = vec_load(x);
+  return temp;
+}
+
+/**
+ * @brief Returns a vector filled with one value.
+ *
+ * @param x value to set each element.
+ * @return A #vector filled with a given constant.
+ */
+__attribute__((always_inline)) INLINE vector vector_set1(const float x) {
+
+  vector temp;
+  temp.v = vec_set1(x);
+  return temp;
+}
+
+/**
+ * @brief Returns a new vector filled with zeros.
+ *
+ * @return temp set #vector.
+ * @return A #vector filled with zeros.
+ */
+__attribute__((always_inline)) INLINE vector vector_setzero(void) {
+
+  vector temp;
+  temp.v = vec_setzero();
+  return temp;
+}
+
 #else
 /* Needed for cache alignment. */
-#define VEC_SIZE 16
+#define VEC_SIZE 8
 #endif /* WITH_VECTORIZATION */
-
-#endif /* VEC_MACRO */
 
 #endif /* SWIFT_VECTOR_H */

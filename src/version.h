@@ -32,8 +32,12 @@ const char* compiler_name(void);
 const char* compiler_version(void);
 const char* mpi_version(void);
 const char* metis_version(void);
+const char* parmetis_version(void);
 const char* hdf5_version(void);
 const char* fftw3_version(void);
+const char* libgsl_version(void);
+const char* thread_barrier_version(void);
+const char* allocator_version(void);
 void greetings(void);
 
 #endif /* SWIFT_VERSION_H */

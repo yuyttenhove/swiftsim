@@ -36,6 +36,7 @@
  * @brief The different task types.
  *
  * Be sure to update the taskID_names array in tasks.c if you modify this list!
+ * Also update the python task plotting scripts!
  */
 enum task_types {
   task_type_none = 0,
@@ -45,22 +46,29 @@ enum task_types {
   task_type_sub_self,
   task_type_sub_pair,
   task_type_init_grav,
+  task_type_init_grav_out, /* Implicit */
+  task_type_ghost_in,      /* Implicit */
   task_type_ghost,
+  task_type_ghost_out, /* Implicit */
   task_type_extra_ghost,
   task_type_drift_part,
   task_type_drift_gpart,
+  task_type_end_force,
   task_type_kick1,
   task_type_kick2,
   task_type_timestep,
   task_type_send,
   task_type_recv,
-  task_type_grav_top_level,
   task_type_grav_long_range,
-  task_type_grav_ghost,
   task_type_grav_mm,
+  task_type_grav_down_in, /* Implicit */
   task_type_grav_down,
+  task_type_grav_mesh,
   task_type_cooling,
   task_type_sourceterms,
+  task_type_stars_ghost_in,
+  task_type_stars_ghost,
+  task_type_stars_ghost_out,
   task_type_count
 } __attribute__((packed));
 
@@ -80,6 +88,7 @@ enum task_subtypes {
   task_subtype_gpart,
   task_subtype_multipole,
   task_subtype_spart,
+  task_subtype_stars_density,
   task_subtype_count
 } __attribute__((packed));
 
@@ -90,6 +99,7 @@ enum task_actions {
   task_action_none,
   task_action_part,
   task_action_gpart,
+  task_action_spart,
   task_action_all,
   task_action_multipole,
   task_action_count
@@ -106,6 +116,13 @@ extern const char *taskID_names[];
 extern const char *subtaskID_names[];
 
 /**
+ *  @brief The MPI communicators for the different subtypes.
+ */
+#ifdef WITH_MPI
+extern MPI_Comm subtaskMPI_comms[task_subtype_count];
+#endif
+
+/**
  * @brief A task to be run by the #scheduler.
  */
 struct task {
@@ -115,6 +132,9 @@ struct task {
 
   /*! List of tasks unlocked by this one */
   struct task **unlock_tasks;
+
+  /*! Flags used to carry additional information (e.g. sort directions) */
+  long long flags;
 
 #ifdef WITH_MPI
 
@@ -126,17 +146,16 @@ struct task {
 
 #endif
 
-  /*! Flags used to carry additional information (e.g. sort directions) */
-  int flags;
-
   /*! Rank of a task in the order */
   int rank;
 
   /*! Weight of the task */
   float weight;
 
+#if defined(WITH_MPI) && (defined(HAVE_METIS) || defined(HAVE_PARMETIS))
   /*! Individual cost estimate for this task. */
   float cost;
+#endif
 
   /*! Number of tasks unlocked by this one */
   short int nr_unlock_tasks;
@@ -180,5 +199,7 @@ float task_overlap(const struct task *ta, const struct task *tb);
 int task_lock(struct task *t);
 void task_do_rewait(struct task *t);
 void task_print(const struct task *t);
-
+#ifdef WITH_MPI
+void task_create_mpi_comms(void);
+#endif
 #endif /* SWIFT_TASK_H */

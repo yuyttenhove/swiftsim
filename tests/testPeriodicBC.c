@@ -33,14 +33,14 @@
 #define ACC_THRESHOLD 1e-5
 
 #if defined(WITH_VECTORIZATION)
-#define DOSELF1 runner_doself1_density_vec
+#define DOSELF1 runner_doself1_branch_density
 #define DOPAIR1 runner_dopair1_branch_density
 #define DOSELF1_NAME "runner_doself1_density_vec"
 #define DOPAIR1_NAME "runner_dopair1_density_vec"
 #endif
 
 #ifndef DOSELF1
-#define DOSELF1 runner_doself1_density
+#define DOSELF1 runner_doself1_branch_density
 #define DOSELF1_NAME "runner_doself1_density"
 #endif
 
@@ -48,6 +48,8 @@
 #define DOPAIR1 runner_dopair1_branch_density
 #define DOPAIR1_NAME "runner_dopair1_density"
 #endif
+
+#define NODE_ID 0
 
 enum velocity_types {
   velocity_zero,
@@ -76,7 +78,7 @@ struct cell *make_cell(size_t n, double *offset, double size, double h,
                        enum velocity_types vel) {
   const size_t count = n * n * n;
   const double volume = size * size * size;
-  struct cell *cell = malloc(sizeof(struct cell));
+  struct cell *cell = (struct cell *)malloc(sizeof(struct cell));
   bzero(cell, sizeof(struct cell));
 
   if (posix_memalign((void **)&cell->parts, part_align,
@@ -127,7 +129,7 @@ struct cell *make_cell(size_t n, double *offset, double size, double h,
         h_max = fmax(h_max, part->h);
         part->id = ++(*partId);
 
-#if defined(GIZMO_SPH) || defined(SHADOWFAX_SPH)
+#if defined(GIZMO_MFV_SPH) || defined(SHADOWFAX_SPH)
         part->conserved.mass = density * volume / count;
 
 #ifdef SHADOWFAX_SPH
@@ -171,21 +173,22 @@ struct cell *make_cell(size_t n, double *offset, double size, double h,
   cell->loc[2] = offset[2];
 
   cell->ti_old_part = 8;
-  cell->ti_end_min = 8;
-  cell->ti_end_max = 8;
-  cell->ti_sort = 8;
+  cell->ti_hydro_end_min = 8;
+  cell->ti_hydro_end_max = 8;
+  cell->nodeID = NODE_ID;
 
   shuffle_particles(cell->parts, cell->count);
 
   cell->sorted = 0;
-  cell->sort = NULL;
+  for (int k = 0; k < 13; k++) cell->sort[k] = NULL;
 
   return cell;
 }
 
 void clean_up(struct cell *ci) {
   free(ci->parts);
-  free(ci->sort);
+  for (int k = 0; k < 13; k++)
+    if (ci->sort[k] != NULL) free(ci->sort[k]);
   free(ci);
 }
 
@@ -201,9 +204,9 @@ void zero_particle_fields(struct cell *c) {
 /**
  * @brief Ends the loop by adding the appropriate coefficients
  */
-void end_calculation(struct cell *c) {
+void end_calculation(struct cell *c, const struct cosmology *cosmo) {
   for (int pid = 0; pid < c->count; pid++) {
-    hydro_end_density(&c->parts[pid]);
+    hydro_end_density(&c->parts[pid], cosmo);
   }
 }
 
@@ -233,8 +236,8 @@ void dump_particle_fields(char *fileName, struct cell *main_cell, int i, int j,
             main_cell->parts[pid].x[1], main_cell->parts[pid].x[2],
             main_cell->parts[pid].v[0], main_cell->parts[pid].v[1],
             main_cell->parts[pid].v[2],
-            hydro_get_density(&main_cell->parts[pid]),
-#if defined(GIZMO_SPH) || defined(SHADOWFAX_SPH)
+            hydro_get_comoving_density(&main_cell->parts[pid]),
+#if defined(GIZMO_MFV_SPH) || defined(SHADOWFAX_SPH)
             0.f,
 #else
             main_cell->parts[pid].density.rho_dh,
@@ -249,7 +252,7 @@ void dump_particle_fields(char *fileName, struct cell *main_cell, int i, int j,
 #else
             0., 0., 0., 0.
 #endif
-            );
+    );
   }
   fclose(file);
 }
@@ -280,6 +283,7 @@ void runner_doself1_density(struct runner *r, struct cell *ci);
 void runner_doself1_density_vec(struct runner *r, struct cell *ci);
 void runner_dopair1_branch_density(struct runner *r, struct cell *ci,
                                    struct cell *cj);
+void runner_doself1_branch_density(struct runner *r, struct cell *c);
 
 void test_boundary_conditions(struct cell **cells, struct runner runner,
                               const int loc_i, const int loc_j, const int loc_k,
@@ -290,11 +294,9 @@ void test_boundary_conditions(struct cell **cells, struct runner runner,
   struct cell *main_cell = cells[loc_i * (dim * dim) + loc_j * dim + loc_k];
 
   /* Zero the fields */
-  for (int j = 0; j < 512; ++j) zero_particle_fields(cells[j]);
+  for (int j = 0; j < dim * dim * dim; ++j) zero_particle_fields(cells[j]);
 
 /* Run all the pairs */
-#if !(defined(MINIMAL_SPH) && defined(WITH_VECTORIZATION))
-
 #ifdef WITH_VECTORIZATION
   runner.ci_cache.count = 0;
   cache_init(&runner.ci_cache, 512);
@@ -326,10 +328,8 @@ void test_boundary_conditions(struct cell **cells, struct runner runner,
 
   DOSELF1(&runner, main_cell);
 
-#endif
-
   /* Let's get physical ! */
-  end_calculation(main_cell);
+  end_calculation(main_cell, runner.e->cosmology);
 
   /* Dump particles from the main cell. */
   dump_particle_fields(swiftOutputFileName, main_cell, loc_i, loc_j, loc_k);
@@ -337,9 +337,7 @@ void test_boundary_conditions(struct cell **cells, struct runner runner,
   /* Now perform a brute-force version for accuracy tests */
 
   /* Zero the fields */
-  for (int i = 0; i < 512; ++i) zero_particle_fields(cells[i]);
-
-#if !(defined(MINIMAL_SPH) && defined(WITH_VECTORIZATION))
+  for (int i = 0; i < dim * dim * dim; ++i) zero_particle_fields(cells[i]);
 
   /* Now loop over all the neighbours of this cell
    * and perform the pair interactions. */
@@ -364,10 +362,8 @@ void test_boundary_conditions(struct cell **cells, struct runner runner,
   /* And now the self-interaction */
   self_all_density(&runner, main_cell);
 
-#endif
-
   /* Let's get physical ! */
-  end_calculation(main_cell);
+  end_calculation(main_cell, runner.e->cosmology);
 
   /* Dump */
   dump_particle_fields(bruteForceOutputFileName, main_cell, loc_i, loc_j,
@@ -377,12 +373,15 @@ void test_boundary_conditions(struct cell **cells, struct runner runner,
 /* And go... */
 int main(int argc, char *argv[]) {
 
+#ifdef HAVE_SETAFFINITY
   engine_pin();
+#endif
+
   size_t runs = 0, particles = 0;
   double h = 1.23485, size = 1., rho = 1.;
   double perturbation = 0.;
   double threshold = ACC_THRESHOLD;
-  char outputFileNameExtension[200] = "";
+  char outputFileNameExtension[100] = "";
   char swiftOutputFileName[200] = "";
   char bruteForceOutputFileName[200] = "";
   enum velocity_types vel = velocity_zero;
@@ -391,8 +390,10 @@ int main(int argc, char *argv[]) {
   unsigned long long cpufreq = 0;
   clocks_set_cpufreq(cpufreq);
 
-  /* Choke on FP-exceptions */
+/* Choke on FP-exceptions */
+#ifdef HAVE_FE_ENABLE_EXCEPT
   feenableexcept(FE_DIVBYZERO | FE_INVALID | FE_OVERFLOW);
+#endif
 
   /* Get some randomness going */
   srand(0);
@@ -467,11 +468,12 @@ int main(int argc, char *argv[]) {
   printf("\n");
 
   /* Build the infrastructure */
+  const int dim = 8;
   struct space space;
   space.periodic = 1;
-  space.dim[0] = 8.;
-  space.dim[1] = 8.;
-  space.dim[2] = 8.;
+  space.dim[0] = dim;
+  space.dim[1] = dim;
+  space.dim[2] = dim;
 
   struct hydro_props hp;
   hp.h_max = FLT_MAX;
@@ -482,13 +484,17 @@ int main(int argc, char *argv[]) {
   engine.ti_current = 8;
   engine.max_active_bin = num_time_bins;
   engine.hydro_properties = &hp;
+  engine.nodeID = NODE_ID;
 
   struct runner runner;
   runner.e = &engine;
 
+  struct cosmology cosmo;
+  cosmology_init_no_cosmo(&cosmo);
+  engine.cosmology = &cosmo;
+
   /* Construct some cells */
-  struct cell *cells[512];
-  const int dim = 8;
+  struct cell *cells[dim * dim * dim];
   static long long partId = 0;
   for (int i = 0; i < dim; ++i) {
     for (int j = 0; j < dim; ++j) {
@@ -506,9 +512,9 @@ int main(int argc, char *argv[]) {
   }
 
   /* Create output file names. */
-  sprintf(swiftOutputFileName, "swift_periodic_BC_%s.dat",
+  sprintf(swiftOutputFileName, "swift_periodic_BC_%.150s.dat",
           outputFileNameExtension);
-  sprintf(bruteForceOutputFileName, "brute_force_periodic_BC_%s.dat",
+  sprintf(bruteForceOutputFileName, "brute_force_periodic_BC_%.150s.dat",
           outputFileNameExtension);
 
   /* Delete files if they already exist. */
@@ -517,7 +523,8 @@ int main(int argc, char *argv[]) {
 
   const int half_dim = (dim - 1) / 2;
 
-  /* Test the periodic boundary conditions for each of the 8 corners. */
+  /* Test the periodic boundary conditions for each of the 8 corners. Interact
+   * each corner with all of its 26 neighbours.*/
   test_boundary_conditions(cells, runner, 0, 0, 0, dim, swiftOutputFileName,
                            bruteForceOutputFileName);
   test_boundary_conditions(cells, runner, dim - 1, 0, 0, dim,
@@ -580,7 +587,7 @@ int main(int argc, char *argv[]) {
                            swiftOutputFileName, bruteForceOutputFileName);
 
   /* Clean things to make the sanitizer happy ... */
-  for (int i = 0; i < 512; ++i) clean_up(cells[i]);
+  for (int i = 0; i < dim * dim * dim; ++i) clean_up(cells[i]);
 
   return 0;
 }

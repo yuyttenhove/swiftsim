@@ -70,23 +70,97 @@ struct link {
   struct link *next;
 };
 
-/* Packed cell. */
+/**
+ * @brief Packed cell for information correct at rebuild time.
+ *
+ * Contains all the information for a tree walk in a non-local cell.
+ */
 struct pcell {
 
-  /* Stats on this cell's particles. */
-  double h_max;
-  integertime_t ti_end_min, ti_end_max, ti_beg_max, ti_old_part, ti_old_gpart;
+  /*! This cell's gravity-related tensors */
+  struct multipole m_pole;
 
-  /* Number of particles in this cell. */
-  int count, gcount, scount;
+  /*! Centre of mass. */
+  double CoM[3];
 
-  /* tag used for MPI communication. */
-  int tag;
+  /*! Centre of mass at rebuild time. */
+  double CoM_rebuild[3];
 
-  /* Relative indices of the cell's progeny. */
+  /*! Upper limit of the CoM<->gpart distance. */
+  double r_max;
+
+  /*! Upper limit of the CoM<->gpart distance at last rebuild. */
+  double r_max_rebuild;
+
+  /*! Relative indices of the cell's progeny. */
   int progeny[8];
 
+  /*! Maximal smoothing length. */
+  double h_max;
+
+  /*! Minimal integer end-of-timestep in this cell for hydro tasks */
+  integertime_t ti_hydro_end_min;
+
+  /*! Maximal integer end-of-timestep in this cell for hydro tasks */
+  integertime_t ti_hydro_end_max;
+
+  /*! Maximal integer beginning-of-timestep in this cell for hydro tasks */
+  integertime_t ti_hydro_beg_max;
+
+  /*! Minimal integer end-of-timestep in this cell for gravity tasks */
+  integertime_t ti_gravity_end_min;
+
+  /*! Maximal integer end-of-timestep in this cell for gravity tasks */
+  integertime_t ti_gravity_end_max;
+
+  /*! Maximal integer beginning-of-timestep in this cell for gravity tasks */
+  integertime_t ti_gravity_beg_max;
+
+  /*! Integer time of the last drift of the #part in this cell */
+  integertime_t ti_old_part;
+
+  /*! Integer time of the last drift of the #gpart in this cell */
+  integertime_t ti_old_gpart;
+
+  /*! Integer time of the last drift of the #multipole in this cell */
+  integertime_t ti_old_multipole;
+
+  /*! Number of #part in this cell. */
+  int count;
+
+  /*! Number of #gpart in this cell. */
+  int gcount;
+
+  /*! Number of #spart in this cell. */
+  int scount;
+
+#ifdef SWIFT_DEBUG_CHECKS
+  /* Cell ID (for debugging) */
+  int cellID;
+#endif
+
 } SWIFT_STRUCT_ALIGN;
+
+/**
+ * @brief Cell information at the end of a time-step.
+ */
+struct pcell_step {
+
+  /*! Minimal integer end-of-timestep in this cell (hydro) */
+  integertime_t ti_hydro_end_min;
+
+  /*! Minimal integer end-of-timestep in this cell (hydro) */
+  integertime_t ti_hydro_end_max;
+
+  /*! Minimal integer end-of-timestep in this cell (gravity) */
+  integertime_t ti_gravity_end_min;
+
+  /*! Minimal integer end-of-timestep in this cell (gravity) */
+  integertime_t ti_gravity_end_max;
+
+  /*! Maximal distance any #part has travelled since last rebuild */
+  float dx_max_part;
+};
 
 /**
  * @brief Cell within the tree structure.
@@ -123,7 +197,7 @@ struct cell {
   struct spart *sparts;
 
   /*! Pointer for the sorted indices. */
-  struct entry *sort;
+  struct entry *sort[13];
 
   /*! Pointers to the next level of cells. */
   struct cell *progeny[8];
@@ -131,11 +205,16 @@ struct cell {
   /*! Parent cell. */
   struct cell *parent;
 
-  /*! Super cell, i.e. the highest-level parent cell that has pair/self tasks */
+  /*! Super cell, i.e. the highest-level parent cell with *any* task */
   struct cell *super;
 
-  /*! The task computing this cell's sorts. */
-  struct task *sorts;
+  /*! Super cell, i.e. the highest-level parent cell that has a hydro pair/self
+   * tasks */
+  struct cell *super_hydro;
+
+  /*! Super cell, i.e. the highest-level parent cell that has a grav pair/self
+   * tasks */
+  struct cell *super_gravity;
 
   /*! Linked list of the tasks computing this cell's hydro density. */
   struct link *density;
@@ -149,12 +228,25 @@ struct cell {
   /*! Linked list of the tasks computing this cell's gravity forces. */
   struct link *grav;
 
+  /*! Linked list of the tasks computing this cell's gravity M-M forces. */
+  struct link *grav_mm;
+
+  /*! The task computing this cell's sorts. */
+  struct task *sorts;
+
   /*! The multipole initialistation task */
   struct task *init_grav;
 
-  /*! The ghost tasks */
+  /*! Implicit task for the gravity initialisation */
+  struct task *init_grav_out;
+
+  /*! Dependency implicit task for the ghost  (in->ghost->out)*/
   struct task *ghost_in;
+
+  /*! Dependency implicit task for the ghost  (in->ghost->out)*/
   struct task *ghost_out;
+
+  /*! The ghost task itself */
   struct task *ghost;
 
   /*! The extra ghost task for complex hydro schemes */
@@ -172,17 +264,35 @@ struct cell {
   /*! The second kick task */
   struct task *kick2;
 
+  /*! The task to end the force calculation */
+  struct task *end_force;
+
   /*! The task to compute time-steps */
   struct task *timestep;
-
-  /*! Task linking the FFT mesh to the rest of gravity tasks */
-  struct task *grav_ghost[2];
 
   /*! Task computing long range non-periodic gravity interactions */
   struct task *grav_long_range;
 
+  /*! Implicit task for the down propagation */
+  struct task *grav_down_in;
+
+  /*! Task propagating the mesh forces to the particles */
+  struct task *grav_mesh;
+
   /*! Task propagating the multipole to the particles */
   struct task *grav_down;
+
+  /*! Dependency implicit task for the star ghost  (in->ghost->out)*/
+  struct task *stars_ghost_in;
+
+  /*! Dependency implicit task for the star ghost  (in->ghost->out)*/
+  struct task *stars_ghost_out;
+
+  /*! The star ghost task itself */
+  struct task *stars_ghost;
+
+  /*! Linked list of the tasks computing this cell's star density. */
+  struct link *stars_density;
 
   /*! Task for cooling */
   struct task *cooling;
@@ -192,26 +302,32 @@ struct cell {
 
 #ifdef WITH_MPI
 
-  /* Task receiving data (positions). */
+  /* Task receiving hydro data (positions). */
   struct task *recv_xv;
 
-  /* Task receiving data (density). */
+  /* Task receiving hydro data (density). */
   struct task *recv_rho;
 
-  /* Task receiving data (gradient). */
+  /* Task receiving hydro data (gradient). */
   struct task *recv_gradient;
+
+  /* Task receiving gpart data. */
+  struct task *recv_grav;
 
   /* Task receiving data (time-step). */
   struct task *recv_ti;
 
-  /* Linked list for sending data (positions). */
+  /* Linked list for sending hydro data (positions). */
   struct link *send_xv;
 
-  /* Linked list for sending data (density). */
+  /* Linked list for sending hydro data (density). */
   struct link *send_rho;
 
-  /* Linked list for sending data (gradient). */
+  /* Linked list for sending hydro data (gradient). */
   struct link *send_gradient;
+
+  /* Linked list for sending gpart data. */
+  struct link *send_grav;
 
   /* Linked list for sending data (time-step). */
   struct link *send_ti;
@@ -230,17 +346,24 @@ struct cell {
 
 #endif
 
-  /*! Minimum end of (integer) time step in this cell. */
-  integertime_t ti_end_min;
+  /*! Minimum end of (integer) time step in this cell for hydro tasks. */
+  integertime_t ti_hydro_end_min;
 
-  /*! Maximum end of (integer) time step in this cell. */
-  integertime_t ti_end_max;
+  /*! Maximum end of (integer) time step in this cell for hydro tasks. */
+  integertime_t ti_hydro_end_max;
 
-  /*! Maximum beginning of (integer) time step in this cell. */
-  integertime_t ti_beg_max;
+  /*! Maximum beginning of (integer) time step in this cell for hydro tasks. */
+  integertime_t ti_hydro_beg_max;
 
-  /*! Last (integer) time the cell's sort arrays were updated. */
-  integertime_t ti_sort;
+  /*! Minimum end of (integer) time step in this cell for gravity tasks. */
+  integertime_t ti_gravity_end_min;
+
+  /*! Maximum end of (integer) time step in this cell for gravity tasks. */
+  integertime_t ti_gravity_end_max;
+
+  /*! Maximum beginning of (integer) time step in this cell for gravity tasks.
+   */
+  integertime_t ti_gravity_beg_max;
 
   /*! Last (integer) time the cell's part were drifted forward in time. */
   integertime_t ti_old_part;
@@ -259,9 +382,6 @@ struct cell {
 
   /*! Maximum part movement in this cell since last construction. */
   float dx_max_part;
-
-  /*! Maximum gpart movement in this cell since last construction. */
-  float dx_max_gpart;
 
   /*! Nr of #part in this cell. */
   int count;
@@ -314,8 +434,26 @@ struct cell {
   /*! Is the #spart data of this cell being used in a sub-cell? */
   int shold;
 
+  /*! Values of dx_max before the drifts, used for sub-cell tasks. */
+  float dx_max_old;
+
+  /*! Values of h_max before the drifts, used for sub-cell tasks. */
+  float h_max_old;
+
+  /*! Values of dx_max_sort before the drifts, used for sub-cell tasks. */
+  float dx_max_sort_old;
+
+  /*! Bit mask of sort directions that will be needed in the next timestep. */
+  unsigned int requires_sorts;
+
+  /*! Bit mask of sorts that need to be computed for this cell. */
+  unsigned int do_sort;
+
   /*! Number of tasks that are associated with this cell. */
   short int nr_tasks;
+
+  /*! Number of M-M tasks that are associated with this cell. */
+  short int nr_mm_tasks;
 
   /*! The depth of this cell in the tree. */
   char depth;
@@ -326,27 +464,28 @@ struct cell {
   /*! The maximal depth of this cell and its progenies */
   char maxdepth;
 
-  /*! Values of dx_max and h_max before the drifts, used for sub-cell tasks. */
-  float dx_max_old;
-  float h_max_old;
-  float dx_max_sort_old;
-
-  /* Bit mask of sort directions that will be needed in the next timestep. */
-  unsigned int requires_sorts;
-
-  /*! Does this cell need to be drifted? */
+  /*! Does this cell need to be drifted (hydro)? */
   char do_drift;
 
-  /*! Do any of this cell's sub-cells need to be drifted? */
+  /*! Do any of this cell's sub-cells need to be drifted (hydro)? */
   char do_sub_drift;
 
-  /*! Bit mask of sorts that need to be computed for this cell. */
-  unsigned int do_sort;
+  /*! Does this cell need to be drifted (gravity)? */
+  char do_grav_drift;
+
+  /*! Do any of this cell's sub-cells need to be drifted (gravity)? */
+  char do_grav_sub_drift;
 
   /*! Do any of this cell's sub-cells need to be sorted? */
   char do_sub_sort;
 
 #ifdef SWIFT_DEBUG_CHECKS
+  /* Cell ID (for debugging) */
+  int cellID;
+
+  /*! Last (integer) time the cell's sort arrays were updated. */
+  integertime_t ti_sort;
+
   /*! The list of tasks that have been executed on this cell */
   char tasks_executed[64];
 
@@ -373,37 +512,56 @@ int cell_mlocktree(struct cell *c);
 void cell_munlocktree(struct cell *c);
 int cell_slocktree(struct cell *c);
 void cell_sunlocktree(struct cell *c);
-int cell_pack(struct cell *c, struct pcell *pc);
-int cell_unpack(struct pcell *pc, struct cell *c, struct space *s);
-int cell_pack_ti_ends(struct cell *c, integertime_t *ti_ends);
-int cell_unpack_ti_ends(struct cell *c, integertime_t *ti_ends);
+int cell_pack(struct cell *c, struct pcell *pc, const int with_gravity);
+int cell_unpack(struct pcell *pc, struct cell *c, struct space *s,
+                const int with_gravity);
+int cell_pack_tags(const struct cell *c, int *tags);
+int cell_unpack_tags(const int *tags, struct cell *c);
+int cell_pack_end_step(struct cell *c, struct pcell_step *pcell);
+int cell_unpack_end_step(struct cell *c, struct pcell_step *pcell);
+int cell_pack_multipoles(struct cell *c, struct gravity_tensors *m);
+int cell_unpack_multipoles(struct cell *c, struct gravity_tensors *m);
 int cell_getsize(struct cell *c);
 int cell_link_parts(struct cell *c, struct part *parts);
 int cell_link_gparts(struct cell *c, struct gpart *gparts);
 int cell_link_sparts(struct cell *c, struct spart *sparts);
-void cell_convert_hydro(struct cell *c, void *data);
 void cell_clean_links(struct cell *c, void *data);
 void cell_make_multipoles(struct cell *c, integertime_t ti_current);
-void cell_check_multipole(struct cell *c, void *data);
+void cell_check_multipole(struct cell *c);
+void cell_check_foreign_multipole(const struct cell *c);
 void cell_clean(struct cell *c);
 void cell_check_part_drift_point(struct cell *c, void *data);
 void cell_check_gpart_drift_point(struct cell *c, void *data);
 void cell_check_multipole_drift_point(struct cell *c, void *data);
 void cell_reset_task_counters(struct cell *c);
-int cell_is_drift_needed(struct cell *c, const struct engine *e);
-int cell_unskip_tasks(struct cell *c, struct scheduler *s);
+int cell_unskip_hydro_tasks(struct cell *c, struct scheduler *s);
+int cell_unskip_stars_tasks(struct cell *c, struct scheduler *s);
+int cell_unskip_gravity_tasks(struct cell *c, struct scheduler *s);
 void cell_set_super(struct cell *c, struct cell *super);
 void cell_drift_part(struct cell *c, const struct engine *e, int force);
-void cell_drift_gpart(struct cell *c, const struct engine *e);
+void cell_drift_gpart(struct cell *c, const struct engine *e, int force);
 void cell_drift_multipole(struct cell *c, const struct engine *e);
 void cell_drift_all_multipoles(struct cell *c, const struct engine *e);
 void cell_check_timesteps(struct cell *c);
 void cell_store_pre_drift_values(struct cell *c);
-void cell_activate_subcell_tasks(struct cell *ci, struct cell *cj,
-                                 struct scheduler *s);
+void cell_activate_subcell_hydro_tasks(struct cell *ci, struct cell *cj,
+                                       struct scheduler *s);
+void cell_activate_subcell_grav_tasks(struct cell *ci, struct cell *cj,
+                                      struct scheduler *s);
+void cell_activate_subcell_stars_tasks(struct cell *ci, struct cell *cj,
+                                       struct scheduler *s);
+void cell_activate_subcell_external_grav_tasks(struct cell *ci,
+                                               struct scheduler *s);
 void cell_activate_drift_part(struct cell *c, struct scheduler *s);
+void cell_activate_drift_gpart(struct cell *c, struct scheduler *s);
 void cell_activate_sorts(struct cell *c, int sid, struct scheduler *s);
 void cell_clear_drift_flags(struct cell *c, void *data);
+void cell_set_super_mapper(void *map_data, int num_elements, void *extra_data);
+int cell_has_tasks(struct cell *c);
+int cell_can_use_pair_mm(const struct cell *ci, const struct cell *cj,
+                         const struct engine *e, const struct space *s);
+int cell_can_use_pair_mm_rebuild(const struct cell *ci, const struct cell *cj,
+                                 const struct engine *e, const struct space *s);
 
 /* Inlined functions (for speed). */
 
@@ -413,8 +571,8 @@ void cell_clear_drift_flags(struct cell *c, void *data);
  *
  * @param c The #cell.
  */
-__attribute__((always_inline)) INLINE static int cell_can_recurse_in_pair_task(
-    const struct cell *c) {
+__attribute__((always_inline)) INLINE static int
+cell_can_recurse_in_pair_hydro_task(const struct cell *c) {
 
   /* Is the cell split ? */
   /* If so, is the cut-off radius plus the max distance the parts have moved */
@@ -430,24 +588,46 @@ __attribute__((always_inline)) INLINE static int cell_can_recurse_in_pair_task(
  *
  * @param c The #cell.
  */
-__attribute__((always_inline)) INLINE static int cell_can_recurse_in_self_task(
-    const struct cell *c) {
+__attribute__((always_inline)) INLINE static int
+cell_can_recurse_in_self_hydro_task(const struct cell *c) {
 
-  /* Is the cell split ? */
-  /* Note: No need for more checks here as all the sub-pairs and sub-self */
-  /* operations will be executed. So no need for the particle to be at exactly
-   */
-  /* the right place. */
-  return c->split;
+  /* Is the cell split and not smaller than the smoothing length? */
+  return c->split && (kernel_gamma * c->h_max_old < 0.5f * c->dmin);
 }
 
 /**
- * @brief Can a pair task associated with a cell be split into smaller
+ * @brief Can a sub-pair star task recurse to a lower level based
+ * on the status of the particles in the cell.
+ *
+ * @param c The #cell.
+ */
+__attribute__((always_inline)) INLINE static int
+cell_can_recurse_in_pair_stars_task(const struct cell *c) {
+
+  // LOIC: To implement
+  return 0;
+}
+
+/**
+ * @brief Can a sub-self stars task recurse to a lower level based
+ * on the status of the particles in the cell.
+ *
+ * @param c The #cell.
+ */
+__attribute__((always_inline)) INLINE static int
+cell_can_recurse_in_self_stars_task(const struct cell *c) {
+
+  // LOIC: To implement
+  return 0;
+}
+
+/**
+ * @brief Can a pair hydro task associated with a cell be split into smaller
  * sub-tasks.
  *
  * @param c The #cell.
  */
-__attribute__((always_inline)) INLINE static int cell_can_split_pair_task(
+__attribute__((always_inline)) INLINE static int cell_can_split_pair_hydro_task(
     const struct cell *c) {
 
   /* Is the cell split ? */
@@ -459,18 +639,72 @@ __attribute__((always_inline)) INLINE static int cell_can_split_pair_task(
 }
 
 /**
- * @brief Can a self task associated with a cell be split into smaller
+ * @brief Can a self hydro task associated with a cell be split into smaller
  * sub-tasks.
  *
  * @param c The #cell.
  */
-__attribute__((always_inline)) INLINE static int cell_can_split_self_task(
+__attribute__((always_inline)) INLINE static int cell_can_split_self_hydro_task(
     const struct cell *c) {
 
   /* Is the cell split ? */
+  /* If so, is the cut-off radius with some leeway smaller than */
+  /* the sub-cell sizes ? */
   /* Note: No need for more checks here as all the sub-pairs and sub-self */
   /* tasks will be created. So no need to check for h_max */
   return c->split && (space_stretch * kernel_gamma * c->h_max < 0.5f * c->dmin);
+}
+
+/**
+ * @brief Can a pair stars task associated with a cell be split into smaller
+ * sub-tasks.
+ *
+ * @param c The #cell.
+ */
+__attribute__((always_inline)) INLINE static int cell_can_split_pair_stars_task(
+    const struct cell *c) {
+
+  // LOIC: To implement
+  return 0;
+}
+
+/**
+ * @brief Can a self stars task associated with a cell be split into smaller
+ * sub-tasks.
+ *
+ * @param c The #cell.
+ */
+__attribute__((always_inline)) INLINE static int cell_can_split_self_stars_task(
+    const struct cell *c) {
+
+  // LOIC: To implement
+  return 0;
+}
+
+/**
+ * @brief Can a pair gravity task associated with a cell be split into smaller
+ * sub-tasks.
+ *
+ * @param c The #cell.
+ */
+__attribute__((always_inline)) INLINE static int
+cell_can_split_pair_gravity_task(const struct cell *c) {
+
+  /* Is the cell split ? */
+  return c->split && c->depth < space_subdepth_grav;
+}
+
+/**
+ * @brief Can a self gravity task associated with a cell be split into smaller
+ * sub-tasks.
+ *
+ * @param c The #cell.
+ */
+__attribute__((always_inline)) INLINE static int
+cell_can_split_self_gravity_task(const struct cell *c) {
+
+  /* Is the cell split ? */
+  return c->split && c->depth < space_subdepth_grav;
 }
 
 /**
@@ -489,6 +723,25 @@ __attribute__((always_inline)) INLINE static int cell_need_rebuild_for_pair(
   return (kernel_gamma * max(ci->h_max, cj->h_max) + ci->dx_max_part +
               cj->dx_max_part >
           cj->dmin);
+}
+
+/**
+ * @brief Add a unique tag to a cell mostly for MPI communications.
+ *
+ * @param c The #cell to tag.
+ */
+__attribute__((always_inline)) INLINE static void cell_tag(struct cell *c) {
+#ifdef WITH_MPI
+
+#ifdef SWIFT_DEBUG_CHECKS
+  if (c->tag > 0) error("setting tag for already tagged cell");
+#endif
+
+  if (c->tag < 0 && (c->tag = atomic_inc(&cell_next_tag)) > cell_max_tag)
+    error("Ran out of cell tags.");
+#else
+  error("SWIFT was not compiled with MPI enabled.");
+#endif  // WITH_MPI
 }
 
 #endif /* SWIFT_CELL_H */

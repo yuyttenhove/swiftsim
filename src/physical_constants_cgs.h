@@ -20,62 +20,82 @@
 #ifndef SWIFT_PHYSICAL_CONSTANTS_CGS_H
 #define SWIFT_PHYSICAL_CONSTANTS_CGS_H
 
-/* The constants declared in this file should _NOT_ be used directly */
-/* Users should use the converted values in the phys_const structure */
-/* where all the constants are defined in the system of units specified */
-/* in the parameter file. */
+/**
+ * @file physical_constants_cgs.h
+ * @brief Physical constants in the CGS unit system.
+ *
+ * The constants declared in this file should _NOT_ be used directly
+ * Users should use the converted values in the phys_const structure
+ * where all the constants are defined in the system of units specified
+ * in the parameter file.
+ *
+ * Of special interest if the value of G which is 0.03% different from the
+ * default value adopted by Gadget-2 (G = 6.672e-8).
+ *
+ * All values are taken from C. Patrignani et al. (Particle Data Group), Chin.
+ * Phys. C, 40, 100001 (2016) and 2017 update.
+ * http://pdg.lbl.gov/2017/reviews/rpp2017-rev-phys-constants.pdf
+ * http://pdg.lbl.gov/2017/reviews/rpp2017-rev-astrophysical-constants.pdf
+ */
 
-/* All values are taken from K.A. Olive et al. (Particle Data Group), Chin. */
-/* Phys. C, 38, 090001 (2014) and 2015 update. */
-/* http://pdg.lbl.gov/2015/reviews/rpp2015-rev-phys-constants.pdf */
-/* http://pdg.lbl.gov/2015/reviews/rpp2015-rev-astrophysical-constants.pdf */
+/*! Newton's gravitation constant [g^-1 cm^3 s^-2] */
+const double const_newton_G_cgs = 6.67408e-8;
 
-/* Newton's gravitation constant */
-const double const_newton_G_cgs = 6.67408e-8; /* g^-1 cm^3 s^-2 */
+/*! Speed of light in vacuum [cm s^-1] */
+const double const_speed_light_c_cgs = 2.99792458e10;
 
-/* Speed of light in vacuum */
-const double const_speed_light_c_cgs = 2.99792458e10; /* cm s^-1 */
+/*! Planck's constant [g cm^2 s^-1] */
+const double const_planck_h_cgs = 6.626070040e-27;
 
-/* Planck's constant */
-const double const_planck_h_cgs = 6.626070040e-27; /* g cm^-2 s^-1 */
+/*! Planck's reduced constant [g cm^2 s^-1] */
+const double const_planck_hbar_cgs = 1.054571800e-27;
 
-/* Planck's reduced constant */
-const double const_planck_hbar_cgs = 1.054571800e-27; /* g cm^-2 s^-1 */
+/*! Boltzmann's constant [g cm^2 s^-2 K^-1] */
+const double const_boltzmann_k_cgs = 1.38064852e-16;
 
-/* Boltzmann's constant */
-const double const_boltzmann_k_cgs = 1.38064852e-16; /* g cm^2 s^-2 K^-1 */
+/*! Avogadro number [-] */
+const double const_avogadro_number_cgs = 6.022140857e23;
 
-/* Thomson cross-section */
-const double const_thomson_cross_section_cgs = 6.6524587158e-25; /* cm^2 */
+/*! Thomson cross-section [cm^2] */
+const double const_thomson_cross_section_cgs = 6.6524587158e-25;
 
-/* Elementary charge */
-const double const_electron_charge_cgs = 1.6021766208e-19; /* A s^-1 */
+/*! Stefan-Boltzmann constant [g s^-3 K^-4] */
+const double const_stefan_boltzmann_cgs = 5.670367e-5;
 
-/* Electron-Volt */
-const double const_electron_volt_cgs = 1.6021766208e-12; /* g cm^2 s^-2 */
+/*! Elementary charge [A s] */
+const double const_electron_charge_cgs = 1.6021766208e-19;
 
-/* Mass of the electron */
-const double const_electron_mass_cgs = 9.10938356e-28; /* g */
+/*! Electron-Volt [g cm^2 s^-2] */
+const double const_electron_volt_cgs = 1.6021766208e-12;
 
-/* Mass of the proton */
-const double const_proton_mass_cgs = 1.672621898e-24; /* g */
+/*! Mass of the electron [g] */
+const double const_electron_mass_cgs = 9.10938356e-28;
 
-/* Tropical year */
-const double const_year_cgs = 3.15569252e7; /* s */
+/*! Mass of the proton [g] */
+const double const_proton_mass_cgs = 1.672621898e-24;
 
-/* Astronomical unit */
-const double const_astronomical_unit_cgs = 1.49597870700e13; /* cm */
+/*! Tropical year [s] */
+const double const_year_cgs = 3.15569252e7;
 
-/* Parsec */
-const double const_parsec_cgs = 3.08567758149e18; /* cm */
+/*! Astronomical unit [cm] */
+const double const_astronomical_unit_cgs = 1.49597870700e13;
 
-/* Light-year */
-const double const_light_year_cgs = 9.46053e17; /* cm */
+/*! Parsec [cm] */
+const double const_parsec_cgs = 3.08567758149e18;
 
-/* Mass of the Sun */
-const double const_solar_mass_cgs = 1.9885e33; /* g */
+/*! Light-year [cm] */
+const double const_light_year_cgs = 9.46053e17;
 
-/* Mass of the Earth */
-const double const_earth_mass_cgs = 5.9726e27; /* g */
+/*! Mass of the Sun [g] */
+const double const_solar_mass_cgs = 1.98848e33;
+
+/*! Mass of the Earth [g] */
+const double const_earth_mass_cgs = 5.9724e27;
+
+/*! Temperature of the CMB at present day [K] */
+const double const_T_CMB_0_cgs = 2.7255;
+
+/*! Primordial Helium fraction */
+const double const_primordial_He_fraction_cgs = 0.245;
 
 #endif /* SWIFT_PHYSICAL_CONSTANTS_CGS_H */

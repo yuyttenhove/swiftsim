@@ -31,21 +31,43 @@
 #include "swift.h"
 
 #if defined(WITH_VECTORIZATION)
-#define DOSELF1 runner_doself1_density_vec
+#define DOSELF1 runner_doself1_branch_density
+#define DOSELF1_SUBSET runner_doself_subset_branch_density
+#define DOPAIR1_SUBSET runner_dopair_subset_branch_density
 #define DOPAIR1 runner_dopair1_branch_density
-#define DOSELF1_NAME "runner_doself1_density_vec"
-#define DOPAIR1_NAME "runner_dopair1_density_vec"
+#ifdef TEST_DOSELF_SUBSET
+#define DOSELF1_NAME "runner_doself_subset_branch_density"
+#else
+#define DOSELF1_NAME "runner_doself1_branch_density"
+#endif
+#ifdef TEST_DOPAIR_SUBSET
+#define DOPAIR1_NAME "runner_dopair_subset_branch_density"
+#else
+#define DOPAIR1_NAME "runner_dopair1_branch_density"
+#endif
 #endif
 
 #ifndef DOSELF1
-#define DOSELF1 runner_doself1_density
-#define DOSELF1_NAME "runner_doself1_density"
+#define DOSELF1 runner_doself1_branch_density
+#define DOSELF1_SUBSET runner_doself_subset_branch_density
+#ifdef TEST_DOSELF_SUBSET
+#define DOSELF1_NAME "runner_doself_subset_branch_density"
+#else
+#define DOSELF1_NAME "runner_doself1_branch_density"
+#endif
 #endif
 
 #ifndef DOPAIR1
 #define DOPAIR1 runner_dopair1_branch_density
-#define DOPAIR1_NAME "runner_dopair1_density"
+#define DOPAIR1_SUBSET runner_dopair_subset_branch_density
+#ifdef TEST_DOPAIR_SUBSET
+#define DOPAIR1_NAME "runner_dopair1_subset_branch_density"
+#else
+#define DOPAIR1_NAME "runner_dopair1_branch_density"
 #endif
+#endif
+
+#define NODE_ID 0
 
 enum velocity_types {
   velocity_zero,
@@ -76,7 +98,7 @@ struct cell *make_cell(size_t n, double *offset, double size, double h,
   const size_t count = n * n * n;
   const double volume = size * size * size;
   float h_max = 0.f;
-  struct cell *cell = malloc(sizeof(struct cell));
+  struct cell *cell = (struct cell *)malloc(sizeof(struct cell));
   bzero(cell, sizeof(struct cell));
 
   if (posix_memalign((void **)&cell->parts, part_align,
@@ -122,13 +144,13 @@ struct cell *make_cell(size_t n, double *offset, double size, double h,
             break;
         }
         if (h_pert)
-          part->h = size * h * random_uniform(1.f, 1.1f) / (float)n;
+          part->h = size * h * random_uniform(1.f, h_pert) / (float)n;
         else
           part->h = size * h / (float)n;
         h_max = fmaxf(h_max, part->h);
         part->id = ++(*partId);
 
-#if defined(GIZMO_SPH) || defined(SHADOWFAX_SPH)
+#if defined(GIZMO_MFV_SPH) || defined(SHADOWFAX_SPH)
         part->conserved.mass = density * volume / count;
 
 #ifdef SHADOWFAX_SPH
@@ -172,21 +194,22 @@ struct cell *make_cell(size_t n, double *offset, double size, double h,
   cell->loc[2] = offset[2];
 
   cell->ti_old_part = 8;
-  cell->ti_end_min = 8;
-  cell->ti_end_max = 8;
-  cell->ti_sort = 8;
+  cell->ti_hydro_end_min = 8;
+  cell->ti_hydro_end_max = 8;
+  cell->nodeID = NODE_ID;
 
   shuffle_particles(cell->parts, cell->count);
 
   cell->sorted = 0;
-  cell->sort = NULL;
+  for (int k = 0; k < 13; k++) cell->sort[k] = NULL;
 
   return cell;
 }
 
 void clean_up(struct cell *ci) {
   free(ci->parts);
-  free(ci->sort);
+  for (int k = 0; k < 13; k++)
+    if (ci->sort[k] != NULL) free(ci->sort[k]);
   free(ci);
 }
 
@@ -194,17 +217,33 @@ void clean_up(struct cell *ci) {
  * @brief Initializes all particles field to be ready for a density calculation
  */
 void zero_particle_fields(struct cell *c) {
+#ifdef SHADOWFAX_SPH
+  struct hydro_space hs;
+  hs.anchor[0] = 0.;
+  hs.anchor[1] = 0.;
+  hs.anchor[2] = 0.;
+  hs.side[0] = 1.;
+  hs.side[1] = 1.;
+  hs.side[2] = 1.;
+  struct hydro_space *hspointer = &hs;
+#else
+  struct hydro_space *hspointer = NULL;
+#endif
   for (int pid = 0; pid < c->count; pid++) {
-    hydro_init_part(&c->parts[pid], NULL);
+    hydro_init_part(&c->parts[pid], hspointer);
   }
 }
 
 /**
  * @brief Ends the loop by adding the appropriate coefficients
  */
-void end_calculation(struct cell *c) {
+void end_calculation(struct cell *c, const struct cosmology *cosmo) {
   for (int pid = 0; pid < c->count; pid++) {
-    hydro_end_density(&c->parts[pid]);
+    hydro_end_density(&c->parts[pid], cosmo);
+
+    /* Recover the common "Neighbour number" definition */
+    c->parts[pid].density.wcount *= pow_dimension(c->parts[pid].h);
+    c->parts[pid].density.wcount *= kernel_norm;
   }
 }
 
@@ -233,15 +272,18 @@ void dump_particle_fields(char *fileName, struct cell *main_cell,
             main_cell->parts[pid].x[1], main_cell->parts[pid].x[2],
             main_cell->parts[pid].v[0], main_cell->parts[pid].v[1],
             main_cell->parts[pid].v[2],
-            hydro_get_density(&main_cell->parts[pid]),
-#if defined(GIZMO_SPH) || defined(SHADOWFAX_SPH)
+            hydro_get_comoving_density(&main_cell->parts[pid]),
+#if defined(GIZMO_MFV_SPH) || defined(SHADOWFAX_SPH)
             0.f,
+#elif defined(HOPKINS_PU_SPH)
+            main_cell->parts[pid].density.pressure_bar_dh,
 #else
             main_cell->parts[pid].density.rho_dh,
 #endif
             main_cell->parts[pid].density.wcount,
             main_cell->parts[pid].density.wcount_dh,
-#if defined(GADGET2_SPH) || defined(DEFAULT_SPH) || defined(HOPKINS_PE_SPH)
+#if defined(GADGET2_SPH) || defined(DEFAULT_SPH) || defined(HOPKINS_PE_SPH) || \
+    defined(HOPKINS_PU_SPH)
             main_cell->parts[pid].density.div_v,
             main_cell->parts[pid].density.rot_v[0],
             main_cell->parts[pid].density.rot_v[1],
@@ -249,7 +291,7 @@ void dump_particle_fields(char *fileName, struct cell *main_cell,
 #else
             0., 0., 0., 0.
 #endif
-            );
+    );
   }
 
   /* Write all other cells */
@@ -270,8 +312,8 @@ void dump_particle_fields(char *fileName, struct cell *main_cell,
               "%13e %13e %13e\n",
               cj->parts[pjd].id, cj->parts[pjd].x[0], cj->parts[pjd].x[1],
               cj->parts[pjd].x[2], cj->parts[pjd].v[0], cj->parts[pjd].v[1],
-              cj->parts[pjd].v[2], hydro_get_density(&cj->parts[pjd]),
-#if defined(GIZMO_SPH) || defined(SHADOWFAX_SPH)
+              cj->parts[pjd].v[2], hydro_get_comoving_density(&cj->parts[pjd]),
+#if defined(GIZMO_MFV_SPH) || defined(SHADOWFAX_SPH)
               0.f,
 #else
               main_cell->parts[pjd].density.rho_dh,
@@ -283,7 +325,7 @@ void dump_particle_fields(char *fileName, struct cell *main_cell,
 #else
               0., 0., 0., 0.
 #endif
-              );
+          );
         }
       }
     }
@@ -292,19 +334,30 @@ void dump_particle_fields(char *fileName, struct cell *main_cell,
 }
 
 /* Just a forward declaration... */
-void runner_doself1_density(struct runner *r, struct cell *ci);
-void runner_doself1_density_vec(struct runner *r, struct cell *ci);
 void runner_dopair1_branch_density(struct runner *r, struct cell *ci,
                                    struct cell *cj);
+void runner_doself1_branch_density(struct runner *r, struct cell *c);
+void runner_dopair_subset_branch_density(struct runner *r,
+                                         struct cell *restrict ci,
+                                         struct part *restrict parts_i,
+                                         int *restrict ind, int count,
+                                         struct cell *restrict cj);
+void runner_doself_subset_branch_density(struct runner *r,
+                                         struct cell *restrict ci,
+                                         struct part *restrict parts,
+                                         int *restrict ind, int count);
 
 /* And go... */
 int main(int argc, char *argv[]) {
 
+#ifdef HAVE_SETAFFINITY
   engine_pin();
+#endif
+
   size_t runs = 0, particles = 0;
   double h = 1.23485, size = 1., rho = 1.;
   double perturbation = 0., h_pert = 0.;
-  char outputFileNameExtension[200] = "";
+  char outputFileNameExtension[100] = "";
   char outputFileName[200] = "";
   enum velocity_types vel = velocity_zero;
 
@@ -312,8 +365,10 @@ int main(int argc, char *argv[]) {
   unsigned long long cpufreq = 0;
   clocks_set_cpufreq(cpufreq);
 
-  /* Choke on FP-exceptions */
+/* Choke on FP-exceptions */
+#ifdef HAVE_FE_ENABLE_EXCEPT
   feenableexcept(FE_DIVBYZERO | FE_INVALID | FE_OVERFLOW);
+#endif
 
   /* Get some randomness going */
   srand(0);
@@ -408,6 +463,11 @@ int main(int argc, char *argv[]) {
   engine.ti_current = 8;
   engine.max_active_bin = num_time_bins;
   engine.hydro_properties = &hp;
+  engine.nodeID = NODE_ID;
+
+  struct cosmology cosmo;
+  cosmology_init_no_cosmo(&cosmo);
+  engine.cosmology = &cosmo;
 
   struct runner runner;
   runner.e = &engine;
@@ -444,8 +504,6 @@ int main(int argc, char *argv[]) {
 
     const ticks tic = getticks();
 
-#if !(defined(MINIMAL_SPH) && defined(WITH_VECTORIZATION))
-
 #ifdef WITH_VECTORIZATION
     runner.ci_cache.count = 0;
     cache_init(&runner.ci_cache, 512);
@@ -453,38 +511,54 @@ int main(int argc, char *argv[]) {
     cache_init(&runner.cj_cache, 512);
 #endif
 
+#if defined(TEST_DOSELF_SUBSET) || defined(TEST_DOPAIR_SUBSET)
+    int *pid = NULL;
+    int count = 0;
+    if ((pid = (int *)malloc(sizeof(int) * main_cell->count)) == NULL)
+      error("Can't allocate memory for pid.");
+    for (int k = 0; k < main_cell->count; k++)
+      if (part_is_active(&main_cell->parts[k], &engine)) {
+        pid[count] = k;
+        ++count;
+      }
+#endif
+
     /* Run all the pairs */
     for (int j = 0; j < 27; ++j) {
       if (cells[j] != main_cell) {
         const ticks sub_tic = getticks();
 
+#ifdef TEST_DOPAIR_SUBSET
+        DOPAIR1_SUBSET(&runner, main_cell, main_cell->parts, pid, count,
+                       cells[j]);
+#else
         DOPAIR1(&runner, main_cell, cells[j]);
+#endif
 
-        const ticks sub_toc = getticks();
-        timings[j] += sub_toc - sub_tic;
+        timings[j] += getticks() - sub_tic;
       }
     }
 
     /* And now the self-interaction */
     const ticks self_tic = getticks();
 
+#ifdef TEST_DOSELF_SUBSET
+    DOSELF1_SUBSET(&runner, main_cell, main_cell->parts, pid, count);
+#else
     DOSELF1(&runner, main_cell);
-
-    const ticks self_toc = getticks();
-
-    timings[13] += self_toc - self_tic;
-
 #endif
+
+    timings[13] += getticks() - self_tic;
 
     const ticks toc = getticks();
     time += toc - tic;
 
     /* Let's get physical ! */
-    end_calculation(main_cell);
+    end_calculation(main_cell, &cosmo);
 
     /* Dump if necessary */
     if (i % 50 == 0) {
-      sprintf(outputFileName, "swift_dopair_27_%s.dat",
+      sprintf(outputFileName, "swift_dopair_27_%.150s.dat",
               outputFileNameExtension);
       dump_particle_fields(outputFileName, main_cell, cells);
     }
@@ -514,8 +588,6 @@ int main(int argc, char *argv[]) {
 
   const ticks tic = getticks();
 
-#if !(defined(MINIMAL_SPH) && defined(WITH_VECTORIZATION))
-
   /* Run all the brute-force pairs */
   for (int j = 0; j < 27; ++j)
     if (cells[j] != main_cell) pairs_all_density(&runner, main_cell, cells[j]);
@@ -523,15 +595,13 @@ int main(int argc, char *argv[]) {
   /* And now the self-interaction */
   self_all_density(&runner, main_cell);
 
-#endif
-
   const ticks toc = getticks();
 
   /* Let's get physical ! */
-  end_calculation(main_cell);
+  end_calculation(main_cell, &cosmo);
 
   /* Dump */
-  sprintf(outputFileName, "brute_force_27_%s.dat", outputFileNameExtension);
+  sprintf(outputFileName, "brute_force_27_%.150s.dat", outputFileNameExtension);
   dump_particle_fields(outputFileName, main_cell, cells);
 
   /* Output timing */

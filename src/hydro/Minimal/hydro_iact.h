@@ -36,14 +36,26 @@
 #include "minmax.h"
 
 /**
- * @brief Density loop
+ * @brief Density interaction between two particles.
+ *
+ * @param r2 Comoving square distance between the two particles.
+ * @param dx Comoving vector separating both particles (pi - pj).
+ * @param hi Comoving smoothing-length of particle i.
+ * @param hj Comoving smoothing-length of particle j.
+ * @param pi First particle.
+ * @param pj Second particle.
+ * @param a Current scale factor.
+ * @param H Current Hubble parameter.
  */
 __attribute__((always_inline)) INLINE static void runner_iact_density(
-    float r2, float *dx, float hi, float hj, struct part *pi, struct part *pj) {
+    float r2, const float *dx, float hi, float hj, struct part *restrict pi,
+    struct part *restrict pj, float a, float H) {
 
   float wi, wj, wi_dx, wj_dx;
 
-  const float r = sqrtf(r2);
+  /* Get r. */
+  const float r_inv = 1.0f / sqrtf(r2);
+  const float r = r2 * r_inv;
 
   /* Get the masses. */
   const float mi = pi->mass;
@@ -71,29 +83,29 @@ __attribute__((always_inline)) INLINE static void runner_iact_density(
 }
 
 /**
- * @brief Density loop (Vectorized version)
- */
-__attribute__((always_inline)) INLINE static void runner_iact_vec_density(
-    float *R2, float *Dx, float *Hi, float *Hj, struct part **pi,
-    struct part **pj) {
-  error(
-      "A vectorised version of the Minimal density interaction function does "
-      "not exist yet!");
-}
-
-/**
- * @brief Density loop (non-symmetric version)
+ * @brief Density interaction between two particles (non-symmetric).
+ *
+ * @param r2 Comoving square distance between the two particles.
+ * @param dx Comoving vector separating both particles (pi - pj).
+ * @param hi Comoving smoothing-length of particle i.
+ * @param hj Comoving smoothing-length of particle j.
+ * @param pi First particle.
+ * @param pj Second particle (not updated).
+ * @param a Current scale factor.
+ * @param H Current Hubble parameter.
  */
 __attribute__((always_inline)) INLINE static void runner_iact_nonsym_density(
-    float r2, float *dx, float hi, float hj, struct part *pi, struct part *pj) {
+    float r2, const float *dx, float hi, float hj, struct part *restrict pi,
+    const struct part *restrict pj, float a, float H) {
 
   float wi, wi_dx;
 
   /* Get the masses. */
   const float mj = pj->mass;
 
-  /* Get r and r inverse. */
-  const float r = sqrtf(r2);
+  /* Get r. */
+  const float r_inv = 1.0f / sqrtf(r2);
+  const float r = r2 * r_inv;
 
   const float h_inv = 1.f / hi;
   const float ui = r * h_inv;
@@ -106,26 +118,28 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_density(
 }
 
 /**
- * @brief Density loop (non-symmetric vectorized version)
- */
-__attribute__((always_inline)) INLINE static void
-runner_iact_nonsym_vec_density(float *R2, float *Dx, float *Hi, float *Hj,
-                               struct part **pi, struct part **pj) {
-  error(
-      "A vectorised version of the Minimal non-symmetric density interaction "
-      "function does not exist yet!");
-}
-
-/**
- * @brief Force loop
+ * @brief Force interaction between two particles.
+ *
+ * @param r2 Comoving square distance between the two particles.
+ * @param dx Comoving vector separating both particles (pi - pj).
+ * @param hi Comoving smoothing-length of particle i.
+ * @param hj Comoving smoothing-length of particle j.
+ * @param pi First particle.
+ * @param pj Second particle.
+ * @param a Current scale factor.
+ * @param H Current Hubble parameter.
  */
 __attribute__((always_inline)) INLINE static void runner_iact_force(
-    float r2, float *dx, float hi, float hj, struct part *pi, struct part *pj) {
+    float r2, const float *dx, float hi, float hj, struct part *restrict pi,
+    struct part *restrict pj, float a, float H) {
 
-  const float fac_mu = 1.f; /* Will change with cosmological integration */
+  /* Cosmological factors entering the EoMs */
+  const float fac_mu = pow_three_gamma_minus_five_over_two(a);
+  const float a2_Hubble = a * a * H;
 
-  const float r = sqrtf(r2);
-  const float r_inv = 1.0f / r;
+  /* Get r and r inverse. */
+  const float r_inv = 1.0f / sqrtf(r2);
+  const float r = r2 * r_inv;
 
   /* Recover some data */
   const float mi = pi->mass;
@@ -160,8 +174,11 @@ __attribute__((always_inline)) INLINE static void runner_iact_force(
                      (pi->v[1] - pj->v[1]) * dx[1] +
                      (pi->v[2] - pj->v[2]) * dx[2];
 
+  /* Add Hubble flow */
+  const float dvdr_Hubble = dvdr + a2_Hubble * r2;
+
   /* Are the particles moving towards each others ? */
-  const float omega_ij = min(dvdr, 0.f);
+  const float omega_ij = min(dvdr_Hubble, 0.f);
   const float mu_ij = fac_mu * r_inv * omega_ij; /* This is 0 or negative */
 
   /* Compute sound speeds and signal velocity */
@@ -217,26 +234,28 @@ __attribute__((always_inline)) INLINE static void runner_iact_force(
 }
 
 /**
- * @brief Force loop (Vectorized version)
- */
-__attribute__((always_inline)) INLINE static void runner_iact_vec_force(
-    float *R2, float *Dx, float *Hi, float *Hj, struct part **pi,
-    struct part **pj) {
-  error(
-      "A vectorised version of the Minimal force interaction function does not "
-      "exist yet!");
-}
-
-/**
- * @brief Force loop (non-symmetric version)
+ * @brief Force interaction between two particles (non-symmetric).
+ *
+ * @param r2 Comoving square distance between the two particles.
+ * @param dx Comoving vector separating both particles (pi - pj).
+ * @param hi Comoving smoothing-length of particle i.
+ * @param hj Comoving smoothing-length of particle j.
+ * @param pi First particle.
+ * @param pj Second particle (not updated).
+ * @param a Current scale factor.
+ * @param H Current Hubble parameter.
  */
 __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force(
-    float r2, float *dx, float hi, float hj, struct part *pi, struct part *pj) {
+    float r2, const float *dx, float hi, float hj, struct part *restrict pi,
+    const struct part *restrict pj, float a, float H) {
 
-  const float fac_mu = 1.f; /* Will change with cosmological integration */
+  /* Cosmological factors entering the EoMs */
+  const float fac_mu = pow_three_gamma_minus_five_over_two(a);
+  const float a2_Hubble = a * a * H;
 
-  const float r = sqrtf(r2);
-  const float r_inv = 1.0f / r;
+  /* Get r and r inverse. */
+  const float r_inv = 1.0f / sqrtf(r2);
+  const float r = r2 * r_inv;
 
   /* Recover some data */
   // const float mi = pi->mass;
@@ -271,8 +290,11 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force(
                      (pi->v[1] - pj->v[1]) * dx[1] +
                      (pi->v[2] - pj->v[2]) * dx[2];
 
+  /* Add Hubble flow */
+  const float dvdr_Hubble = dvdr + a2_Hubble * r2;
+
   /* Are the particles moving towards each others ? */
-  const float omega_ij = min(dvdr, 0.f);
+  const float omega_ij = min(dvdr_Hubble, 0.f);
   const float mu_ij = fac_mu * r_inv * omega_ij; /* This is 0 or negative */
 
   /* Compute sound speeds and signal velocity */
@@ -316,17 +338,6 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force(
 
   /* Update the signal velocity. */
   pi->force.v_sig = max(pi->force.v_sig, v_sig);
-}
-
-/**
- * @brief Force loop (Vectorized non-symmetric version)
- */
-__attribute__((always_inline)) INLINE static void runner_iact_nonsym_vec_force(
-    float *R2, float *Dx, float *Hi, float *Hj, struct part **pi,
-    struct part **pj) {
-  error(
-      "A vectorised version of the Minimal non-symmetric force interaction "
-      "function does not exist yet!");
 }
 
 #endif /* SWIFT_MINIMAL_HYDRO_IACT_H */

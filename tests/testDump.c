@@ -20,6 +20,8 @@
 /* Config parameters. */
 #include "../config.h"
 
+#ifdef HAVE_POSIX_FALLOCATE /* Are we on a sensible platform? */
+
 /* Some standard headers. */
 #include <errno.h>
 #include <fcntl.h>
@@ -30,18 +32,16 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-/* This object's header. */
-#include "../src/dump.h"
-
 /* Local headers. */
-#include "../src/threadpool.h"
+#include "swift.h"
 
 void dump_mapper(void *map_data, int num_elements, void *extra_data) {
   struct dump *d = (struct dump *)extra_data;
   size_t offset;
-  char *out_string = dump_get(d, 7, &offset);
+  char *out_string = (char *)dump_get(d, 7, &offset);
   char out_buff[8];
-  snprintf(out_buff, 8, "%06zi\n", offset / 7);
+  /* modulo due to bug in gcc, should be removed */
+  snprintf(out_buff, 8, "%06zi\n", (offset / 7) % 1000000);
   memcpy(out_string, out_buff, 7);
 }
 
@@ -49,9 +49,13 @@ int main(int argc, char *argv[]) {
 
   /* Some constants. */
   const int num_threads = 4;
-  const char *filename = "/tmp/dump_test.out";
   const int num_runs = 20;
   const int chunk_size = 1000;
+
+  /* Some constants. */
+  char filename[256];
+  const int now = time(NULL);
+  sprintf(filename, "/tmp/SWIFT_dump_test_%d.out", now);
 
   /* Prepare a threadpool to write to the dump. */
   struct threadpool t;
@@ -60,6 +64,10 @@ int main(int argc, char *argv[]) {
   /* Prepare a dump. */
   struct dump d;
   dump_init(&d, filename, 1024);
+
+  /* Print the page size for reference. */
+  printf("Will dump %i bytes, page size is %zi bytes.\n",
+         num_runs * chunk_size * 7, sysconf(_SC_PAGE_SIZE));
 
   /* Dump numbers in chunks. */
   for (int run = 0; run < num_runs; run++) {
@@ -82,6 +90,20 @@ int main(int argc, char *argv[]) {
   /* Clean the threads */
   threadpool_clean(&t);
 
+  /* Be clean */
+  remove(filename);
+
   /* Return a happy number. */
   return 0;
 }
+
+#else
+
+#include <stdio.h>
+
+int main(int argc, char *argv[]) {
+  printf("No posix_fallocate, not testing anything.\n");
+  return 0;
+}
+
+#endif /* HAVE_POSIX_FALLOCATE */

@@ -26,7 +26,6 @@ Statistics:
 # Parameters for the hydrodynamics scheme
 SPH:
   resolution_eta:        1.2348   # Target smoothing length in units of the mean inter-particle separation (1.2348 == 48Ngbs with the cubic spline kernel).
-  delta_neighbours:      0.1      # The tolerance for the targetted number of neighbours.
   CFL_condition:         0.1      # Courant-Friedrich-Levy condition for time integration.
   
 # Parameters related to the initial conditions
@@ -40,3 +39,33 @@ LambdaCooling:
   mean_molecular_weight:       0.59       # Mean molecular weight
   hydrogen_mass_abundance:     0.75       # Hydrogen mass abundance (dimensionless)
   cooling_tstep_mult:          1.0        # Dimensionless pre-factor for the time-step condition
+
+# Cooling with Grackle 2.0
+GrackleCooling:
+  CloudyTable: CloudyData_UVB=HM2012.h5 # Name of the Cloudy Table (available on the grackle bitbucket repository)
+  WithUVbackground: 0 # Enable or not the UV background
+  Redshift: 0 # Redshift to use (-1 means time based redshift)
+  WithMetalCooling: 1 # Enable or not the metal cooling
+  ProvideVolumetricHeatingRates: 0 # User provide volumetric heating rates
+  ProvideSpecificHeatingRates: 0 # User provide specific heating rates
+  SelfShieldingMethod: 0 # Grackle (<= 3) or Gear self shielding method
+  OutputMode: 1 # Write in output corresponding primordial chemistry mode
+  MaxSteps: 1000
+  ConvergenceLimit: 1e-2
+  
+EAGLEChemistry:
+  InitMetallicity:         0.
+  InitAbundance_Hydrogen:  0.752
+  InitAbundance_Helium:    0.248
+  InitAbundance_Carbon:    0.000
+  InitAbundance_Nitrogen:  0.000
+  InitAbundance_Oxygen:    0.000
+  InitAbundance_Neon:      0.000
+  InitAbundance_Magnesium: 0.000
+  InitAbundance_Silicon:   0.000
+  InitAbundance_Iron:      0.000
+  CalciumOverSilicon:      0.0941736
+  SulphurOverSilicon:      0.6054160
+
+GearChemistry:
+  InitialMetallicity: 0.01295

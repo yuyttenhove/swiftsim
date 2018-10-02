@@ -24,14 +24,20 @@
 #include "../config.h"
 
 /* Local includes. */
-#include "part.h"
 #include "units.h"
 
 #define FIELD_BUFFER_SIZE 200
 #define PARTICLE_GROUP_BUFFER_SIZE 50
 #define FILENAME_BUFFER_SIZE 150
+#define IO_BUFFER_ALIGNMENT 1024
 
-#if defined(HAVE_HDF5)
+/* Avoid cyclic inclusion problems */
+struct part;
+struct gpart;
+struct spart;
+struct io_props;
+struct engine;
+struct threadpool;
 
 /**
  * @brief The different types of data used in the GADGET IC files.
@@ -50,11 +56,17 @@ enum IO_DATA_TYPE {
   CHAR
 };
 
-hid_t io_hdf5_type(enum IO_DATA_TYPE type);
-size_t io_sizeof_type(enum IO_DATA_TYPE type);
-int io_is_double_precision(enum IO_DATA_TYPE type);
+/**
+ * @brief The different formats for when to run structure finding.
+ *
+ */
+enum io_stf_output_format { io_stf_steps = 0, io_stf_time };
 
-void io_read_attribute(hid_t grp, char* name, enum IO_DATA_TYPE type,
+#if defined(HAVE_HDF5)
+
+hid_t io_hdf5_type(enum IO_DATA_TYPE type);
+
+void io_read_attribute(hid_t grp, const char* name, enum IO_DATA_TYPE type,
                        void* data);
 
 void io_write_attribute(hid_t grp, const char* name, enum IO_DATA_TYPE type,
@@ -67,21 +79,39 @@ void io_write_attribute_l(hid_t grp, const char* name, long data);
 void io_write_attribute_s(hid_t grp, const char* name, const char* str);
 
 void io_write_code_description(hid_t h_file);
+void io_write_engine_policy(hid_t h_file, const struct engine* e);
 
-void io_read_unit_system(hid_t h_file, struct unit_system* us);
+void io_read_unit_system(hid_t h_file, struct unit_system* ic_units,
+                         const struct unit_system* internal_units,
+                         int mpi_rank);
 void io_write_unit_system(hid_t h_grp, const struct unit_system* us,
                           const char* groupName);
 
+void io_copy_temp_buffer(void* temp, const struct engine* e,
+                         const struct io_props props, size_t N,
+                         const struct unit_system* internal_units,
+                         const struct unit_system* snapshot_units);
+
 #endif /* defined HDF5 */
+
+size_t io_sizeof_type(enum IO_DATA_TYPE type);
+int io_is_double_precision(enum IO_DATA_TYPE type);
 
 void io_collect_dm_gparts(const struct gpart* const gparts, size_t Ntot,
                           struct gpart* const dmparts, size_t Ndm);
-void io_prepare_dm_gparts(struct gpart* const gparts, size_t Ndm);
-void io_duplicate_hydro_gparts(struct part* const parts,
+void io_prepare_dm_gparts(struct threadpool* tp, struct gpart* const gparts,
+                          size_t Ndm);
+void io_duplicate_hydro_gparts(struct threadpool* tp, struct part* const parts,
                                struct gpart* const gparts, size_t Ngas,
                                size_t Ndm);
-void io_duplicate_star_gparts(struct spart* const sparts,
-                              struct gpart* const gparts, size_t Nstars,
-                              size_t Ndm);
+void io_duplicate_stars_gparts(struct threadpool* tp,
+                               struct spart* const sparts,
+                               struct gpart* const gparts, size_t Nstars,
+                               size_t Ndm);
+
+void io_check_output_fields(const struct swift_params* params,
+                            const long long N_total[3]);
+
+void io_write_output_field_parameter(const char* filename);
 
 #endif /* SWIFT_COMMON_IO_H */

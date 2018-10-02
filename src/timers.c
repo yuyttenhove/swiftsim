@@ -54,11 +54,11 @@ const char* timers_names[timer_count] = {
     "dopair_density",
     "dopair_gradient",
     "dopair_force",
-    "dopair_grav_pm",
     "dopair_grav_mm",
     "dopair_grav_pp",
     "dograv_external",
     "dograv_down",
+    "dograv_mesh",
     "dograv_top_level",
     "dograv_long_range",
     "dosource",
@@ -86,6 +86,13 @@ const char* timers_names[timer_count] = {
     "locktree",
     "runners",
     "step",
+    "doself_stars_density",
+    "dopair_stars_density",
+    "do_stars_ghost",
+    "doself_subset_stars_density",
+    "dopair_subset_stars_density",
+    "dosubpair_stars_density",
+    "dosub_self_stars_density",
 };
 
 /* File to store the timers */
@@ -109,7 +116,7 @@ void timers_reset(unsigned long long mask) {
  * @brief Re-set all the timers.
  *
  */
-void timers_reset_all() { timers_reset(timers_mask_all); }
+void timers_reset_all(void) { timers_reset(timers_mask_all); }
 
 /**
  * @brief Outputs all the timers to the timers dump file.
@@ -119,8 +126,9 @@ void timers_reset_all() { timers_reset(timers_mask_all); }
 void timers_print(int step) {
   fprintf(timers_file, "%d\t", step);
   for (int k = 0; k < timer_count; k++)
-    fprintf(timers_file, "%.3f\t", clocks_from_ticks(timers[k]));
+    fprintf(timers_file, "%18.3f ", clocks_from_ticks(timers[k]));
   fprintf(timers_file, "\n");
+  fflush(timers_file);
 }
 
 /**
@@ -136,11 +144,11 @@ void timers_open_file(int rank) {
 
   fprintf(timers_file, "# timers: \n# step | ");
   for (int k = 0; k < timer_count; k++)
-    fprintf(timers_file, "%s\t", timers_names[k]);
+    fprintf(timers_file, "%18s ", timers_names[k]);
   fprintf(timers_file, "\n");
 }
 
 /**
  * @brief Close the file containing the timer info.
  */
-void timers_close_file() { fclose(timers_file); }
+void timers_close_file(void) { fclose(timers_file); }

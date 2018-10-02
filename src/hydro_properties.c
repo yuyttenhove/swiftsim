@@ -28,6 +28,7 @@
 #include "adiabatic_index.h"
 #include "common_io.h"
 #include "dimension.h"
+#include "equation_of_state.h"
 #include "error.h"
 #include "hydro.h"
 #include "kernel_hydro.h"
@@ -36,9 +37,22 @@
 #define hydro_props_default_volume_change 1.4f
 #define hydro_props_default_h_max FLT_MAX
 #define hydro_props_default_h_tolerance 1e-4
+#define hydro_props_default_init_temp 0.f
+#define hydro_props_default_min_temp 0.f
+#define hydro_props_default_H_ionization_temperature 1e4
 
+/**
+ * @brief Initialize the global properties of the hydro scheme.
+ *
+ * @param p The #hydro_props.
+ * @param phys_const The physical constants in the internal unit system.
+ * @param us The internal unit system.
+ * @param params The parsed parameters.
+ */
 void hydro_props_init(struct hydro_props *p,
-                      const struct swift_params *params) {
+                      const struct phys_const *phys_const,
+                      const struct unit_system *us,
+                      struct swift_params *params) {
 
   /* Kernel properties */
   p->eta_neighbours = parser_get_param_float(params, "SPH:resolution_eta");
@@ -58,6 +72,7 @@ void hydro_props_init(struct hydro_props *p,
   /* change the meaning of target_neighbours and delta_neighbours */
   p->target_neighbours = 1.0f;
   p->delta_neighbours = 0.0f;
+  p->eta_neighbours = 1.0f;
 #endif
 
   /* Maximal smoothing length */
@@ -73,28 +88,78 @@ void hydro_props_init(struct hydro_props *p,
   const float max_volume_change = parser_get_opt_param_float(
       params, "SPH:max_volume_change", hydro_props_default_volume_change);
   p->log_max_h_change = logf(powf(max_volume_change, hydro_dimension_inv));
+
+  /* Initial temperature */
+  p->initial_temperature = parser_get_opt_param_float(
+      params, "SPH:initial_temperature", hydro_props_default_init_temp);
+
+  /* Minimal temperature */
+  p->minimal_temperature = parser_get_opt_param_float(
+      params, "SPH:minimal_temperature", hydro_props_default_min_temp);
+
+  if ((p->initial_temperature != 0.) &&
+      (p->initial_temperature < p->minimal_temperature))
+    error("Initial temperature lower than minimal allowed temperature!");
+
+  /* Neutral to ionized Hydrogen transition temperature */
+  p->hydrogen_ionization_temperature =
+      parser_get_opt_param_double(params, "SPH:H_ionization_temperature",
+                                  hydro_props_default_H_ionization_temperature);
+
+  /* Hydrogen mass fraction */
+  const float default_H_fraction =
+      1. - phys_const->const_primordial_He_fraction;
+  p->hydrogen_mass_fraction = parser_get_opt_param_double(
+      params, "SPH:H_mass_fraction", default_H_fraction);
+
+  /* Compute the initial energy (Note the temp. read is in internal units) */
+  /* u_init = k_B T_init / (mu m_p (gamma - 1)) */
+  double u_init = phys_const->const_boltzmann_k / phys_const->const_proton_mass;
+  u_init *= p->initial_temperature;
+  u_init *= hydro_one_over_gamma_minus_one;
+
+  /* Correct for hydrogen mass fraction (mu) */
+  double mean_molecular_weight;
+  if (p->initial_temperature > p->hydrogen_ionization_temperature)
+    mean_molecular_weight = 4. / (8. - 5. * (1. - p->hydrogen_mass_fraction));
+  else
+    mean_molecular_weight = 4. / (1. + 3. * p->hydrogen_mass_fraction);
+
+  p->initial_internal_energy = u_init / mean_molecular_weight;
+
+  /* Compute the minimal energy (Note the temp. read is in internal units) */
+  /* u_min = k_B T_min / (mu m_p (gamma - 1)) */
+  double u_min = phys_const->const_boltzmann_k / phys_const->const_proton_mass;
+  u_min *= p->minimal_temperature;
+  u_min *= hydro_one_over_gamma_minus_one;
+
+  /* Correct for hydrogen mass fraction (mu) */
+  if (p->minimal_temperature > p->hydrogen_ionization_temperature)
+    mean_molecular_weight = 4. / (8. - 5. * (1. - p->hydrogen_mass_fraction));
+  else
+    mean_molecular_weight = 4. / (1. + 3. * p->hydrogen_mass_fraction);
+
+  p->minimal_internal_energy = u_min / mean_molecular_weight;
 }
 
+/**
+ * @brief Print the global properties of the hydro scheme.
+ *
+ * @param p The #hydro_props.
+ */
 void hydro_props_print(const struct hydro_props *p) {
 
-#if defined(EOS_IDEAL_GAS)
-  message("Equation of state: Ideal gas.");
-#elif defined(EOS_ISOTHERMAL_GAS)
-  message(
-      "Equation of state: Isothermal with internal energy "
-      "per unit mass set to %f.",
-      const_isothermal_internal_energy);
-#endif
+  /* Print equation of state first */
+  eos_print(&eos);
 
-  message("Adiabatic index gamma: %f.", hydro_gamma);
-
+  /* Now SPH */
   message("Hydrodynamic scheme: %s in %dD.", SPH_IMPLEMENTATION,
           (int)hydro_dimension);
 
   message("Hydrodynamic kernel: %s with eta=%f (%.2f neighbours).", kernel_name,
           p->eta_neighbours, p->target_neighbours);
 
-  message("Hydrodynamic tolerance in h: %.5f (+/- %.4f neighbours).",
+  message("Hydrodynamic relative tolerance in h: %.5f (+/- %.4f neighbours).",
           p->h_tolerance, p->delta_neighbours);
 
   message("Hydrodynamic integration: CFL parameter: %.4f.", p->CFL_condition);
@@ -110,12 +175,28 @@ void hydro_props_print(const struct hydro_props *p) {
   if (p->max_smoothing_iterations != hydro_props_default_max_iterations)
     message("Maximal iterations in ghost task set to %d (default is %d)",
             p->max_smoothing_iterations, hydro_props_default_max_iterations);
+
+  if (p->initial_temperature != hydro_props_default_init_temp)
+    message("Initial gas temperature set to %f", p->initial_temperature);
+
+  if (p->minimal_temperature != hydro_props_default_min_temp)
+    message("Minimal gas temperature set to %f", p->minimal_temperature);
+
+    // Matthieu: Temporary location for this i/o business.
+#ifdef PLANETARY_SPH
+#ifdef PLANETARY_SPH_BALSARA
+  message("Planetary SPH: Balsara switch enabled");
+#else
+  message("Planetary SPH: Balsara switch disabled");
+#endif  // PLANETARY_SPH_BALSARA
+#endif  // PLANETARY_SPH
 }
 
 #if defined(HAVE_HDF5)
 void hydro_props_print_snapshot(hid_t h_grpsph, const struct hydro_props *p) {
 
-  io_write_attribute_f(h_grpsph, "Adiabatic index", hydro_gamma);
+  eos_print_snapshot(h_grpsph, &eos);
+
   io_write_attribute_i(h_grpsph, "Dimension", (int)hydro_dimension);
   io_write_attribute_s(h_grpsph, "Scheme", SPH_IMPLEMENTATION);
   io_write_attribute_s(h_grpsph, "Kernel function", kernel_name);
@@ -131,5 +212,37 @@ void hydro_props_print_snapshot(hid_t h_grpsph, const struct hydro_props *p) {
                        pow_dimension(expf(p->log_max_h_change)));
   io_write_attribute_i(h_grpsph, "Max ghost iterations",
                        p->max_smoothing_iterations);
+  io_write_attribute_f(h_grpsph, "Minimal temperature", p->minimal_temperature);
+  io_write_attribute_f(h_grpsph, "Initial temperature", p->initial_temperature);
+  io_write_attribute_f(h_grpsph, "Initial energy per unit mass",
+                       p->initial_internal_energy);
+  io_write_attribute_f(h_grpsph, "Hydrogen mass fraction",
+                       p->hydrogen_mass_fraction);
+  io_write_attribute_f(h_grpsph, "Hydrogen ionization transition temperature",
+                       p->hydrogen_ionization_temperature);
+  io_write_attribute_f(h_grpsph, "Alpha viscosity", const_viscosity_alpha);
 }
 #endif
+
+/**
+ * @brief Write a hydro_props struct to the given FILE as a stream of bytes.
+ *
+ * @param p the struct
+ * @param stream the file stream
+ */
+void hydro_props_struct_dump(const struct hydro_props *p, FILE *stream) {
+  restart_write_blocks((void *)p, sizeof(struct hydro_props), 1, stream,
+                       "hydroprops", "hydro props");
+}
+
+/**
+ * @brief Restore a hydro_props struct from the given FILE as a stream of
+ * bytes.
+ *
+ * @param p the struct
+ * @param stream the file stream
+ */
+void hydro_props_struct_restore(const struct hydro_props *p, FILE *stream) {
+  restart_read_blocks((void *)p, sizeof(struct hydro_props), 1, stream, NULL,
+                      "hydro props");
+}

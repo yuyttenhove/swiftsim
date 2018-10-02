@@ -91,6 +91,8 @@ for line in range(num_lines):
     flags = int(indata[line,12])
     if flags > 12:
 	flags = 12
+    elif flags < 0:
+	flags = 0
 
     # Flags is a tag for these.
     if "recv" in ttype or "send" in ttype:
@@ -132,6 +134,18 @@ for key in keys:
     ttype = TASKTYPES[int(keys[key][0][3])]
     subtype = SUBTYPES[int(keys[key][0][4])]
 
+    #  Need SPH or gravity counts.
+    if "_grav" in ttype or "gpart" in ttype or "_grav" in subtype:
+        ci= "cgi"
+        cj = "cgj"
+        cid = 10
+        cjd = 11
+    else:
+        ci = "ci"
+        cj = "cj"
+        cid = 8
+        cjd = 9
+
     num_lines = 0
     for line in keys[key]:
         res = ""
@@ -143,11 +157,12 @@ for key in keys:
         res = res + " " + subtype + "\n"
         fdat.write(res)
 
-        cidata.append(line[8])
-        cjdata.append(line[9])
+        cidata.append(line[cid])
+        cjdata.append(line[cjd])
+
         cost.append(line[14])
         ydata.append(dt)
-        if ttype == "sort":
+        if "_sort" in ttype:
             #  Lots of pre-sorted data, try not to prefer that.
             sigma.append(1.0)
         else:
@@ -168,12 +183,12 @@ for key in keys:
         isself = 0
 
     if isself:
-        ffit.write("# cicount model dt dmodel fmodel scost\n")
+        ffit.write("# "+ci+"count model dt dmodel fmodel scost\n")
         minfunc = funcself
         xdata = cidata
         p0 = [0.,1.,1.]
     else:
-        ffit.write("# cicount cjcount model dt dmodel fmodel scost\n")
+        ffit.write("# "+ci+"count "+cj+"count model dt dmodel fmodel scost\n")
         minfunc = funcpair
         xdata = [cidata,cjdata]
         p0 = [0.,1.,1.,1.]
@@ -211,7 +226,7 @@ for key in keys:
             fy.append(funcself(xdata[i], 0, popt[1], popt[2]))
             ffit.write(str(xdata[i]) + " " + str(y[i]) + " " + str(ydata[i]) + " " + str(ydata[i] - y[i]) + " " + str(fy[i]) + " " + str(scost[i]) + "\n")
         x = xdata
-        solution = fopt[0] + " + " + fopt[1] + " * cicount " + " + " + fopt[2] + " * cicount * cicount"
+        solution = fopt[0] + " + " + fopt[1] + " * " +ci+"count " + " + " + fopt[2] + " * "+ci+"count * "+ci+"count"
         fsol.write(key + " " + fopt[1] + " " + fopt[2] + "\n")
     else:
         for i in range(num_lines):
@@ -219,7 +234,7 @@ for key in keys:
             fy.append(funcpair([xdata[0][i], xdata[1][i]], 0, popt[1], popt[2], popt[3]))
             ffit.write(str(xdata[0][i]) + " " + str(xdata[1][i]) + " " + str(y[i]) + " " + str(ydata[i]) + " " + str(ydata[i] - y[i]) + " " + str(fy[i]) + " " + str(scost[i]) + "\n")
         x = xdata[0][:]
-        solution = fopt[0] + " + " + fopt[1] + "* cicount" + " + " + fopt[2] + " * cjcount " + " + " + fopt[3] + " * cicount * cjcount"
+        solution = fopt[0] + " + " + fopt[1] + "* "+ci+"count" + " + " + fopt[2] + " * "+cj+"count " + " + " + fopt[3] + " * "+ci+"count * "+cj+"count"
         fsol.write(key + " " + fopt[1] + " " + fopt[2] + " " + fopt[3] + "\n")
 
     ffit.write("# Solution: " + solution + "\n")
@@ -235,7 +250,7 @@ for key in keys:
     pl.scatter(x, scost, c="cyan", label="costs")
     pl.scatter(x, y, c="red", label="fit")
     ax.set_title("task.subtype.flags: " + key + "\n" + solution)
-    ax.set_xlabel("ci count")
+    ax.set_xlabel( ci + "count")
     ax.set_ylabel("ticks")
 
     ax.legend()

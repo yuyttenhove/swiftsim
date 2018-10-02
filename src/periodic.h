@@ -31,12 +31,12 @@
  * Only wraps once. If x > 2b, the returned value will be larger than b.
  * Similarly for x < -b.
  */
-#define box_wrap(x, a, b)                               \
-  ({                                                    \
-    const __typeof__(x) _x = (x);                       \
-    const __typeof__(a) _a = (a);                       \
-    const __typeof__(b) _b = (b);                       \
-    _x < _a ? (_x + _b) : ((_x > _b) ? (_x - _b) : _x); \
+#define box_wrap(x, a, b)                                \
+  ({                                                     \
+    const __typeof__(x) _x = (x);                        \
+    const __typeof__(a) _a = (a);                        \
+    const __typeof__(b) _b = (b);                        \
+    _x < _a ? (_x + _b) : ((_x >= _b) ? (_x - _b) : _x); \
   })
 
 /**
@@ -49,10 +49,12 @@
  * Similarly for dx < -b.
  *
  */
-__attribute__((always_inline)) INLINE static double nearest(double dx,
-                                                            double box_size) {
-  return dx > 0.5 * box_size ? (dx - box_size)
-                             : ((dx < -0.5 * box_size) ? (dx + box_size) : dx);
+__attribute__((always_inline, const)) INLINE static double nearest(
+    const double dx, const double box_size) {
+
+  return ((dx > 0.5 * box_size)
+              ? (dx - box_size)
+              : ((dx < -0.5 * box_size) ? (dx + box_size) : dx));
 }
 
 /**
@@ -65,11 +67,12 @@ __attribute__((always_inline)) INLINE static double nearest(double dx,
  * Similarly for dx < -b.
  *
  */
-__attribute__((always_inline)) INLINE static float nearestf(float dx,
-                                                            float box_size) {
-  return dx > 0.5f * box_size
-             ? (dx - box_size)
-             : ((dx < -0.5f * box_size) ? (dx + box_size) : dx);
+__attribute__((always_inline, const)) INLINE static float nearestf(
+    const float dx, const float box_size) {
+
+  return ((dx > 0.5f * box_size)
+              ? (dx - box_size)
+              : ((dx < -0.5f * box_size) ? (dx + box_size) : dx));
 }
 
 #endif /* SWIFT_PERIODIC_H */

@@ -31,6 +31,7 @@
  * Gadget-2 tree-code neighbours search.
  */
 
+#include "chemistry_struct.h"
 #include "cooling_struct.h"
 
 /* Extra particle data not needed during the SPH loops over neighbours. */
@@ -44,6 +45,9 @@ struct xpart {
 
   /* Velocity at the last full step. */
   float v_full[3];
+
+  /* Gravitational acceleration at the last full step. */
+  float a_grav[3];
 
   /* Entropy at the last full step. */
   float entropy_full;
@@ -130,6 +134,9 @@ struct part {
     } force;
   };
 
+  /* Chemistry information */
+  struct chemistry_part_data chemistry_data;
+
   /* Time-step length */
   timebin_t time_bin;
 
@@ -141,6 +148,20 @@ struct part {
   /* Time of the last kick */
   integertime_t ti_kick;
 
+#endif
+
+#ifdef DEBUG_INTERACTIONS_SPH
+  /*! List of interacting particles in the density SELF and PAIR */
+  long long ids_ngbs_density[MAX_NUM_OF_NEIGHBOURS];
+
+  /*! List of interacting particles in the force SELF and PAIR */
+  long long ids_ngbs_force[MAX_NUM_OF_NEIGHBOURS];
+
+  /*! Number of interactions in the density SELF and PAIR */
+  int num_ngb_density;
+
+  /*! Number of interactions in the force SELF and PAIR */
+  int num_ngb_force;
 #endif
 
 } SWIFT_STRUCT_ALIGN;

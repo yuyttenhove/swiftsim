@@ -23,6 +23,9 @@
 #ifndef SWIFT_COOLING_CONST_LAMBDA_H
 #define SWIFT_COOLING_CONST_LAMBDA_H
 
+/* Config parameters. */
+#include "../config.h"
+
 /* Some standard headers. */
 #include <float.h>
 #include <math.h>
@@ -41,15 +44,17 @@
  *
  * @param phys_const The physical constants in internal units.
  * @param us The internal system of units.
+ * @param cosmo The current cosmological model.
  * @param cooling The #cooling_function_data used in the run.
  * @param p Pointer to the particle data..
  */
 __attribute__((always_inline)) INLINE static float cooling_rate(
     const struct phys_const* const phys_const, const struct unit_system* us,
+    const struct cosmology* restrict cosmo,
     const struct cooling_function_data* cooling, const struct part* p) {
 
   /* Get particle density */
-  const float rho = hydro_get_density(p);
+  const float rho = hydro_get_physical_density(p, cosmo);
 
   /* Get cooling function properties */
   const float X_H = cooling->hydrogen_mass_abundance;
@@ -66,6 +71,7 @@ __attribute__((always_inline)) INLINE static float cooling_rate(
  *
  * @param phys_const The physical constants in internal units.
  * @param us The internal system of units.
+ * @param cosmo The current cosmological model.
  * @param cooling The #cooling_function_data used in the run.
  * @param p Pointer to the particle data.
  * @param dt The time-step of this particle.
@@ -73,6 +79,7 @@ __attribute__((always_inline)) INLINE static float cooling_rate(
 __attribute__((always_inline)) INLINE static void cooling_cool_part(
     const struct phys_const* restrict phys_const,
     const struct unit_system* restrict us,
+    const struct cosmology* restrict cosmo,
     const struct cooling_function_data* restrict cooling,
     struct part* restrict p, struct xpart* restrict xp, float dt) {
 
@@ -80,13 +87,13 @@ __attribute__((always_inline)) INLINE static void cooling_cool_part(
   const float u_floor = cooling->min_energy;
 
   /* Current energy */
-  const float u_old = hydro_get_internal_energy(p);
+  const float u_old = hydro_get_physical_internal_energy(p, cosmo);
 
   /* Current du_dt */
   const float hydro_du_dt = hydro_get_internal_energy_dt(p);
 
   /* Calculate cooling du_dt */
-  float cooling_du_dt = cooling_rate(phys_const, us, cooling, p);
+  float cooling_du_dt = cooling_rate(phys_const, us, cosmo, cooling, p);
 
   /* Integrate cooling equation to enforce energy floor */
   /* Factor of 1.5 included since timestep could potentially double */
@@ -106,17 +113,19 @@ __attribute__((always_inline)) INLINE static void cooling_cool_part(
  *
  * @param cooling The #cooling_function_data used in the run.
  * @param phys_const The physical constants in internal units.
+ * @param cosmo The current cosmological model.
  * @param us The internal system of units.
  * @param p Pointer to the particle data.
  */
 __attribute__((always_inline)) INLINE static float cooling_timestep(
     const struct cooling_function_data* restrict cooling,
     const struct phys_const* restrict phys_const,
+    const struct cosmology* restrict cosmo,
     const struct unit_system* restrict us, const struct part* restrict p) {
 
   /* Get current internal energy */
-  const float u = hydro_get_internal_energy(p);
-  const float du_dt = cooling_rate(phys_const, us, cooling, p);
+  const float u = hydro_get_physical_internal_energy(p, cosmo);
+  const float du_dt = cooling_rate(phys_const, us, cosmo, cooling, p);
 
   /* If we are close to (or below) the energy floor, we ignore the condition */
   if (u < 1.01f * cooling->min_energy)
@@ -131,8 +140,13 @@ __attribute__((always_inline)) INLINE static float cooling_timestep(
  *
  * @param p Pointer to the particle data.
  * @param xp Pointer to the extended particle data.
+ * @param cooling The properties of the cooling function.
  */
-__attribute__((always_inline)) INLINE static void cooling_init_part(
+__attribute__((always_inline)) INLINE static void cooling_first_init_part(
+    const struct phys_const* restrict phys_const,
+    const struct unit_system* restrict us,
+    const struct cosmology* restrict cosmo,
+    const struct cooling_function_data* restrict cooling,
     const struct part* restrict p, struct xpart* restrict xp) {
 
   xp->cooling_data.radiated_energy = 0.f;
@@ -157,10 +171,10 @@ __attribute__((always_inline)) INLINE static float cooling_get_radiated_energy(
  * @param phys_const The physical constants in internal units.
  * @param cooling The cooling properties to initialize
  */
-static INLINE void cooling_init_backend(
-    const struct swift_params* parameter_file, const struct unit_system* us,
-    const struct phys_const* phys_const,
-    struct cooling_function_data* cooling) {
+static INLINE void cooling_init_backend(struct swift_params* parameter_file,
+                                        const struct unit_system* us,
+                                        const struct phys_const* phys_const,
+                                        struct cooling_function_data* cooling) {
 
   const double lambda_cgs =
       parser_get_param_double(parameter_file, "LambdaCooling:lambda_cgs");

@@ -27,6 +27,9 @@
 #ifdef HAVE_METIS
 #include <metis.h>
 #endif
+#ifdef HAVE_PARMETIS
+#include <parmetis.h>
+#endif
 #endif
 
 #ifdef HAVE_HDF5
@@ -35,6 +38,10 @@
 
 #ifdef HAVE_FFTW
 #include <fftw3.h>
+#endif
+
+#ifdef HAVE_LIBGSL
+#include <gsl/gsl_version.h>
 #endif
 
 /* Some standard headers. */
@@ -142,10 +149,7 @@ const char *configuration_options(void) {
   static int initialised = 0;
   static const char *config = SWIFT_CONFIG_FLAGS;
   if (!initialised) {
-    if (strlen(config) < 1024 - 2)
-      sprintf(buf, "'%s'", config);
-    else
-      error("SWIFT_CONFIG_FLAGS string longer than buffer");
+    snprintf(buf, 1024, "'%.1021s'", config);
     initialised = 1;
   }
   return buf;
@@ -161,10 +165,7 @@ const char *compilation_cflags(void) {
   static int initialised = 0;
   static const char *cflags = SWIFT_CFLAGS;
   if (!initialised) {
-    if (strlen(cflags) < 1024 - 2)
-      sprintf(buf, "'%s'", cflags);
-    else
-      error("SWIFT_CFLAGS string longer than buffer");
+    snprintf(buf, 1024, "'%.1021s'", cflags);
     initialised = 1;
   }
   return buf;
@@ -274,12 +275,12 @@ const char *mpi_version(void) {
 #else
   /* Use autoconf guessed value. */
   static char lib_version[60] = {0};
-  snprintf(lib_version, 60, "%s", SWIFT_MPI_LIBRARY);
+  snprintf(lib_version, 60, "%.60s", SWIFT_MPI_LIBRARY);
 #endif
 
   /* Numeric version. */
   MPI_Get_version(&std_version, &std_subversion);
-  snprintf(version, 80, "%s (MPI std v%i.%i)", lib_version, std_version,
+  snprintf(version, 80, "%.60s (MPI std v%i.%i)", lib_version, std_version,
            std_subversion);
 #else
   sprintf(version, "Code was not compiled with MPI support");
@@ -323,6 +324,23 @@ const char *metis_version(void) {
 }
 
 /**
+ * @brief return the ParMETIS version used when SWIFT was built.
+ *
+ * @result description of the ParMETIS version.
+ */
+const char *parmetis_version(void) {
+
+  static char version[256] = {0};
+#if defined(WITH_MPI) && defined(HAVE_PARMETIS)
+  sprintf(version, "%i.%i.%i", PARMETIS_MAJOR_VERSION, PARMETIS_MINOR_VERSION,
+          PARMETIS_SUBMINOR_VERSION);
+#else
+  sprintf(version, "Unknown version");
+#endif
+  return version;
+}
+
+/**
  * @brief return the FFTW version used when SWIFT was built.
  *
  * @result description of the FFTW version.
@@ -334,6 +352,58 @@ const char *fftw3_version(void) {
   sprintf(version, "%s", "3.x (details not available)");
 #else
   sprintf(version, "Unknown version");
+#endif
+  return version;
+}
+
+/**
+ * @brief return the GSL version used when SWIFT was built.
+ *
+ * @result description of the GSL version.
+ */
+const char *libgsl_version(void) {
+
+  static char version[256] = {0};
+#if defined(HAVE_LIBGSL)
+  sprintf(version, "%.255s", gsl_version);
+#else
+  sprintf(version, "Unknown version");
+#endif
+  return version;
+}
+
+/**
+ * @brief return the thread barrier used in SWIFT.
+ *
+ * @result description of the thread barriers
+ */
+const char *thread_barrier_version(void) {
+
+  static char version[256] = {0};
+#if defined(HAVE_PTHREAD_BARRIERS)
+  sprintf(version, "%s", "pthread");
+#else
+  sprintf(version, "homemade");
+#endif
+  return version;
+}
+
+/**
+ * @brief return the allocator library used in SWIFT.
+ *
+ * @result description of the allocation library
+ */
+const char *allocator_version(void) {
+
+  static char version[256] = {0};
+#if defined(HAVE_TBBMALLOC)
+  sprintf(version, "TBB malloc");
+#elif defined(HAVE_TCMALLOC)
+  sprintf(version, "tc-malloc");
+#elif defined(HAVE_JEMALLOC)
+  sprintf(version, "je-malloc");
+#else
+  sprintf(version, "Compiler version (probably glibc)");
 #endif
   return version;
 }
@@ -366,10 +436,16 @@ void greetings(void) {
 #ifdef HAVE_FFTW
   printf(" FFTW library version: %s\n", fftw3_version());
 #endif
+#ifdef HAVE_LIBGSL
+  printf(" GSL  library version: %s\n", libgsl_version());
+#endif
 #ifdef WITH_MPI
   printf(" MPI library: %s\n", mpi_version());
 #ifdef HAVE_METIS
   printf(" METIS library version: %s\n", metis_version());
+#endif
+#ifdef HAVE_PARMETIS
+  printf(" ParMETIS library version: %s\n", parmetis_version());
 #endif
 #endif
   printf("\n");

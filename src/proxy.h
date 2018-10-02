@@ -22,6 +22,7 @@
 /* Includes. */
 #include "cell.h"
 #include "part.h"
+#include "space.h"
 
 /* Some constants. */
 #define proxy_buffgrow 1.5
@@ -36,6 +37,15 @@
 #define proxy_tag_sparts 4
 #define proxy_tag_cells 5
 
+/**
+ * @brief The different reasons a cell can be in a proxy
+ */
+enum proxy_cell_type {
+  proxy_cell_type_none = 0,
+  proxy_cell_type_hydro = (1 << 0),
+  proxy_cell_type_gravity = (1 << 1),
+};
+
 /* Data structure for the proxy. */
 struct proxy {
 
@@ -44,11 +54,13 @@ struct proxy {
 
   /* Incoming cells. */
   struct cell **cells_in;
+  int *cells_in_type;
   struct pcell *pcells_in;
   int nr_cells_in, size_cells_in, size_pcells_in;
 
   /* Outgoing cells. */
   struct cell **cells_out;
+  int *cells_out_type;
   struct pcell *pcells_out;
   int nr_cells_out, size_cells_out, size_pcells_out;
 
@@ -85,11 +97,14 @@ void proxy_parts_load(struct proxy *p, const struct part *parts,
                       const struct xpart *xparts, int N);
 void proxy_gparts_load(struct proxy *p, const struct gpart *gparts, int N);
 void proxy_sparts_load(struct proxy *p, const struct spart *sparts, int N);
-void proxy_parts_exch1(struct proxy *p);
-void proxy_parts_exch2(struct proxy *p);
-void proxy_addcell_in(struct proxy *p, struct cell *c);
-void proxy_addcell_out(struct proxy *p, struct cell *c);
-void proxy_cells_exch1(struct proxy *p);
-void proxy_cells_exch2(struct proxy *p);
+void proxy_parts_exchange_first(struct proxy *p);
+void proxy_parts_exchange_second(struct proxy *p);
+void proxy_addcell_in(struct proxy *p, struct cell *c, int type);
+void proxy_addcell_out(struct proxy *p, struct cell *c, int type);
+void proxy_cells_exchange(struct proxy *proxies, int num_proxies,
+                          struct space *s, int with_gravity);
+void proxy_tags_exchange(struct proxy *proxies, int num_proxies,
+                         struct space *s);
+void proxy_create_mpi_type(void);
 
 #endif /* SWIFT_PROXY_H */

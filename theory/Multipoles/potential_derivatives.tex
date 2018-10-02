@@ -3,23 +3,296 @@
 
 For completeness, we give here the full expression for the first few
 derivatives of the potential that are used in our FMM scheme. We use
-the notation $\mathbf{r}=(r_x, r_y, r_z)$, $r = |\mathbf{r}|$ and
-$u=r/H$. Starting from the potential (Eq. \ref{eq:fmm:potential},
-reproduced here for clarity), 
+the notation $\mathbf{r}=(r_x, r_y, r_z)$, $r = |\mathbf{r}|$, $u=r/H$
+and $x=2r/r_s$. We also assume $H \ll r_s$. We can construct the
+higher order derivatives by successively applying the "chain rule". We
+show representative examples of the first few relevant ones here split
+by order. We start by constructing derivatives of the truncated
+potentials. The first step is the construction of derivatives of the
+long-range truncation function. We define
+\begin{equation}
+  \alpha(w) \equiv \left(1 + e^w\right)^{-1} \nonumber
+\end{equation}
+and compute its derivatives in terms of powers of $\alpha$ (note the
+difference in notation between powers $\alpha^n$ and n-th derivatives
+$\alpha^{(n)}$)\footnote{This can be computed by \textsc{Mathematica}
+  using the expression \texttt{Apart[D[1/(1 + Exp[w]), {w, n}]]} for
+  the n-th derivative.}:
 \begin{align}
-\mathsf{D}_{000}(\mathbf{r}) = \phi (\mathbf{r},H) = 
-\left\lbrace\begin{array}{rcl}
-\frac{1}{H} \left(-3u^7 + 15u^6 - 28u^5 + 21u^4 - 7u^2 + 3\right) & \mbox{if} & u < 1,\\
-\frac{1}{r} & \mbox{if} & u \geq 1, 
-\end{array}
-\right.\nonumber
+  \alpha^{(0)}(w) &= +\alpha(w), \nonumber\\
+  \alpha^{(1)}(w) &= -\alpha(w) + \alpha^2(w),  \nonumber\\
+  \alpha^{(2)}(w) &= +\alpha(w) - 3\alpha^2(w) + 2\alpha^3(w),  \nonumber\\
+  \alpha^{(3)}(w) &= -\alpha(w) + 7\alpha^2(w) - 12\alpha^3(w) + 6\alpha^4(w),   \nonumber\\
+  \alpha^{(4)}(w) &= +\alpha(w) - 15\alpha^2(w) + 50\alpha^3(w) - 60\alpha^4(w) + 24\alpha^5(w),    \nonumber\\
+  \alpha^{(5)}(w) &= -\alpha(w) + 31\alpha^2(w) -180\alpha^3(w) + 390\alpha^4(w) -360\alpha^5(w) + 120\alpha^6(w).\nonumber                                      
 \end{align}
-we can construct the higher order terms by successively applying the
-"chain rule". We show representative examples of the first few
-relevant ones here split by order.
+We can then construct our sigmoid $\sigma(w) \equiv e^w\alpha(w)$ and
+its derivatives, again in terms of powers of $\alpha(w)$ only:
+\begin{align}
+  \sigma^{(0)}(w) &= e^w\alpha(w), \nonumber\\
+  \sigma^{(1)}(w) &= e^w\left(\alpha^{(1)}(w) + \alpha(w) \right) \nonumber\\
+                  &= e^w \alpha^2(w), \nonumber \\
+  \sigma^{(2)}(w) &= e^w\left(\alpha(w) +2\alpha^{(1)}(w) + \alpha^{(2)}(w)  \right) \nonumber\\
+                  &= e^w \left(2\alpha^3(w) - \alpha^2(w)\right), \nonumber \\
+  \sigma^{(3)}(w) &= e^w\left(\alpha(w) + 3\alpha^{(1)}(w) + 3\alpha^{(2)}(w) + \alpha^{(3)}(w)  \right) \nonumber\\
+                  &= e^w \left(6\alpha^4(w) - 6\alpha^3(w) + \alpha^2(w)\right), \nonumber \\
+  \sigma^{(4)}(w) &= e^w\left(\alpha(w) + 4\alpha^{(1)}(w) + 6\alpha^{(2)}(w) + 4\alpha^{(3)}(w) + \alpha^{(4)}(w)  \right) \nonumber\\
+                  &= e^w \left(24\alpha^5(w) - 36\alpha^4(w) + 14\alpha^3(w) - \alpha^2(w)\right), \nonumber \\
+  \sigma^{(5)}(w) &= e^w\left(\alpha(w) + 5\alpha^{(1)}(w) + 10\alpha^{(2)}(w) + 10\alpha^{(3)}(w) + 5\alpha^{(4)}(w) + \alpha^{(5)}(w)  \right) \nonumber\\
+                  &= e^w \left(120\alpha^6(w) - 240\alpha^5(w) + 150\alpha^4(w) - 30\alpha^3(w) + \alpha^2(w)\right). \nonumber 
+\end{align}
+We can finally construct our long-range truncation function
+$\chi(r,r_s) \equiv 2 - 2\sigma(2r/r_s)$ and its derivatives
+\begin{align}
+  \chi(r,r_s) &= 2 - 2e^{2r/r_s} \alpha(2r/r_s), \nonumber \\
+  \frac{\partial}{\partial r} \chi(r, r_s) &= -2 \left(\frac{2}{r_s}\right)^1 \sigma^{(1)}\left(\frac{2r}{r_s}\right) = -2 \left(\frac{2}{r_s}\right)^1 e^{\frac{2r}{r_s}} \alpha^2 \left(\frac{2r}{r_s}\right), \nonumber\\
+  \frac{\partial^2}{\partial r^2} \chi(r, r_s) &= -2 \left(\frac{2}{r_s}\right)^2 \sigma^{(2)}\left(\frac{2r}{r_s}\right) = -2 \left(\frac{2}{r_s}\right)^2  e^{\frac{2r}{r_s}} \left[2\alpha^3 \left(\frac{2r}{r_s}\right) - \alpha^2 \left(\frac{2r}{r_s}\right) \right], \nonumber\\
+  \frac{\partial^3}{\partial r^3} \chi(r, r_s) &= -2 \left(\frac{2}{r_s}\right)^3 \sigma^{(3)}\left(\frac{2r}{r_s}\right) = -2 \left(\frac{2}{r_s}\right)^3  e^{\frac{2r}{r_s}} \left[6\alpha^4 \left(\frac{2r}{r_s}\right) - 6\alpha^3 \left(\frac{2r}{r_s}\right) + \alpha^2 \left(\frac{2r}{r_s}\right) \right],\nonumber \\
+  \frac{\partial^4}{\partial r^4} \chi(r, r_s) &= -2 \left(\frac{2}{r_s}\right)^4 \sigma^{(4)}\left(\frac{2r}{r_s}\right) = -2 \left(\frac{2}{r_s}\right)^4  e^{\frac{2r}{r_s}} \left[24\alpha^5 \left(\frac{2r}{r_s}\right) - 36\alpha^4 \left(\frac{2r}{r_s}\right) + 14\alpha^3 \left(\frac{2r}{r_s}\right) - \alpha^2 \left(\frac{2r}{r_s}\right) \right],\nonumber \\
+  \frac{\partial^5}{\partial r^5} \chi(r, r_s) &= -2 \left(\frac{2}{r_s}\right)^5 \sigma^{(5)}\left(\frac{2r}{r_s}\right) = -2 \left(\frac{2}{r_s}\right)^5  e^{\frac{2r}{r_s}} \left[120\alpha^6 \left(\frac{2r}{r_s}\right) - 240\alpha^5 \left(\frac{2r}{r_s}\right) + 150\alpha^4 \left(\frac{2r}{r_s}\right) - 30\alpha^3 \left(\frac{2r}{r_s}\right) + \alpha^2 \left(\frac{2r}{r_s}\right) \right].\nonumber
+\end{align}
+In the Newtonian limit ($r_s\rightarrow\infty$) the first expression
+reduces to $\chi(r,r_s) = 1$ whilst all higher-order derivatives
+vanish. In the limit $r\rightarrow\infty$ (and $r_s < \infty$), all terms vanish. All these
+derivatives can be computed easily as they are simple polynomials of
+$\alpha(2r/r_s)$. They involve one exponential and one inversion for
+the initial calculation of $\alpha$ and all the other terms can be
+obtained very eeficiently on modern architectures as they only involve
+\emph{fused-multiple-add} operations.We can now construct common
+quantities that appear in derivatives of multiple orders of the
+truncated an softened gravity field $\varphi (\mathbf{r}, r_s, H)
+\equiv \frac{1}{r}\chi(r,r_s)$:
+
+
+% \begin{align}
+%   \alpha(x) &= \left(1 + e^x\right)^{-1}  \nonumber \\
+%   \chi(r, r_s) &= 2\left(1 - e^{2r/r_s}\alpha(2r/r_s) \right) \nonumber \\
+%   \chi'(r, r_s) &= \frac{2}{r_s}\left(2\alpha(x)^2 - 2\alpha(x)\right) \nonumber \\
+%   \chi''(r, r_s) &= \frac{4}{r_s^2}\left(4\alpha(x)^3 - 6\alpha(x)^2 + 2\alpha(x)\right) \nonumber \\
+%   \chi^{(3)}(r, r_s) &= \frac{8}{r_s^3} \left(12\alpha(x)^4 - 24\alpha(x)^3 + 14\alpha(x)^2 -2 \alpha(x)\right) \nonumber \\
+%   \chi^{(4)}(r, r_s) &= \frac{16}{r_s^4} \left(48\alpha(x)^5 - 120\alpha(x)^4 + 100\alpha(x)^3 -30 \alpha(x)^2 + 2\alpha(x)\right) \nonumber \\ 
+%   \chi^{(5)}(r, r_s) &= \frac{32}{r_s^5} \left(240\alpha(x)^6 - 720\alpha(x)^5 + 780\alpha(x)^4 - 360\alpha(x)^3 + 62\alpha(x)^2 - 2\alpha(x) \right) \nonumber
+% \end{align}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{align}
+  \mathsf{\tilde{D}}_{1}(r, r_s, H) =
+  \left\lbrace\begin{array}{rcl}
+  \left(-3u^7 + 15u^6 - 28u^5 + 21u^4 - 7u^2 + 3\right)\times  H^{-1} & \mbox{if} & u < 1,\\
+  %r^{-1} & \mbox{if} & u \geq 1,
+  \chi(r, r_s) \times r^{-1} & \mbox{if} & u \geq 1,
+  \end{array}
+  \right.\nonumber
+\end{align}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{align}
+  \mathsf{\tilde{D}}_{3}(r, r_s, H) =
+  \left\lbrace\begin{array}{rcl}
+  -\left(21u^5 - 90u^4 + 140u^3 -84u^2 +14\right)\times  H^{-3}& \mbox{if} & u < 1,\\
+  %-1 \times r^{-3} & \mbox{if} & u \geq 1,
+  \left(r\chi'(r, r_s) - \chi(r, r_s)\right) \times r^{-3} & \mbox{if} & u \geq 1, 
+  \end{array}
+  \right.\nonumber
+\end{align}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{align}
+  \mathsf{\tilde{D}}_{5}(r, r_s, H) =
+  \left\lbrace\begin{array}{rcl}
+  \left(-105u^3 + 360u^2 - 420u + 168\right)\times  H^{-5}& \mbox{if} & u < 1,\\
+  %3\times r^{-5} & \mbox{if} & u \geq 1,
+  \left(r^2\chi''(r, r_s) - 3r\chi'(r, r_s) + 3\chi(r, r_s) \right)\times r^{-5} & \mbox{if} & u \geq 1, 
+  \end{array}
+  \right.\nonumber
+\end{align}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{align}
+  \mathsf{\tilde{D}}_{7}(r, r_s, H) =
+  \left\lbrace\begin{array}{rcl}
+  -\left(315u - 720 + 420u^{-1}\right)\times  H^{-7} & \mbox{if} & u < 1,\\
+  %-15\times r^{-7} & \mbox{if} & u \geq 1,
+  \left(r^3\chi^{(3)}(r, r_s) - 6r^2\chi''(r, r_s)+15r\chi'(r, r_s)-15\chi(r, r_s)\right) \times r^{-7} & \mbox{if} & u \geq 1, 
+  \end{array}
+  \right.\nonumber
+\end{align}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{align}
+  \mathsf{\tilde{D}}_{9}(r, r_s, H) =
+  \left\lbrace\begin{array}{rcl}
+  \left(-315u^{-1} + 420u^{-3}\right)\times  H^{-9}& \mbox{if} & u < 1,\\
+  %105\times r^{-9} & \mbox{if} & u \geq 1.
+  \left(r^4\chi^{(4)}(r, r_s) - 10r^3\chi^{(3)} + 45r^2\chi''(r, r_s) - 105r\chi'(r, r_s) + 105\chi(r, r_s) \right) \times r^{-9} & \mbox{if} & u \geq 1
+  \end{array}
+  \right.\nonumber
+\end{align}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{align}
+  \mathsf{\tilde{D}}_{11}(r, r_s, H) =
+  \left\lbrace\begin{array}{rcl}
+  -\left(315u^{-3} - 1260u^{-5}\right)\times  H^{-11}& \mbox{if} & u < 1,\\
+  %-945\times r^{-11} & \mbox{if} & u \geq 1.
+  \left(r^5\chi^{(5)}(r, r_s) - 15r^4\chi^{(4)}(r, r_s) + 105r^3\chi^{(3)}(r, r_s) - 420r^2\chi''(r, r_s) + 945r \chi'(r, r_s) - 945\chi(r, r_s)\right) \times r^{-11} & \mbox{if} & u \geq 1.
+  \end{array}
+  \right.\nonumber
+\end{align}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+Starting from the potential (Eq. \ref{eq:fmm:potential},
+reproduced here for completeness), we can now build all the relevent derivatives
+\begin{align}
+  \mathsf{D}_{000}(\mathbf{r}) = \varphi (\mathbf{r}, r_s, H) =
+    \mathsf{\tilde{D}}_{1}(r, r_s, H) \nonumber
+\end{align}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\noindent\rule{6cm}{0.4pt}
+\begin{align}
+  \mathsf{D}_{100}(\mathbf{r}) = \frac{\partial}{\partial r_x} \varphi (\mathbf{r}, r_s, H) =
+    r_x \mathsf{\tilde{D}}_{3}(r, r_s, H) \nonumber
+\end{align}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\noindent\rule{6cm}{0.4pt}
+\begin{align}
+\mathsf{D}_{200}(\mathbf{r}) = \frac{\partial^2}{\partial r_x^2} \varphi (\mathbf{r}, r_s, H) = 
+r_x^2 \mathsf{\tilde{D}}_{5}(r, r_s, H) +
+\mathsf{\tilde{D}}_{3}(r, r_s, H)\nonumber
+\end{align}
 
 \begin{align}
-\mathsf{D}_{100}(\mathbf{r}) = \frac{\partial}{\partial r_x} \phi (\mathbf{r},H) = 
+\mathsf{D}_{110}(\mathbf{r}) = \frac{\partial^2}{\partial r_x\partial r_y} \varphi (\mathbf{r}, r_s, H) = 
+   r_x r_y \mathsf{\tilde{D}}_{5}(r, r_s, H) \nonumber
+\end{align}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\noindent\rule{6cm}{0.4pt}
+\begin{align}
+\mathsf{D}_{300}(\mathbf{r}) = \frac{\partial^3}{\partial r_x^3} \varphi (\mathbf{r}, r_s, H) = 
+  r_x^3 \mathsf{\tilde{D}}_{7}(r, r_s, H)
+  + 3 r_x \mathsf{\tilde{D}}_{5}(r, r_s, H) \nonumber
+\end{align}
+
+\begin{align}
+\mathsf{D}_{210}(\mathbf{r}) = \frac{\partial^3}{\partial r_x^2 r_y} \varphi (\mathbf{r}, r_s, H) = 
+r_x^2 r_y \mathsf{\tilde{D}}_{7}(r, r_s, H) +
+r_y \mathsf{\tilde{D}}_{5}(r, r_s, H) \nonumber
+\end{align}
+
+\begin{align}
+\mathsf{D}_{111}(\mathbf{r}) = \frac{\partial^3}{\partial r_x\partial r_y\partial r_z} \varphi (\mathbf{r}, r_s, H) = 
+  r_x r_y r_z \mathsf{\tilde{D}}_{7}(r, r_s, H) \nonumber
+\end{align}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\noindent\rule{6cm}{0.4pt}
+\begin{align}
+  \mathsf{D}_{400}(\mathbf{r}) &= \frac{\partial^4}{\partial r_x^4}
+  \varphi (\mathbf{r}, r_s, H) =
+  r_x^4 \mathsf{\tilde{D}}_{9}(r, r_s, H)+
+  6r_x^2 \mathsf{\tilde{D}}_{7}(r, r_s, H) +
+  3 \mathsf{\tilde{D}}_{5}(r, r_s, H)
+  \nonumber
+\end{align}
+
+\begin{align}
+  \mathsf{D}_{310}(\mathbf{r}) &= \frac{\partial^4}{\partial r_x^3
+    \partial r_y} \varphi (\mathbf{r}, r_s, H) =
+  r_x^3 r_y \mathsf{\tilde{D}}_{9}(r, r_s, H) +
+  3 r_x r_y \mathsf{\tilde{D}}_{7}(r, r_s, H)
+  \nonumber
+\end{align}
+
+\begin{align}
+  \mathsf{D}_{220}(\mathbf{r}) &= \frac{\partial^4}{\partial r_x^2
+    \partial r_y^2} \varphi (\mathbf{r}, r_s, H) =
+    r_x^2 r_y^2 \mathsf{\tilde{D}}_{9}(r, r_s, H) +
+    r_x^2 \mathsf{\tilde{D}}_{7}(r, r_s, H) +
+    r_y^2 \mathsf{\tilde{D}}_{7}(r, r_s, H) +
+    \mathsf{\tilde{D}}_{5}(r, r_s, H)
+  \nonumber
+\end{align}
+
+\begin{align}
+  \mathsf{D}_{211}(\mathbf{r}) &= \frac{\partial^4}{\partial r_x^2
+    \partial r_y   \partial r_z} \varphi (\mathbf{r}, r_s, H) =
+    r_x^2 r_y r_z \mathsf{\tilde{D}}_{9}(r, r_s, H) +
+    r_y r_z \mathsf{\tilde{D}}_{7}(r, r_s, H)
+  \nonumber
+\end{align}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\noindent\rule{6cm}{0.4pt}
+\begin{align}
+  \mathsf{D}_{500}(\mathbf{r}) &= \frac{\partial^5}{\partial r_x^5}
+  \varphi (\mathbf{r}, r_s, H) =
+  r_x^5 \mathsf{\tilde{D}}_{11}(r, r_s, H) +
+  10r_x^3\mathsf{\tilde{D}}_{9}(r, r_s, H) +
+  15r_x\mathsf{\tilde{D}}_{7}(r, r_s, H)
+  \nonumber
+\end{align}
+
+\begin{align}
+  \mathsf{D}_{410}(\mathbf{r}) &= \frac{\partial^5}{\partial r_x^4
+    \partial r_y} \varphi (\mathbf{r}, r_s, H) =
+  r_x^4 r_y \mathsf{\tilde{D}}_{11}(r, r_s, H) +
+  6 r_x^2 r_y \mathsf{\tilde{D}}_{9}(r, r_s, H) + 
+  3 r_y \mathsf{\tilde{D}}_{7}(r, r_s, H)
+  \nonumber
+\end{align}
+
+\begin{align}
+  \mathsf{D}_{320}(\mathbf{r}) &= \frac{\partial^5}{\partial r_x^3
+    \partial r_y^2} \varphi (\mathbf{r}, r_s, H) =
+  r_x^3 r_y^2 \mathsf{\tilde{D}}_{11}(r, r_s, H) +
+  r_x^3 \mathsf{\tilde{D}}_{9}(r, r_s, H) +
+  3 r_x r_y^2 \mathsf{\tilde{D}}_{9}(r, r_s, H) + 
+  3 r_x \mathsf{\tilde{D}}_{7}(r, r_s, H)
+  \nonumber
+\end{align}
+
+\begin{align}
+  \mathsf{D}_{311}(\mathbf{r}) &= \frac{\partial^5}{\partial r_x^3
+    \partial r_y \partial r_z} \varphi (\mathbf{r}, r_s, H) =
+  r_x^3 r_y r_z \mathsf{\tilde{D}}_{11}(r, r_s, H) +
+  3 r_x r_y r_z \mathsf{\tilde{D}}_{9}(r, r_s, H)
+  \nonumber
+\end{align}
+
+\begin{align}
+  \mathsf{D}_{221}(\mathbf{r}) &= \frac{\partial^5}{\partial r_x^2
+    \partial r_y^2 \partial r_z} \varphi (\mathbf{r}, r_s, H) =
+  r_x^2 r_y^2 r_z \mathsf{\tilde{D}}_{11}(r, r_s, H) +
+  r_x^2 r_z \mathsf{\tilde{D}}_{9}(r, r_s, H) +
+  r_y^2 r_z \mathsf{\tilde{D}}_{9}(r, r_s, H) +
+  r_z \mathsf{\tilde{D}}_{y}(r, r_s, H)
+  \nonumber
+\end{align}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{comment}
+
+\noindent\rule{6cm}{0.4pt}
+
+\begin{align}
+\mathsf{D}_{100}(\mathbf{r}) = \frac{\partial}{\partial r_x} \varphi (\mathbf{r},H) = 
 \left\lbrace\begin{array}{rcl}
 -\frac{r_x}{H^3} \left(21u^5 - 90u^4 + 140u^3 - 84u^2 + 14\right) & \mbox{if} & u < 1,\\
 -\frac{r_x}{r^3} & \mbox{if} & u \geq 1, 
@@ -30,7 +303,7 @@ relevant ones here split by order.
 \noindent\rule{6cm}{0.4pt}
 
 \begin{align}
-\mathsf{D}_{200}(\mathbf{r}) = \frac{\partial^2}{\partial r_x^2} \phi (\mathbf{r},H) = 
+\mathsf{D}_{200}(\mathbf{r}) = \frac{\partial^2}{\partial r_x^2} \varphi (\mathbf{r},H) = 
 \left\lbrace\begin{array}{rcl}
 \frac{r_x^2}{H^5}\left(-105u^3+360u^2-420u+168\right) -
 \frac{1}{H^3} \left(21u^5 - 90u^4 + 140u^3 - 84u^2 + 14\right) & \mbox{if} & u < 1,\\
@@ -40,7 +313,7 @@ relevant ones here split by order.
 \end{align}
 
 \begin{align}
-\mathsf{D}_{110}(\mathbf{r}) = \frac{\partial^2}{\partial r_x\partial r_y} \phi (\mathbf{r},H) = 
+\mathsf{D}_{110}(\mathbf{r}) = \frac{\partial^2}{\partial r_x\partial r_y} \varphi (\mathbf{r},H) = 
 \left\lbrace\begin{array}{rcl}
 \frac{r_xr_y}{H^5}\left(-105u^3+360u^2-420u+168\right) & \mbox{if} & u < 1,\\
 3\frac{r_xr_y}{r^5} & \mbox{if} & u \geq 1, 
@@ -51,7 +324,7 @@ relevant ones here split by order.
 \noindent\rule{6cm}{0.4pt}
 
 \begin{align}
-\mathsf{D}_{300}(\mathbf{r}) = \frac{\partial^3}{\partial r_x^3} \phi (\mathbf{r},H) = 
+\mathsf{D}_{300}(\mathbf{r}) = \frac{\partial^3}{\partial r_x^3} \varphi (\mathbf{r},H) = 
 \left\lbrace\begin{array}{rcl}
 -\frac{r_x^3}{H^7} \left(315u - 720 + 420u^{-1}\right) +
 \frac{3r_x}{H^5}\left(-105u^3+360u^2-420u+168\right) & \mbox{if} & u < 1,\\
@@ -61,7 +334,7 @@ relevant ones here split by order.
 \end{align}
 
 \begin{align}
-\mathsf{D}_{210}(\mathbf{r}) = \frac{\partial^3}{\partial r_x^3} \phi (\mathbf{r},H) = 
+\mathsf{D}_{210}(\mathbf{r}) = \frac{\partial^3}{\partial r_x^3} \varphi (\mathbf{r},H) = 
 \left\lbrace\begin{array}{rcl}
 -\frac{r_x^2r_y}{H^7} \left(315u - 720 + 420u^{-1}\right) +
 \frac{r_y}{H^5}\left(-105u^3+360u^2-420u+168\right) & \mbox{if} & u < 1,\\
@@ -72,7 +345,7 @@ relevant ones here split by order.
 
 
 \begin{align}
-\mathsf{D}_{111}(\mathbf{r}) = \frac{\partial^3}{\partial r_x\partial r_y\partial r_z} \phi (\mathbf{r},H) = 
+\mathsf{D}_{111}(\mathbf{r}) = \frac{\partial^3}{\partial r_x\partial r_y\partial r_z} \varphi (\mathbf{r},H) = 
 \left\lbrace\begin{array}{rcl}
 -\frac{r_xr_yr_z}{H^7} \left(315u - 720 + 420u^{-1}\right) & \mbox{if} & u < 1,\\
 -15\frac{r_xr_yr_z}{r^7} & \mbox{if} & u \geq 1, 
@@ -101,3 +374,5 @@ relevant ones here split by order.
   \mathsf{D}_{211}(\mathbf{r}) &=
   \nonumber
 \end{align}
+
+\end{comment}
