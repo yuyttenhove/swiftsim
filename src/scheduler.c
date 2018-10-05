@@ -2020,16 +2020,37 @@ void scheduler_reweight(struct scheduler *s, int verbose) {
     else if (t->type == task_type_sort)
       sortind = 0;
 #if defined(WITH_MPI) && (defined(HAVE_PARMETIS) || defined(HAVE_METIS))
-    else if (t->type != task_type_recv && t->type != task_type_send) {
+    else if (t->type != task_type_recv && t->type != task_type_send &&
+             t->type != task_type_none) {
 #endif
       float c1 = c[t->type][t->subtype][sortdirs[sortind]][0];
       float c2 = c[t->type][t->subtype][sortdirs[sortind]][1];
       float c3 = c[t->type][t->subtype][sortdirs[sortind]][2];
-      if (t->cj != NULL && c3 != 0.0f)
-        cost = c1 * t->ci->count + c2 * t->cj->count +
-          c3 * t->ci->count * t->cj->count;
-      else
-        cost = c1 * t->ci->count + c2 * t->ci->count * t->ci->count;
+
+      if (t->type == task_type_init_grav ||
+          t->type == task_type_init_grav_out ||
+          t->type == task_type_drift_gpart ||
+          t->type == task_type_grav_mm ||
+          t->type == task_type_grav_down_in ||
+          t->type == task_type_grav_down ||
+          t->type == task_type_grav_mesh ||
+          t->subtype == task_subtype_grav) {
+
+        /* Gravity task, so use gravity particles. */
+        if (t->cj != NULL && c3 != 0.0f)
+          cost = c1 * t->ci->gcount + c2 * t->cj->gcount +
+            c3 * t->ci->count * t->cj->count;
+        else
+          cost = c1 * t->ci->gcount + c2 * t->ci->gcount * t->ci->gcount;
+      } else {
+
+        /* SPH */
+        if (t->cj != NULL && c3 != 0.0f)
+          cost = c1 * t->ci->count + c2 * t->cj->count +
+            c3 * t->ci->count * t->cj->count;
+        else
+          cost = c1 * t->ci->count + c2 * t->ci->count * t->ci->count;
+      }
 #if defined(WITH_MPI) && (defined(HAVE_PARMETIS) || defined(HAVE_METIS))
     }
     t->cost = cost;
