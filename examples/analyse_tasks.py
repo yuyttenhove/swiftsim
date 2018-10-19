@@ -72,20 +72,20 @@ full_step = data[0,:]
 
 #  Do we have an MPI file?
 full_step = data[0,:]
-if full_step.size == 13:
+if full_step.size == 15:
     print "# MPI mode"
     mpimode = True
     nranks = int(max(data[:,0])) + 1
     print "# Number of ranks:", nranks
     rankcol = 0
-    threadscol = 1
-    taskcol = 2
-    subtaskcol = 3
-    ticcol = 5
-    toccol = 6
-    updates = int(full_step[7])
-    g_updates = int(full_step[8])
-    s_updates = int(full_step[9])
+    threadscol = 2
+    taskcol = 3
+    subtaskcol = 4
+    ticcol = 6
+    toccol = 7
+    updates = int(full_step[8])
+    g_updates = int(full_step[9])
+    s_updates = int(full_step[10])
 else:
     print "# non MPI mode"
     nranks = 1

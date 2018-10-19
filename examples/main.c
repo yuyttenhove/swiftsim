@@ -1080,11 +1080,6 @@ int main(int argc, char *argv[]) {
                   " %03i %03i %i %i %i %i %lli %lli %li %li %li %i %i %i %lli\n",
                   myrank, -1, -2, -1, -1, 1, e.tic_step, e.toc_step, e.updates,
                   e.g_updates, e.s_updates, 0, 0, 0, cpufreq);
-
-          fprintf(file_thread,
-                  " %03d 0 0 0 0 %lld %lld %lld %lld %lld 0 0 %lld\n", myrank,
-                  e.tic_step, e.toc_step, e.updates, e.g_updates, e.s_updates,
-                  cpufreq);
           int count = 0;
           for (int l = 0; l < e.sched.nr_tasks; l++) {
             if (!e.sched.tasks[l].implicit && e.sched.tasks[l].toc != 0) {

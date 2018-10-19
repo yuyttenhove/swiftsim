@@ -168,18 +168,18 @@ data = pl.loadtxt( infile )
 
 #  Do we have an MPI file?
 full_step = data[0,:]
-if full_step.size == 13:
+if full_step.size == 15:
     print "# MPI mode"
     mpimode = True
     if ranks == None:
         ranks = range(int(max(data[:,0])) + 1)
     print "# Number of ranks:", len(ranks)
     rankcol = 0
-    threadscol = 1
-    taskcol = 2
-    subtaskcol = 3
-    ticcol = 5
-    toccol = 6
+    threadscol = 2
+    taskcol = 3
+    subtaskcol = 4
+    ticcol = 6
+    toccol = 7
 else:
     print "# non MPI mode"
     ranks = [0]
