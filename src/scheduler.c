@@ -1802,23 +1802,23 @@ void scheduler_reset(struct scheduler *s, int size) {
  * The coefficients reflect the fit to actual data from an SPH EAGLE_25
  * analysis. For self interactions we fit:
  *
- *     t = c1 * cicount + c2 * cicount * cicount
+ *     t = c0 + c1 * cicount + c2 * cicount * cicount
  *
  * and pair interactions:
  *
- *     t = c1 * cicount + c2 * cjcount + c3 * cicount * cjcount
+ *     t = c0 + c1 * cicount + c2 * cjcount + c3 * cicount * cjcount
  *
  * the offsets are tied to zero.
  *
  * @param s our scheduler
- * @param c array of size [task_type_count][task_subtype_count][3][3]
+ * @param c array of size [task_type_count][task_subtype_count][3][4]
  */
 static void scheduler_setcosts(struct scheduler *s,
-                               float c[task_type_count][task_subtype_count][3][3]) {
+                               float c[task_type_count][task_subtype_count][3][4]) {
 
   /* All coefficients are initially zero. */
   float *ptr = &c[0][0][0][0];
-  for (int i = 0; i < task_type_count * task_subtype_count * 3 * 3; i++)
+  for (int i = 0; i < task_type_count * task_subtype_count * 3 * 4; i++)
     ptr[i] = 0.0f;
 
   /* Look for a table of coefficients to read. */
@@ -1839,41 +1839,52 @@ static void scheduler_setcosts(struct scheduler *s,
         if (line[0] == '#') continue; /* Skip comments. */
         char subtask[32];
         char task[32];
+        float c0 = 0.0f;
         float c1 = 0.0f;
         float c2 = 0.0f;
         float c3 = 0.0f;
         int sortdir = 0;
-        int nread = sscanf(line, "%s %s %d %f %f %f", task, subtask, &sortdir,
-                           &c1, &c2, &c3);
-        if (nread != 5 && nread != 6) {
-          message("read garbage from fitted costs file %s (expect 5 or 6 "
+        int nread = sscanf(line, "%s %s %d %f %f %f %f", task, subtask, &sortdir,
+                           &c0, &c1, &c2, &c3);
+        if (nread != 6 && nread != 7) {
+          message("read garbage from fitted costs file %s (expect 6 or 7 "
                   "fields got %d at line %d)", fitted_costs_file, nread,
                   nlines);
         } else {
 
+          /* These start at 1, when they count. */
+          if (sortdir > 0) sortdir--;
+
           /* Convert task descriptions to indices. */
           int taskind = 0;
           for (int k = 0; k < task_type_count; k++) {
-            if (strcmp(taskID_names[k], task) == 0) {
+            if (strcmp(taskID_names[k], task+10) == 0) {
               taskind = k;
               break;
             }
           }
           int subtaskind = 0;
           for (int k = 0; k < task_subtype_count; k++) {
-            if (strcmp(subtaskID_names[k], subtask) == 0) {
+            if (strcmp(subtaskID_names[k], subtask+13) == 0) {
               subtaskind = k;
               break;
             }
           }
-          c[taskind][subtaskind][sortdir][0] = c1;
-          c[taskind][subtaskind][sortdir][1] = c2;
-          if (nread == 6)
-            c[taskind][subtaskind][sortdir][2] = c3;
+          c[taskind][subtaskind][sortdir][0] = c0;
+          c[taskind][subtaskind][sortdir][1] = c1;
+          c[taskind][subtaskind][sortdir][2] = c2;
+          if (nread == 7)
+            c[taskind][subtaskind][sortdir][3] = c3;
         }
         nlines++;
       }
     }
+    message("grav_mm coeffs: %f %f %f %f)",
+            c[task_type_grav_mm][task_type_none][0][0],
+            c[task_type_grav_mm][task_type_none][0][1],
+            c[task_type_grav_mm][task_type_none][0][2],
+            c[task_type_grav_mm][task_type_none][0][3]);
+
     fclose(cfile);
   } else {
     message("default costs");
@@ -1890,43 +1901,43 @@ static void scheduler_setcosts(struct scheduler *s,
      *       2 = * ci->count * cj->count;
      */
     int sortdir = 0;
-    c[task_type_sort][task_subtype_none][sortdir][0] = 1.0f;
+    c[task_type_sort][task_subtype_none][sortdir][1] = 1.0f;
 
-    c[task_type_self][task_subtype_density][sortdir][1] = 1.0f;
-    c[task_type_self][task_subtype_external_grav][sortdir][1] = 1.0f;
-    c[task_type_self][task_subtype_force][sortdir][1] = 1.0f;
-    c[task_type_self][task_subtype_gradient][sortdir][1] = 1.0f;
-    c[task_type_self][task_subtype_grav][sortdir][1] = 1.0f;
+    c[task_type_self][task_subtype_density][sortdir][2] = 1.0f;
+    c[task_type_self][task_subtype_external_grav][sortdir][2] = 1.0f;
+    c[task_type_self][task_subtype_force][sortdir][2] = 1.0f;
+    c[task_type_self][task_subtype_gradient][sortdir][2] = 1.0f;
+    c[task_type_self][task_subtype_grav][sortdir][2] = 1.0f;
 
-    c[task_type_sub_self][task_subtype_density][sortdir][1] = 1.0f;
-    c[task_type_sub_self][task_subtype_external_grav][sortdir][1] = 1.0f;
-    c[task_type_sub_self][task_subtype_force][sortdir][1] = 1.0f;
-    c[task_type_sub_self][task_subtype_gradient][sortdir][1] = 1.0f;
-    c[task_type_sub_self][task_subtype_grav][sortdir][1] = 1.0f;
+    c[task_type_sub_self][task_subtype_density][sortdir][2] = 1.0f;
+    c[task_type_sub_self][task_subtype_external_grav][sortdir][2] = 1.0f;
+    c[task_type_sub_self][task_subtype_force][sortdir][2] = 1.0f;
+    c[task_type_sub_self][task_subtype_gradient][sortdir][2] = 1.0f;
+    c[task_type_sub_self][task_subtype_grav][sortdir][2] = 1.0f;
 
     for (sortdir = 0; sortdir < 3; sortdir++) {
-      c[task_type_pair][task_subtype_density][sortdir][2] = 2.0f;
-      c[task_type_pair][task_subtype_gradient][sortdir][2] = 2.0f;
-      c[task_type_pair][task_subtype_force][sortdir][2] = 2.0f;
-      c[task_type_pair][task_subtype_grav][sortdir][2] = 2.0f;
+      c[task_type_pair][task_subtype_density][sortdir][3] = 2.0f;
+      c[task_type_pair][task_subtype_gradient][sortdir][3] = 2.0f;
+      c[task_type_pair][task_subtype_force][sortdir][3] = 2.0f;
+      c[task_type_pair][task_subtype_grav][sortdir][3] = 2.0f;
 
-      c[task_type_sub_pair][task_subtype_density][sortdir][2] = 2.0f;
-      c[task_type_sub_pair][task_subtype_gradient][sortdir][2] = 2.0f;
-      c[task_type_sub_pair][task_subtype_force][sortdir][2] = 2.0f;
-      c[task_type_sub_pair][task_subtype_grav][sortdir][2] = 2.0f;
+      c[task_type_sub_pair][task_subtype_density][sortdir][3] = 2.0f;
+      c[task_type_sub_pair][task_subtype_gradient][sortdir][3] = 2.0f;
+      c[task_type_sub_pair][task_subtype_force][sortdir][3] = 2.0f;
+      c[task_type_sub_pair][task_subtype_grav][sortdir][3] = 2.0f;
     }
 
     sortdir = 0;
-    c[task_type_init_grav][task_subtype_none][sortdir][0] = 1.0f;
-    c[task_type_ghost][task_subtype_none][sortdir][0] = 1.0f;
-    c[task_type_extra_ghost][task_subtype_none][sortdir][0] = 1.0f;
-    c[task_type_drift_part][task_subtype_none][sortdir][0] = 1.0f;
-    c[task_type_drift_gpart][task_subtype_none][sortdir][0] = 1.0f;
-    c[task_type_kick1][task_subtype_none][sortdir][0] = 1.0f;
-    c[task_type_kick2][task_subtype_none][sortdir][0] = 1.0f;
-    c[task_type_timestep][task_subtype_none][sortdir][0] = 1.0f;
-    c[task_type_cooling][task_subtype_none][sortdir][0] = 1.0f;
-    c[task_type_sourceterms][task_subtype_none][sortdir][0] = 1.0f;
+    c[task_type_init_grav][task_subtype_none][sortdir][1] = 1.0f;
+    c[task_type_ghost][task_subtype_none][sortdir][1] = 1.0f;
+    c[task_type_extra_ghost][task_subtype_none][sortdir][1] = 1.0f;
+    c[task_type_drift_part][task_subtype_none][sortdir][1] = 1.0f;
+    c[task_type_drift_gpart][task_subtype_none][sortdir][1] = 1.0f;
+    c[task_type_kick1][task_subtype_none][sortdir][1] = 1.0f;
+    c[task_type_kick2][task_subtype_none][sortdir][1] = 1.0f;
+    c[task_type_timestep][task_subtype_none][sortdir][1] = 1.0f;
+    c[task_type_cooling][task_subtype_none][sortdir][1] = 1.0f;
+    c[task_type_sourceterms][task_subtype_none][sortdir][1] = 1.0f;
 
     /* Still to do
        task_type_grav_top_level,
@@ -1937,40 +1948,32 @@ static void scheduler_setcosts(struct scheduler *s,
     */
   }
 
-  /* Scale coefficients to 0-1 to reduce dynamic range. */
-  float cmin = c[0][0][0][0];
-  float cmax = cmin;
-  for (int i = 0; i < task_type_count * task_subtype_count * 3 * 3; i++) {
-    if (ptr[i] < cmin)
-      cmin = ptr[i];
-    else if (ptr[i] > cmax)
-      cmax = ptr[i];
-  }
-  for (int i = 0; i < task_type_count * task_subtype_count * 3 * 3; i++)
-    ptr[i] = (ptr[i] - cmin) * 1.0f / (cmax - cmin);
 
 #ifdef WITH_MPI
   /* MPI tasks should be considered quickly, so make these the highest value
    * (self) tasks. */
+  float cmax = c[0][0][0][0];
+  for (int i = 0; i < task_type_count * task_subtype_count * 3 * 4; i++) {
+    if (ptr[i] > cmax) cmax = ptr[i];
+  }
   int sortdir = 0;
-  cmax = 1.1f;
-  c[task_type_send][task_subtype_xv][sortdir][0] = cmax;
   c[task_type_send][task_subtype_xv][sortdir][1] = cmax;
+  c[task_type_send][task_subtype_xv][sortdir][2] = cmax;
 
-  c[task_type_send][task_subtype_rho][sortdir][0] = cmax;
   c[task_type_send][task_subtype_rho][sortdir][1] = cmax;
+  c[task_type_send][task_subtype_rho][sortdir][2] = cmax;
 
-  c[task_type_send][task_subtype_tend][sortdir][0] = cmax;
   c[task_type_send][task_subtype_tend][sortdir][1] = cmax;
+  c[task_type_send][task_subtype_tend][sortdir][2] = cmax;
 
-  c[task_type_recv][task_subtype_xv][sortdir][0] = cmax;
   c[task_type_recv][task_subtype_xv][sortdir][1] = cmax;
+  c[task_type_recv][task_subtype_xv][sortdir][2] = cmax;
 
-  c[task_type_recv][task_subtype_rho][sortdir][0] = cmax;
   c[task_type_recv][task_subtype_rho][sortdir][1] = cmax;
+  c[task_type_recv][task_subtype_rho][sortdir][2] = cmax;
 
-  c[task_type_recv][task_subtype_tend][sortdir][0] = cmax;
   c[task_type_recv][task_subtype_tend][sortdir][1] = cmax;
+  c[task_type_recv][task_subtype_tend][sortdir][2] = cmax;
 #endif
 }
 
@@ -1991,7 +1994,7 @@ void scheduler_reweight(struct scheduler *s, int verbose) {
 
   /* Set the task weights. */
   static int costsset = 0;
-  static float c[task_type_count][task_subtype_count][3][3];
+  static float c[task_type_count][task_subtype_count][3][4];
   if (!costsset) {
     scheduler_setcosts(s, c);
     costsset = 1;
@@ -2019,13 +2022,15 @@ void scheduler_reweight(struct scheduler *s, int verbose) {
       sortind = 0;
     else if (t->type == task_type_sort)
       sortind = 0;
+
 #if defined(WITH_MPI) && (defined(HAVE_PARMETIS) || defined(HAVE_METIS))
-    else if (t->type != task_type_recv && t->type != task_type_send &&
+    if (t->type != task_type_recv && t->type != task_type_send &&
              t->type != task_type_none) {
 #endif
-      float c1 = c[t->type][t->subtype][sortdirs[sortind]][0];
-      float c2 = c[t->type][t->subtype][sortdirs[sortind]][1];
-      float c3 = c[t->type][t->subtype][sortdirs[sortind]][2];
+      float c0 = c[t->type][t->subtype][sortdirs[sortind]][0];
+      float c1 = c[t->type][t->subtype][sortdirs[sortind]][1];
+      float c2 = c[t->type][t->subtype][sortdirs[sortind]][2];
+      float c3 = c[t->type][t->subtype][sortdirs[sortind]][3];
 
       if (t->type == task_type_init_grav ||
           t->type == task_type_init_grav_out ||
@@ -2037,23 +2042,30 @@ void scheduler_reweight(struct scheduler *s, int verbose) {
           t->subtype == task_subtype_grav) {
 
         /* Gravity task, so use gravity particles. */
-        if (t->cj != NULL && c3 != 0.0f)
-          cost = c1 * t->ci->gcount + c2 * t->cj->gcount +
+        if (t->cj != NULL)
+          cost = c0 + c1 * t->ci->gcount + c2 * t->cj->gcount +
             c3 * t->ci->count * t->cj->count;
         else
-          cost = c1 * t->ci->gcount + c2 * t->ci->gcount * t->ci->gcount;
+          cost = c0 + c1 * t->ci->gcount + c2 * t->ci->gcount * t->ci->gcount;
+
       } else {
 
         /* SPH */
-        if (t->cj != NULL && c3 != 0.0f)
-          cost = c1 * t->ci->count + c2 * t->cj->count +
+        if (t->cj != NULL)
+          cost = c0 + c1 * t->ci->count + c2 * t->cj->count +
             c3 * t->ci->count * t->cj->count;
         else
-          cost = c1 * t->ci->count + c2 * t->ci->count * t->ci->count;
+          cost = c0 + c1 * t->ci->count + c2 * t->ci->count * t->ci->count;
       }
+
+      /* Stop < 0 which can happen with the offset value. XXX use minimum data
+       * from fits XXX . */
+      if (cost < 0.f) cost = 1.f;
+
 #if defined(WITH_MPI) && (defined(HAVE_PARMETIS) || defined(HAVE_METIS))
     }
     t->cost = cost;
+
 #endif
     t->weight += cost;
   }

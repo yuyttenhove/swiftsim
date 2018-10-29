@@ -183,12 +183,12 @@ for key in keys:
         isself = 0
 
     if isself:
-        ffit.write("# "+ci+"count model dt dmodel fmodel scost\n")
+        ffit.write("# "+ci+"count model dt dmodel fmodel cost\n")
         minfunc = funcself
         xdata = cidata
         p0 = [0.,1.,1.]
     else:
-        ffit.write("# "+ci+"count "+cj+"count model dt dmodel fmodel scost\n")
+        ffit.write("# "+ci+"count "+cj+"count model dt dmodel fmodel cost\n")
         minfunc = funcpair
         xdata = [cidata,cjdata]
         p0 = [0.,1.,1.,1.]
@@ -205,52 +205,34 @@ for key in keys:
     for i in range(len(popt)):
         fopt.append("{:f}".format(popt[i]))
 
-    # Scale cost to solution for comparison.
-    if isself:
-        ymax = funcself(max(xdata), popt[0], popt[1], popt[2])
-    else:
-        ymax = funcpair([max(xdata[0]), max(xdata[1])], popt[0], popt[1], popt[2], popt[3])
-    maxcost = float(max(cost))
-    if maxcost > 0:
-        scost = cost * ymax / maxcost
-    else:
-        scost = cost
-
     # Evaluate and output/plot.
     y = []
-    fy = []
     x = []
     if isself:
         for i in range(num_lines):
             y.append(funcself(xdata[i], popt[0], popt[1], popt[2]))
-            fy.append(funcself(xdata[i], 0, popt[1], popt[2]))
-            ffit.write(str(xdata[i]) + " " + str(y[i]) + " " + str(ydata[i]) + " " + str(ydata[i] - y[i]) + " " + str(fy[i]) + " " + str(scost[i]) + "\n")
+            ffit.write(str(xdata[i]) + " " + str(y[i]) + " " + str(ydata[i]) + " " + str(ydata[i] - y[i]) + " " + str(cost[i]) + "\n")
         x = xdata
         solution = fopt[0] + " + " + fopt[1] + " * " +ci+"count " + " + " + fopt[2] + " * "+ci+"count * "+ci+"count"
-        fsol.write(key + " " + fopt[1] + " " + fopt[2] + "\n")
+        fsol.write(key + " " + fopt[0] + " " + fopt[1] + " " + fopt[2] + "\n")
     else:
         for i in range(num_lines):
             y.append(funcpair([xdata[0][i], xdata[1][i]], popt[0], popt[1], popt[2], popt[3]))
-            fy.append(funcpair([xdata[0][i], xdata[1][i]], 0, popt[1], popt[2], popt[3]))
-            ffit.write(str(xdata[0][i]) + " " + str(xdata[1][i]) + " " + str(y[i]) + " " + str(ydata[i]) + " " + str(ydata[i] - y[i]) + " " + str(fy[i]) + " " + str(scost[i]) + "\n")
+            ffit.write(str(xdata[0][i]) + " " + str(xdata[1][i]) + " " + str(y[i]) + " " + str(ydata[i]) + " " + str(ydata[i] - y[i]) + " " + str(cost[i]) + "\n")
         x = xdata[0][:]
         solution = fopt[0] + " + " + fopt[1] + "* "+ci+"count" + " + " + fopt[2] + " * "+cj+"count " + " + " + fopt[3] + " * "+ci+"count * "+cj+"count"
-        fsol.write(key + " " + fopt[1] + " " + fopt[2] + " " + fopt[3] + "\n")
+        fsol.write(key + " " + fopt[0] + " " + fopt[1] + " " + fopt[2] + " " + fopt[3] + "\n")
 
     ffit.write("# Solution: " + solution + "\n")
-    if maxcost > 0:
-        ffit.write("# cost scale: " + str(ymax/maxcost) + "\n")
-    else:
-        ffit.write("# cost scale: 0\n")
 
     fig = pl.figure()
     ax = fig.add_subplot(1,1,1)
     pl.scatter(x, ydata, c="blue", label="data")
-    pl.scatter(x, fy, c="green", label="model")
-    pl.scatter(x, scost, c="cyan", label="costs")
+    pl.scatter(x, cost, c="cyan", label="costs")
+
     pl.scatter(x, y, c="red", label="fit")
     ax.set_title("task.subtype.flags: " + key + "\n" + solution)
-    ax.set_xlabel( ci + "count")
+    ax.set_xlabel(ci + "count")
     ax.set_ylabel("ticks")
 
     ax.legend()
