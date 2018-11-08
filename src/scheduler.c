@@ -52,6 +52,7 @@
 #include "space_getsid.h"
 #include "task.h"
 #include "timers.h"
+#include "tools.h"
 #include "version.h"
 
 /**
@@ -1824,11 +1825,15 @@ static void scheduler_setcosts(struct scheduler *s,
     ptr[i] = 0.0f;
 
   /* Look for a table of coefficients to read. */
-  char fitted_costs_file[PARSER_MAX_LINE_SIZE];
+  char fitted_costs_buffer[PARSER_MAX_LINE_SIZE];
   parser_get_opt_param_string(s->space->e->parameter_file,
                               "Scheduler:fitted_costs",
-                              fitted_costs_file,
+                              fitted_costs_buffer,
                               "swift-task-fitted-costs.txt");
+
+  /* On restart we have a leading space... */
+  char *fitted_costs_file = trim_leading(fitted_costs_buffer);
+
   if (access(fitted_costs_file, R_OK) == 0) {
     message("task costs from: %s", fitted_costs_file);
 
@@ -1858,14 +1863,14 @@ static void scheduler_setcosts(struct scheduler *s,
           if (sortdir > 0) sortdir--;
 
           /* Convert task descriptions to indices. */
-          int taskind = 0;
+          int taskind = -1;
           for (int k = 0; k < task_type_count; k++) {
             if (strcmp(taskID_names[k], task+10) == 0) {
               taskind = k;
               break;
             }
           }
-          int subtaskind = 0;
+          int subtaskind = -1;
           for (int k = 0; k < task_subtype_count; k++) {
             if (strcmp(subtaskID_names[k], subtask+13) == 0) {
               subtaskind = k;
@@ -1881,15 +1886,9 @@ static void scheduler_setcosts(struct scheduler *s,
         nlines++;
       }
     }
-    message("grav_mm coeffs: %f %f %f %f)",
-            c[task_type_grav_mm][task_type_none][0][0],
-            c[task_type_grav_mm][task_type_none][0][1],
-            c[task_type_grav_mm][task_type_none][0][2],
-            c[task_type_grav_mm][task_type_none][0][3]);
-
     fclose(cfile);
   } else {
-    message("default costs");
+    message("default costs");;
 
     /* No fitted costs, so use fixed ones, sorts are special...
      * Check main loop in runner.c to see what tasks/subtasks are needed.
@@ -1950,7 +1949,6 @@ static void scheduler_setcosts(struct scheduler *s,
     */
   }
 
-
 #ifdef WITH_MPI
   /* MPI tasks should be considered quickly, so make these the highest value
    * (self) tasks. */
@@ -1959,6 +1957,7 @@ static void scheduler_setcosts(struct scheduler *s,
     if (ptr[i] > cmax) cmax = ptr[i];
   }
   int sortdir = 0;
+  c[task_type_send][task_subtype_xv][sortdir][0] = cmax;
   c[task_type_send][task_subtype_xv][sortdir][1] = cmax;
   c[task_type_send][task_subtype_xv][sortdir][2] = cmax;
 
@@ -2027,7 +2026,7 @@ void scheduler_reweight(struct scheduler *s, int verbose) {
 
 #if defined(WITH_MPI) && (defined(HAVE_PARMETIS) || defined(HAVE_METIS))
     if (t->type != task_type_recv && t->type != task_type_send &&
-             t->type != task_type_none) {
+        t->type != task_type_none) {
 #endif
       float c0 = c[t->type][t->subtype][sortdirs[sortind]][0];
       float c1 = c[t->type][t->subtype][sortdirs[sortind]][1];
@@ -2045,19 +2044,21 @@ void scheduler_reweight(struct scheduler *s, int verbose) {
 
         /* Gravity task, so use gravity particles. */
         if (t->cj != NULL)
-          cost = c0 + c1 * t->ci->gcount + c2 * t->cj->gcount +
-            c3 * t->ci->count * t->cj->count;
+          cost = c0 + c1 * t->ci->grav.count + c2 * t->cj->grav.count +
+            c3 * t->ci->grav.count * t->cj->grav.count;
         else
-          cost = c0 + c1 * t->ci->gcount + c2 * t->ci->gcount * t->ci->gcount;
+          cost = c0 + c1 * t->ci->grav.count +
+              c2 * t->ci->grav.count * t->ci->grav.count;
 
       } else {
 
         /* SPH */
         if (t->cj != NULL)
-          cost = c0 + c1 * t->ci->count + c2 * t->cj->count +
-            c3 * t->ci->count * t->cj->count;
+          cost = c0 + c1 * t->ci->hydro.count + c2 * t->cj->hydro.count +
+            c3 * t->ci->hydro.count * t->cj->hydro.count;
         else
-          cost = c0 + c1 * t->ci->count + c2 * t->ci->count * t->ci->count;
+          cost = c0 + c1 * t->ci->hydro.count +
+              c2 * t->ci->hydro.count * t->ci->hydro.count;
       }
 
       /* Stop < 0 which can happen with the offset value. XXX use minimum data
@@ -2278,9 +2279,6 @@ void scheduler_enqueue(struct scheduler *s, struct task *t) {
           mpi_error(err, "Failed to emit irecv for particle data.");
         }
         qid = 1 % s->nr_queues;
-#ifdef SWIFT_DEBUG_TASKS
-        t->tic = getticks();
-#endif
 #else
         error("SWIFT was not compiled with MPI support.");
 #endif
@@ -2349,9 +2347,6 @@ void scheduler_enqueue(struct scheduler *s, struct task *t) {
           mpi_error(err, "Failed to emit isend for particle data.");
         }
         qid = 0;
-#ifdef SWIFT_DEBUG_TASKS
-        t->tic = getticks();
-#endif
 #else
         error("SWIFT was not compiled with MPI support.");
 #endif
@@ -2536,9 +2531,7 @@ struct task *scheduler_gettask(struct scheduler *s, int qid,
 #ifdef SWIFT_DEBUG_TASKS
   /* Start the timer on this task, if we got one. */
   if (res != NULL) {
-    /* MPI tasks are timed from creation. */
-    if (res->type != task_type_send && res->type != task_type_recv)
-      res->tic = getticks();
+    res->tic = getticks();
     res->rid = qid;
   }
 #endif
