@@ -81,6 +81,11 @@
 #include "./hydro/AnarchyPU/hydro_iact.h"
 #define SPH_IMPLEMENTATION \
   "ANARCHY (Pressure-Energy) SPH (Dalla Vecchia+ in prep)"
+#elif defined(PHANTOM_SPH)
+#include "./hydro/Phantom/hydro.h"
+#include "./hydro/Phantom/hydro_iact.h"
+#define SPH_IMPLEMENTATION                                  \
+  "Phantom SPH (Price et al. 2018)"
 #else
 #error "Invalid choice of SPH variant"
 #endif
