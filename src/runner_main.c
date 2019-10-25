@@ -369,7 +369,13 @@ void *runner_main(void *data) {
           break;
 #ifdef WITH_MPI
         case task_type_send:
-          if (t->subtype == task_subtype_tend_part) {
+
+          if (t->subtype == task_subtype_xv) {
+            /* If sending full then nothing to do, otherwise we can free the
+               packed buffer. Next send can be partial. */
+            if (!t->sendfull) swift_free("xvparts", t->buff);
+            t->sendfull = 0;
+          } else if (t->subtype == task_subtype_tend_part) {
             free(t->buff);
           } else if (t->subtype == task_subtype_tend_gpart) {
             free(t->buff);
@@ -404,6 +410,13 @@ void *runner_main(void *data) {
             cell_clear_stars_sort_flags(ci, /*clear_unused_flags=*/0);
             free(t->buff);
           } else if (t->subtype == task_subtype_xv) {
+            /* If sending full then nothing to do, otherwise we need to unpack
+             * and free the packed buffer. Next send will be partial. */
+            if (!t->sendfull) {
+              cell_unpack_xvparts(ci, t->buff);
+              swift_free("xvparts", t->buff);
+            }
+            t->sendfull = 0;
             runner_do_recv_part(r, ci, 1, 1);
           } else if (t->subtype == task_subtype_rho) {
             runner_do_recv_part(r, ci, 0, 1);

@@ -1739,8 +1739,20 @@ void scheduler_enqueue(struct scheduler *s, struct task *t) {
               sizeof(struct black_holes_bpart_data) * t->ci->black_holes.count;
           buff = t->buff = malloc(count);
 
-        } else if (t->subtype == task_subtype_xv ||
-                   t->subtype == task_subtype_rho ||
+        } else if (t->subtype == task_subtype_xv) {
+          if (t->sendfull) {
+            count = t->ci->hydro.count;
+            size = count * sizeof(struct part);
+            type = part_mpi_type;
+            buff = t->buff = t->ci->hydro.parts;
+          } else {
+            count = t->ci->hydro.count;
+            size = count * sizeof(struct xvpart);
+            type = part_mpi_xvtype;
+            buff = t->buff = swift_malloc("xvparts", size);
+          }
+
+        } else if (t->subtype == task_subtype_rho ||
                    t->subtype == task_subtype_gradient) {
 
           count = t->ci->hydro.count;
@@ -1851,12 +1863,26 @@ void scheduler_enqueue(struct scheduler *s, struct task *t) {
 
           size = count =
               sizeof(struct black_holes_bpart_data) * t->ci->black_holes.count;
-          buff = t->buff = malloc(size);
+          buff = t->buff = swift_malloc("xvparts", size);
           cell_pack_bpart_swallow(t->ci,
                                   (struct black_holes_bpart_data *)t->buff);
 
-        } else if (t->subtype == task_subtype_xv ||
-                   t->subtype == task_subtype_rho ||
+        } else if (t->subtype == task_subtype_xv) {
+
+          if (t->sendfull) {
+            count = t->ci->hydro.count;
+            size = count * sizeof(struct part);
+            type = part_mpi_type;
+            buff = t->ci->hydro.parts;
+          } else {
+            count = t->ci->hydro.count;
+            size = count * sizeof(struct xvpart);
+            type = part_mpi_xvtype;
+            buff = t->buff = malloc(size);
+            cell_pack_xvparts(t->ci, (struct xvpart *)buff);
+          }
+
+        } else if (t->subtype == task_subtype_rho ||
                    t->subtype == task_subtype_gradient) {
 
           count = t->ci->hydro.count;

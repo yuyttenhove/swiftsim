@@ -391,6 +391,7 @@ void part_verify_links(struct part *parts, struct gpart *gparts,
 #ifdef WITH_MPI
 /* MPI data type for the particle transfers */
 MPI_Datatype part_mpi_type;
+MPI_Datatype part_mpi_xvtype;
 MPI_Datatype xpart_mpi_type;
 MPI_Datatype gpart_mpi_type;
 MPI_Datatype spart_mpi_type;
@@ -432,11 +433,21 @@ void part_create_mpi_types(void) {
       MPI_Type_commit(&bpart_mpi_type) != MPI_SUCCESS) {
     error("Failed to create MPI type for bparts.");
   }
+
+  /* Types for sending specific fields of our structs.
+   * -------------------------------------------------
+   */
+  if (MPI_Type_contiguous(sizeof(struct xvpart) / sizeof(unsigned char),
+                          MPI_BYTE, &part_mpi_xvtype) != MPI_SUCCESS ||
+      MPI_Type_commit(&part_mpi_xvtype) != MPI_SUCCESS) {
+    error("Failed to create MPI xvtype for parts.");
+  }
 }
 
 void part_free_mpi_types(void) {
 
   MPI_Type_free(&part_mpi_type);
+  MPI_Type_free(&part_mpi_xvtype);
   MPI_Type_free(&xpart_mpi_type);
   MPI_Type_free(&gpart_mpi_type);
   MPI_Type_free(&spart_mpi_type);

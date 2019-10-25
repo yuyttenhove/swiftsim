@@ -823,6 +823,8 @@ void cell_bunlocktree(struct cell *c);
 int cell_pack(struct cell *c, struct pcell *pc, const int with_gravity);
 int cell_unpack(struct pcell *pc, struct cell *c, struct space *s,
                 const int with_gravity);
+void cell_pack_xvparts(struct cell *c, struct xvpart *xvpart);
+void cell_unpack_xvparts(struct cell *c, struct xvpart *xvpart);
 void cell_pack_part_swallow(const struct cell *c,
                             struct black_holes_part_data *data);
 void cell_unpack_part_swallow(struct cell *c,

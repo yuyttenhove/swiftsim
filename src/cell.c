@@ -773,9 +773,41 @@ int cell_unpack_tags(const int *tags, struct cell *restrict c) {
 
 #else
   error("SWIFT was not compiled with MPI support.");
-  return 0;
 #endif
 }
+
+/**
+ * @brief Pack the xv components for particles into a list.
+ *
+ * @param c The #cell.
+ * @param xyparts structs to hold the extracted xv data.
+ */
+void cell_pack_xvparts(struct cell *c, struct xvpart *xvparts) {
+#ifdef WITH_MPI
+  for (int k = 0; k < c->hydro.count; k++) {
+    memcpy(xvparts[k].x, c->hydro.parts[k].x, sizeof(double) * 3);
+  }
+#else
+  error("SWIFT was not compiled with MPI support.");
+#endif
+}
+
+/**
+ * @brief Unpack the xv components for particles from a list.
+ *
+ * @param c The #cell.
+ * @param xyparts structs holding the xv data.
+ */
+void cell_unpack_xvparts(struct cell *c, struct xvpart *xvparts) {
+#ifdef WITH_MPI
+  for (int k = 0; k < c->hydro.count; k++) {
+    memcpy(c->hydro.parts[k].x, xvparts[k].x, sizeof(double) * 3);
+  }
+#else
+  error("SWIFT was not compiled with MPI support.");
+#endif
+}
+
 
 /**
  * @brief Pack the time information of the given cell and all it's sub-cells.
