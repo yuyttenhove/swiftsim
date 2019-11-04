@@ -56,8 +56,7 @@ struct mpipacked_member {
   { offsetof(mystruct, member), sizeof(((mystruct *)0)->member) }
 
 #ifdef WITH_MPI
-void mpipacked_make_type_xv(struct mpipacked_member members[],
-                            int nmembers, MPI_Datatype *mpi_xvtype);
+void mpipacked_make_type_xv(MPI_Datatype *mpi_xvtype);
 #endif
 void mpipacked_pack_parts_xv(struct cell *c, char *packeddata);
 void mpipacked_unpack_parts_xv(struct cell *c, char *packeddata);

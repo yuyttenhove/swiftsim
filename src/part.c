@@ -439,15 +439,7 @@ void part_create_mpi_types(void) {
   /* Types for sending specific fields of our structs.
    * -------------------------------------------------
    */
-#ifdef MPIPACKED_XV_SUPPORTED
-#define MPIPACKED_XV_MEMBERS_EXPAND(...) struct mpipacked_member xvmembers[] = {__VA_ARGS__};
-  MPIPACKED_XV_MEMBERS_EXPAND(MPIPACKED_XV_MEMBERS);
-  int nxvmembers =  sizeof(xvmembers) / sizeof(*xvmembers);
-#else
-  struct mpipacked_member *xvmembers = NULL;
-  int nxvmembers = 0;
-#endif
-  mpipacked_make_type_xv(xvmembers, nxvmembers, &part_mpi_xvtype);
+  mpipacked_make_type_xv(&part_mpi_xvtype);
   MPI_Type_commit(&part_mpi_xvtype);
   MPI_Type_size(part_mpi_xvtype, &part_mpi_xvtype_size);
 }

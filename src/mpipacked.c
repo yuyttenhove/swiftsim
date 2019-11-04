@@ -39,8 +39,8 @@
 #include "part.h"
 
 /* Whether the current "struct part" implementation supports packed
- * xv exchanges. */
-int mpipacked_xvparts_supported = 0;
+ * xv exchanges. XXX needs to be a program parameter. */
+int mpipacked_xvparts_supported = 1;
 
 /* Whether the current "struct part" implementation supports packed
  * rho exchanges. */
@@ -51,9 +51,44 @@ int mpipacked_rhoparts_supported = 0;
 int mpipacked_gparts_supported = 0;
 
 #ifdef WITH_MPI
-/* The xv offsets and sizes, and number of these. */
-static struct mpipacked_member *mpipacked_xvparts_members = NULL;
-static int mpipacked_xvparts_nmembers = 0;
+/* Define the members of the part struct that we should pack and communicate
+ * when doing the hydro "xv" updates. Needs the current part types to define
+ * two macros; MPIPACKED_XV_SUPPORTED so we know packing is supported and,
+ * MPIPACKED_XV_MEMBERS which is list of MPIPACKED_ADDMEMBER defines, as in:
+ *
+ * #ifndef MPIPACKED_XV_MEMBERS
+ * #define MPIPACKED_XV_MEMBERS                                  \
+ *   MPIPACKED_ADDMEMBER(struct part, x),                        \
+ *   MPIPACKED_ADDMEMBER(struct part, v),                        \
+ *   MPIPACKED_ADDMEMBER(struct part, h),                        \
+ *   MPIPACKED_ADDMEMBER(struct part, mass),                     \
+ *   MPIPACKED_ADDMEMBER(struct part, rho),                      \
+ *   MPIPACKED_ADDMEMBER(struct part, force.f),                  \
+ *   MPIPACKED_ADDMEMBER(struct part, force.P_over_rho2),        \
+ *   MPIPACKED_ADDMEMBER(struct part, force.soundspeed),         \
+ *   MPIPACKED_ADDMEMBER(struct part, force.balsara),            \
+ *   MPIPACKED_ADDMEMBER(struct part, force.v_sig),              \
+ *   MPIPACKED_ADDMEMBER(struct part, force.h_dt)
+ * #endif
+ */
+#ifdef MPIPACKED_XV_SUPPORTED
+
+/* Macro to expand a variable number of MPIPACKED_ADDMEMBER defines to a
+ * actual struct of mpipacked_member's */
+#define MPIPACKED_XV_MEMBERS_EXPAND(...)                        \
+  static struct mpipacked_member xvmembers[] = {__VA_ARGS__};
+
+/* Expansion of the MPIPACKED_XV_MEMBERS define. */
+MPIPACKED_XV_MEMBERS_EXPAND(MPIPACKED_XV_MEMBERS);
+
+/* No of members we have. */
+static int nxvmembers =  sizeof(xvmembers) / sizeof(*xvmembers);
+#else
+
+/* No support. */
+static struct mpipacked_member *xvmembers = NULL;
+static int nxvmembers = 0;
+#endif
 
 /**
  * @brief Create an MPI type to support the packed xv part exchanges.
@@ -62,24 +97,21 @@ static int mpipacked_xvparts_nmembers = 0;
  * the full parts MPI type. Either way the new type should be committed
  * and freed.
  *
- * @param members array of member structs that defines the elements to extract.
- * @param nmembers number of elements in members array.
+ * Requires that the current part definition includes a macro
+ * MPI_PACKED_MEMBERS that defines with struct part elements to copy.
+ *
  * @param mpi_xvtype the new type.
  */
-void mpipacked_make_type_xv(struct mpipacked_member members[],
-                            int nmembers, MPI_Datatype *mpi_xvtype) {
-  if (mpipacked_xvparts_supported) {
+void mpipacked_make_type_xv(MPI_Datatype *mpi_xvtype) {
+
+  if (mpipacked_xvparts_supported && nxvmembers > 0) {
     size_t size = 0;
-    for (int j = 0; j < nmembers; j++) {
-      size += members[j].size;
+    for (int j = 0; j < nxvmembers; j++) {
+      size += xvmembers[j].size;
     }
     if (MPI_Type_contiguous(size, MPI_BYTE, mpi_xvtype) != MPI_SUCCESS) {
       error("Failed to create a MPI type for xv updates");
     }
-
-    /* Local references. */
-    mpipacked_xvparts_members = members;
-    mpipacked_xvparts_nmembers = nmembers;
 
   } else {
 
@@ -102,10 +134,9 @@ void mpipacked_pack_parts_xv(struct cell *c, char *packeddata) {
   size_t index = 0;
   for (int k = 0; k < c->hydro.count; k++) {
     char *part = (char *)&c->hydro.parts[k];
-    for (int j = 0; j < mpipacked_xvparts_nmembers; j++) {
-      memcpy(&packeddata[index], &part[mpipacked_xvparts_members[j].offset],
-             mpipacked_xvparts_members[j].size);
-      index += mpipacked_xvparts_members[j].size;
+    for (int j = 0; j < nxvmembers; j++) {
+      memcpy(&packeddata[index], &part[xvmembers[j].offset], xvmembers[j].size);
+      index += xvmembers[j].size;
     }
   }
 #else
@@ -125,10 +156,9 @@ void mpipacked_unpack_parts_xv(struct cell *c, char *packeddata) {
   size_t index = 0;
   for (int k = 0; k < c->hydro.count; k++) {
     char *part = (char *)&c->hydro.parts[k];
-    for (int j = 0; j < mpipacked_xvparts_nmembers; j++) {
-      memcpy(&part[mpipacked_xvparts_members[j].offset],
-             &packeddata[index], mpipacked_xvparts_members[j].size);
-      index += mpipacked_xvparts_members[j].size;
+    for (int j = 0; j < nxvmembers; j++) {
+      memcpy(&part[xvmembers[j].offset], &packeddata[index], xvmembers[j].size);
+      index += xvmembers[j].size;
     }
   }
 #else
