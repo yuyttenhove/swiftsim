@@ -1747,7 +1747,7 @@ void scheduler_enqueue(struct scheduler *s, struct task *t) {
             buff = t->buff = t->ci->hydro.parts;
           } else {
             count = t->ci->hydro.count;
-            size = count * sizeof(struct xvpart);
+            size = count * part_mpi_xvtype_size;
             type = part_mpi_xvtype;
             buff = t->buff = swift_malloc("xvparts", size);
           }
@@ -1863,7 +1863,7 @@ void scheduler_enqueue(struct scheduler *s, struct task *t) {
 
           size = count =
               sizeof(struct black_holes_bpart_data) * t->ci->black_holes.count;
-          buff = t->buff = swift_malloc("xvparts", size);
+          buff = t->buff = malloc(size);
           cell_pack_bpart_swallow(t->ci,
                                   (struct black_holes_bpart_data *)t->buff);
 
@@ -1876,10 +1876,10 @@ void scheduler_enqueue(struct scheduler *s, struct task *t) {
             buff = t->ci->hydro.parts;
           } else {
             count = t->ci->hydro.count;
-            size = count * sizeof(struct xvpart);
+            size = count * part_mpi_xvtype_size;
             type = part_mpi_xvtype;
-            buff = t->buff = malloc(size);
-            cell_pack_xvparts(t->ci, (struct xvpart *)buff);
+            buff = t->buff = swift_malloc("xvparts", size);
+            mpipacked_pack_parts_xv(t->ci, buff);
           }
 
         } else if (t->subtype == task_subtype_rho ||

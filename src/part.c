@@ -32,6 +32,7 @@
 #include "error.h"
 #include "hydro.h"
 #include "part.h"
+#include "mpipacked.h"
 
 /**
  * @brief Re-link the #gpart%s associated with the list of #part%s.
@@ -392,6 +393,7 @@ void part_verify_links(struct part *parts, struct gpart *gparts,
 /* MPI data type for the particle transfers */
 MPI_Datatype part_mpi_type;
 MPI_Datatype part_mpi_xvtype;
+int part_mpi_xvtype_size;
 MPI_Datatype xpart_mpi_type;
 MPI_Datatype gpart_mpi_type;
 MPI_Datatype spart_mpi_type;
@@ -437,11 +439,17 @@ void part_create_mpi_types(void) {
   /* Types for sending specific fields of our structs.
    * -------------------------------------------------
    */
-  if (MPI_Type_contiguous(sizeof(struct xvpart) / sizeof(unsigned char),
-                          MPI_BYTE, &part_mpi_xvtype) != MPI_SUCCESS ||
-      MPI_Type_commit(&part_mpi_xvtype) != MPI_SUCCESS) {
-    error("Failed to create MPI xvtype for parts.");
-  }
+#ifdef MPIPACKED_XV_SUPPORTED
+#define MPIPACKED_XV_MEMBERS_EXPAND(...) struct mpipacked_member xvmembers[] = {__VA_ARGS__};
+  MPIPACKED_XV_MEMBERS_EXPAND(MPIPACKED_XV_MEMBERS);
+  int nxvmembers =  sizeof(xvmembers) / sizeof(*xvmembers);
+#else
+  struct mpipacked_member *xvmembers = NULL;
+  int nxvmembers = 0;
+#endif
+  mpipacked_make_type_xv(xvmembers, nxvmembers, &part_mpi_xvtype);
+  MPI_Type_commit(&part_mpi_xvtype);
+  MPI_Type_size(part_mpi_xvtype, &part_mpi_xvtype_size);
 }
 
 void part_free_mpi_types(void) {

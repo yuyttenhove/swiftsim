@@ -57,7 +57,7 @@ include_HEADERS = space.h runner.h queue.h task.h lock.h cell.h part.h const.h \
     pressure_floor.h pressure_floor_struct.h pressure_floor_iact.h \
     velociraptor_struct.h velociraptor_io.h random.h memuse.h mpiuse.h memuse_rnodes.h \
     black_holes.h black_holes_io.h black_holes_properties.h black_holes_struct.h \
-    feedback.h feedback_struct.h feedback_properties.h task_order.h
+    feedback.h feedback_struct.h feedback_properties.h task_order.h mpipacked.h
 
 # source files for EAGLE cooling
 EAGLE_COOLING_SOURCES =
@@ -88,7 +88,7 @@ AM_SOURCES = space.c runner_main.c runner_doiact_hydro.c \
     collectgroup.c hydro_space.c equation_of_state.c \
     chemistry.c cosmology.c restart.c mesh_gravity.c velociraptor_interface.c \
     outputlist.c velociraptor_dummy.c logger_io.c memuse.c mpiuse.c memuse_rnodes.c fof.c \
-    hashmap.c pressure_floor.c \
+    hashmap.c pressure_floor.c mpipacked.c \
     $(EAGLE_COOLING_SOURCES) $(EAGLE_FEEDBACK_SOURCES)
 
 # Include files for distribution, not installation.

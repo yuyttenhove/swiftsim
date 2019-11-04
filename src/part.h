@@ -35,6 +35,7 @@
 #include "fof.h"
 #include "part_type.h"
 #include "timeline.h"
+#include "mpipacked.h"
 
 /* Some constants. */
 #define part_align 128
@@ -89,11 +90,6 @@
 #else
 #error "Invalid choice of SPH variant"
 #endif
-
-/* Packed particle struct for sending xv information only. */
-struct xvpart {
-  double x[3];
-};
 
 /* Import the right gravity particle definition */
 #if defined(DEFAULT_GRAVITY)
@@ -152,7 +148,7 @@ void part_verify_links(struct part *parts, struct gpart *gparts,
 /* MPI data type for the particle transfers */
 extern MPI_Datatype part_mpi_type;
 extern MPI_Datatype part_mpi_xvtype;
-
+extern int part_mpi_xvtype_size;
 extern MPI_Datatype xpart_mpi_type;
 extern MPI_Datatype gpart_mpi_type;
 extern MPI_Datatype spart_mpi_type;
