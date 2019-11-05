@@ -53,8 +53,8 @@ int mpipacked_gparts_supported = 0;
 #ifdef WITH_MPI
 /* Define the members of the part struct that we should pack and communicate
  * when doing the hydro "xv" updates. Needs the current part types to define
- * two macros; MPIPACKED_XV_SUPPORTED so we know packing is supported and,
- * MPIPACKED_XV_MEMBERS which is list of MPIPACKED_ADDMEMBER defines, as in:
+ * a macros MPIPACKED_XV_MEMBERS which is list of MPIPACKED_ADDMEMBER defines,
+ * as in:
  *
  * #ifndef MPIPACKED_XV_MEMBERS
  * #define MPIPACKED_XV_MEMBERS                                  \
@@ -71,7 +71,7 @@ int mpipacked_gparts_supported = 0;
  *   MPIPACKED_ADDMEMBER(struct part, force.h_dt)
  * #endif
  */
-#ifdef MPIPACKED_XV_SUPPORTED
+#ifdef MPIPACKED_XV_MEMBERS
 
 /* Macro to expand a variable number of MPIPACKED_ADDMEMBER defines to a
  * actual struct of mpipacked_member's */

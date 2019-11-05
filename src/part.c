@@ -440,7 +440,8 @@ void part_create_mpi_types(void) {
    * -------------------------------------------------
    */
   mpipacked_make_type_xv(&part_mpi_xvtype);
-  MPI_Type_commit(&part_mpi_xvtype);
+  if (MPI_Type_commit(&part_mpi_xvtype) != MPI_SUCCESS)
+    error("Failed to commit xvtype for parts");
   MPI_Type_size(part_mpi_xvtype, &part_mpi_xvtype_size);
 }
 

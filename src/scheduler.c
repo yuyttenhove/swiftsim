@@ -1740,13 +1740,13 @@ void scheduler_enqueue(struct scheduler *s, struct task *t) {
           buff = t->buff = malloc(count);
 
         } else if (t->subtype == task_subtype_xv) {
+
+          count = t->ci->hydro.count;
           if (t->sendfull) {
-            count = t->ci->hydro.count;
             size = count * sizeof(struct part);
             type = part_mpi_type;
-            buff = t->buff = t->ci->hydro.parts;
+            buff = t->ci->hydro.parts;
           } else {
-            count = t->ci->hydro.count;
             size = count * part_mpi_xvtype_size;
             type = part_mpi_xvtype;
             buff = t->buff = swift_malloc("xvparts", size);
@@ -1869,13 +1869,12 @@ void scheduler_enqueue(struct scheduler *s, struct task *t) {
 
         } else if (t->subtype == task_subtype_xv) {
 
+          count = t->ci->hydro.count;
           if (t->sendfull) {
-            count = t->ci->hydro.count;
             size = count * sizeof(struct part);
             type = part_mpi_type;
             buff = t->ci->hydro.parts;
           } else {
-            count = t->ci->hydro.count;
             size = count * part_mpi_xvtype_size;
             type = part_mpi_xvtype;
             buff = t->buff = swift_malloc("xvparts", size);
