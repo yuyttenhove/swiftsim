@@ -773,6 +773,7 @@ int cell_unpack_tags(const int *tags, struct cell *restrict c) {
 
 #else
   error("SWIFT was not compiled with MPI support.");
+  return 0;
 #endif
 }
 
