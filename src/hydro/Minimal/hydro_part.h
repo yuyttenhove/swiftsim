@@ -195,4 +195,31 @@ struct part {
 
 } SWIFT_STRUCT_ALIGN;
 
+/* Define the minimal struct elements that should be sent to foreign cells,
+ * during "xv" updates, i.e. before densities are estimated. Same order as
+ * struct. */
+#ifndef MPIPACKED_XV_MEMBERS
+
+/* Things we don't always send... */
+#ifdef SWIFT_DEBUG_CHECKS
+#define MPIPACKED_XV_EXTRAS \
+  , MPIPACKED_ADDMEMBER(struct part, ti_drift)
+#else
+#define MPIPACKED_XV_EXTRAS
+#endif
+
+#define MPIPACKED_XV_MEMBERS                                    \
+    MPIPACKED_ADDMEMBER(struct part, x),                        \
+    MPIPACKED_ADDMEMBER(struct part, v),                        \
+    MPIPACKED_ADDMEMBER(struct part, mass),                     \
+    MPIPACKED_ADDMEMBER(struct part, u),                        \
+    MPIPACKED_ADDMEMBER(struct part, h),                        \
+    MPIPACKED_ADDMEMBER(struct part, rho),                      \
+    MPIPACKED_ADDMEMBER(struct part, force.f),                  \
+    MPIPACKED_ADDMEMBER(struct part, force.soundspeed),         \
+    MPIPACKED_ADDMEMBER(struct part, force.v_sig),              \
+    MPIPACKED_ADDMEMBER(struct part, force.h_dt),               \
+    MPIPACKED_ADDMEMBER(struct part, force.balsara) MPIPACKED_XV_EXTRAS
+#endif
+
 #endif /* SWIFT_MINIMAL_HYDRO_PART_H */
