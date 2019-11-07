@@ -1,6 +1,7 @@
 /*******************************************************************************
  * This file is part of SWIFT.
- * Coypright (c) 2016 Matthieu Schaller (matthieu.schaller@durham.ac.uk)
+ * Coypright (c) 2019 Josh Borrow (joshua.borrow@durham.ac.uk) &
+ *                    Matthieu Schaller (matthieu.schaller@durham.ac.uk)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published
@@ -18,6 +19,13 @@
  ******************************************************************************/
 #ifndef SWIFT_PHANTOM_HYDRO_IO_H
 #define SWIFT_PHANTOM_HYDRO_IO_H
+
+/**
+ * @file Phantom/hydro_io.h
+ * @brief Density-Energy conservative implementation of SPH,
+ *        with added diffusive physics (Cullen & Denhen 2011 AV,
+ *        Price 2017 (PHANTOM) diffusion) (i/o routines)
+ */
 
 #include "adiabatic_index.h"
 #include "hydro.h"
@@ -49,7 +57,7 @@ INLINE static void hydro_read_particles(struct part* parts,
   list[3] = io_make_input_field("SmoothingLength", FLOAT, 1, COMPULSORY,
                                 UNIT_CONV_LENGTH, parts, h);
   list[4] = io_make_input_field("InternalEnergy", FLOAT, 1, COMPULSORY,
-                                UNIT_CONV_ENERGY_PER_UNIT_MASS, parts, entropy);
+                                UNIT_CONV_ENERGY_PER_UNIT_MASS, parts, u);
   list[5] = io_make_input_field("ParticleIDs", ULONGLONG, 1, COMPULSORY,
                                 UNIT_CONV_NO_UNITS, parts, id);
   list[6] = io_make_input_field("Accelerations", FLOAT, 3, OPTIONAL,
@@ -58,14 +66,14 @@ INLINE static void hydro_read_particles(struct part* parts,
                                 UNIT_CONV_DENSITY, parts, rho);
 }
 
-INLINE static void convert_part_u(const struct engine* e, const struct part* p,
-                                  const struct xpart* xp, float* ret) {
+INLINE static void convert_S(const struct engine* e, const struct part* p,
+                             const struct xpart* xp, float* ret) {
 
-  ret[0] = hydro_get_comoving_internal_energy(p, xp);
+  ret[0] = hydro_get_comoving_entropy(p, xp);
 }
 
-INLINE static void convert_part_P(const struct engine* e, const struct part* p,
-                                  const struct xpart* xp, float* ret) {
+INLINE static void convert_P(const struct engine* e, const struct part* p,
+                             const struct xpart* xp, float* ret) {
 
   ret[0] = hydro_get_comoving_pressure(p);
 }
@@ -123,18 +131,28 @@ INLINE static void convert_part_vel(const struct engine* e,
 INLINE static void convert_part_potential(const struct engine* e,
                                           const struct part* p,
                                           const struct xpart* xp, float* ret) {
-
   if (p->gpart != NULL)
     ret[0] = gravity_get_comoving_potential(p->gpart);
   else
     ret[0] = 0.f;
 }
 
+INLINE static void convert_viscosity(const struct engine* e,
+                                     const struct part* p,
+                                     const struct xpart* xp, float* ret) {
+  ret[0] = p->viscosity.alpha;
+}
+
+INLINE static void convert_diffusion(const struct engine* e,
+                                     const struct part* p,
+                                     const struct xpart* xp, float* ret) {
+  ret[0] = p->diffusion.alpha;
+}
+
 /**
  * @brief Specifies which particle fields to write to a dataset
  *
  * @param parts The particle array.
- * @param xparts The extended particle data array.
  * @param list The list of i/o properties to write.
  * @param num_fields The number of i/o fields to write.
  */
@@ -143,7 +161,7 @@ INLINE static void hydro_write_particles(const struct part* parts,
                                          struct io_props* list,
                                          int* num_fields) {
 
-  *num_fields = 10;
+  *num_fields = 12;
 
   /* List what we want to write */
   list[0] = io_make_output_field_convert_part(
@@ -164,8 +182,9 @@ INLINE static void hydro_write_particles(const struct part* parts,
       "Co-moving smoothing lengths (FWHM of the kernel) of the particles");
 
   list[4] = io_make_output_field(
-      "Entropies", FLOAT, 1, UNIT_CONV_ENTROPY_PER_UNIT_MASS, 0.f, parts,
-      entropy, "Co-moving entropies per unit mass of the particles");
+      "InternalEnergies", FLOAT, 1, UNIT_CONV_ENERGY_PER_UNIT_MASS,
+      -3.f * hydro_gamma_minus_one, parts, u,
+      "Co-moving thermal energies per unit mass of the particles");
 
   list[5] =
       io_make_output_field("ParticleIDs", ULONGLONG, 1, UNIT_CONV_NO_UNITS, 0.f,
@@ -176,36 +195,25 @@ INLINE static void hydro_write_particles(const struct part* parts,
                                  "Co-moving mass densities of the particles");
 
   list[7] = io_make_output_field_convert_part(
-      "InternalEnergies", FLOAT, 1, UNIT_CONV_ENERGY_PER_UNIT_MASS,
-      -3.f * hydro_gamma_minus_one, parts, xparts, convert_part_u,
-      "Co-moving thermal energies per unit mass of the particles");
+      "Pressures", FLOAT, 1, UNIT_CONV_PRESSURE, -3.f * hydro_gamma, parts,
+      xparts, convert_P, "Co-moving pressures of the particles");
 
   list[8] = io_make_output_field_convert_part(
-      "Pressures", FLOAT, 1, UNIT_CONV_PRESSURE, -3.f * hydro_gamma, parts,
-      xparts, convert_part_P, "Co-moving pressures of the particles");
+      "Entropies", FLOAT, 1, UNIT_CONV_ENTROPY_PER_UNIT_MASS, 0.f, parts,
+      xparts, convert_S, "Co-moving entropies per unit mass of the particles");
 
   list[9] = io_make_output_field_convert_part(
       "Potentials", FLOAT, 1, UNIT_CONV_POTENTIAL, -1.f, parts, xparts,
       convert_part_potential,
       "Co-moving gravitational potential at position of the particles");
 
-#ifdef DEBUG_INTERACTIONS_SPH
+  list[10] = io_make_output_field_convert_part(
+      "ViscosityParameters", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, parts, xparts,
+      convert_viscosity, "Visosity coefficient (alpha_visc) of the particles");
 
-  list += *num_fields;
-  *num_fields += 4;
-
-  list[0] = io_make_output_field("Num_ngb_density", INT, 1, UNIT_CONV_NO_UNITS,
-                                 parts, num_ngb_density);
-  list[1] = io_make_output_field("Num_ngb_force", INT, 1, UNIT_CONV_NO_UNITS,
-                                 parts, num_ngb_force);
-  list[2] =
-      io_make_output_field("Ids_ngb_density", LONGLONG, MAX_NUM_OF_NEIGHBOURS,
-                           UNIT_CONV_NO_UNITS, parts, ids_ngbs_density);
-  list[3] =
-      io_make_output_field("Ids_ngb_force", LONGLONG, MAX_NUM_OF_NEIGHBOURS,
-                           UNIT_CONV_NO_UNITS, parts, ids_ngbs_force);
-
-#endif
+  list[11] = io_make_output_field_convert_part(
+      "DiffusionParameters", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, parts, xparts,
+      convert_diffusion, "Diffusion coefficient (alpha_diff) of the particles");
 }
 
 /**
@@ -215,11 +223,15 @@ INLINE static void hydro_write_particles(const struct part* parts,
 INLINE static void hydro_write_flavour(hid_t h_grpsph) {
 
   /* Viscosity and thermal conduction */
+  /* Nothing in this minimal model... */
   io_write_attribute_s(h_grpsph, "Thermal Conductivity Model",
-                       "(No treatment) as in Springel (2005)");
-  io_write_attribute_s(
-      h_grpsph, "Viscosity Model",
-      "as in Springel (2005), i.e. Monaghan (1992) with Balsara (1995) switch");
+                       "Simple treatment as in Price (2017)");
+  io_write_attribute_s(h_grpsph, "Viscosity Model",
+                       "Simplified version of Cullen & Denhen (2011)");
+
+  /* Time integration properties */
+  io_write_attribute_f(h_grpsph, "Maximal Delta u change over dt",
+                       const_max_u_change);
 }
 
 /**

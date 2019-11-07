@@ -1,6 +1,7 @@
 /*******************************************************************************
  * This file is part of SWIFT.
- * Copyright (c) 2012 Pedro Gonnet (pedro.gonnet@durham.ac.uk)
+ * Coypright (c) 2019 Josh Borrow (joshua.borrow@durham.ac.uk) &
+ *                    Matthieu Schaller (matthieu.schaller@durham.ac.uk)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published
@@ -21,127 +22,165 @@
 
 /**
  * @file Phantom/hydro_part.h
- * @brief SPH interaction functions following the Phantom version of SPH.
- *
- * The interactions computed here are the ones presented in the paper
- * Price et al. 2018: Phantom A Smoothed Particle Hydrodynamic and Magnetic...
+ * @brief Density-Energy conservative implementation of SPH,
+ *        with added diffusive physics (Cullen & Denhen 2011 AV,
+ *        Price 2017 (PHANTOM) diffusion) (particle definition)
  */
 
 #include "black_holes_struct.h"
 #include "chemistry_struct.h"
 #include "cooling_struct.h"
-#include "logger.h"
-#include "pressure_floor_struct.h"
 #include "star_formation_struct.h"
 #include "tracers_struct.h"
 
-/* Extra particle data not needed during the SPH loops over neighbours. */
+/**
+ * @brief Particle fields not needed during the SPH loops over neighbours.
+ *
+ * This structure contains the particle fields that are not used in the
+ * density or force loops. Quantities should be used in the kick, drift and
+ * potentially ghost tasks only.
+ */
 struct xpart {
 
-  /* Offset between current position and position at last tree rebuild. */
+  /*! Offset between current position and position at last tree rebuild. */
   float x_diff[3];
 
-  /* Offset between the current position and position at the last sort. */
+  /*! Offset between the current position and position at the last sort. */
   float x_diff_sort[3];
 
-  /* Velocity at the last full step. */
+  /*! Velocity at the last full step. */
   float v_full[3];
 
-  /* Gravitational acceleration at the last full step. */
+  /*! Gravitational acceleration at the last full step. */
   float a_grav[3];
 
-  /* Entropy at the last full step. */
-  float entropy_full;
+  /*! Internal energy at the last full step. */
+  float u_full;
 
-  /* Additional data used to record cooling information */
+  /*! Additional data used to record cooling information */
   struct cooling_xpart_data cooling_data;
 
   /* Additional data used by the tracers */
   struct tracers_xpart_data tracers_data;
 
-  /* Additional data used by the star formation */
+  /* Additional data used by the tracers */
   struct star_formation_xpart_data sf_data;
-
-#ifdef WITH_LOGGER
-  /* Additional data for the particle logger */
-  struct logger_part_data logger_data;
-#endif
 
 } SWIFT_STRUCT_ALIGN;
 
-/* Data of a single particle. */
+/**
+ * @brief Particle fields for the SPH particles
+ *
+ * The density and force substructures are used to contain variables only used
+ * within the density and force loops over neighbours. All more permanent
+ * variables should be declared in the main part of the part structure,
+ */
 struct part {
 
-  /* Particle ID. */
+  /*! Particle unique ID. */
   long long id;
 
-  /* Pointer to corresponding gravity part. */
+  /*! Pointer to corresponding gravity part. */
   struct gpart* gpart;
 
-  /* Particle position. */
+  /*! Particle position. */
   double x[3];
 
-  /* Particle predicted velocity. */
+  /*! Particle predicted velocity. */
   float v[3];
 
-  /* Particle acceleration. */
+  /*! Particle acceleration. */
   float a_hydro[3];
 
-  /* Particle cutoff radius. */
-  float h;
-
-  /* Particle mass. */
+  /*! Particle mass. */
   float mass;
 
-  /* Particle density. */
+  /*! Particle smoothing length. */
+  float h;
+
+  /*! Particle internal energy. */
+  float u;
+
+  /*! Time derivative of the internal energy. */
+  float u_dt;
+
+  /*! Particle density. */
   float rho;
 
-  /* Particle entropy. */
-  float entropy;
+  /* Store viscosity information in a separate struct. */
+  struct {
 
-  /* Entropy time derivative */
-  float entropy_dt;
+    /*! Particle velocity divergence */
+    float div_v;
 
+    /*! Particle velocity divergence from previous step */
+    float div_v_previous_step;
+
+    /*! Artificial viscosity parameter */
+    float alpha;
+
+    /*! Signal velocity */
+    float v_sig;
+
+  } viscosity;
+
+  /* Store thermal diffusion information in a separate struct. */
+  struct {
+
+    /*! Thermal diffusion coefficient */
+    float alpha;
+
+  } diffusion;
+
+  /* Store density/force specific stuff. */
   union {
 
+    /**
+     * @brief Structure for the variables only used in the density loop over
+     * neighbours.
+     *
+     * Quantities in this sub-structure should only be accessed in the density
+     * loop over neighbours and the ghost task.
+     */
     struct {
 
-      /* Number of neighbours. */
+      /*! Neighbour number count. */
       float wcount;
 
-      /* Number of neighbours spatial derivative. */
+      /*! Derivative of the neighbour number with respect to h. */
       float wcount_dh;
 
-      /* Derivative of the density with respect to h. */
+      /*! Derivative of density with respect to h */
       float rho_dh;
 
-      /* Particle velocity curl. */
+      /*! Particle velocity curl. */
       float rot_v[3];
-
-      /* Particle velocity divergence. */
-      float div_v;
 
     } density;
 
+    /**
+     * @brief Structure for the variables only used in the force loop over
+     * neighbours.
+     *
+     * Quantities in this sub-structure should only be accessed in the force
+     * loop over neighbours and the ghost, drift and kick tasks.
+     */
     struct {
 
-      /* Balsara switch */
-      float balsara;
-
-      /*! "Grad h" term */
+      /*! "Grad h" term -- only partial in P-U */
       float f;
 
-      /* Pressure over density squared  */
-      float P_over_rho2;
+      /*! Particle pressure. */
+      float pressure;
 
-      /* Particle sound speed. */
+      /*! Particle soundspeed. */
       float soundspeed;
 
-      /* Signal velocity. */
-      float v_sig;
-
-      /* Time derivative of the smoothing length */
+      /*! Time derivative of smoothing length  */
       float h_dt;
+
+      /*! Balsara switch */
+      float balsara;
 
     } force;
   };
@@ -152,13 +191,10 @@ struct part {
   /*! Black holes information (e.g. swallowing ID) */
   struct black_holes_part_data black_holes_data;
 
-  /* Additional data used by the pressure floor */
-  struct pressure_floor_part_data pressure_floor_data;
-
-  /* Time-step length */
+  /*! Time-step length */
   timebin_t time_bin;
 
-  /* Need waking-up ? */
+  /* Need waking up ? */
   timebin_t wakeup;
 
 #ifdef SWIFT_DEBUG_CHECKS
@@ -169,20 +205,6 @@ struct part {
   /* Time of the last kick */
   integertime_t ti_kick;
 
-#endif
-
-#ifdef DEBUG_INTERACTIONS_SPH
-  /*! List of interacting particles in the density SELF and PAIR */
-  long long ids_ngbs_density[MAX_NUM_OF_NEIGHBOURS];
-
-  /*! List of interacting particles in the force SELF and PAIR */
-  long long ids_ngbs_force[MAX_NUM_OF_NEIGHBOURS];
-
-  /*! Number of interactions in the density SELF and PAIR */
-  int num_ngb_density;
-
-  /*! Number of interactions in the force SELF and PAIR */
-  int num_ngb_force;
 #endif
 
 } SWIFT_STRUCT_ALIGN;

@@ -1,6 +1,7 @@
 /*******************************************************************************
  * This file is part of SWIFT.
- * Coypright (c) 2016 Matthieu Schaller (matthieu.schaller@durham.ac.uk)
+ * Coypright (c) 2019 Josh Borrow (joshua.borrow@durham.ac.uk) &
+ *                    Matthieu Schaller (matthieu.schaller@durham.ac.uk)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published
@@ -16,25 +17,31 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  ******************************************************************************/
+
 #ifndef SWIFT_PHANTOM_HYDRO_DEBUG_H
 #define SWIFT_PHANTOM_HYDRO_DEBUG_H
+
+/**
+ * @file Phantom/hydro_debug.h
+ * @brief Density-Energy conservative implementation of SPH,
+ *        with added diffusive physics (Cullen & Denhen 2011 AV,
+ *        Price 2017 (PHANTOM) diffusion) (Debugging routines)
+ */
 
 __attribute__((always_inline)) INLINE static void hydro_debug_particle(
     const struct part* p, const struct xpart* xp) {
   printf(
       "x=[%.3e,%.3e,%.3e], "
-      "v=[%.3e,%.3e,%.3e],v_full=[%.3e,%.3e,%.3e] \n a=[%.3e,%.3e,%.3e],\n "
-      "h=%.3e, wcount=%.3f, wcount_dh=%.3e, m=%.3e, dh_drho=%.3e, rho=%.3e, "
-      "P=%.3e, P_over_rho2=%.3e, S=%.3e, dS/dt=%.3e, c=%.3e\n"
-      "divV=%.3e, rotV=[%.3e,%.3e,%.3e], balsara=%.3e \n "
-      "v_sig=%e dh/dt=%.3e time_bin=%d wakeup=%d\n",
+      "v=[%.3e,%.3e,%.3e],v_full=[%.3e,%.3e,%.3e] \n a=[%.3e,%.3e,%.3e], "
+      "u=%.3e, du/dt=%.3e v_sig=%.3e, P=%.3e\n"
+      "h=%.3e, dh/dt=%.3e wcount=%d, m=%.3e, dh_drho=%.3e, rho=%.3e, \n"
+      "alpha=%.3e \n"
+      "time_bin=%d\n",
       p->x[0], p->x[1], p->x[2], p->v[0], p->v[1], p->v[2], xp->v_full[0],
       xp->v_full[1], xp->v_full[2], p->a_hydro[0], p->a_hydro[1], p->a_hydro[2],
-      p->h, p->density.wcount, p->density.wcount_dh, p->mass, p->density.rho_dh,
-      p->rho, hydro_get_comoving_pressure(p), p->force.P_over_rho2, p->entropy,
-      p->entropy_dt, p->force.soundspeed, p->density.div_v, p->density.rot_v[0],
-      p->density.rot_v[1], p->density.rot_v[2], p->force.balsara,
-      p->force.v_sig, p->force.h_dt, p->time_bin, p->wakeup);
+      p->u, p->u_dt, p->viscosity.v_sig, hydro_get_comoving_pressure(p), p->h,
+      p->force.h_dt, (int)p->density.wcount, p->mass, p->density.rho_dh, p->rho,
+      p->viscosity.alpha, p->time_bin);
 }
 
 #endif /* SWIFT_PHANTOM_HYDRO_DEBUG_H */
