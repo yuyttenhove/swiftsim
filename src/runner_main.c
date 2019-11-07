@@ -374,8 +374,9 @@ void *runner_main(void *data) {
             if (mpipacked_xvparts_supported) {
               /* If sending full then nothing to do, otherwise we can free the
                * packed buffer. Next send can be partial. */
-              if (!t->sendfull) swift_free("xvparts", t->buff);
-              t->sendfull = 0;
+              if ((t->sendfull & task_mpitype_xv) != task_mpitype_xv)
+                swift_free("xvparts", t->buff);
+              t->sendfull &= ~task_mpitype_xv;
             }
           } else if (t->subtype == task_subtype_tend_part) {
             free(t->buff);
@@ -416,11 +417,11 @@ void *runner_main(void *data) {
               /* If sending full then nothing to do, otherwise we need to
                * unpack and free the packed buffer. Next send will be
                * partial. */
-              if (!t->sendfull) {
+              if ((t->sendfull & task_mpitype_xv) != task_mpitype_xv) {
                 mpipacked_unpack_parts_xv(ci, t->buff);
                 swift_free("xvparts", t->buff);
               }
-              t->sendfull = 0;
+              t->sendfull &= ~task_mpitype_xv;
             }
             runner_do_recv_part(r, ci, 1, 1);
           } else if (t->subtype == task_subtype_rho) {

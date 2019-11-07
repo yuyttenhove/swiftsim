@@ -164,6 +164,30 @@ extern MPI_Comm subtaskMPI_comms[task_subtype_count];
 #endif
 
 /**
+ *  @brief Space efficient flags for different types of MPI send and recv.
+ */
+enum task_mpi_types {
+  task_mpitype_none = 0,
+  task_mpitype_bpart_feedback = (1 << 0),
+  task_mpitype_bpart_merger = (1 << 1),
+  task_mpitype_bpart_rho = (1 << 2),
+  task_mpitype_bpart_swallow = (1 << 3),
+  task_mpitype_gpart = (1 << 4),
+  task_mpitype_gradient = (1 << 5),
+  task_mpitype_multipole = (1 << 6),
+  task_mpitype_part_swallow = (1 << 7),
+  task_mpitype_rho = (1 << 8),
+  task_mpitype_sf_counts = (1 << 9),
+  task_mpitype_spart = (1 << 10),
+  task_mpitype_tend_bpart = (1 << 11),
+  task_mpitype_tend_gpart = (1 << 12),
+  task_mpitype_tend_part = (1 << 13),
+  task_mpitype_tend_spart = (1 << 14),
+  task_mpitype_xv = (1 << 15)
+};
+
+
+/**
  * @brief A task to be run by the #scheduler.
  */
 struct task {
@@ -185,9 +209,9 @@ struct task {
   /*! MPI request corresponding to this task */
   MPI_Request req;
 
-  /*! Need a full send (after cell teardown), otherwise we can send partial
-   *  updates.*/
-  int sendfull;
+  /*! Flags that indicate we need a full send (after cell teardown), otherwise
+   *  we can send partial updates for the MPI type, if possible. */
+  unsigned int sendfull;
 
 #endif
 

@@ -1113,6 +1113,10 @@ struct task *scheduler_addtask(struct scheduler *s, enum task_types type,
 #endif
   t->tic = 0;
   t->toc = 0;
+#ifdef WITH_MPI
+  /* Set all bits. */
+  t->sendfull = UINT_MAX;
+#endif
 
   if (ci != NULL) cell_set_flag(ci, cell_flag_has_tasks);
   if (cj != NULL) cell_set_flag(cj, cell_flag_has_tasks);
@@ -1742,7 +1746,7 @@ void scheduler_enqueue(struct scheduler *s, struct task *t) {
         } else if (t->subtype == task_subtype_xv) {
 
           count = t->ci->hydro.count;
-          if (t->sendfull) {
+          if (t->sendfull & task_mpitype_xv) {
             size = count * sizeof(struct part);
             type = part_mpi_type;
             buff = t->ci->hydro.parts;
@@ -1870,7 +1874,7 @@ void scheduler_enqueue(struct scheduler *s, struct task *t) {
         } else if (t->subtype == task_subtype_xv) {
 
           count = t->ci->hydro.count;
-          if (t->sendfull) {
+          if (t->sendfull & task_mpitype_xv) {
             size = count * sizeof(struct part);
             type = part_mpi_type;
             buff = t->ci->hydro.parts;
