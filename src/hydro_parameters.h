@@ -53,6 +53,8 @@
 #include "./hydro/AnarchyDU/hydro_parameters.h"
 #elif defined(ANARCHY_PU_SPH)
 #include "./hydro/AnarchyPU/hydro_parameters.h"
+#elif defined(PHANTOM_SPH)
+#include "./hydro/Phantom/hydro_parameters.h"
 #else
 #error "Invalid choice of SPH variant"
 #endif

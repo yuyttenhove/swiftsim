@@ -99,6 +99,9 @@ struct phys_const {
 
   /*! Reduced hubble constant units (i.e. H_0 / h) */
   double const_reduced_hubble;
+
+  /*! vacuum magnetic permeability [g cm s^-2 A^-2] */
+  double const_magnetic_constant;
 };
 
 void phys_const_init(const struct unit_system* us, struct swift_params* params,

@@ -102,4 +102,7 @@ const double const_primordial_He_fraction_cgs = 0.245;
  * [s^-1] */
 const double const_reduced_hubble_cgs = 3.2407792894458e-18;
 
+/*! vacuum magnetic permeability [g cm s^-2 A^-2] */
+const double const_magnetic_constant_cgs = 0.125663706212;
+
 #endif /* SWIFT_PHYSICAL_CONSTANTS_CGS_H */

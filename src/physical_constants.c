@@ -139,6 +139,10 @@ void phys_const_init(const struct unit_system *us, struct swift_params *params,
   internal_const->const_reduced_hubble =
       const_reduced_hubble_cgs /
       units_general_cgs_conversion_factor(us, dimension_reduced_hubble);
+
+  const float dimension_magnetic_constant[5] = {1, 1, -2, -2, 0}; /* [g cm s^-2 A^-2] */
+  internal_const->const_magnetic_constant = const_magnetic_constant_cgs /
+    units_general_cgs_conversion_factor(us, dimension_magnetic_constant);
 }
 
 /**
@@ -162,6 +166,7 @@ void phys_const_print(const struct phys_const *internal_const) {
   message("%25s = %e", "Parsec", internal_const->const_parsec);
   message("%25s = %e", "Solar mass", internal_const->const_solar_mass);
   message("%25s = %e", "km/s/Mpc", internal_const->const_reduced_hubble);
+  message("%25s = %e", "Magnetic constant", internal_const->const_magnetic_constant);
 }
 
 /**
