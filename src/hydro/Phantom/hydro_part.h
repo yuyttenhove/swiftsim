@@ -192,17 +192,11 @@ struct part {
    */
   struct {
 
-    /*! magnetic field at last full step */
-    float B_full[3];
-
     /*! prediction of the magnetic field */
-    float B_pred[3];
+    float B[3];
 
     /*! Divergence cleaning variable */
     float psi;
-
-    /*! Pressure ratio (thermal / magnetic) */
-    float beta;
 
     /*! Divergence error (h * |div B| / |B|) */
     float eps;
@@ -213,6 +207,9 @@ struct part {
     struct {
       float B_rho_dt[3];
       float psi_c_dt;
+      float soundspeed;
+      /*! Pressure ratio (thermal / magnetic) */
+      float beta;
     } force;
 
   } mhd;

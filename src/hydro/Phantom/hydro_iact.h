@@ -319,12 +319,12 @@ __attribute__((always_inline)) INLINE static void runner_iact_force(
   const float wj_dr = hjd_inv * wj_dx;
 
   /* Compute B * gradW */
-  const float B_gradW_i = (dx[0] * pi->mhd.B_pred[0] +
-                           dx[1] * pi->mhd.B_pred[1] +
-                           dx[2] * pi->mhd.B_pred[2]) * wi_dr * r_inv;
-  const float B_gradW_j = (dx[0] * pj->mhd.B_pred[0] +
-                           dx[1] * pj->mhd.B_pred[1] +
-                           dx[2] * pj->mhd.B_pred[2]) * wj_dr * r_inv;
+  const float B_gradW_i = (dx[0] * pi->mhd.B[0] +
+                           dx[1] * pi->mhd.B[1] +
+                           dx[2] * pi->mhd.B[2]) * wi_dr * r_inv;
+  const float B_gradW_j = (dx[0] * pj->mhd.B[0] +
+                           dx[1] * pj->mhd.B[1] +
+                           dx[2] * pj->mhd.B[2]) * wj_dr * r_inv;
 
   /* Compute dv dot r. */
   const float dvdr = (pi->v[0] - pj->v[0]) * dx[0] +
@@ -374,12 +374,12 @@ __attribute__((always_inline)) INLINE static void runner_iact_force(
     }
 
     /* Compute the stabilizing term of the magnetic divergence */
-    const float beta_i = pi->mhd.beta;
-    const float beta_j = pj->mhd.beta;
+    const float beta_i = pi->mhd.force.beta;
+    const float beta_j = pj->mhd.force.beta;
     const float B_hat_i = beta_i > 10.f ? 0 :
-      (beta_i > 2.f ? (10.f - beta_i) * pi->mhd.B_pred[i]: pi->mhd.B_pred[i]);
+      (beta_i > 2.f ? (10.f - beta_i) * pi->mhd.B[i]: pi->mhd.B[i]);
     const float B_hat_j = beta_j > 10.f ? 0 :
-      (beta_j > 2.f ? (10.f - beta_j) * pj->mhd.B_pred[i]: pj->mhd.B_pred[i]);
+      (beta_j > 2.f ? (10.f - beta_j) * pj->mhd.B[i]: pj->mhd.B[i]);
 
     /* Compute the acceleration due to the magnetic divergence */
     const float div_b_acc = B_gradW_i * pi->force.f / (rhoi * rhoi) +
@@ -429,7 +429,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_force(
 
 
   /* Compute the evolution of the magnetic field */
-  const float c_mag_i = magnetic_get_physical_soundspeed(pi);
+  const float c_mag_i = pi->mhd.force.soundspeed;
   // const float c_mag_j = magnetic_get_physical_soundspeed(pj);
 
   const float psi_i = pi->mhd.psi;
@@ -446,9 +446,9 @@ __attribute__((always_inline)) INLINE static void runner_iact_force(
   pi->mhd.force.B_rho_dt[2] -= mj * (psi_i * pi->force.f / (rhoi * rhoi) * wi_dr + psi_j * pj->force.f / (rhoj * rhoj) * wj_dr) * dx[2] * r_inv;
 
   /* Compute the evolution of the divergence cleaning field */
-  const float dB[3] = {pi->mhd.B_pred[0] - pj->mhd.B_pred[0],
-                       pi->mhd.B_pred[1] - pj->mhd.B_pred[1],
-                       pi->mhd.B_pred[2] - pj->mhd.B_pred[2]};
+  const float dB[3] = {pi->mhd.B[0] - pj->mhd.B[0],
+                       pi->mhd.B[1] - pj->mhd.B[1],
+                       pi->mhd.B[2] - pj->mhd.B[2]};
 
   const float dB_gradW = (dB[0] * dx[0] +
                           dB[1] * dx[1] +

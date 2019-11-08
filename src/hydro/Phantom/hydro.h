@@ -471,6 +471,7 @@ __attribute__((always_inline)) INLINE static float hydro_compute_timestep(
   const float dt_cfl = 2.f * kernel_gamma * CFL_condition * cosmo->a * p->h /
                        (cosmo->a_factor_sound_speed * p->viscosity.v_sig);
 
+  error("Need to add criterion for MHD");
   return dt_cfl;
 }
 
@@ -711,14 +712,31 @@ __attribute__((always_inline)) INLINE static void magnetic_prepare_force(
   /* Compute the maxwell tensor */
   for(int i = 0; i < 3; i++) {
     for(int j = 0; j < 3; j++) {
-      const float Bi = p->mhd.B_pred[i];
-      const float Bj = p->mhd.B_pred[j];
+      const float Bi = p->mhd.B[i];
+      const float Bj = p->mhd.B[j];
       p->mhd.maxwell_stress[i][j] = - Bi * Bj / phys_const->const_magnetic_constant;
       if (i == j) {
         p->mhd.maxwell_stress[i][j] += p->force.pressure + 0.5 * Bi * Bi;
       }
     }
   }
+
+  /* Compute the norm of the magnetic field */
+  const float B2 = p->mhd.B[0] * p->mhd.B[0] +
+    p->mhd.B[1] * p->mhd.B[1] +
+    p->mhd.B[2] * p->mhd.B[2];
+
+  /* Compute the sound speed */
+  error("Need magnetic constant");
+  const float alfven_speed2 = B2 / p->rho;
+  p->mhd.force.soundspeed = alfven_speed2 +
+    p->force.soundspeed * p->force.soundspeed;
+  p->mhd.force.soundspeed = sqrtf(p->mhd.force.soundspeed);
+
+
+  /* Compute the beta plasma parameter */
+  const float pressure_B = 0.5 * sqrtf(B2);
+  p->mhd.force.beta = p->force.pressure / pressure_B;
 
 }
 
@@ -823,6 +841,10 @@ __attribute__((always_inline)) INLINE static void magnetic_reset_acceleration(
 
   /* Reset the divergence cleaning field */
   p->mhd.force.psi_c_dt = 0.f;
+
+  /* Reset the error */
+  error("Maybe should be done in density loop");
+  p->mhd.eps = 0;
 }
 
 /**
@@ -877,7 +899,60 @@ __attribute__((always_inline)) INLINE static void hydro_reset_predicted_values(
   p->force.soundspeed = soundspeed;
 
   p->viscosity.v_sig = max(p->viscosity.v_sig, 2.f * soundspeed);
+
 }
+
+/**
+ * @brief Predict additional particle fields forward in time when drifting
+ *
+ * Additional hydrodynamic quantites are drifted forward in time here. These
+ * include thermal quantities (thermal energy or total energy or entropy, ...).
+ *
+ * Note the different time-step sizes used for the different quantities as they
+ * include cosmological factors.
+ *
+ * @param p The particle.
+ * @param xp The extended data of the particle.
+ * @param dt_drift The drift time-step for positions.
+ * @param dt_therm The drift time-step for thermal quantities.
+ * @param cosmo The cosmological model.
+ * @param hydro_props The properties of the hydro scheme.
+ * @param floor_props The properties of the entropy floor.
+ */
+__attribute__((always_inline)) INLINE static void magnetic_drift_part(
+    struct part *restrict p, const struct xpart *restrict xp, float dt_drift,
+    float dt_therm, const struct cosmology *cosmo,
+    const struct hydro_props *hydro_props,
+    const struct entropy_floor_properties *floor_props) {
+
+  /* Evolve the magnetic field */
+  error("Might need to evolve B/rho (same for psi)");
+  p->mhd.B[0] += p->mhd.force.B_rho_dt[0] * dt_drift * p->rho;
+  p->mhd.B[1] += p->mhd.force.B_rho_dt[1] * dt_drift;
+  p->mhd.B[2] += p->mhd.force.B_rho_dt[2] * dt_drift;
+
+  /* Compute the norm of the magnetic field */
+  const float B2 = p->mhd.B[0] * p->mhd.B[0] +
+    p->mhd.B[1] * p->mhd.B[1] +
+    p->mhd.B[2] * p->mhd.B[2];
+
+  /* Compute the sound speed */
+  error("Need magnetic constant");
+  const float alfven_speed2 = B2 / p->rho;
+  p->mhd.force.soundspeed = alfven_speed2 +
+    p->force.soundspeed * p->force.soundspeed;
+  p->mhd.force.soundspeed = sqrtf(p->mhd.force.soundspeed);
+
+
+  /* Compute the beta plasma parameter */
+  const float pressure_B = 0.5 * sqrtf(B2);
+  p->mhd.force.beta = p->force.pressure / pressure_B;
+
+  /* Evolve the divergence cleaning field */
+  p->mhd.psi += p->mhd.force.psi_c_dt * dt_drift * p->mhd.force.soundspeed;
+
+}
+
 
 /**
  * @brief Predict additional particle fields forward in time when drifting
@@ -944,6 +1019,8 @@ __attribute__((always_inline)) INLINE static void hydro_predict_extra(
   p->force.soundspeed = soundspeed;
 
   p->viscosity.v_sig = max(p->viscosity.v_sig, 2.f * soundspeed);
+
+  magnetic_drift_part(p, xp, dt_drift, dt_therm, cosmo, hydro_props, floor_props);
 }
 
 /**
@@ -1087,6 +1164,23 @@ __attribute__((always_inline)) INLINE static void hydro_convert_quantities(
  * @param p The particle to act upon
  * @param xp The extended particle data to act upon
  */
+__attribute__((always_inline)) INLINE static void magnetic_first_init_part(
+    struct part *restrict p, struct xpart *restrict xp) {
+
+  p->mhd.psi = 0.f;
+}
+
+
+/**
+ * @brief Initialises the particles for the first time
+ *
+ * This function is called only once just after the ICs have been
+ * read in to do some conversions or assignments between the particle
+ * and extended particle fields.
+ *
+ * @param p The particle to act upon
+ * @param xp The extended particle data to act upon
+ */
 __attribute__((always_inline)) INLINE static void hydro_first_init_part(
     struct part *restrict p, struct xpart *restrict xp) {
 
@@ -1102,6 +1196,8 @@ __attribute__((always_inline)) INLINE static void hydro_first_init_part(
 
   hydro_reset_acceleration(p);
   hydro_init_part(p, NULL);
+
+  magnetic_first_init_part(p, xp);
 }
 
 /**

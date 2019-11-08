@@ -65,7 +65,7 @@ INLINE static void hydro_read_particles(struct part* parts,
   list[7] = io_make_input_field("Density", FLOAT, 1, OPTIONAL,
                                 UNIT_CONV_DENSITY, parts, rho);
   list[8] = io_make_input_field("MagneticField", FLOAT, 3, OPTIONAL,
-                                UNIT_CONV_DENSITY, parts, mhd.B_pred);
+                                UNIT_CONV_DENSITY, parts, mhd.B);
 }
 
 INLINE static void convert_S(const struct engine* e, const struct part* p,
@@ -219,7 +219,7 @@ INLINE static void hydro_write_particles(const struct part* parts,
 
   list[12] = io_make_output_field(
       "MagneticFields", FLOAT, 3, UNIT_CONV_MAGNETIC_FIELD, -2.f, parts,
-      mhd.B_pred, "Magnetic field of the particles");
+      mhd.B, "Magnetic field of the particles");
   message("Need to drift!");
 
   list[13] = io_make_output_field("MagneticDivergenceErrors", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f,
