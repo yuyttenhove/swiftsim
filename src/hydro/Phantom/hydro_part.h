@@ -27,10 +27,12 @@
  *        Price 2017 (PHANTOM) diffusion) (particle definition)
  */
 
+#include "align.h"
 #include "black_holes_struct.h"
 #include "chemistry_struct.h"
 #include "cooling_struct.h"
 #include "star_formation_struct.h"
+#include "timeline.h"
 #include "tracers_struct.h"
 
 /**
@@ -184,6 +186,28 @@ struct part {
 
     } force;
   };
+
+  /**
+   * @brief Structure for the MHD variables.
+   */
+  struct {
+
+    /*! Magnetic field / density */
+    float B_rho[3];
+
+    /*! Divergence cleaning variable / fast magnetosonic speed */
+    float psi_c;
+
+    /*! Pressure ratio (thermal / magnetic) */
+    float beta;
+
+    /*! Divergence error (h * |div B| / |B|) */
+    float eps;
+
+    /*! Maxwell stress tensor */
+    float maxwell_stress[3][3];
+
+  } mhd;
 
   /* Chemistry information */
   struct chemistry_part_data chemistry_data;

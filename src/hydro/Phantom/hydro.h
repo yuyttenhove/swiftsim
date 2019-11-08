@@ -34,6 +34,7 @@
 #include "dimension.h"
 #include "entropy_floor.h"
 #include "equation_of_state.h"
+#include "hydro_part.h"
 #include "hydro_properties.h"
 #include "hydro_space.h"
 #include "kernel_hydro.h"
@@ -672,6 +673,44 @@ __attribute__((always_inline)) INLINE static void hydro_part_has_no_neighbours(
 }
 
 /**
+ * @brief Prepare a particle for the magnetic force calculation.
+ *
+ * This function is called in the ghost task to convert some quantities coming
+ * from the density loop over neighbours into quantities ready to be used in the
+ * force loop over neighbours. Quantities are typically read from the density
+ * sub-structure and written to the force sub-structure.
+ * Examples of calculations done here include the calculation of viscosity term
+ * constants, thermal conduction terms, hydro conversions, etc.
+ *
+ * @param p The particle to act upon
+ * @param xp The extended particle data to act upon
+ * @param cosmo The current cosmological model.
+ * @param phys_const The physical constants in the internal unit system.
+ * @param hydro_props Hydrodynamic properties.
+ * @param dt_alpha The time-step used to evolve non-cosmological quantities such
+ *                 as the artificial viscosity.
+ */
+__attribute__((always_inline)) INLINE static void magnetic_prepare_force(
+    struct part *restrict p, struct xpart *restrict xp,
+    const struct cosmology *cosmo, const struct phys_const *phys_const,
+    const struct hydro_props *hydro_props,
+    const float dt_alpha) {
+
+  /* Compute the maxwell tensor */
+  for(int i = 0; i < 3; i++) {
+    for(int j = 0; j < 3; j++) {
+      const float Bi = p->mhd.B_rho[i] * p->rho;
+      const float Bj = p->mhd.B_rho[j] * p->rho;
+      p->mhd.maxwell_stress[i][j] = - Bi * Bj / phys_const->const_magnetic_constant;
+      if (i == j) {
+        p->mhd.maxwell_stress[i][j] += p->force.pressure + 0.5 * Bi * Bi;
+      }
+    }
+  }
+
+}
+
+  /**
  * @brief Prepare a particle for the force calculation.
  *
  * This function is called in the ghost task to convert some quantities coming
@@ -684,13 +723,15 @@ __attribute__((always_inline)) INLINE static void hydro_part_has_no_neighbours(
  * @param p The particle to act upon
  * @param xp The extended particle data to act upon
  * @param cosmo The current cosmological model.
+ * @param phys_const The physical constants in the internal unit system.
  * @param hydro_props Hydrodynamic properties.
  * @param dt_alpha The time-step used to evolve non-cosmological quantities such
  *                 as the artificial viscosity.
  */
 __attribute__((always_inline)) INLINE static void hydro_prepare_force(
     struct part *restrict p, struct xpart *restrict xp,
-    const struct cosmology *cosmo, const struct hydro_props *hydro_props,
+    const struct cosmology *cosmo, const struct phys_const *phys_const,
+    const struct hydro_props *hydro_props,
     const float dt_alpha) {
 
   /* Here we need to update the artificial viscosity */
@@ -731,7 +772,7 @@ __attribute__((always_inline)) INLINE static void hydro_prepare_force(
   } else {
     /* Integrate the alpha forward in time to decay back to alpha = alpha_loc */
     p->viscosity.alpha =
-        alpha_loc + (p->viscosity.alpha - alpha_loc) *
+      alpha_loc + (p->viscosity.alpha - alpha_loc) *
                         expf(-dt_alpha * sound_crossing_time_inverse *
                              hydro_props->viscosity.length);
   }
@@ -746,6 +787,10 @@ __attribute__((always_inline)) INLINE static void hydro_prepare_force(
   /* Multiply the alpha value in here, as we want to limit on an individual
    * basis! */
   p->force.balsara *= p->viscosity.alpha;
+
+
+  /* Prepare the magnetic field */
+  magnetic_prepare_force(p, xp, cosmo, phys_const, hydro_props, dt_alpha);
 }
 
 /**
@@ -930,6 +975,29 @@ __attribute__((always_inline)) INLINE static void hydro_kick_extra(
 }
 
 /**
+ * @brief Converts MHD quantity of a particle at the start of a run
+ *
+ * This function is called once at the end of the engine_init_particle()
+ * routine (at the start of a calculation) after the densities of
+ * particles have been computed.
+ * This can be used to convert B into B / rho.
+ *
+ * @param p The particle to act upon
+ * @param xp The extended particle to act upon
+ * @param cosmo The cosmological model.
+ * @param hydro_props The constants used in the scheme.
+ */
+__attribute__((always_inline)) INLINE static void magnetic_convert_quantities(
+    struct part *restrict p, struct xpart *restrict xp,
+    const struct cosmology *cosmo, const struct hydro_props *hydro_props) {
+
+  const float rho_inv = 1.f / p->rho;
+  for(int i = 0; i < 3; i++) {
+    p->mhd.B_rho[i] *= rho_inv;
+  }
+}
+
+/**
  * @brief Converts hydro quantity of a particle at the start of a run
  *
  * This function is called once at the end of the engine_init_particle()
@@ -976,6 +1044,8 @@ __attribute__((always_inline)) INLINE static void hydro_convert_quantities(
 
   p->force.pressure = pressure;
   p->force.soundspeed = soundspeed;
+
+  magnetic_convert_quantities(p, xp, cosmo, hydro_props);
 }
 
 /**
