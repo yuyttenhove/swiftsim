@@ -32,6 +32,7 @@
 /* Local headers */
 #include "common_io.h"
 #include "error.h"
+#include "physical_constants.h"
 #include "inline.h"
 
 /**
@@ -98,6 +99,9 @@ struct viscosity_global_data {
 
   /*! The decay length of the artificial viscosity (used in M&M, etc.) */
   float length;
+
+  /*! The magnetic constant */
+  float magnetic_const;
 };
 
 /*! Thermal diffusion parameters */
@@ -147,6 +151,8 @@ static INLINE void viscosity_init(struct swift_params* params,
 
   viscosity->length = parser_get_opt_param_float(
       params, "SPH:viscosity_length", hydro_props_default_viscosity_length);
+
+  viscosity->magnetic_const = phys_const->const_magnetic_constant;
 }
 
 /**

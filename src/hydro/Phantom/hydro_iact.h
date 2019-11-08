@@ -28,9 +28,12 @@
  */
 
 #include "adiabatic_index.h"
+#include "const.h"
+#include "dimension.h"
 #include "minmax.h"
 
 #include "./hydro_parameters.h"
+#include "hydro_part.h"
 
 /**
  * @brief Density interaction between two particles.
@@ -315,6 +318,14 @@ __attribute__((always_inline)) INLINE static void runner_iact_force(
   kernel_deval(xj, &wj, &wj_dx);
   const float wj_dr = hjd_inv * wj_dx;
 
+  /* Compute B * gradW */
+  const float B_gradW_i = (dx[0] * pi->mhd.B_pred[0] +
+                           dx[1] * pi->mhd.B_pred[1] +
+                           dx[2] * pi->mhd.B_pred[2]) * wi_dr * r_inv;
+  const float B_gradW_j = (dx[0] * pj->mhd.B_pred[0] +
+                           dx[1] * pj->mhd.B_pred[1] +
+                           dx[2] * pj->mhd.B_pred[2]) * wj_dr * r_inv;
+
   /* Compute dv dot r. */
   const float dvdr = (pi->v[0] - pj->v[0]) * dx[0] +
                      (pi->v[1] - pj->v[1]) * dx[1] +
@@ -345,28 +356,49 @@ __attribute__((always_inline)) INLINE static void runner_iact_force(
       r_inv;
 
   /* Compute gradient terms */
-  const float P_over_rho2_i = pressurei / (rhoi * rhoi) * pi->force.f;
-  const float P_over_rho2_j = pressurej / (rhoj * rhoj) * pj->force.f;
+  const float one_over_rho2_i = 1.f / (rhoi * rhoi) * pi->force.f;
+  const float one_over_rho2_j = 1.f / (rhoj * rhoj) * pj->force.f;
 
   /* SPH acceleration term */
-  const float sph_acc_term =
-      (P_over_rho2_i * wi_dr + P_over_rho2_j * wj_dr) * r_inv;
+  const float sph_acc_term_i = one_over_rho2_i * wi_dr * r_inv;
+  const float sph_acc_term_j = one_over_rho2_j * wj_dr * r_inv;
 
-  /* Assemble the acceleration */
-  const float acc = sph_acc_term + visc_acc_term;
+  for(int i = 0; i < 3; i++) {
+    /* Compute the matrix product between the maxwell tensor and dx  */
+    float Mdx_i = 0.f;
+    float Mdx_j = 0.f;
 
-  /* Use the force Luke ! */
-  pi->a_hydro[0] -= mj * acc * dx[0];
-  pi->a_hydro[1] -= mj * acc * dx[1];
-  pi->a_hydro[2] -= mj * acc * dx[2];
+    for(int j = 0; j < 3; j++) {
+      Mdx_i += pi->mhd.maxwell_stress[i][j] * dx[j];
+      Mdx_j += pj->mhd.maxwell_stress[i][j] * dx[j];
+    }
 
-  pj->a_hydro[0] += mi * acc * dx[0];
-  pj->a_hydro[1] += mi * acc * dx[1];
-  pj->a_hydro[2] += mi * acc * dx[2];
+    /* Compute the stabilizing term of the magnetic divergence */
+    const float beta_i = pi->mhd.beta;
+    const float beta_j = pj->mhd.beta;
+    const float B_hat_i = beta_i > 10.f ? 0 :
+      (beta_i > 2.f ? (10.f - beta_i) * pi->mhd.B_pred[i]: pi->mhd.B_pred[i]);
+    const float B_hat_j = beta_j > 10.f ? 0 :
+      (beta_j > 2.f ? (10.f - beta_j) * pj->mhd.B_pred[i]: pj->mhd.B_pred[i]);
+
+    /* Compute the acceleration due to the magnetic divergence */
+    const float div_b_acc = B_gradW_i * pi->force.f / (rhoi * rhoi) +
+      B_gradW_j * pj->force.f / (rhoj * rhoj);
+
+    /* Assemble the acceleration */
+    const float acc = sph_acc_term_i * Mdx_i +
+      sph_acc_term_j * Mdx_j + visc_acc_term * dx[i];
+
+
+    /* Use the force Luke ! */
+    pi->a_hydro[0] -= mj * (acc - B_hat_i * div_b_acc);
+
+    pj->a_hydro[0] += mi * (acc - B_hat_j * div_b_acc);
+  }
 
   /* Get the time derivative for u. */
-  const float sph_du_term_i = P_over_rho2_i * dvdr * r_inv * wi_dr;
-  const float sph_du_term_j = P_over_rho2_j * dvdr * r_inv * wj_dr;
+  const float sph_du_term_i = pressurei * one_over_rho2_i * dvdr * r_inv * wi_dr;
+  const float sph_du_term_j = pressurej * one_over_rho2_j * dvdr * r_inv * wj_dr;
 
   /* Viscosity term */
   const float visc_du_term = 0.5f * visc_acc_term * dvdr_Hubble;
@@ -394,6 +426,45 @@ __attribute__((always_inline)) INLINE static void runner_iact_force(
   /* Get the time derivative for h. */
   pi->force.h_dt -= mj * dvdr * pi->force.f * r_inv / rhoj * wi_dr;
   pj->force.h_dt -= mi * dvdr * pj->force.f * r_inv / rhoi * wj_dr;
+
+
+  /* Compute the evolution of the magnetic field */
+  const float c_mag_i = magnetic_get_physical_soundspeed(pi);
+  // const float c_mag_j = magnetic_get_physical_soundspeed(pj);
+
+  const float psi_i = pi->mhd.psi;
+  const float psi_j = pj->mhd.psi;
+
+  /* Magnetic field evolution */
+  pi->mhd.force.B_rho_dt[0] -= pi->force.f / (rhoi * rhoi) * mj * (pi->v[0] - pj->v[0]) * B_gradW_i;
+  pi->mhd.force.B_rho_dt[1] -= pi->force.f / (rhoi * rhoi) * mj * (pi->v[1] - pj->v[1]) * B_gradW_i;
+  pi->mhd.force.B_rho_dt[2] -= pi->force.f / (rhoi * rhoi) * mj * (pi->v[2] - pj->v[2]) * B_gradW_i;
+
+  /* Magnetic field evolution due to the divergence cleaning */
+  pi->mhd.force.B_rho_dt[0] -= mj * (psi_i * pi->force.f / (rhoi * rhoi) * wi_dr + psi_j * pj->force.f / (rhoj * rhoj) * wj_dr) * dx[0] * r_inv;
+  pi->mhd.force.B_rho_dt[1] -= mj * (psi_i * pi->force.f / (rhoi * rhoi) * wi_dr + psi_j * pj->force.f / (rhoj * rhoj) * wj_dr) * dx[1] * r_inv;
+  pi->mhd.force.B_rho_dt[2] -= mj * (psi_i * pi->force.f / (rhoi * rhoi) * wi_dr + psi_j * pj->force.f / (rhoj * rhoj) * wj_dr) * dx[2] * r_inv;
+
+  /* Compute the evolution of the divergence cleaning field */
+  const float dB[3] = {pi->mhd.B_pred[0] - pj->mhd.B_pred[0],
+                       pi->mhd.B_pred[1] - pj->mhd.B_pred[1],
+                       pi->mhd.B_pred[2] - pj->mhd.B_pred[2]};
+
+  const float dB_gradW = (dB[0] * dx[0] +
+                          dB[1] * dx[1] +
+                          dB[2] * dx[2]) * wi_dr * r_inv;
+
+  /* Magnetic divergence contribution */
+  pi->mhd.force.psi_c_dt += c_mag_i * pi->force.f / rhoi * mj * dB_gradW;
+
+  /* Velocity divergence contribution */
+  pi->mhd.force.psi_c_dt += 0.5f * psi_i * pi->force.f / (c_mag_i * rhoi) * mj * dvdr * r_inv;
+
+  /* divergence damping */
+  const float sigma_c = 1;
+  const float tau = hi / (c_mag_i * sigma_c);
+  pi->mhd.force.psi_c_dt -= psi_i / (c_mag_i * tau);
+
 }
 
 /**

@@ -229,6 +229,18 @@ hydro_get_physical_soundspeed(const struct part *restrict p,
 }
 
 /**
+ * @brief Returns the physical fast magnetosonic speed of a particle
+ *
+ * @param p The particle of interest
+ * @param cosmo The cosmological model.
+ */
+__attribute__((always_inline)) INLINE static float
+magnetic_get_physical_soundspeed(const struct part *restrict p) {
+  error("TODO");
+  return 0;
+}
+
+/**
  * @brief Returns the comoving density of a particle
  *
  * @param p The particle of interest
@@ -699,8 +711,8 @@ __attribute__((always_inline)) INLINE static void magnetic_prepare_force(
   /* Compute the maxwell tensor */
   for(int i = 0; i < 3; i++) {
     for(int j = 0; j < 3; j++) {
-      const float Bi = p->mhd.B_rho[i] * p->rho;
-      const float Bj = p->mhd.B_rho[j] * p->rho;
+      const float Bi = p->mhd.B_pred[i];
+      const float Bj = p->mhd.B_pred[j];
       p->mhd.maxwell_stress[i][j] = - Bi * Bj / phys_const->const_magnetic_constant;
       if (i == j) {
         p->mhd.maxwell_stress[i][j] += p->force.pressure + 0.5 * Bi * Bi;
@@ -796,6 +808,26 @@ __attribute__((always_inline)) INLINE static void hydro_prepare_force(
 /**
  * @brief Reset acceleration fields of a particle
  *
+ * Resets all mhd time derivative fields in preparation
+ * for the sums taking  place in the various force tasks.
+ *
+ * @param p The particle to act upon
+ */
+__attribute__((always_inline)) INLINE static void magnetic_reset_acceleration(
+    struct part *restrict p) {
+
+  /* Reset the magnetic field. */
+  for(int i = 0; i < 3; i++) {
+    p->mhd.force.B_rho_dt[i] = 0.f;
+  }
+
+  /* Reset the divergence cleaning field */
+  p->mhd.force.psi_c_dt = 0.f;
+}
+
+/**
+ * @brief Reset acceleration fields of a particle
+ *
  * Resets all hydro acceleration and time derivative fields in preparation
  * for the sums taking  place in the various force tasks.
  *
@@ -812,6 +844,9 @@ __attribute__((always_inline)) INLINE static void hydro_reset_acceleration(
   /* Reset the time derivatives. */
   p->u_dt = 0.0f;
   p->force.h_dt = 0.0f;
+
+  /* Reset the MHD fields */
+  magnetic_reset_acceleration(p);
 }
 
 /**
@@ -989,13 +1024,7 @@ __attribute__((always_inline)) INLINE static void hydro_kick_extra(
  */
 __attribute__((always_inline)) INLINE static void magnetic_convert_quantities(
     struct part *restrict p, struct xpart *restrict xp,
-    const struct cosmology *cosmo, const struct hydro_props *hydro_props) {
-
-  const float rho_inv = 1.f / p->rho;
-  for(int i = 0; i < 3; i++) {
-    p->mhd.B_rho[i] *= rho_inv;
-  }
-}
+    const struct cosmology *cosmo, const struct hydro_props *hydro_props) {}
 
 /**
  * @brief Converts hydro quantity of a particle at the start of a run

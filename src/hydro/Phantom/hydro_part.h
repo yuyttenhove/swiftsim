@@ -192,11 +192,14 @@ struct part {
    */
   struct {
 
-    /*! Magnetic field / density */
-    float B_rho[3];
+    /*! magnetic field at last full step */
+    float B_full[3];
 
-    /*! Divergence cleaning variable / fast magnetosonic speed */
-    float psi_c;
+    /*! prediction of the magnetic field */
+    float B_pred[3];
+
+    /*! Divergence cleaning variable */
+    float psi;
 
     /*! Pressure ratio (thermal / magnetic) */
     float beta;
@@ -206,6 +209,11 @@ struct part {
 
     /*! Maxwell stress tensor */
     float maxwell_stress[3][3];
+
+    struct {
+      float B_rho_dt[3];
+      float psi_c_dt;
+    } force;
 
   } mhd;
 
