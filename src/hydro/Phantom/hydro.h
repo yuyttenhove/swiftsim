@@ -843,8 +843,7 @@ __attribute__((always_inline)) INLINE static void magnetic_reset_acceleration(
   p->mhd.force.psi_c_dt = 0.f;
 
   /* Reset the error */
-  error("Maybe should be done in density loop");
-  p->mhd.eps = 0;
+  p->mhd.divB = 0;
 }
 
 /**

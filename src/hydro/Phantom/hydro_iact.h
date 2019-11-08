@@ -491,6 +491,9 @@ __attribute__((always_inline)) INLINE static void runner_iact_force(
   pi->mhd.force.psi_c_dt -= psi_i / (c_mag_i * tau_i);
   pj->mhd.force.psi_c_dt -= psi_j / (c_mag_j * tau_j);
 
+  /* Compute the divergence of B */
+  pi->mhd.divB -= f_over_rho2_i * rhoi * mj * dBdx * wi_dr * r_inv;
+  pj->mhd.divB += f_over_rho2_j * rhoj * mi * dBdx * wj_dr * r_inv;
 }
 
 /**
@@ -679,7 +682,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force(
                       dB[1] * dx[1] +
                       dB[2] * dx[2]);
 
-  /* Magnetic divergence contribution */
+  /* div B contribution */
   pi->mhd.force.psi_c_dt += c_mag_i * f_over_rho2_i * rhoi * mj * dBdx * wi_dr * r_inv;
 
   /* Velocity divergence contribution */
@@ -689,6 +692,9 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force(
   const float sigma_c = 1;
   const float tau_i = hi / (c_mag_i * sigma_c);
   pi->mhd.force.psi_c_dt -= psi_i / (c_mag_i * tau_i);
+
+  /* Compute the divergence of B */
+  pi->mhd.divB -= f_over_rho2_i * rhoi * mj * dBdx * wi_dr * r_inv;
 
 }
 

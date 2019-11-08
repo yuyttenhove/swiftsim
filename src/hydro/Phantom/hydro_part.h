@@ -198,8 +198,8 @@ struct part {
     /*! Divergence cleaning variable */
     float psi;
 
-    /*! Divergence error (h * |div B| / |B|) */
-    float eps;
+    /*! Divergence of the magnetic field */
+    float divB;
 
     /*! Maxwell stress tensor */
     float maxwell_stress[3][3];

@@ -219,12 +219,13 @@ INLINE static void hydro_write_particles(const struct part* parts,
 
   list[12] = io_make_output_field(
       "MagneticFields", FLOAT, 3, UNIT_CONV_MAGNETIC_FIELD, -2.f, parts,
-      mhd.B, "Magnetic field of the particles");
+      mhd.B, "Co-moving magnetic field of the particles");
   message("Need to drift!");
 
-  list[13] = io_make_output_field("MagneticDivergenceErrors", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f,
-                                 parts, mhd.eps,
-                                  "Relative error of the magnetic divergence.");
+  list[13] = io_make_output_field(
+      "DivergenceMagneticFields", FLOAT, 1, UNIT_CONV_MAGNETIC_LINEAR_DENSITY, -3.f,
+      parts, mhd.divB,
+      "Co-moving divergence of the magnetic field.");
 }
 
 /**
