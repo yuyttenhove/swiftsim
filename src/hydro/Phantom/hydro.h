@@ -229,15 +229,58 @@ hydro_get_physical_soundspeed(const struct part *restrict p,
 }
 
 /**
+ * @brief Returns the physical alfven speed of a particle
+ *
+ * @param p The particle of interest
+ * @param cosmo The cosmological model.
+ */
+__attribute__((always_inline)) INLINE static float
+magnetic_get_physical_alfven_speed2(const struct part *restrict p,
+                                   const struct cosmology *cosmo) {
+
+  /* Compute the norm of the magnetic field */
+  const float B2 = p->mhd.B_pred[0] * p->mhd.B_pred[0] +
+    p->mhd.B_pred[1] * p->mhd.B_pred[1] +
+    p->mhd.B_pred[2] * p->mhd.B_pred[2];
+
+  /* Compute the sound speed */
+  error("Need magnetic constant");
+  return B2 / p->rho;
+}
+
+
+/**
  * @brief Returns the physical fast magnetosonic speed of a particle
  *
  * @param p The particle of interest
  * @param cosmo The cosmological model.
  */
 __attribute__((always_inline)) INLINE static float
-magnetic_get_physical_soundspeed(const struct part *restrict p) {
-  error("TODO");
-  return 0;
+magnetic_get_physical_magnetosonic_speed2(const struct part *restrict p,
+                                   const struct cosmology *cosmo) {
+
+  const float alfven_speed2 = magnetic_get_physical_alfven_speed2(p, cosmo);
+  const float soundspeed = hydro_get_physical_soundspeed(p, cosmo);
+  return alfven_speed2 + soundspeed * soundspeed;
+}
+
+/**
+ * @brief Returns the physical beta plasma of a particle
+ *
+ * @param p The particle of interest
+ * @param cosmo The cosmological model.
+ */
+__attribute__((always_inline)) INLINE static float
+magnetic_get_physical_beta(const struct part *restrict p,
+                           const struct cosmology *cosmo) {
+
+  /* Compute the norm of the magnetic field */
+  const float B2 = p->mhd.B_pred[0] * p->mhd.B_pred[0] +
+    p->mhd.B_pred[1] * p->mhd.B_pred[1] +
+    p->mhd.B_pred[2] * p->mhd.B_pred[2];
+
+  const float pressure_B = 0.5 * sqrtf(B2);
+  return hydro_get_physical_pressure(p, cosmo) / pressure_B;
 }
 
 /**
@@ -712,8 +755,8 @@ __attribute__((always_inline)) INLINE static void magnetic_prepare_force(
   /* Compute the maxwell tensor */
   for(int i = 0; i < 3; i++) {
     for(int j = 0; j < 3; j++) {
-      const float Bi = p->mhd.B[i];
-      const float Bj = p->mhd.B[j];
+      const float Bi = p->mhd.B_pred[i];
+      const float Bj = p->mhd.B_pred[j];
       p->mhd.maxwell_stress[i][j] = - Bi * Bj / phys_const->const_magnetic_constant;
       if (i == j) {
         p->mhd.maxwell_stress[i][j] += p->force.pressure + 0.5 * Bi * Bi;
@@ -721,23 +764,12 @@ __attribute__((always_inline)) INLINE static void magnetic_prepare_force(
     }
   }
 
-  /* Compute the norm of the magnetic field */
-  const float B2 = p->mhd.B[0] * p->mhd.B[0] +
-    p->mhd.B[1] * p->mhd.B[1] +
-    p->mhd.B[2] * p->mhd.B[2];
-
   /* Compute the sound speed */
-  error("Need magnetic constant");
-  const float alfven_speed2 = B2 / p->rho;
-  p->mhd.force.soundspeed = alfven_speed2 +
-    p->force.soundspeed * p->force.soundspeed;
-  p->mhd.force.soundspeed = sqrtf(p->mhd.force.soundspeed);
-
+  p->mhd.force.soundspeed =
+    sqrtf(magnetic_get_physical_magnetosonic_speed2(p, cosmo));
 
   /* Compute the beta plasma parameter */
-  const float pressure_B = 0.5 * sqrtf(B2);
-  p->mhd.force.beta = p->force.pressure / pressure_B;
-
+  p->mhd.force.beta = magnetic_get_physical_beta(p, cosmo);
 }
 
   /**
@@ -842,7 +874,7 @@ __attribute__((always_inline)) INLINE static void magnetic_reset_acceleration(
   /* Reset the divergence cleaning field */
   p->mhd.force.psi_c_dt = 0.f;
 
-  /* Reset the error */
+  /* Reset the divergence */
   p->mhd.divB = 0;
 }
 
@@ -878,6 +910,35 @@ __attribute__((always_inline)) INLINE static void hydro_reset_acceleration(
  * @param xp The extended data of this particle.
  * @param cosmo The cosmological model.
  */
+__attribute__((always_inline)) INLINE static void magnetic_reset_predicted_values(
+    struct part *restrict p, const struct xpart *restrict xp,
+    const struct cosmology *cosmo) {
+
+  /* Re-set the magnetic field */
+  for(int i = 0; i < 3; i++) {
+    p->mhd.B_pred[i] = xp->mhd.B_full[i];
+  }
+
+  /* Re-set the divergence cleaning */
+  p->mhd.psi_pred = xp->mhd.psi_full;
+
+  /* Compute the sound speed */
+  p->mhd.force.soundspeed =
+    sqrtf(magnetic_get_physical_magnetosonic_speed2(p, cosmo));
+
+
+  /* Compute the beta plasma parameter */
+  p->mhd.force.beta = magnetic_get_physical_beta(p, cosmo);
+}
+
+/**
+ * @brief Sets the values to be predicted in the drifts to their values at a
+ * kick time
+ *
+ * @param p The particle.
+ * @param xp The extended data of this particle.
+ * @param cosmo The cosmological model.
+ */
 __attribute__((always_inline)) INLINE static void hydro_reset_predicted_values(
     struct part *restrict p, const struct xpart *restrict xp,
     const struct cosmology *cosmo) {
@@ -899,6 +960,7 @@ __attribute__((always_inline)) INLINE static void hydro_reset_predicted_values(
 
   p->viscosity.v_sig = max(p->viscosity.v_sig, 2.f * soundspeed);
 
+  magnetic_reset_predicted_values(p, xp, cosmo);
 }
 
 /**
@@ -925,31 +987,21 @@ __attribute__((always_inline)) INLINE static void magnetic_drift_part(
     const struct entropy_floor_properties *floor_props) {
 
   /* Evolve the magnetic field */
-  error("Might need to evolve B/rho (same for psi)");
-  p->mhd.B[0] += p->mhd.force.B_rho_dt[0] * dt_drift * p->rho;
-  p->mhd.B[1] += p->mhd.force.B_rho_dt[1] * dt_drift;
-  p->mhd.B[2] += p->mhd.force.B_rho_dt[2] * dt_drift;
-
-  /* Compute the norm of the magnetic field */
-  const float B2 = p->mhd.B[0] * p->mhd.B[0] +
-    p->mhd.B[1] * p->mhd.B[1] +
-    p->mhd.B[2] * p->mhd.B[2];
+  p->mhd.B_pred[0] += p->mhd.force.B_rho_dt[0] * dt_drift * p->rho;
+  p->mhd.B_pred[1] += p->mhd.force.B_rho_dt[1] * dt_drift * p->rho;
+  p->mhd.B_pred[2] += p->mhd.force.B_rho_dt[2] * dt_drift * p->rho;
 
   /* Compute the sound speed */
-  error("Need magnetic constant");
-  const float alfven_speed2 = B2 / p->rho;
-  p->mhd.force.soundspeed = alfven_speed2 +
-    p->force.soundspeed * p->force.soundspeed;
-  p->mhd.force.soundspeed = sqrtf(p->mhd.force.soundspeed);
+  p->mhd.force.soundspeed =
+    sqrtf(magnetic_get_physical_magnetosonic_speed2(p, cosmo));
 
 
   /* Compute the beta plasma parameter */
-  const float pressure_B = 0.5 * sqrtf(B2);
-  p->mhd.force.beta = p->force.pressure / pressure_B;
+  p->mhd.force.beta = magnetic_get_physical_beta(p, cosmo);
 
   /* Evolve the divergence cleaning field */
-  p->mhd.psi += p->mhd.force.psi_c_dt * dt_drift * p->mhd.force.soundspeed;
-
+  p->mhd.psi_pred += p->mhd.force.psi_c_dt * dt_drift *
+    sqrtf(magnetic_get_physical_magnetosonic_speed2(p, cosmo));
 }
 
 
@@ -1043,6 +1095,38 @@ __attribute__((always_inline)) INLINE static void hydro_end_force(
 /**
  * @brief Kick the additional variables
  *
+ * Additional magnetic quantites are kicked forward in time here.
+ *
+ * @param p The particle to act upon.
+ * @param xp The particle extended data to act upon.
+ * @param dt_therm The time-step for this kick (for thermodynamic quantities).
+ * @param dt_grav The time-step for this kick (for gravity quantities).
+ * @param dt_hydro The time-step for this kick (for hydro quantities).
+ * @param dt_kick_corr The time-step for this kick (for gravity corrections).
+ * @param cosmo The cosmological model.
+ * @param hydro_props The constants used in the scheme
+ * @param floor_props The properties of the entropy floor.
+ */
+__attribute__((always_inline)) INLINE static void magnetic_kick_extra(
+    struct part *restrict p, struct xpart *restrict xp, float dt_therm,
+    float dt_grav, float dt_hydro, float dt_kick_corr,
+    const struct cosmology *cosmo, const struct hydro_props *hydro_props,
+    const struct entropy_floor_properties *floor_props) {
+
+  /* Integrate the magnetic field forward in time */
+  for(int i = 0; i < 3; i++) {
+    xp->mhd.B_full[i] += p->mhd.force.B_rho_dt[i] * dt_therm * p->rho;
+  }
+
+  /* Integrate the divergence cleaning forward in time */
+  xp->mhd.psi_full += p->mhd.force.psi_c_dt * dt_therm *
+    sqrtf(magnetic_get_physical_magnetosonic_speed2(p, cosmo));
+}
+
+
+/**
+ * @brief Kick the additional variables
+ *
  * Additional hydrodynamic quantites are kicked forward in time here. These
  * include thermal quantities (thermal energy or total energy or entropy, ...).
  *
@@ -1083,6 +1167,10 @@ __attribute__((always_inline)) INLINE static void hydro_kick_extra(
     xp->u_full = energy_min;
     p->u_dt = 0.f;
   }
+
+  /* Do the magnetic field */
+  magnetic_kick_extra(p, xp, dt_therm, dt_grav, dt_hydro, dt_kick_corr, cosmo,
+                      hydro_props, floor_props);
 }
 
 /**
@@ -1100,7 +1188,15 @@ __attribute__((always_inline)) INLINE static void hydro_kick_extra(
  */
 __attribute__((always_inline)) INLINE static void magnetic_convert_quantities(
     struct part *restrict p, struct xpart *restrict xp,
-    const struct cosmology *cosmo, const struct hydro_props *hydro_props) {}
+    const struct cosmology *cosmo, const struct hydro_props *hydro_props) {
+
+  /* Save the predicted variables into the full ones */
+  for(int i = 0; i < 3; i++) {
+    xp->mhd.B_full[i] = p->mhd.B_pred[i];
+  }
+
+  xp->mhd.psi_full = p->mhd.psi_pred;
+}
 
 /**
  * @brief Converts hydro quantity of a particle at the start of a run
@@ -1166,7 +1262,8 @@ __attribute__((always_inline)) INLINE static void hydro_convert_quantities(
 __attribute__((always_inline)) INLINE static void magnetic_first_init_part(
     struct part *restrict p, struct xpart *restrict xp) {
 
-  p->mhd.psi = 0.f;
+  p->mhd.psi_pred = 0.f;
+  xp->mhd.psi_full = 0.f;
 }
 
 

@@ -68,6 +68,18 @@ struct xpart {
   /* Additional data used by the tracers */
   struct star_formation_xpart_data sf_data;
 
+  /**
+   * @brief Structure for the MHD variables.
+   */
+  struct {
+
+    /*! the magnetic field */
+    float B_full[3];
+
+    /*! Divergence cleaning variable */
+    float psi_full;
+  } mhd;
+
 } SWIFT_STRUCT_ALIGN;
 
 /**
@@ -193,13 +205,18 @@ struct part {
   struct {
 
     /*! prediction of the magnetic field */
-    float B[3];
+    float B_pred[3];
 
     /*! Divergence cleaning variable */
-    float psi;
+    float psi_pred;
 
     /*! Divergence of the magnetic field */
+    // TODO use it in force
     float divB;
+
+    /*! Rotational of the magnetic field */
+    // TODO (compute and put in xp)
+    float curlB;
 
     /*! Maxwell stress tensor */
     float maxwell_stress[3][3];
