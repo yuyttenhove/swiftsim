@@ -117,7 +117,8 @@ const char *engine_policy_names[] = {"none",
                                      "feedback",
                                      "black holes",
                                      "fof search",
-                                     "time-step limiter"};
+                                     "time-step limiter",
+                                     "time-step sync"};
 
 /** The rank of the engine as a global variable (for messages). */
 int engine_rank;
@@ -1353,7 +1354,7 @@ int engine_estimate_nr_tasks(const struct engine *e) {
 #endif
 #endif
   }
-  if (e->policy & engine_policy_limiter) {
+  if (e->policy & engine_policy_timestep_limiter) {
     n1 += 18;
     n2 += 1;
   }
@@ -1778,6 +1779,7 @@ void engine_skip_force_and_kick(struct engine *e) {
         t->type == task_type_kick1 || t->type == task_type_kick2 ||
         t->type == task_type_timestep ||
         t->type == task_type_timestep_limiter ||
+        t->type == task_type_timestep_sync ||
         t->subtype == task_subtype_force ||
         t->subtype == task_subtype_limiter || t->subtype == task_subtype_grav ||
         t->type == task_type_end_hydro_force ||
@@ -2167,8 +2169,8 @@ void engine_step(struct engine *e) {
 
     /* Print some information to the screen */
     printf(
-        "  %6d %14e %12.7f %12.7f %14e %4d %4d %12lld %12lld %12lld %12lld "
-        "%21.3f %6d\n",
+        "  %6d %14e %12.7f %12.7f %14e %4d %4d %12lld %12lld %12lld "
+        "%12lld %21.3f %6d\n",
         e->step, e->time, e->cosmology->a, e->cosmology->z, e->time_step,
         e->min_active_bin, e->max_active_bin, e->updates, e->g_updates,
         e->s_updates, e->b_updates, e->wallclock_time, e->step_props);
@@ -4063,38 +4065,32 @@ void engine_config(int restart, int fof, struct engine *e,
 
     /* Overwrite the constants for the scheduler */
     space_maxsize = parser_get_opt_param_int(params, "Scheduler:cell_max_size",
-                                             space_maxsize_default);
-    space_subsize_pair_hydro =
-        parser_get_opt_param_int(params, "Scheduler:cell_sub_size_pair_hydro",
-                                 space_subsize_pair_hydro_default);
-    space_subsize_self_hydro =
-        parser_get_opt_param_int(params, "Scheduler:cell_sub_size_self_hydro",
-                                 space_subsize_self_hydro_default);
-    space_subsize_pair_stars =
-        parser_get_opt_param_int(params, "Scheduler:cell_sub_size_pair_stars",
-                                 space_subsize_pair_stars_default);
-    space_subsize_self_stars =
-        parser_get_opt_param_int(params, "Scheduler:cell_sub_size_self_stars",
-                                 space_subsize_self_stars_default);
-    space_subsize_pair_grav =
-        parser_get_opt_param_int(params, "Scheduler:cell_sub_size_pair_grav",
-                                 space_subsize_pair_grav_default);
-    space_subsize_self_grav =
-        parser_get_opt_param_int(params, "Scheduler:cell_sub_size_self_grav",
-                                 space_subsize_self_grav_default);
+                                             space_maxsize);
+    space_subsize_pair_hydro = parser_get_opt_param_int(
+        params, "Scheduler:cell_sub_size_pair_hydro", space_subsize_pair_hydro);
+    space_subsize_self_hydro = parser_get_opt_param_int(
+        params, "Scheduler:cell_sub_size_self_hydro", space_subsize_self_hydro);
+    space_subsize_pair_stars = parser_get_opt_param_int(
+        params, "Scheduler:cell_sub_size_pair_stars", space_subsize_pair_stars);
+    space_subsize_self_stars = parser_get_opt_param_int(
+        params, "Scheduler:cell_sub_size_self_stars", space_subsize_self_stars);
+    space_subsize_pair_grav = parser_get_opt_param_int(
+        params, "Scheduler:cell_sub_size_pair_grav", space_subsize_pair_grav);
+    space_subsize_self_grav = parser_get_opt_param_int(
+        params, "Scheduler:cell_sub_size_self_grav", space_subsize_self_grav);
     space_splitsize = parser_get_opt_param_int(
-        params, "Scheduler:cell_split_size", space_splitsize_default);
+        params, "Scheduler:cell_split_size", space_splitsize);
     space_subdepth_diff_grav =
         parser_get_opt_param_int(params, "Scheduler:cell_subdepth_diff_grav",
                                  space_subdepth_diff_grav_default);
     space_extra_parts = parser_get_opt_param_int(
-        params, "Scheduler:cell_extra_parts", space_extra_parts_default);
+        params, "Scheduler:cell_extra_parts", space_extra_parts);
     space_extra_sparts = parser_get_opt_param_int(
-        params, "Scheduler:cell_extra_sparts", space_extra_sparts_default);
+        params, "Scheduler:cell_extra_sparts", space_extra_sparts);
     space_extra_gparts = parser_get_opt_param_int(
-        params, "Scheduler:cell_extra_gparts", space_extra_gparts_default);
+        params, "Scheduler:cell_extra_gparts", space_extra_gparts);
     space_extra_bparts = parser_get_opt_param_int(
-        params, "Scheduler:cell_extra_bparts", space_extra_bparts_default);
+        params, "Scheduler:cell_extra_bparts", space_extra_bparts);
 
     engine_max_parts_per_ghost =
         parser_get_opt_param_int(params, "Scheduler:engine_max_parts_per_ghost",
