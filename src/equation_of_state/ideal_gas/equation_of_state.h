@@ -35,7 +35,10 @@ extern struct eos_parameters eos;
  *
  * This equation of state is parameter-free.
  */
-struct eos_parameters {};
+struct eos_parameters {
+  /*! The magnetic constant in internal units */
+  float magnetic_constant;
+};
 
 /**
  * @brief Returns the internal energy given density and entropy
@@ -179,7 +182,10 @@ gas_soundspeed_from_pressure(float density, float P) {
 INLINE static void eos_init(struct eos_parameters *e,
                             const struct phys_const *phys_const,
                             const struct unit_system *us,
-                            struct swift_params *params) {}
+                            struct swift_params *params) {
+
+  e->magnetic_constant = phys_const->const_magnetic_constant;
+}
 /**
  * @brief Print the equation of state
  *

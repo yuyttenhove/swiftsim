@@ -865,7 +865,6 @@ void runner_do_extra_ghost(struct runner *r, struct cell *c, int timer) {
   const int with_cosmology = (e->policy & engine_policy_cosmology);
   const double time_base = e->time_base;
   const struct cosmology *cosmo = e->cosmology;
-  const struct phys_const *phys_const = e->physical_constants;
   const struct hydro_props *hydro_props = e->hydro_properties;
 
   TIMER_TIC;
@@ -910,7 +909,7 @@ void runner_do_extra_ghost(struct runner *r, struct cell *c, int timer) {
         }
 
         /* Compute variables required for the force loop */
-        hydro_prepare_force(p, xp, cosmo, phys_const, hydro_props, dt_alpha);
+        hydro_prepare_force(p, xp, cosmo, hydro_props, dt_alpha);
 
         /* The particle force values are now set.  Do _NOT_
            try to read any particle density variables! */
@@ -944,7 +943,6 @@ void runner_do_ghost(struct runner *r, struct cell *c, int timer) {
   const struct space *s = e->s;
   const struct hydro_space *hs = &s->hs;
   const struct cosmology *cosmo = e->cosmology;
-  const struct phys_const *phys_const = e->physical_constants;
   const struct chemistry_global_data *chemistry = e->chemistry;
   const struct star_formation *star_formation = e->star_formation;
   const struct hydro_props *hydro_props = e->hydro_properties;
@@ -1129,7 +1127,7 @@ void runner_do_ghost(struct runner *r, struct cell *c, int timer) {
             /* As of here, particle force variables will be set. */
 
             /* Compute variables required for the force loop */
-            hydro_prepare_force(p, xp, cosmo, phys_const, hydro_props, dt_alpha);
+            hydro_prepare_force(p, xp, cosmo, hydro_props, dt_alpha);
 
             /* The particle force values are now set.  Do _NOT_
                try to read any particle density variables! */
@@ -1284,7 +1282,7 @@ void runner_do_ghost(struct runner *r, struct cell *c, int timer) {
         /* As of here, particle force variables will be set. */
 
         /* Compute variables required for the force loop */
-        hydro_prepare_force(p, xp, cosmo, phys_const, hydro_props, dt_alpha);
+        hydro_prepare_force(p, xp, cosmo, hydro_props, dt_alpha);
 
         /* The particle force values are now set.  Do _NOT_
            try to read any particle density variables! */

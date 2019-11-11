@@ -64,7 +64,7 @@ INLINE static void hydro_read_particles(struct part* parts,
                                 UNIT_CONV_ACCELERATION, parts, a_hydro);
   list[7] = io_make_input_field("Density", FLOAT, 1, OPTIONAL,
                                 UNIT_CONV_DENSITY, parts, rho);
-  list[8] = io_make_input_field("MagneticField", FLOAT, 3, OPTIONAL,
+  list[8] = io_make_input_field("MagneticFields", FLOAT, 3, OPTIONAL,
                                 UNIT_CONV_DENSITY, parts, mhd.B_pred);
 }
 
@@ -128,6 +128,60 @@ INLINE static void convert_part_vel(const struct engine* e,
   ret[0] *= cosmo->a_inv;
   ret[1] *= cosmo->a_inv;
   ret[2] *= cosmo->a_inv;
+}
+
+INLINE static void convert_magnetic_field(const struct engine* e,
+                                          const struct part* p,
+                                          const struct xpart* xp, float* ret) {
+
+  const int with_cosmology = (e->policy & engine_policy_cosmology);
+  const struct cosmology* cosmo = e->cosmology;
+  const integertime_t ti_current = e->ti_current;
+  const double time_base = e->time_base;
+
+  const integertime_t ti_beg = get_integer_time_begin(ti_current, p->time_bin);
+  const integertime_t ti_end = get_integer_time_end(ti_current, p->time_bin);
+
+  /* Get time-step since the last kick */
+  float dt_kick_hydro;
+  if (with_cosmology) {
+    error("Need to do");
+    dt_kick_hydro = cosmology_get_hydro_kick_factor(cosmo, ti_beg, ti_current);
+    dt_kick_hydro -=
+        cosmology_get_hydro_kick_factor(cosmo, ti_beg, (ti_beg + ti_end) / 2);
+  } else {
+    dt_kick_hydro = (ti_current - ((ti_beg + ti_end) / 2)) * time_base;
+  }
+
+  /* Extrapolate the velocites to the current time */
+  magnetic_get_drifted_magnetic_field(p, xp, dt_kick_hydro, ret);
+}
+
+INLINE static void convert_psi(const struct engine* e,
+                               const struct part* p,
+                               const struct xpart* xp, float* ret) {
+
+  const int with_cosmology = (e->policy & engine_policy_cosmology);
+  const struct cosmology* cosmo = e->cosmology;
+  const integertime_t ti_current = e->ti_current;
+  const double time_base = e->time_base;
+
+  const integertime_t ti_beg = get_integer_time_begin(ti_current, p->time_bin);
+  const integertime_t ti_end = get_integer_time_end(ti_current, p->time_bin);
+
+  /* Get time-step since the last kick */
+  float dt_kick_hydro;
+  if (with_cosmology) {
+    error("TODO");
+    dt_kick_hydro = cosmology_get_hydro_kick_factor(cosmo, ti_beg, ti_current);
+    dt_kick_hydro -=
+        cosmology_get_hydro_kick_factor(cosmo, ti_beg, (ti_beg + ti_end) / 2);
+  } else {
+    dt_kick_hydro = (ti_current - ((ti_beg + ti_end) / 2)) * time_base;
+  }
+
+  /* Extrapolate the velocites to the current time */
+  ret[0] = magnetic_get_drifted_psi(p, xp, dt_kick_hydro, cosmo);
 }
 
 INLINE static void convert_part_potential(const struct engine* e,
@@ -217,14 +271,13 @@ INLINE static void hydro_write_particles(const struct part* parts,
       "DiffusionParameters", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, parts, xparts,
       convert_diffusion, "Diffusion coefficient (alpha_diff) of the particles");
 
-  list[12] = io_make_output_field(
+  list[12] = io_make_output_field_convert_part(
       "MagneticFields", FLOAT, 3, UNIT_CONV_MAGNETIC_FIELD, -2.f, parts,
-      mhd.B_pred, "Co-moving magnetic field of the particles");
-  message("Need to drift!");
+      xparts, convert_magnetic_field, "Co-moving magnetic field of the particles");
 
-  list[13] = io_make_output_field(
+  list[13] = io_make_output_field_convert_part(
       "DivergenceMagneticFields", FLOAT, 1, UNIT_CONV_MAGNETIC_LINEAR_DENSITY, -3.f,
-      parts, mhd.divB,
+      parts, xparts, convert_psi,
       "Co-moving divergence of the magnetic field.");
 }
 
