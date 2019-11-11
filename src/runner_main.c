@@ -370,13 +370,22 @@ void *runner_main(void *data) {
 #ifdef WITH_MPI
         case task_type_send:
 
+          /* For types that support it we can be sending the full particles
+           * types or a packed version. If the packed version was sent we free
+           * the temporary buffer. */
           if (t->subtype == task_subtype_xv) {
-            if (mpipacked_xvparts_supported) {
-              /* If sending full then nothing to do, otherwise we can free the
-               * packed buffer. Next send can be partial. */
-              if ((t->sendfull & task_mpitype_xv) != task_mpitype_xv)
-                swift_free("xvparts", t->buff);
+            if (mpipacked_supported & task_mpitype_xv) {
+              if ((t->sendfull & task_mpitype_xv) != task_mpitype_xv) {
+                swift_free("packedxvparts", t->buff);
+              }
               t->sendfull &= ~task_mpitype_xv;
+            }
+          } else if (t->subtype == task_subtype_gpart) {
+            if (mpipacked_supported & task_mpitype_gpart) {
+              if ((t->sendfull & task_mpitype_gpart) != task_mpitype_gpart) {
+                swift_free("packedgparts", t->buff);
+              }
+              t->sendfull &= ~task_mpitype_gpart;
             }
           } else if (t->subtype == task_subtype_tend_part) {
             free(t->buff);
@@ -413,13 +422,10 @@ void *runner_main(void *data) {
             cell_clear_stars_sort_flags(ci, /*clear_unused_flags=*/0);
             free(t->buff);
           } else if (t->subtype == task_subtype_xv) {
-            if (mpipacked_xvparts_supported) {
-              /* If sending full then nothing to do, otherwise we need to
-               * unpack and free the packed buffer. Next send will be
-               * partial. */
+            if (mpipacked_supported & task_mpitype_xv) {
               if ((t->sendfull & task_mpitype_xv) != task_mpitype_xv) {
                 mpipacked_unpack_parts_xv(ci, t->buff);
-                swift_free("xvparts", t->buff);
+                swift_free("packedxvparts", t->buff);
               }
               t->sendfull &= ~task_mpitype_xv;
             }
@@ -439,6 +445,13 @@ void *runner_main(void *data) {
           } else if (t->subtype == task_subtype_limiter) {
             runner_do_recv_part(r, ci, 0, 1);
           } else if (t->subtype == task_subtype_gpart) {
+            if (mpipacked_supported & task_mpitype_gpart) {
+              if ((t->sendfull & task_mpitype_gpart) != task_mpitype_gpart) {
+                mpipacked_unpack_gparts(ci, t->buff);
+                swift_free("packedgparts", t->buff);
+              }
+              t->sendfull &= ~task_mpitype_gpart;
+            }
             runner_do_recv_gpart(r, ci, 1);
           } else if (t->subtype == task_subtype_spart) {
             runner_do_recv_spart(r, ci, 1, 1);

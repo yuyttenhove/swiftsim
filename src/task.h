@@ -183,7 +183,8 @@ enum task_mpi_types {
   task_mpitype_tend_gpart = (1 << 12),
   task_mpitype_tend_part = (1 << 13),
   task_mpitype_tend_spart = (1 << 14),
-  task_mpitype_xv = (1 << 15)
+  task_mpitype_xv = (1 << 15),
+  task_mpitype_all = 0xffffffff
 };
 
 

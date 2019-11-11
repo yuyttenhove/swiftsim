@@ -87,4 +87,21 @@ struct gpart {
 
 } SWIFT_STRUCT_ALIGN;
 
+/* Define the minimal struct elements that should be sent to foreign cells,
+ * during "gpart" updates. */
+#ifndef MPIPACKED_GPART_MEMBERS
+
+/* Things we don't always send... */
+#ifdef SWIFT_DEBUG_CHECKS
+#define MPIPACKED_GPART_EXTRAS \
+  , MPIPACKED_ADDMEMBER(struct gpart, ti_drift)
+#else
+#define MPIPACKED_GPART_EXTRAS
+#endif
+
+#define MPIPACKED_GPART_MEMBERS                                 \
+    MPIPACKED_ADDMEMBER(struct gpart, x),                       \
+    MPIPACKED_ADDMEMBER(struct part, mass) MPIPACKED_GPART_EXTRAS
+#endif
+
 #endif /* SWIFT_POTENTIAL_GRAVITY_PART_H */

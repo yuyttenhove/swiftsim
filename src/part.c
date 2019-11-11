@@ -392,10 +392,12 @@ void part_verify_links(struct part *parts, struct gpart *gparts,
 #ifdef WITH_MPI
 /* MPI data type for the particle transfers */
 MPI_Datatype part_mpi_type;
-MPI_Datatype part_mpi_xvtype;
-int part_mpi_xvtype_size;
+MPI_Datatype part_mpi_type_packed_xv;
+int part_mpi_type_packed_xv_size;
 MPI_Datatype xpart_mpi_type;
 MPI_Datatype gpart_mpi_type;
+MPI_Datatype gpart_mpi_type_packed;
+int gpart_mpi_type_packed_size;
 MPI_Datatype spart_mpi_type;
 MPI_Datatype bpart_mpi_type;
 
@@ -439,18 +441,24 @@ void part_create_mpi_types(void) {
   /* Types for sending specific fields of our structs.
    * -------------------------------------------------
    */
-  mpipacked_make_type_xv(&part_mpi_xvtype);
-  if (MPI_Type_commit(&part_mpi_xvtype) != MPI_SUCCESS)
-    error("Failed to commit xvtype for parts");
-  MPI_Type_size(part_mpi_xvtype, &part_mpi_xvtype_size);
+  mpipacked_make_type_packed_xv(&part_mpi_type_packed_xv);
+  if (MPI_Type_commit(&part_mpi_type_packed_xv) != MPI_SUCCESS)
+    error("Failed to commit packed xv type for parts");
+  MPI_Type_size(part_mpi_type_packed_xv, &part_mpi_type_packed_xv_size);
+
+  mpipacked_make_type_packed_gpart(&gpart_mpi_type_packed);
+  if (MPI_Type_commit(&gpart_mpi_type_packed) != MPI_SUCCESS)
+    error("Failed to commit packed type for gparts");
+  MPI_Type_size(gpart_mpi_type_packed, &gpart_mpi_type_packed_size);
 }
 
 void part_free_mpi_types(void) {
 
   MPI_Type_free(&part_mpi_type);
-  MPI_Type_free(&part_mpi_xvtype);
+  MPI_Type_free(&part_mpi_type_packed_xv);
   MPI_Type_free(&xpart_mpi_type);
   MPI_Type_free(&gpart_mpi_type);
+  MPI_Type_free(&gpart_mpi_type_packed);
   MPI_Type_free(&spart_mpi_type);
   MPI_Type_free(&bpart_mpi_type);
 }

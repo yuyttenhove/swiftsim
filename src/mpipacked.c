@@ -38,17 +38,8 @@
 #include "cell.h"
 #include "part.h"
 
-/* Whether the current "struct part" implementation supports packed
- * xv exchanges. XXX needs to be a program parameter. */
-int mpipacked_xvparts_supported = 1;
-
-/* Whether the current "struct part" implementation supports packed
- * rho exchanges. */
-int mpipacked_rhoparts_supported = 0;
-
-/* Whether the current "struct gpart" implementation supports packed
- * exchanges. */
-int mpipacked_gparts_supported = 0;
+/* Whether an MPI type supports packed updates. */
+int mpipacked_supported = 0;
 
 #ifdef WITH_MPI
 /* Define the members of the part struct that we should pack and communicate
@@ -70,6 +61,8 @@ int mpipacked_gparts_supported = 0;
  *   MPIPACKED_ADDMEMBER(struct part, force.v_sig),              \
  *   MPIPACKED_ADDMEMBER(struct part, force.h_dt)
  * #endif
+ *
+ * See hydro/Gadget2/hydro_part.h for other tricks.
  */
 #ifdef MPIPACKED_XV_MEMBERS
 
@@ -90,33 +83,53 @@ static struct mpipacked_member *xvmembers = NULL;
 static int nxvmembers = 0;
 #endif
 
+/* Same pattern for gparts. */
+#ifdef MPIPACKED_GPART_MEMBERS
+
+/* Macro to expand a variable number of MPIPACKED_ADDMEMBER defines to a
+ * actual struct of mpipacked_member's */
+#define MPIPACKED_GPART_MEMBERS_EXPAND(...)                        \
+  static struct mpipacked_member gpartmembers[] = {__VA_ARGS__};
+
+/* Expansion of the MPIPACKED_GPART_MEMBERS define. */
+MPIPACKED_GPART_MEMBERS_EXPAND(MPIPACKED_GPART_MEMBERS);
+
+/* No of members we have. */
+static int ngpartmembers =  sizeof(gpartmembers) / sizeof(*gpartmembers);
+#else
+
+/* No support. */
+static struct mpipacked_member *gpartmembers = NULL;
+static int ngpartmembers = 0;
+#endif
+
+
 /**
  * @brief Create an MPI type to support the packed xv part exchanges.
  *
- * If mpipacked_xvparts_supported is false then this just returns a copy of
- * the full parts MPI type. Either way the new type should be committed
- * and freed.
+ * If no support is available (see above) this just returns a copy of the full
+ * parts MPI type. Either way the new type should be committed and freed.
  *
- * Requires that the current part definition includes a macro
- * MPI_PACKED_MEMBERS that defines with struct part elements to copy.
- *
- * @param mpi_xvtype the new type.
+ * @param mpi_type the new type.
  */
-void mpipacked_make_type_xv(MPI_Datatype *mpi_xvtype) {
+void mpipacked_make_type_packed_xv(MPI_Datatype *mpi_type) {
 
-  if (mpipacked_xvparts_supported && nxvmembers > 0) {
+  if (nxvmembers > 0) {
     size_t size = 0;
     for (int j = 0; j < nxvmembers; j++) {
       size += xvmembers[j].size;
     }
-    if (MPI_Type_contiguous(size, MPI_BYTE, mpi_xvtype) != MPI_SUCCESS) {
+    if (MPI_Type_contiguous(size, MPI_BYTE, mpi_type) != MPI_SUCCESS) {
       error("Failed to create a MPI type for xv updates");
     }
+
+    /* And is supported. */
+    mpipacked_supported |= task_mpitype_xv;
 
   } else {
 
     /* So support for partial updates, so duplicate the existing type. */
-    MPI_Type_dup(part_mpi_type, mpi_xvtype);
+    MPI_Type_dup(part_mpi_type, mpi_type);
   }
 }
 #endif
@@ -159,6 +172,84 @@ void mpipacked_unpack_parts_xv(struct cell *c, char *packeddata) {
     for (int j = 0; j < nxvmembers; j++) {
       memcpy(&part[xvmembers[j].offset], &packeddata[index], xvmembers[j].size);
       index += xvmembers[j].size;
+    }
+  }
+#else
+  error("SWIFT was not compiled with MPI support.");
+#endif
+}
+
+#ifdef WITH_MPI
+/**
+ * @brief Create an MPI type to support the packed gpart exchanges.
+ *
+ * If no support is available (see above) this just returns a copy of the full
+ * gpart MPI type. Either way the new type should be committed and freed.
+ *
+ * @param mpi_type the new type.
+ */
+void mpipacked_make_type_packed_gpart(MPI_Datatype *mpi_type) {
+
+  if (ngpartmembers > 0) {
+    size_t size = 0;
+    for (int j = 0; j < ngpartmembers; j++) {
+      size += gpartmembers[j].size;
+    }
+    if (MPI_Type_contiguous(size, MPI_BYTE, mpi_type) != MPI_SUCCESS) {
+      error("Failed to create a MPI type for gpart updates");
+    }
+
+    /* And is supported. */
+    mpipacked_supported |= task_mpitype_gpart;
+
+  } else {
+
+    /* So support for partial updates, so duplicate the existing type. */
+    MPI_Type_dup(gpart_mpi_type, mpi_type);
+  }
+}
+#endif
+
+/**
+ * @brief Pack update members of gparts in a cell.
+ *
+ * @param c The #cell.
+ * @param packeddata an array to hold the bytes extracted from the gparts
+ *                   struct, must be large enough for all the extracted
+ *                   members from all the gpart structs in the cell.
+ */
+void mpipacked_pack_gparts(struct cell *c, char *packeddata) {
+#ifdef WITH_MPI
+  size_t index = 0;
+  for (int k = 0; k < c->grav.count; k++) {
+    char *part = (char *)&c->grav.parts[k];
+    for (int j = 0; j < ngpartmembers; j++) {
+      memcpy(&packeddata[index], &part[gpartmembers[j].offset],
+             gpartmembers[j].size);
+      index += gpartmembers[j].size;
+    }
+  }
+#else
+  error("SWIFT was not compiled with MPI support.");
+#endif
+}
+
+/**
+ * @brief Unpack the update members of gparts of a cell.
+ *
+ * @param c The #cell.
+ * @param packeddata an array holding the bytes extracted from the gparts
+ *                   struct that need replacing.
+ */
+void mpipacked_unpack_gparts(struct cell *c, char *packeddata) {
+#ifdef WITH_MPI
+  size_t index = 0;
+  for (int k = 0; k < c->grav.count; k++) {
+    char *part = (char *)&c->grav.parts[k];
+    for (int j = 0; j < ngpartmembers; j++) {
+      memcpy(&part[gpartmembers[j].offset], &packeddata[index],
+             gpartmembers[j].size);
+      index += gpartmembers[j].size;
     }
   }
 #else

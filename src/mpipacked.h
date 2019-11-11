@@ -32,17 +32,9 @@
 /* Forward declarations. */
 struct cell;
 
-/* Whether the current "struct part" implementation supports packed
- * xv exchanges. */
-extern int mpipacked_xvparts_supported;
-
-/* Whether the current "struct part" implementation supports packed
- * rho exchanges. */
-extern int mpipacked_rhoparts_supported;
-
-/* Whether the current "struct gpart" implementation supports packed
- * exchanges. */
-extern int mpipacked_gparts_supported;
+/* Whether the implementation supports packed exchanges. Bit mask with
+ * task_mpitype_xxx values. */
+extern int mpipacked_supported;
 
 /* The byte offset and size of a struct member. We need a list of these to
  * support each packed exchange type. */
@@ -56,9 +48,13 @@ struct mpipacked_member {
   { offsetof(mystruct, member), sizeof(((mystruct *)0)->member) }
 
 #ifdef WITH_MPI
-void mpipacked_make_type_xv(MPI_Datatype *mpi_xvtype);
+void mpipacked_make_type_packed_xv(MPI_Datatype *mpi_type);
+void mpipacked_make_type_packed_gpart(MPI_Datatype *mpi_type);
 #endif
 void mpipacked_pack_parts_xv(struct cell *c, char *packeddata);
 void mpipacked_unpack_parts_xv(struct cell *c, char *packeddata);
+
+void mpipacked_pack_gparts(struct cell *c, char *packeddata);
+void mpipacked_unpack_gparts(struct cell *c, char *packeddata);
 
 #endif /* SWIFT_MPIPACKED_H */

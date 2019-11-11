@@ -1114,8 +1114,8 @@ struct task *scheduler_addtask(struct scheduler *s, enum task_types type,
   t->tic = 0;
   t->toc = 0;
 #ifdef WITH_MPI
-  /* Set all bits. */
-  t->sendfull = UINT_MAX;
+  /* Send everything first time. */
+  t->sendfull = task_mpitype_all;
 #endif
 
   if (ci != NULL) cell_set_flag(ci, cell_flag_has_tasks);
@@ -1751,9 +1751,9 @@ void scheduler_enqueue(struct scheduler *s, struct task *t) {
             type = part_mpi_type;
             buff = t->ci->hydro.parts;
           } else {
-            size = count * part_mpi_xvtype_size;
-            type = part_mpi_xvtype;
-            buff = t->buff = swift_malloc("xvparts", size);
+            size = count * part_mpi_type_packed_xv_size;
+            type = part_mpi_type_packed_xv;
+            buff = t->buff = swift_malloc("packedxvparts", size);
           }
 
         } else if (t->subtype == task_subtype_rho ||
@@ -1769,7 +1769,16 @@ void scheduler_enqueue(struct scheduler *s, struct task *t) {
           count = t->ci->grav.count;
           size = count * sizeof(struct gpart);
           type = gpart_mpi_type;
-          buff = t->ci->grav.parts;
+
+          if (t->sendfull & task_mpitype_gpart) {
+            size = count * sizeof(struct gpart);
+            type = gpart_mpi_type;
+            buff = t->ci->grav.parts;
+          } else {
+            size = count * gpart_mpi_type_packed_size;
+            type = gpart_mpi_type_packed;
+            buff = t->buff = swift_malloc("packedgparts", size);
+          }
 
         } else if (t->subtype == task_subtype_spart) {
 
@@ -1879,9 +1888,9 @@ void scheduler_enqueue(struct scheduler *s, struct task *t) {
             type = part_mpi_type;
             buff = t->ci->hydro.parts;
           } else {
-            size = count * part_mpi_xvtype_size;
-            type = part_mpi_xvtype;
-            buff = t->buff = swift_malloc("xvparts", size);
+            size = count * part_mpi_type_packed_xv_size;
+            type = part_mpi_type_packed_xv;
+            buff = t->buff = swift_malloc("packedxvparts", size);
             mpipacked_pack_parts_xv(t->ci, buff);
           }
 
@@ -1896,9 +1905,16 @@ void scheduler_enqueue(struct scheduler *s, struct task *t) {
         } else if (t->subtype == task_subtype_gpart) {
 
           count = t->ci->grav.count;
-          size = count * sizeof(struct gpart);
-          type = gpart_mpi_type;
-          buff = t->ci->grav.parts;
+          if (t->sendfull & task_mpitype_gpart) {
+            size = count * sizeof(struct gpart);
+            type = gpart_mpi_type;
+            buff = t->ci->grav.parts;
+          } else {
+            size = count * gpart_mpi_type_packed_size;
+            type = gpart_mpi_type_packed;
+            buff = t->buff = swift_malloc("packedgparts", size);
+            mpipacked_pack_gparts(t->ci, buff);
+          }
 
         } else if (t->subtype == task_subtype_spart) {
 

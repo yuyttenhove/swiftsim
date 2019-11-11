@@ -47,9 +47,11 @@ void engine_activate_gpart_comms(struct engine *e) {
 
     if ((t->type == task_type_send) && (t->subtype == task_subtype_gpart)) {
       scheduler_activate(s, t);
+      t->sendfull = task_mpitype_all;
     } else if ((t->type == task_type_recv) &&
                (t->subtype == task_subtype_gpart)) {
       scheduler_activate(s, t);
+      t->sendfull = task_mpitype_all;
     } else {
       t->skip = 1;
     }
