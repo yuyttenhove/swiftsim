@@ -59,7 +59,7 @@ h_L = h_L[ind_L]
 h_R = h_R[ind_R]
 
 # Merge things
-pos = np.append(pos_L, pos_R, axis=0) - 0.5
+pos = np.append(pos_L, pos_R, axis=0) - 0.25
 h = np.append(h_L, h_R)
 
 numPart_L = np.size(h_L)
@@ -77,14 +77,16 @@ u = np.zeros(numPart)
 B = np.zeros((numPart, 3))
 B[:, 0] = Bx
 
-ind = pos[:, 0] < 0
+ind = pos[:, 0] < 0.
 u[ind] = P_L / (rho_L * (gamma - 1.))
 m[ind] = rho_L * vol_L / numPart_L
 v[ind, 0] = v_L
 B[ind, 1] = By_L
 B[ind, 2] = Bz_L
+print(np.sum(ind))
 
-ind = pos[:, 0] >= 0
+ind = pos[:, 0] >= 0.
+print(np.sum(ind))
 u[ind] = P_R / (rho_R * (gamma - 1.))
 m[ind] = rho_R * vol_R / numPart_R
 v[ind, 0] = v_R
