@@ -34,6 +34,7 @@
 #include "dimension.h"
 #include "entropy_floor.h"
 #include "equation_of_state.h"
+#include "hydro_parameters.h"
 #include "hydro_part.h"
 #include "hydro_properties.h"
 #include "hydro_space.h"
@@ -358,6 +359,10 @@ __attribute__((always_inline)) INLINE static float magnetic_get_drifted_psi(
     const struct part *restrict p, const struct xpart *xp, float dt_kick_hydro,
     const struct cosmology *cosmo) {
 
+  if (p->rho == 0.f) {
+    error("%g %g %g %g", xp->mhd.psi_full, p->mhd.force.psi_c_dt, dt_kick_hydro,
+          magnetic_get_physical_magnetosonic_speed(p, cosmo));
+  }
   return xp->mhd.psi_full + p->mhd.force.psi_c_dt * dt_kick_hydro *
     magnetic_get_physical_magnetosonic_speed(p, cosmo);
 }
@@ -548,8 +553,12 @@ __attribute__((always_inline)) INLINE static float hydro_compute_timestep(
                        (cosmo->a_factor_sound_speed * p->viscosity.v_sig);
 
   // TODO add criterion for B
-  error("TODO");
-  return dt_cfl;
+  /* Criterion on the evolution of psi */
+  const float v_clean = magnetic_get_physical_magnetosonic_speed(p, cosmo)
+    * over_clean_fac;
+  const float dt_clean = v_clean == 0.f? FLT_MAX :
+    0.5f * CFL_condition * p->h * kernel_gamma / v_clean;
+  return min(dt_cfl, dt_clean);
 }
 
 /**

@@ -428,8 +428,8 @@ __attribute__((always_inline)) INLINE static void runner_iact_force(
   pj->force.h_dt -= mi * dvdr * pj->force.f * r_inv / rhoi * wj_dr;
 
   /* Compute the evolution of the magnetic field */
-  const float c_mag_i = pi->mhd.force.soundspeed;
-  const float c_mag_j = pj->mhd.force.soundspeed;
+  const float c_mag_i = over_clean_fac * pi->mhd.force.soundspeed;
+  const float c_mag_j = over_clean_fac * pj->mhd.force.soundspeed;
 
   const float psi_i = pi->mhd.psi_pred;
   const float psi_j = pj->mhd.psi_pred;
@@ -480,8 +480,8 @@ __attribute__((always_inline)) INLINE static void runner_iact_force(
   pj->mhd.force.psi_c_dt -= c_mag_j * f_over_rho2_j * rhoj * mi * dBdx * wj_dr * r_inv;
 
   /* Velocity divergence contribution */
-  pi->mhd.force.psi_c_dt += 0.5f * psi_i * f_over_rho2_i * rhoi * mj * dvdr * r_inv / c_mag_i;
-  pj->mhd.force.psi_c_dt -= 0.5f * psi_j * f_over_rho2_j * rhoj * mi * dvdr * r_inv / c_mag_j;
+  pi->mhd.force.psi_c_dt += 0.5f * psi_i * f_over_rho2_i * rhoi * mj * dvdr * wi_dr * r_inv / c_mag_i;
+  pj->mhd.force.psi_c_dt -= 0.5f * psi_j * f_over_rho2_j * rhoj * mi * dvdr * wj_dr * r_inv / c_mag_j;
 
   /* divergence damping */
   const float sigma_c = 1.f;
@@ -644,7 +644,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force(
   pi->force.h_dt -= mj * dvdr * pi->force.f * r_inv / rhoj * wi_dr;
 
   /* Compute the evolution of the magnetic field */
-  const float c_mag_i = pi->mhd.force.soundspeed;
+  const float c_mag_i = over_clean_fac * pi->mhd.force.soundspeed;
 
   const float psi_i = pi->mhd.psi_pred;
   const float psi_j = pj->mhd.psi_pred;
@@ -684,20 +684,20 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force(
 
   /* div B contribution */
   pi->mhd.force.psi_c_dt += c_mag_i * f_over_rho2_i * rhoi * mj * dBdx * wi_dr * r_inv;
-  const float tmp1 = c_mag_i * f_over_rho2_i * rhoi * mj * dBdx * wi_dr * r_inv;
+  const float tmp1 = fabs(c_mag_i * f_over_rho2_i * rhoi * mj * dBdx * wi_dr * r_inv);
 
   /* Velocity divergence contribution */
-  pi->mhd.force.psi_c_dt += 0.5f * psi_i * f_over_rho2_i * rhoi * mj * dvdr * r_inv / c_mag_i;
-  const float tmp2 = 0.5f * psi_i * f_over_rho2_i * rhoi * mj * dvdr * r_inv / c_mag_i;
+  pi->mhd.force.psi_c_dt += 0.5f * psi_i * f_over_rho2_i * rhoi * mj * dvdr * wi_dr * r_inv / c_mag_i;
+  const float tmp2 = fabs(0.5f * psi_i * f_over_rho2_i * rhoi * mj * dvdr * wi_dr * r_inv / c_mag_i);
 
   /* divergence damping */
   const float sigma_c = 1;
   const float tau_i = hi / (c_mag_i * sigma_c);
   pi->mhd.force.psi_c_dt -= psi_i / (c_mag_i * tau_i);
-  const float tmp3 = psi_i / (c_mag_i * tau_i);
+  const float tmp3 = fabs(psi_i / (c_mag_i * tau_i));
 
   if (tmp1 > 10.f || tmp2 > 10.f || tmp3 > 10.f) {
-    message("%g %g %g %g", tmp3, psi_i, c_mag_i, tau_i);
+    message("%g %g %g", tmp1, tmp2, tmp3);
   }
 
   /* Compute the divergence of B */

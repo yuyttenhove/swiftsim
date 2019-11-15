@@ -47,6 +47,9 @@
  *        as well as a number of compile-time parameters.
  */
 
+/*! Magnetic field divergence cleaning speed */
+#define over_clean_fac 1.f
+
 /*! Viscosity parameters -- FIXED -- MUST BE DEFINED AT COMPILE-TIME */
 
 /*! Cosmology default beta=3.0.
