@@ -278,8 +278,8 @@ magnetic_get_physical_beta(const struct part *restrict p,
     p->mhd.B_pred[1] * p->mhd.B_pred[1] +
     p->mhd.B_pred[2] * p->mhd.B_pred[2];
 
-  const float pressure_B = 0.5 * sqrtf(B2);
-  return pressure_B == 0 ? hydro_get_physical_pressure(p, cosmo) / pressure_B : FLT_MAX;
+  const float pressure_B = 0.5 * B2;
+  return pressure_B == 0.f ? FLT_MAX : hydro_get_physical_pressure(p, cosmo) / pressure_B;
 }
 
 /**
@@ -548,6 +548,7 @@ __attribute__((always_inline)) INLINE static float hydro_compute_timestep(
                        (cosmo->a_factor_sound_speed * p->viscosity.v_sig);
 
   // TODO add criterion for B
+  error("TODO");
   return dt_cfl;
 }
 
@@ -793,7 +794,7 @@ __attribute__((always_inline)) INLINE static void magnetic_prepare_force(
       p->mhd.maxwell_stress[i][j] = - Bi * Bj / eos.magnetic_constant;
     }
 
-    p->mhd.maxwell_stress[i][i] += p->force.pressure + 0.5 * Bi * Bi;
+    p->mhd.maxwell_stress[i][i] += p->force.pressure + 0.5f * Bi * Bi;
   }
 
   /* Compute the sound speed */
@@ -1121,8 +1122,6 @@ __attribute__((always_inline)) INLINE static void hydro_end_force(
     struct part *restrict p, const struct cosmology *cosmo) {
 
   p->force.h_dt *= p->h * hydro_dimension_inv;
-
-  message("%g %g %g %g", p->mhd.force.B_rho_dt[0], p->mhd.force.B_rho_dt[1], p->mhd.force.B_rho_dt[2], p->mhd.force.psi_c_dt);
 }
 
 /**

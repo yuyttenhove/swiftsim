@@ -211,7 +211,7 @@ struct part {
     float psi_pred;
 
     /*! Divergence of the magnetic field */
-    // TODO use it in force
+    // TODO use it in density + force
     float divB;
 
     /*! Rotational of the magnetic field */

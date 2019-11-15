@@ -47,19 +47,21 @@ boxSize = (x_max - x_min)
 glass_L = h5py.File("glassCube_64.hdf5", "r")
 glass_R = h5py.File("glassCube_32.hdf5", "r")
 
-pos_L = glass_L["/PartType0/Coordinates"][:, :] * 0.5
-pos_R = glass_R["/PartType0/Coordinates"][:, :] * 0.5
-h_L = glass_L["/PartType0/SmoothingLength"][:] * 0.5
-h_R = glass_R["/PartType0/SmoothingLength"][:] * 0.5
-ind_L = pos_L[:, 0] < 0.25
-ind_R = pos_R[:, 0] >= 0.25
+pos_L = glass_L["/PartType0/Coordinates"][:, :]
+pos_R = glass_R["/PartType0/Coordinates"][:, :]
+h_L = glass_L["/PartType0/SmoothingLength"][:]
+h_R = glass_R["/PartType0/SmoothingLength"][:]
+ind_L = np.logical_and(pos_L[:, 1] < 0.5, pos_L[:, 2] < 0.5)
+ind_L = np.logical_and(ind_L, pos_L[:, 0] < 0.5)
+ind_R = np.logical_and(pos_R[:, 1] < 0.5, pos_R[:, 2] < 0.5)
+ind_R = np.logical_and(ind_R, pos_R[:, 0] >= 0.5)
 pos_L = pos_L[ind_L]
 pos_R = pos_R[ind_R]
 h_L = h_L[ind_L]
 h_R = h_R[ind_R]
 
 # Merge things
-pos = np.append(pos_L, pos_R, axis=0) - 0.25
+pos = np.append(pos_L, pos_R, axis=0)
 h = np.append(h_L, h_R)
 
 numPart_L = np.size(h_L)
@@ -77,24 +79,19 @@ u = np.zeros(numPart)
 B = np.zeros((numPart, 3))
 B[:, 0] = Bx
 
-ind = pos[:, 0] < 0.
+ind = pos[:, 0] < 0.5
 u[ind] = P_L / (rho_L * (gamma - 1.))
 m[ind] = rho_L * vol_L / numPart_L
 v[ind, 0] = v_L
 B[ind, 1] = By_L
 B[ind, 2] = Bz_L
-print(np.sum(ind))
 
-ind = pos[:, 0] >= 0.
-print(np.sum(ind))
+ind = pos[:, 0] >= 0.5
 u[ind] = P_R / (rho_R * (gamma - 1.))
 m[ind] = rho_R * vol_R / numPart_R
 v[ind, 0] = v_R
 B[ind, 1] = By_R
 B[ind, 2] = Bz_R
-
-# Shift particles
-pos[:, 0] -= x_min
 
 # File
 file = h5py.File(fileName, 'w')

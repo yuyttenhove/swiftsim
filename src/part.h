@@ -88,6 +88,7 @@
 #define EXTRA_HYDRO_LOOP
 #elif defined(PHANTOM_SPH)
 #include "./hydro/Phantom/hydro_part.h"
+#define EXTRA_HYDRO_LOOP
 #define hydro_need_extra_init_loop 0
 #else
 #error "Invalid choice of SPH variant"
