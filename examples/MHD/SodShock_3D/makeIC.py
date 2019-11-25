@@ -40,6 +40,8 @@ Bz_R = 0.              # Magnetic field (z axis) left state
 Bx = 0.75
 fileName = "sodShock.hdf5"
 
+boundary = 0.1
+
 
 # ---------------------------------------------------
 boxSize = (x_max - x_min)
@@ -68,8 +70,8 @@ numPart_L = np.size(h_L)
 numPart_R = np.size(h_R)
 numPart = np.size(h)
 
-vol_L = 0.5
-vol_R = 0.5
+vol_L = 0.5**3
+vol_R = 0.5**3
 
 # Generate extra arrays
 v = np.zeros((numPart, 3))

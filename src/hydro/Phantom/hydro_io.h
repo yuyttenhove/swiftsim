@@ -134,54 +134,16 @@ INLINE static void convert_magnetic_field(const struct engine* e,
                                           const struct part* p,
                                           const struct xpart* xp, float* ret) {
 
-  const int with_cosmology = (e->policy & engine_policy_cosmology);
-  const struct cosmology* cosmo = e->cosmology;
-  const integertime_t ti_current = e->ti_current;
-  const double time_base = e->time_base;
-
-  const integertime_t ti_beg = get_integer_time_begin(ti_current, p->time_bin);
-  const integertime_t ti_end = get_integer_time_end(ti_current, p->time_bin);
-
-  /* Get time-step since the last kick */
-  float dt_kick_hydro;
-  if (with_cosmology) {
-    error("Need to do");
-    dt_kick_hydro = cosmology_get_hydro_kick_factor(cosmo, ti_beg, ti_current);
-    dt_kick_hydro -=
-        cosmology_get_hydro_kick_factor(cosmo, ti_beg, (ti_beg + ti_end) / 2);
-  } else {
-    dt_kick_hydro = (ti_current - ((ti_beg + ti_end) / 2)) * time_base;
-  }
-
-  /* Extrapolate the velocites to the current time */
-  magnetic_get_drifted_magnetic_field(p, xp, dt_kick_hydro, ret);
+  magnetic_get_drifted_magnetic_field(p, ret);
 }
 
 INLINE static void convert_psi(const struct engine* e,
                                const struct part* p,
                                const struct xpart* xp, float* ret) {
 
-  const int with_cosmology = (e->policy & engine_policy_cosmology);
   const struct cosmology* cosmo = e->cosmology;
-  const integertime_t ti_current = e->ti_current;
-  const double time_base = e->time_base;
 
-  const integertime_t ti_beg = get_integer_time_begin(ti_current, p->time_bin);
-  const integertime_t ti_end = get_integer_time_end(ti_current, p->time_bin);
-
-  /* Get time-step since the last kick */
-  float dt_kick_hydro;
-  if (with_cosmology) {
-    error("TODO");
-    dt_kick_hydro = cosmology_get_hydro_kick_factor(cosmo, ti_beg, ti_current);
-    dt_kick_hydro -=
-        cosmology_get_hydro_kick_factor(cosmo, ti_beg, (ti_beg + ti_end) / 2);
-  } else {
-    dt_kick_hydro = (ti_current - ((ti_beg + ti_end) / 2)) * time_base;
-  }
-
-  /* Extrapolate the velocites to the current time */
-  ret[0] = magnetic_get_drifted_psi(p, xp, dt_kick_hydro, cosmo);
+  ret[0] = magnetic_get_drifted_psi(p, cosmo);
 }
 
 INLINE static void convert_part_potential(const struct engine* e,

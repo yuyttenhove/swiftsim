@@ -33,6 +33,7 @@ import matplotlib.pyplot as plt
 # The script works for a given left (x<0.5) and right (x>0.5) state and computes the solution at a later time t.
 # This follows the solution given in (Brio & Wu, 1988)
 
+limit_axis = False
 
 # Plot parameters
 params = {
@@ -266,8 +267,9 @@ plt.errorbar(x_bin, rho_bin, yerr=rho_sigma_bin,
              fmt='.', ms=8.0, color='b', lw=1.2)
 plt.xlabel("${\\rm{Position}}~x$", labelpad=0)
 plt.ylabel("${\\rm{Density}}~\\rho$", labelpad=0)
-plt.xlim(-0.5, 0.5)
-plt.ylim(0.05, 1.1)
+if limit_axis:
+    plt.xlim(-0.5, 0.5)
+    plt.ylim(0.05, 1.1)
 
 # Velocity profile vx --------------------------------
 plt.subplot(232)
@@ -277,8 +279,9 @@ plt.errorbar(x_bin, vx_bin, yerr=vx_sigma_bin,
              fmt='.', ms=8.0, color='b', lw=1.2)
 plt.xlabel("${\\rm{Position}}~x$", labelpad=0)
 plt.ylabel("${\\rm{Velocity}}~v_x$", labelpad=0)
-plt.xlim(-0.5, 0.5)
-plt.ylim(-0.1, 0.95)
+if limit_axis:
+    plt.xlim(-0.5, 0.5)
+    plt.ylim(-0.5, 0.95)
 
 # Velocity profile vy --------------------------------
 plt.subplot(233)
@@ -288,8 +291,9 @@ plt.errorbar(x_bin, vy_bin, yerr=vy_sigma_bin,
              fmt='.', ms=8.0, color='b', lw=1.2)
 plt.xlabel("${\\rm{Position}}~x$", labelpad=0)
 plt.ylabel("${\\rm{Velocity}}~v_x$", labelpad=0)
-plt.xlim(-0.5, 0.5)
-plt.ylim(-0.1, 0.95)
+if limit_axis:
+    plt.xlim(-0.5, 0.5)
+    plt.ylim(-1.5, 0.1)
 
 # Internal energy profile -------------------------
 plt.subplot(234)
@@ -299,8 +303,9 @@ plt.errorbar(x_bin, u_bin, yerr=u_sigma_bin,
              fmt='.', ms=8.0, color='b', lw=1.2)
 plt.xlabel("${\\rm{Position}}~x$", labelpad=0)
 plt.ylabel("${\\rm{Internal~Energy}}~u$", labelpad=0)
-plt.xlim(-0.5, 0.5)
-plt.ylim(0.8, 2.2)
+if limit_axis:
+    plt.xlim(-0.5, 0.5)
+    plt.ylim(0.5, 2.5)
 
 # Pressure profile --------------------------------
 plt.subplot(235)
@@ -310,8 +315,9 @@ plt.errorbar(x_bin, P_bin, yerr=P_sigma_bin,
              fmt='.', ms=8.0, color='b', lw=1.2)
 plt.xlabel("${\\rm{Position}}~x$", labelpad=0)
 plt.ylabel("${\\rm{Pressure}}~P$", labelpad=0)
-plt.xlim(-0.5, 0.5)
-plt.ylim(0.01, 1.1)
+if limit_axis:
+    plt.xlim(-0.5, 0.5)
+    plt.ylim(0.01, 1.1)
 
 # Magnetic field profile --------------------------------
 plt.subplot(236)
@@ -321,8 +327,9 @@ plt.errorbar(x_bin, By_bin, yerr=By_sigma_bin,
              fmt='.', ms=8.0, color='b', lw=1.2)
 plt.xlabel("${\\rm{Position}}~x$", labelpad=0)
 plt.ylabel("${\\rm{Magnetic Field}}~B_y$", labelpad=0)
-plt.xlim(-0.5, 0.5)
-plt.ylim(-1.1, 1.1)
+if limit_axis:
+    plt.xlim(-0.5, 0.5)
+    plt.ylim(-1.1, 1.1)
 
 # # Information -------------------------------------
 # plt.subplot(236, frameon=False)

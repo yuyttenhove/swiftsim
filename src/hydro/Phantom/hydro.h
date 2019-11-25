@@ -338,11 +338,11 @@ __attribute__((always_inline)) INLINE static void hydro_set_mass(
  * @param B (return) The magnetic field at the current time.
  */
 __attribute__((always_inline)) INLINE static void magnetic_get_drifted_magnetic_field(
-    const struct part *restrict p, const struct xpart *xp, float dt_kick_hydro, float B[3]) {
+    const struct part *restrict p, float B[3]) {
 
-  B[0] = xp->mhd.B_full[0] + p->mhd.force.B_rho_dt[0] * p->rho * dt_kick_hydro;
-  B[1] = xp->mhd.B_full[1] + p->mhd.force.B_rho_dt[1] * p->rho * dt_kick_hydro;
-  B[2] = xp->mhd.B_full[2] + p->mhd.force.B_rho_dt[2] * p->rho * dt_kick_hydro;
+  B[0] = p->mhd.B_pred[0];
+  B[1] = p->mhd.B_pred[1];
+  B[2] = p->mhd.B_pred[2];
 }
 
 /**
@@ -356,15 +356,10 @@ __attribute__((always_inline)) INLINE static void magnetic_get_drifted_magnetic_
  * @return The divergence cleaning field at the current time.
  */
 __attribute__((always_inline)) INLINE static float magnetic_get_drifted_psi(
-    const struct part *restrict p, const struct xpart *xp, float dt_kick_hydro,
+    const struct part *restrict p,
     const struct cosmology *cosmo) {
 
-  if (p->rho == 0.f) {
-    error("%g %g %g %g", xp->mhd.psi_full, p->mhd.force.psi_c_dt, dt_kick_hydro,
-          magnetic_get_physical_magnetosonic_speed(p, cosmo));
-  }
-  return xp->mhd.psi_full + p->mhd.force.psi_c_dt * dt_kick_hydro *
-    magnetic_get_physical_magnetosonic_speed(p, cosmo);
+  return p->mhd.psi_pred;
 }
 
 /**
@@ -499,12 +494,13 @@ hydro_set_drifted_physical_internal_energy(struct part *p,
   /* Compute the sound speed */
   const float pressure = gas_pressure_from_internal_energy(p->rho, p->u);
   const float soundspeed = gas_soundspeed_from_pressure(p->rho, pressure);
+  const float magnetospeed = magnetic_get_physical_magnetosonic_speed(p, cosmo);
 
   /* Update variables. */
   p->force.soundspeed = soundspeed;
   p->force.pressure = pressure;
 
-  p->viscosity.v_sig = max(p->viscosity.v_sig, 2.f * soundspeed);
+  p->viscosity.v_sig = max(p->viscosity.v_sig, 2.f * magnetospeed);
 }
 
 /**
@@ -558,6 +554,7 @@ __attribute__((always_inline)) INLINE static float hydro_compute_timestep(
     * over_clean_fac;
   const float dt_clean = v_clean == 0.f? FLT_MAX :
     0.5f * CFL_condition * p->h * kernel_gamma / v_clean;
+
   return min(dt_cfl, dt_clean);
 }
 
@@ -720,7 +717,7 @@ __attribute__((always_inline)) INLINE static void hydro_prepare_gradient(
 __attribute__((always_inline)) INLINE static void hydro_reset_gradient(
     struct part *restrict p) {
 
-  p->viscosity.v_sig = 2.f * p->force.soundspeed;
+  p->viscosity.v_sig = 2.f * p->mhd.force.soundspeed;
 }
 
 /**
@@ -995,11 +992,12 @@ __attribute__((always_inline)) INLINE static void hydro_reset_predicted_values(
   /* Compute the sound speed */
   const float pressure = gas_pressure_from_internal_energy(p->rho, p->u);
   const float soundspeed = gas_soundspeed_from_pressure(p->rho, pressure);
+  const float magnetospeed = magnetic_get_physical_magnetosonic_speed(p, cosmo);
 
   p->force.pressure = pressure;
   p->force.soundspeed = soundspeed;
 
-  p->viscosity.v_sig = max(p->viscosity.v_sig, 2.f * soundspeed);
+  p->viscosity.v_sig = max(p->viscosity.v_sig, 2.f * magnetospeed);
 
   magnetic_reset_predicted_values(p, xp, cosmo);
 }
@@ -1106,11 +1104,12 @@ __attribute__((always_inline)) INLINE static void hydro_predict_extra(
   /* Compute the new sound speed */
   const float pressure = gas_pressure_from_internal_energy(p->rho, p->u);
   const float soundspeed = gas_soundspeed_from_pressure(p->rho, pressure);
+  const float magnetospeed = magnetic_get_physical_magnetosonic_speed(p, cosmo);
 
   p->force.pressure = pressure;
   p->force.soundspeed = soundspeed;
 
-  p->viscosity.v_sig = max(p->viscosity.v_sig, 2.f * soundspeed);
+  p->viscosity.v_sig = max(p->viscosity.v_sig, 2.f * magnetospeed);
 
   magnetic_drift_part(p, xp, dt_drift, dt_therm, cosmo, hydro_props, floor_props);
 }
@@ -1130,6 +1129,11 @@ __attribute__((always_inline)) INLINE static void hydro_predict_extra(
 __attribute__((always_inline)) INLINE static void hydro_end_force(
     struct part *restrict p, const struct cosmology *cosmo) {
 
+  /* if (p->mhd.force.psi_c_dt != 0.f) { */
+  /*   message("%g %g %g %g", p->mhd.force.B_rho_dt[0], p->mhd.force.B_rho_dt[1], */
+  /*           p->mhd.force.B_rho_dt[2], p->mhd.force.psi_c_dt); */
+  /*   message("%g %g", p->mhd.force.soundspeed, p->rho); */
+  /* } */
   p->force.h_dt *= p->h * hydro_dimension_inv;
 }
 
