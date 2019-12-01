@@ -33,7 +33,7 @@ import matplotlib.pyplot as plt
 # The script works for a given left (x<0.5) and right (x>0.5) state and computes the solution at a later time t.
 # This follows the solution given in (Brio & Wu, 1988)
 
-limit_axis = False
+limit_axis = True
 
 # Plot parameters
 params = {
@@ -121,140 +121,18 @@ S_sigma_bin = np.sqrt(S2_bin - S_bin**2)
 u_sigma_bin = np.sqrt(u2_bin - u_bin**2)
 By_sigma_bin = np.sqrt(By2_bin - By_bin**2)
 
-# Analytic solution
-c_L = np.sqrt(ic.gamma * ic.P_L / ic.rho_L)   # Speed of the rarefaction wave
-c_R = np.sqrt(ic.gamma * ic.P_R / ic.rho_R)   # Speed of the shock front
 
-# Helpful variable
-Gama = (ic.gamma - 1.) / (ic.gamma + 1.)
-beta = (ic.gamma - 1.) / (2. * ic.gamma)
+# get the solution from ramses
+filename = "data.csv"
+ramses = np.genfromtxt(filename, names=True)
+x_s = ramses["x"] + ic.x_min
+rho_s = ramses["d"]
+vx_s = ramses["u"]
+vy_s = ramses["v"]
+P_s = ramses["P"]
+u_s = P_s / (rho_s * (ic.gamma - 1.))
+By_s = ramses["B"]
 
-
-# Characteristic function and its derivative, following Toro (2009)
-def compute_f(P_3, P, c):
-    u = P_3 / P
-    if u > 1:
-        term1 = ic.gamma*((ic.gamma+1.)*u + ic.gamma-1.)
-        term2 = np.sqrt(2./term1)
-        fp = (u - 1.)*c*term2
-        dfdp = c*term2/P + (u - 1.) * c/term2 * (-1./term1**2) \
-            * ic.gamma * (ic.gamma + 1.) / P
-    else:
-        fp = (u**beta - 1.)*(2.*c/(ic.gamma-1.))
-        dfdp = 2.*c/(ic.gamma-1.)*beta*u**(beta-1.)/P
-    return (fp, dfdp)
-
-
-# Solution of the Riemann problem following Toro (2009)
-def RiemannProblem(rho_L, P_L, v_L, rho_R, P_R, v_R):
-    P_new = ((c_L + c_R + (v_L - v_R) * 0.5 * (ic.gamma-1.))
-             / (c_L / P_L**beta + c_R / P_R**beta))**(1./beta)
-    P_3 = 0.5*(P_R + P_L)
-    f_L = 1.
-    while np.fabs(P_3 - P_new) > 1e-6:
-        P_3 = P_new
-        (f_L, dfdp_L) = compute_f(P_3, P_L, c_L)
-        (f_R, dfdp_R) = compute_f(P_3, P_R, c_R)
-        f = f_L + f_R + (v_R - v_L)
-        df = dfdp_L + dfdp_R
-        dp = -f/df
-        P_new = P_3 + dp
-    v_3 = v_L - f_L
-    return (P_new, v_3)
-
-
-# Solve Riemann problem for post-shock region
-(P_3, v_3) = RiemannProblem(ic.rho_L, ic.P_L, ic.v_L,
-                            ic.rho_R, ic.P_R, ic.v_R)
-
-# Check direction of shocks and wave
-shock_R = (P_3 > ic.P_R)
-shock_L = (P_3 > ic.P_L)
-
-# Velocity of shock front and and rarefaction wave
-if shock_R:
-    v_right = ic.v_R + c_R**2*(P_3/ic.P_R - 1.)/(ic.gamma*(v_3-ic.v_R))
-else:
-    v_right = c_R + 0.5*(ic.gamma+1.)*v_3 - 0.5*(ic.gamma-1.)*ic.v_R
-
-if shock_L:
-    v_left = ic.v_L + c_L**2*(P_3/ic.p_L - 1.)/(ic.gamma*(v_3-ic.v_L))
-else:
-    v_left = c_L - 0.5*(ic.gamma+1.)*v_3 + 0.5*(ic.gamma-1.)*ic.v_L
-
-# Compute position of the transitions
-x_23 = -np.fabs(v_left) * time
-if shock_L:
-    x_12 = -np.fabs(v_left) * time
-else:
-    x_12 = -(c_L - ic.v_L) * time
-
-x_34 = v_3 * time
-
-x_45 = np.fabs(v_right) * time
-if shock_R:
-    x_56 = np.fabs(v_right) * time
-else:
-    x_56 = (c_R + ic.v_R) * time
-
-
-# Prepare arrays
-delta_x = (ic.x_max - ic.x_min) / N
-x_s = np.arange(ic.x_min, ic.x_max, delta_x)
-rho_s = np.zeros(N)
-P_s = np.zeros(N)
-vx_s = np.zeros(N)
-vy_s = np.zeros(N)
-
-# Compute solution in the different regions
-for i in range(N):
-    if x_s[i] <= x_12:
-        rho_s[i] = ic.rho_L
-        P_s[i] = ic.P_L
-        vx_s[i] = ic.v_L
-    if x_s[i] >= x_12 and x_s[i] < x_23:
-        if shock_L:
-            rho_s[i] = ic.rho_L*(Gama + P_3/ic.P_L)/(1. + Gama * P_3/ic.P_L)
-            P_s[i] = P_3
-            vx_s[i] = v_3
-        else:
-            rho_s[i] = ic.rho_L*(Gama * (0. - x_s[i])/(c_L * time) + Gama
-                                 * ic.v_L/c_L + (1.-Gama))**(2./(ic.gamma-1.))
-            P_s[i] = ic.P_L*(rho_s[i] / ic.rho_L)**ic.gamma
-            vx_s[i] = (1.-Gama)*(c_L - (0. - x_s[i]) / time) + Gama*ic.v_L
-    if x_s[i] >= x_23 and x_s[i] < x_34:
-        if shock_L:
-            rho_s[i] = ic.rho_L*(Gama + P_3/ic.P_L)/(1+Gama * P_3/ic.p_L)
-        else:
-            rho_s[i] = ic.rho_L*(P_3 / ic.P_L)**(1./ic.gamma)
-        P_s[i] = P_3
-        vx_s[i] = v_3
-    if x_s[i] >= x_34 and x_s[i] < x_45:
-        if shock_R:
-            rho_s[i] = ic.rho_R*(Gama + P_3/ic.P_R)/(1. + Gama * P_3/ic.P_R)
-        else:
-            rho_s[i] = ic.rho_R*(P_3 / ic.P_R)**(1./ic.gamma)
-        P_s[i] = P_3
-        vx_s[i] = v_3
-    if x_s[i] >= x_45 and x_s[i] < x_56:
-        if shock_R:
-            rho_s[i] = ic.rho_R
-            P_s[i] = ic.P_R
-            vx_s[i] = ic.v_R
-        else:
-            rho_s[i] = ic.rho_R*(Gama*(x_s[i])/(c_R*time) - Gama
-                                 * ic.v_R/c_R + (1.-Gama))**(2./(ic.gamma-1.))
-            P_s[i] = ic.p_R*(rho_s[i]/ic.rho_R)**ic.gamma
-            vx_s[i] = (1.-Gama)*(-c_R - (-x_s[i])/time) + Gama * ic.v_R
-    if x_s[i] >= x_56:
-        rho_s[i] = ic.rho_R
-        P_s[i] = ic.P_R
-        vx_s[i] = ic.v_R
-
-
-# Additional arrays
-u_s = P_s / (rho_s * (ic.gamma - 1.))  # internal energy
-s_s = P_s / rho_s**ic.gamma  # entropic function
 
 # Plot the interesting quantities
 plt.figure()
@@ -322,7 +200,7 @@ if limit_axis:
 # Magnetic field profile --------------------------------
 plt.subplot(236)
 plt.plot(x, By, '.', color='r', ms=0.5, alpha=0.2)
-# plt.plot(x_s, P_s, '--', color='k', alpha=0.8, lw=1.2)
+plt.plot(x_s, By_s, '--', color='k', alpha=0.8, lw=1.2)
 plt.errorbar(x_bin, By_bin, yerr=By_sigma_bin,
              fmt='.', ms=8.0, color='b', lw=1.2)
 plt.xlabel("${\\rm{Position}}~x$", labelpad=0)
