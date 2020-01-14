@@ -1025,7 +1025,6 @@ void runner_do_ghost(struct runner *r, struct cell *c, int timer) {
   const int max_smoothing_iter = e->hydro_properties->max_smoothing_iterations;
   int redo = 0, count = 0;
 
-  /* Running value of the maximal smoothing length */
   float h_max = c->hydro.h_max;
   float h_max_active = c->hydro.h_max_active;
 
@@ -1153,10 +1152,10 @@ void runner_do_ghost(struct runner *r, struct cell *c, int timer) {
           if (((p->h >= hydro_h_max) && (f < 0.f)) ||
               ((p->h <= hydro_h_min) && (f > 0.f))) {
 
-            /* We have a particle whose smoothing length is already set (wants
-             * to be larger but has already hit the maximum OR wants to be
-             * smaller but has already reached the minimum). So, just tidy up
-             * as if the smoothing length had converged correctly  */
+          /* We have a particle whose smoothing length is already set (wants
+           * to be larger but has already hit the maximum OR wants to be
+           * smaller but has already reached the minimum). So, just tidy up
+           * as if the smoothing length had converged correctly  */
 
 #ifdef EXTRA_HYDRO_LOOP
 
