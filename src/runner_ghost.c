@@ -1440,10 +1440,9 @@ void runner_do_ghost(struct runner *r, struct cell *c, int timer) {
     const float h = c->hydro.parts[i].h;
     if (part_is_inhibited(p, e)) continue;
 
-    if (h > c->hydro.h_max)
-      error("Particle has h larger than h_max (id=%lld)", p->id);
+    if (h > c->hydro.h_max) error("Particle has h larger than h_max");
     if (part_is_active(p, e) && h > c->hydro.h_max_active)
-      error("Active particle has h larger than h_max_active (id=%lld)", p->id);
+      error("Active particle has h larger than h_max_active");
   }
 #endif
 
