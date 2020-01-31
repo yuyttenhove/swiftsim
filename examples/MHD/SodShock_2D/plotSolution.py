@@ -1,6 +1,6 @@
 ###############################################################################
 # This file is part of SWIFT.
-# Copyright (c) 2019 Loic Hausammann (loic.hausammann@epfl.ch)
+# Copyright (c) 2020 Loic Hausammann (loic.hausammann@epfl.ch)
 #               2016 Matthieu Schaller (matthieu.schaller@durham.ac.uk)
 #
 # This program is free software: you can redistribute it and/or modify
@@ -18,20 +18,20 @@
 #
 ##############################################################################
 
-from scipy import stats
-import h5py
-import matplotlib
-import makeIC as ic
-import sys
-import numpy as np
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-
 # Computes the analytical solution of the Sod shock and plots the SPH answer
 
 # Generates the analytical  solution for the Sod shock test case
 # The script works for a given left (x<0.5) and right (x>0.5) state and computes the solution at a later time t.
 # This follows the solution given in (Brio & Wu, 1988)
+
+from scipy import stats
+import h5py
+import makeIC as ic
+import sys
+import numpy as np
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 
 limit_axis = True
 
@@ -57,10 +57,12 @@ params = {
 }
 matplotlib.rcParams.update(params)
 matplotlib.rc(
-    'font', **{
+    'font',
+    **{
         'family': 'sans-serif',
         'sans-serif': ['Times']
     })
+
 
 snap = int(sys.argv[1])
 
@@ -84,9 +86,9 @@ P = sim["/PartType0/Pressures"][:]
 rho = sim["/PartType0/Densities"][:]
 By = sim["/PartType0/MagneticFields"][:, 1]
 
-
 x += ic.x_min
-N = 1000
+N = 1000  # Number of points
+
 
 # Bin te data
 x_bin_edge = np.arange(-0.6, 0.6, 0.02)
@@ -136,6 +138,7 @@ By_s = ramses["B"]
 
 # Plot the interesting quantities
 plt.figure()
+
 
 # Density profile --------------------------------
 plt.subplot(231)
