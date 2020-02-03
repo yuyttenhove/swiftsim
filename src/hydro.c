@@ -93,6 +93,7 @@ void hydro_exact_density_compute_mapper(void *map_data, int nr_parts,
         const double hj = pj->h;
         const float hj_inv = 1.f / hj;
         const float hjg2 = hj * hj * kernel_gamma2;
+        if (part_is_inhibited(pj, e)) continue;
 
         /* Compute the pairwise distance. */
         double dx = pj->x[0] - pix[0];
@@ -108,7 +109,7 @@ void hydro_exact_density_compute_mapper(void *map_data, int nr_parts,
 
         const double r2 = dx * dx + dy * dy + dz * dz;
 
-        /* Interact loop of type 1? */
+        /* Interact? */
         if (r2 < hig2) {
 
           const float mj = pj->mass;
