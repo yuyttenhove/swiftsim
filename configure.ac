@@ -2533,6 +2533,7 @@ AC_MSG_RESULT([
    Naive interactions          : $enable_naive_interactions
    Naive stars interactions    : $enable_naive_interactions_stars
    Gravity checks              : $gravity_force_checks
+   Hydro density checks        : $hydro_density_checks
    Custom icbrtf               : $enable_custom_icbrtf
    Boundary particles          : $boundary_particles
    Fixed boundary particles    : $fixed_boundary_particles
