@@ -449,6 +449,10 @@ void hydro_exact_density_check(struct space *s, const struct engine *e,
     message("Writting brute-force density files took %.3f %s. ",
             clocks_from_ticks(getticks() - tic), clocks_getunit());
 
+  if (e->verbose)
+    message("Writting brute-force density files took %.3f %s. ",
+            clocks_from_ticks(getticks() - tic), clocks_getunit());
+
 #else
   error("Hydro checking function called without the corresponding flag.");
 #endif
