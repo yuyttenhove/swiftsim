@@ -109,7 +109,7 @@ void hydro_exact_density_compute_mapper(void *map_data, int nr_parts,
 
         const double r2 = dx * dx + dy * dy + dz * dz;
 
-        /* Interact? */
+        /* Interact loop of type 1? */
         if (r2 < hig2) {
 
           const float mj = pj->mass;
@@ -170,6 +170,26 @@ void hydro_exact_density_compute_mapper(void *map_data, int nr_parts,
 
           /* Number of neighbours */
           N_force_exact++;
+        }
+
+        /* Interact loop of type 2? */
+        if ((pi != pj) && (r2 < hig2 || r2 < hjg2)) {
+
+          float wi, wi_dx;
+          float wj, wj_dx;
+
+          /* Kernel function */
+          const float r = sqrtf(r2);
+          const float ui = r * hi_inv;
+          kernel_deval(ui, &wi, &wi_dx);
+          const float uj = r * hj_inv;
+          kernel_deval(uj, &wj, &wj_dx);
+
+          /* Force count */
+          n_force_exact += wi + wj;
+
+	  /* Flag that we found an inhibited neighbour */
+	  if (part_is_inhibited(pj, e)) pi->inhibited_exact = 1;
         }
       }
 
