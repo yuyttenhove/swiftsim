@@ -24,6 +24,8 @@
 #include <fftw3.h>
 #endif
 
+#include <math.h>
+
 /* This object's header. */
 #include "mesh_gravity.h"
 
@@ -38,6 +40,9 @@
 #include "runner.h"
 #include "space.h"
 #include "threadpool.h"
+
+#include "hashmap.h"
+#include "mpi_mesh_gravity.h"
 
 #ifdef HAVE_FFTW
 
@@ -559,6 +564,30 @@ void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
   if (verbose)
     message("Gpart assignment took %.3f %s.",
             clocks_from_ticks(getticks() - tic), clocks_getunit());
+
+  /* Alternate density field calculation for testing */
+  tic = getticks();
+  hashmap_t map;
+  hashmap_init(&map);
+  accumulate_local_gparts_to_hashmap(N, cell_fac, s, &map);
+  message("Accumulating mass to hashmap took %.3f %s.",
+          clocks_from_ticks(getticks() - tic), clocks_getunit());
+
+  /* Check meshes match before MPI reduce */
+  double max_diff = 0.0;
+  for(int i=0; i < N; i+=1) {
+    for(int j=0; i < N; j+=1) {
+      for(int k=0; i < N; k+=1) {
+        hashmap_key_t key = (hashmap_key_t) row_major_id_periodic(i, j, k, N); 
+        hashmap_value_t *value = hashmap_lookup(&map, key);
+        double rho_from_map = 0.0;
+        if(value)rho_from_map = value->value_dbl;
+        double diff = fabs(rho_from_map-rho[key]);
+        if(diff > max_diff)max_diff = diff;
+      }
+    }
+  }
+  message("Maximum mesh mass difference = %e\n", max_diff);
 
 #ifdef WITH_MPI
 
