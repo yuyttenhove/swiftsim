@@ -576,18 +576,22 @@ void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
   /* Check meshes match before MPI reduce */
   double max_diff = 0.0;
   for(int i=0; i < N; i+=1) {
-    for(int j=0; i < N; j+=1) {
-      for(int k=0; i < N; k+=1) {
+    for(int j=0; j < N; j+=1) {
+      for(int k=0; k < N; k+=1) {
         hashmap_key_t key = (hashmap_key_t) row_major_id_periodic(i, j, k, N); 
         hashmap_value_t *value = hashmap_lookup(&map, key);
         double rho_from_map = 0.0;
         if(value)rho_from_map = value->value_dbl;
         double diff = fabs(rho_from_map-rho[key]);
-        if(diff > max_diff)max_diff = diff;
+        if(diff > max_diff) {
+          max_diff = diff;
+        }
       }
     }
   }
   message("Maximum mesh mass difference = %e\n", max_diff);
+  message("Hashmap size = %d\n", (int) hashmap_size(&map));
+  hashmap_free(&map);
 
 #ifdef WITH_MPI
 
