@@ -30,6 +30,14 @@
 #include "part.h"
 #include "space.h"
 
+/**
+ * @brief Data structure for communicating contributions to the mesh
+ */
+struct mesh_hashmap_data {
+  hashmap_key_t key;
+  double value;
+}
+
 
 /**
  * @brief Returns 1D index of a 3D NxNxN array using row-major style.
@@ -49,9 +57,20 @@ __attribute__((always_inline, const)) INLINE static int row_major_id_periodic(
 }
 
 
+/**
+ * @brief Increment the value associated with a hashmap key
+ *
+ * The hashmap entry specified by key is incremented by m_add
+ * if it already exists, otherwise it is created and set equal
+ * to m_add.
+ *
+ * @param map Pointer to the hash map.
+ * @param key Which hash key to update.
+ * @param m_add Amount by which to increment the value in the hash map.
+ */
 __attribute__((always_inline, const)) INLINE static void add_to_hashmap(hashmap_t *map, hashmap_key_t key, double m_add) {
 
-  int created;
+  int created = 0;
   hashmap_value_t *value = hashmap_get_new(map, key, &created);
   if(created) {
     /* Key was not present, so this is a new element */
@@ -68,6 +87,9 @@ __attribute__((always_inline, const)) INLINE static void add_to_hashmap(hashmap_
  *
  * Creates a hashmap with the contributions to the density
  * mesh from local particles.
+ *
+ * TODO: parallelize. E.g. one hashmap per thread and combine
+ * when done.
  *
  * @param N The size of the mesh
  * @param fac Inverse of the cell size
