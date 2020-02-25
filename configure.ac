@@ -826,9 +826,33 @@ if test "x$with_fftw" != "xno"; then
          AC_DEFINE([HAVE_THREADED_FFTW],1,[The threaded FFTW library appears to be present.])
          FFTW_LIBS=$FFTW_THREADED_LIBS
          FFTW_INCS=$FFTW_THREADED_INCS
-	 have_fftw="yes - threaded"
       fi
    fi
+
+   # Now, check whether we have the MPI version of FFTW
+   if test "x$have_fftw" = "xyes"; then
+
+      # Was FFTW's location specifically given?
+      if test "x$with_fftw" != "xyes" -a "x$with_fftw" != "xtest" -a "x$with_fftw" != "x"; then
+        FFTW_MPI_LIBS="-L$with_fftw/lib -lfftw3_mpi -lfftw3"
+        FFTW_MPI_INCS="-I$with_fftw/include"
+      else
+        FFTW_MPI_LIBS="-lfftw3_mpi -lfftw3"
+        FFTW_MPI_INCS=""
+      fi
+
+      # Verify that the library has MPI support
+      AC_CHECK_LIB([fftw3],[fftw_mpi_init],[have_mpi_fftw="yes"],
+		   [have_mpi_fftw="no"], $FFTW_MPI_LIBS)
+
+      # If found, update things
+      if test "x$have_mpi_fftw" = "xyes"; then
+         AC_DEFINE([HAVE_MPI_FFTW],1,[The MPI FFTW library appears to be present.])
+         FFTW_LIBS="$FFTW_LIBS $FFTW_MPI_LIBS"
+         FFTW_INCS="$FFTW_INCS $FFTW_MPI_INCS"
+      fi
+   fi
+
 fi
 
 AC_ARG_WITH([arm-fftw],
@@ -838,6 +862,7 @@ AC_ARG_WITH([arm-fftw],
     [with_arm_fftw="$withval"],
     [with_arm_fftw=no]
 )
+have_arm_fftw="no"
 if test "x$with_arm_fftw" != "xno"; then
 
    # Was FFTW's location specifically given?
@@ -854,14 +879,12 @@ if test "x$with_arm_fftw" != "xno"; then
       AC_CHECK_LIB([armpl_lp64],[fftw_malloc],[have_fftw="yes"],[have_fftw="no"],$FFTW_LIBS)
       if test "x$have_arm_fftw" != "xno"; then
       	 AC_DEFINE([HAVE_FFTW],1,[The FFTW library appears to be present.])
-	 have_fftw="yes - ARM"
       fi
    # FFTW was specified, check that it was a valid location.
    else
       AC_CHECK_LIB([armpl_lp64],[fftw_malloc],
          AC_DEFINE([HAVE_FFTW],1,[The FFTW library appears to be present.]),
          AC_MSG_ERROR(something is wrong with the FFTW library!), $FFTW_LIBS)
-      have_fftw="yes - ARM"
    fi
 
    # FFTW was requested not to be used.
@@ -891,7 +914,6 @@ if test "x$with_arm_fftw" != "xno"; then
          AC_DEFINE([HAVE_THREADED_FFTW],1,[The threaded FFTW library appears to be present.])
          FFTW_LIBS=$FFTW_THREADED_LIBS
          FFTW_INCS=$FFTW_THREADED_INCS
-         have_fftw="yes - ARM - threaded"
       fi
    fi
 fi
@@ -2229,6 +2251,9 @@ AC_MSG_RESULT([
     - parallel          : $have_parallel_hdf5
    METIS/ParMETIS       : $have_metis / $have_parmetis
    FFTW3 enabled        : $have_fftw
+    - threaded          : $have_threaded_fftw
+    - MPI               : $have_mpi_fftw
+    - ARM               : $have_arm_fftw
    GSL enabled          : $have_gsl
    libNUMA enabled      : $have_numa
    GRACKLE enabled      : $have_grackle
