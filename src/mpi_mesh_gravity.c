@@ -235,8 +235,8 @@ void exchange_mesh_cells(size_t *nr_send, struct mesh_key_value *sendbuf,
 
   /* Determine number of elements to receive */
   size_t *nr_recv = malloc(nr_nodes*sizeof(size_t)); 
-  MPI_Alltoall(nr_send, nr_nodes*sizeof(size_t), MPI_BYTE,
-               nr_recv, nr_nodes*sizeof(size_t), MPI_BYTE, MPI_COMM_WORLD);
+  MPI_Alltoall(nr_send, sizeof(size_t), MPI_BYTE,
+               nr_recv, sizeof(size_t), MPI_BYTE, MPI_COMM_WORLD);
 
   /* Find total elements to receive */
   *nr_recv_tot = 0;
@@ -273,8 +273,12 @@ void exchange_mesh_cells(size_t *nr_send, struct mesh_key_value *sendbuf,
     error("Failed to create MPI type for mesh_key_value struct.");
   }
 
-  /* Post the send operations */
-  for(int i=1; i < nr_nodes; i+=1){
+  /*
+   * Post the send operations. This is an alltoallv really but
+   * we want to avoid the limits imposed by int counts and offsets
+   * in MPI_Alltoallv.
+   */
+  for(int i=0; i < nr_nodes; i+=1){
     if(nr_send[i] > 0) {
       MPI_Isend(&(sendbuf[send_offset[i]]), (int) nr_send[i], mesh_key_value_mpi_type,
                 i, 0, MPI_COMM_WORLD, &(request[i]));
@@ -284,9 +288,9 @@ void exchange_mesh_cells(size_t *nr_send, struct mesh_key_value *sendbuf,
   }
 
   /* Post the receives */
-  for(int i=1; i < nr_nodes; i+=1){
+  for(int i=0; i < nr_nodes; i+=1){
     if(nr_recv[i] > 0) {
-      MPI_Irecv(&(recvbuf[recv_offset[i]]), (int) nr_recv[i], mesh_key_value_mpi_type,
+      MPI_Irecv(&((*recvbuf)[recv_offset[i]]), (int) nr_recv[i], mesh_key_value_mpi_type,
                 i, 0, MPI_COMM_WORLD, &(request[i+nr_nodes]));
     } else {
       request[i+nr_nodes] = MPI_REQUEST_NULL;
@@ -319,11 +323,9 @@ void exchange_mesh_cells(size_t *nr_send, struct mesh_key_value *sendbuf,
  * @param Nslice The thickness of the slice to store on this rank
  * @param map The hashmap with the local part of the mesh
  * @param mesh Pointer to the output data buffer
- * @param mesh_size Allocated size of the output data buffer
  *
  */
-void hashmaps_to_slices(const int N, const int Nslice, hashmap_t *map, 
-                        double *mesh, size_t mesh_size) {
+void hashmaps_to_slices(const int N, const int Nslice, hashmap_t *map, double *mesh) {
   
   /* Determine rank, number of ranks */
   int nr_nodes, nodeID;
@@ -390,7 +392,7 @@ void hashmaps_to_slices(const int N, const int Nslice, hashmap_t *map,
     if(mesh_recvbuf[i].key < N*N*slice_offset[nodeID])error("Received cell's local index is negative");
     if(mesh_recvbuf[i].key - N*N*slice_offset[nodeID] >= N*N*slice_width[nodeID])error("Received cell's local index is too large");
 #endif
-    mesh[mesh_recvbuf[i].key-(N*N*slice_offset[nodeID])] = mesh_recvbuf[i].value;
+    mesh[mesh_recvbuf[i].key-(N*N*slice_offset[nodeID])] += mesh_recvbuf[i].value;
   }
 
   /* Tidy up */
