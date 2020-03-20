@@ -578,22 +578,22 @@ void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
 
   /* Check meshes match before MPI reduce */
   double max_diff = 0.0;
-  for(int i=0; i < N; i+=1) {
-    for(int j=0; j < N; j+=1) {
-      for(int k=0; k < N; k+=1) {
-        hashmap_key_t key = (hashmap_key_t) row_major_id_periodic(i, j, k, N); 
-        hashmap_value_t *value = hashmap_lookup(&map, key);
+  for (int i = 0; i < N; i += 1) {
+    for (int j = 0; j < N; j += 1) {
+      for (int k = 0; k < N; k += 1) {
+        hashmap_key_t key = (hashmap_key_t)row_major_id_periodic(i, j, k, N);
+        hashmap_value_t* value = hashmap_lookup(&map, key);
         double rho_from_map = 0.0;
-        if(value)rho_from_map = value->value_dbl;
-        double diff = fabs(rho_from_map-rho[key]);
-        if(diff > max_diff) {
+        if (value) rho_from_map = value->value_dbl;
+        double diff = fabs(rho_from_map - rho[key]);
+        if (diff > max_diff) {
           max_diff = diff;
         }
       }
     }
   }
   message("Maximum local mesh mass difference = %e\n", max_diff);
-  message("Hashmap size = %d\n", (int) hashmap_size(&map));
+  message("Hashmap size = %d\n", (int)hashmap_size(&map));
 
 #ifdef WITH_MPI
 
@@ -609,8 +609,7 @@ void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
             clocks_from_ticks(getticks() - tic), clocks_getunit());
 #endif
 
-
-  /* Alternate calculation for testing */
+    /* Alternate calculation for testing */
 #ifdef WITH_MPI
 
   MPI_Barrier(MPI_COMM_WORLD);
@@ -619,47 +618,54 @@ void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
   /* Ask FFTW what slice of the density field we need to store on this task */
   ptrdiff_t local_n0;
   ptrdiff_t local_0_start;
-  ptrdiff_t nalloc = fftw_mpi_local_size_3d((ptrdiff_t) N, (ptrdiff_t) N, (ptrdiff_t) N,
-                                            MPI_COMM_WORLD, &local_n0, &local_0_start);
-  message("Local density field slice has thickness %d.", (int) local_n0);
+  ptrdiff_t nalloc =
+      fftw_mpi_local_size_3d((ptrdiff_t)N, (ptrdiff_t)N, (ptrdiff_t)N,
+                             MPI_COMM_WORLD, &local_n0, &local_0_start);
+  message("Local density field slice has thickness %d.", (int)local_n0);
 
   /* Allocate storage for mesh slices*/
-  double *mesh_slice = (double*)fftw_malloc(nalloc*sizeof(double));
-  for(int i=0; i < nalloc; i+=1) mesh_slice[i] = 0.0;
+  double* mesh_slice = (double*)fftw_malloc(nalloc * sizeof(double));
+  for (int i = 0; i < nalloc; i += 1) mesh_slice[i] = 0.0;
 
   /* Construct density field slices */
-  hashmaps_to_slices(N, (int) local_n0, &map, mesh_slice);
+  hashmaps_to_slices(N, (int)local_n0, &map, mesh_slice);
 
   /* Check slices match the full mesh */
   max_diff = 0.0;
   double max_frac_diff = 0.0;
-  for(int i=local_0_start; i < local_0_start+local_n0; i+=1) {
-    for(int j=0; j < N; j+=1) {
-      for(int k=0; k < N; k+=1) {
+  for (int i = local_0_start; i < local_0_start + local_n0; i += 1) {
+    for (int j = 0; j < N; j += 1) {
+      for (int k = 0; k < N; k += 1) {
         /* Get index into full mesh */
-        hashmap_key_t global_key = (hashmap_key_t) row_major_id_periodic(i, j, k, N); 
+        hashmap_key_t global_key =
+            (hashmap_key_t)row_major_id_periodic(i, j, k, N);
         /* Get index into the local slice on this node */
-        hashmap_key_t local_key  = (hashmap_key_t) row_major_id_periodic(i - local_0_start, j, k, N); 
+        hashmap_key_t local_key =
+            (hashmap_key_t)row_major_id_periodic(i - local_0_start, j, k, N);
         /* Compare and record maximum difference */
-        double diff = fabs(mesh_slice[local_key]-rho[global_key]);
-        if(diff > max_diff) {
+        double diff = fabs(mesh_slice[local_key] - rho[global_key]);
+        if (diff > max_diff) {
           max_diff = diff;
         }
-        double frac_diff = fabs((mesh_slice[local_key] / rho[global_key]) - 1.0);
-        if(frac_diff > max_frac_diff) {
+        double frac_diff =
+            fabs((mesh_slice[local_key] / rho[global_key]) - 1.0);
+        if (frac_diff > max_frac_diff) {
           max_frac_diff = frac_diff;
         }
       }
     }
   }
-  MPI_Allreduce(MPI_IN_PLACE, &max_diff, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+  MPI_Allreduce(MPI_IN_PLACE, &max_diff, 1, MPI_DOUBLE, MPI_MAX,
+                MPI_COMM_WORLD);
   message("Maximum global mesh mass absolute difference = %e\n", max_diff);
-  MPI_Allreduce(MPI_IN_PLACE, &max_frac_diff, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
-  message("Maximum global mesh mass fractional difference = %e\n", max_frac_diff);
+  MPI_Allreduce(MPI_IN_PLACE, &max_frac_diff, 1, MPI_DOUBLE, MPI_MAX,
+                MPI_COMM_WORLD);
+  message("Maximum global mesh mass fractional difference = %e\n",
+          max_frac_diff);
 
   /* Discard MPI mesh for now*/
   fftw_free(mesh_slice);
-  
+
   if (verbose)
     message("Alternate mesh communication took %.3f %s.",
             clocks_from_ticks(getticks() - tic), clocks_getunit());
@@ -806,16 +812,16 @@ void pm_mesh_init(struct pm_mesh* mesh, const struct gravity_props* props,
     error("Mesh too small or r_cut_max too big for this box size");
 
 #ifdef HAVE_THREADED_FFTW
-    /* Initialise the thread-parallel FFTW version */
-    if (N >= 64) fftw_init_threads();
+  /* Initialise the thread-parallel FFTW version */
+  if (N >= 64) fftw_init_threads();
 #endif
 #ifdef HAVE_MPI_FFTW
-    /* Initialize FFTW MPI support - must be after fftw_init_threads() */
-    fftw_mpi_init();
+  /* Initialize FFTW MPI support - must be after fftw_init_threads() */
+  fftw_mpi_init();
 #endif
 #ifdef HAVE_THREADED_FFTW
-    /* Set  number of threads to use */
-    if (N >= 64)fftw_plan_with_nthreads(mesh->nr_threads);
+  /* Set  number of threads to use */
+  if (N >= 64) fftw_plan_with_nthreads(mesh->nr_threads);
 #endif
 
   /* Allocate the memory for the combined density and potential array */
@@ -911,7 +917,7 @@ void pm_mesh_struct_restore(struct pm_mesh* mesh, FILE* stream) {
 #endif
 #ifdef HAVE_THREADED_FFTW
     /* Set  number of threads to use */
-    if (N >= 64)fftw_plan_with_nthreads(mesh->nr_threads);
+    if (N >= 64) fftw_plan_with_nthreads(mesh->nr_threads);
 #endif
 
     /* Allocate the memory for the combined density and potential array */

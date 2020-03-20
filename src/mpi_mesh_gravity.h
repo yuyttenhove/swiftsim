@@ -24,8 +24,8 @@
 #include "../config.h"
 
 /* Local includes. */
-#include "space.h"
 #include "hashmap.h"
+#include "space.h"
 
 /**
  * @brief Accumulate local contributions to the density field
@@ -39,8 +39,8 @@
  * @param map The hashmap in which to store the results
  *
  */
-void accumulate_local_gparts_to_hashmap(const int N, const double fac, 
-                                        const struct space* s, hashmap_t *map);
+void accumulate_local_gparts_to_hashmap(const int N, const double fac,
+                                        const struct space *s, hashmap_t *map);
 
 /**
  * @brief Convert hashmaps to a slab-distributed 3D mesh
@@ -56,6 +56,7 @@ void accumulate_local_gparts_to_hashmap(const int N, const double fac,
  * @param mesh Pointer to the output data buffer
  *
  */
-void hashmaps_to_slices(const int N, const int Nslice, hashmap_t *map, double *mesh);
+void hashmaps_to_slices(const int N, const int Nslice, hashmap_t *map,
+                        double *mesh);
 
 #endif
