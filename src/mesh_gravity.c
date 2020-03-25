@@ -593,7 +593,6 @@ void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
     }
   }
   message("Maximum local mesh mass difference = %e\n", max_diff);
-  message("Hashmap size = %d\n", (int)hashmap_size(&map));
 
 #ifdef WITH_MPI
 
@@ -615,17 +614,20 @@ void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
   MPI_Barrier(MPI_COMM_WORLD);
   tic = getticks();
 
-  /* Ask FFTW what slice of the density field we need to store on this task */
+  /* Ask FFTW what slice of the density field we need to store on this task.
+     Note that fftw_mpi_local_size_3d works in terms of the size of the complex
+     output. The last dimension of the real input is padded to 2*(N/2+1). */
   ptrdiff_t local_n0;
   ptrdiff_t local_0_start;
   ptrdiff_t nalloc =
-      fftw_mpi_local_size_3d((ptrdiff_t)N, (ptrdiff_t)N, (ptrdiff_t)N,
-                             MPI_COMM_WORLD, &local_n0, &local_0_start);
+    fftw_mpi_local_size_3d((ptrdiff_t)N, (ptrdiff_t)N, (ptrdiff_t) (N/2+1),
+                           MPI_COMM_WORLD, &local_n0, &local_0_start);
   message("Local density field slice has thickness %d.", (int)local_n0);
+  message("Hashmap size = %d, local cells = %d\n", (int)hashmap_size(&map), (int) (local_n0*N*N));
 
-  /* Allocate storage for mesh slices*/
-  double* mesh_slice = (double*)fftw_malloc(nalloc * sizeof(double));
-  for (int i = 0; i < nalloc; i += 1) mesh_slice[i] = 0.0;
+  /* Allocate storage for mesh slices. nalloc is the number of *complex* values. */
+  double* mesh_slice = (double*)fftw_malloc(2 * nalloc * sizeof(double));
+  for (int i = 0; i < 2*nalloc; i += 1) mesh_slice[i] = 0.0;
 
   /* Construct density field slices */
   hashmaps_to_slices(N, (int)local_n0, &map, mesh_slice);
