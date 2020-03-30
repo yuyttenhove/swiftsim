@@ -570,9 +570,9 @@ void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
 
   /* Alternate density field calculation for testing */
   tic = getticks();
-  hashmap_t map;
-  hashmap_init(&map);
-  accumulate_local_gparts_to_hashmap(N, cell_fac, s, &map);
+  hashmap_t rho_map;
+  hashmap_init(&rho_map);
+  accumulate_local_gparts_to_hashmap(N, cell_fac, s, &rho_map);
   message("Accumulating mass to hashmap took %.3f %s.",
           clocks_from_ticks(getticks() - tic), clocks_getunit());
 
@@ -583,7 +583,7 @@ void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
       for (int k = 0; k < N; k += 1) {
         int id = row_major_id_periodic(i, j, k, N);
         hashmap_key_t key  = (hashmap_key_t)row_major_id_periodic_size_t_padded(i, j, k, N);        
-        hashmap_value_t* value = hashmap_lookup(&map, key);
+        hashmap_value_t* value = hashmap_lookup(&rho_map, key);
         double rho_from_map = 0.0;
         if (value) rho_from_map = value->value_dbl;
         double diff = fabs(rho_from_map - rho[id]);
@@ -624,14 +624,17 @@ void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
     fftw_mpi_local_size_3d((ptrdiff_t)N, (ptrdiff_t)N, (ptrdiff_t) (N/2+1),
                            MPI_COMM_WORLD, &local_n0, &local_0_start);
   message("Local density field slice has thickness %d.", (int)local_n0);
-  message("Hashmap size = %d, local cells = %d\n", (int)hashmap_size(&map), (int) (local_n0*N*N));
+  message("Hashmap size = %d, local cells = %d\n", (int)hashmap_size(&rho_map), (int) (local_n0*N*N));
 
   /* Allocate storage for mesh slices. nalloc is the number of *complex* values. */
-  double* mesh_slice = (double*)fftw_malloc(2 * nalloc * sizeof(double));
-  for (int i = 0; i < 2*nalloc; i += 1) mesh_slice[i] = 0.0;
+  double* rho_slice = (double*)fftw_malloc(2 * nalloc * sizeof(double));
+  for (int i = 0; i < 2*nalloc; i += 1) rho_slice[i] = 0.0;
+
+  /* Allocate storage for the slices of the FFT of the density mesh */
+  fftw_complex* frho_slice = (fftw_complex*) fftw_malloc(nalloc * sizeof(fftw_complex));
 
   /* Construct density field slices */
-  hashmaps_to_slices(N, (int)local_n0, &map, mesh_slice);
+  hashmaps_to_slices(N, (int)local_n0, &rho_map, rho_slice);
 
   /* Check slices match the full mesh */
   max_diff = 0.0;
@@ -646,12 +649,12 @@ void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
         /* Convert to index in the local slice of the MPI mesh */
         size_t local_index = get_index_in_local_slice(global_index, N, local_0_start);
         /* Compare and record maximum difference between MPI and non-MPI calculations */
-        double diff = fabs(mesh_slice[local_index] - rho[id]);
+        double diff = fabs(rho_slice[local_index] - rho[id]);
         if (diff > max_diff) {
           max_diff = diff;
         }
         double frac_diff =
-          fabs((mesh_slice[local_index] / rho[id]) - 1.0);
+          fabs((rho_slice[local_index] / rho[id]) - 1.0);
         if (frac_diff > max_frac_diff) {
           max_frac_diff = frac_diff;
         }
@@ -666,15 +669,12 @@ void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
   message("Maximum global mesh mass fractional difference = %e\n",
           max_frac_diff);
 
-  /* Discard MPI mesh for now*/
-  fftw_free(mesh_slice);
-
   if (verbose)
     message("Alternate mesh communication took %.3f %s.",
             clocks_from_ticks(getticks() - tic), clocks_getunit());
 #endif
 
-  hashmap_free(&map);
+  hashmap_free(&rho_map);
 
   /* message("\n\n\n DENSITY"); */
   /* print_array(rho, N); */
@@ -687,6 +687,30 @@ void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
   if (verbose)
     message("Forward Fourier transform took %.3f %s.",
             clocks_from_ticks(getticks() - tic), clocks_getunit());
+
+#ifdef WITH_MPI
+  tic = getticks();
+
+  /* 
+   * For testing: carry out the MPI Fourier transform.
+   * We can save a bit of time if we allow FFTW to transpose the first
+   * two dimensions of the output.
+   */
+  fftw_plan mpi_plan = fftw_mpi_plan_dft_r2c_3d(N, N, N, rho_slice, frho_slice, MPI_COMM_WORLD,
+                                                FFTW_ESTIMATE | FFTW_MPI_TRANSPOSED_OUT);
+  fftw_execute(mpi_plan);
+  fftw_destroy_plan(mpi_plan);  
+
+  if (verbose)
+    message("MPI forward Fourier transform took %.3f %s.",
+            clocks_from_ticks(getticks() - tic), clocks_getunit());
+
+  /* Check that the MPI FFT matches the non-MPI version */
+  
+  /* Discard MPI mesh for now*/
+  fftw_free(rho_slice);
+  fftw_free(frho_slice);
+#endif
 
   /* frho now contains the Fourier transform of the density field */
   /* frho contains NxNx(N/2+1) complex numbers */
