@@ -581,11 +581,12 @@ void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
   for (int i = 0; i < N; i += 1) {
     for (int j = 0; j < N; j += 1) {
       for (int k = 0; k < N; k += 1) {
-        hashmap_key_t key = (hashmap_key_t)row_major_id_periodic(i, j, k, N);
+        int id = row_major_id_periodic(i, j, k, N);
+        hashmap_key_t key  = (hashmap_key_t)row_major_id_periodic_size_t_padded(i, j, k, N);        
         hashmap_value_t* value = hashmap_lookup(&map, key);
         double rho_from_map = 0.0;
         if (value) rho_from_map = value->value_dbl;
-        double diff = fabs(rho_from_map - rho[key]);
+        double diff = fabs(rho_from_map - rho[id]);
         if (diff > max_diff) {
           max_diff = diff;
         }
@@ -638,19 +639,19 @@ void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
   for (int i = local_0_start; i < local_0_start + local_n0; i += 1) {
     for (int j = 0; j < N; j += 1) {
       for (int k = 0; k < N; k += 1) {
-        /* Get index into full mesh */
-        hashmap_key_t global_key =
-            (hashmap_key_t)row_major_id_periodic(i, j, k, N);
-        /* Get index into the local slice on this node */
-        hashmap_key_t local_key =
-            (hashmap_key_t)row_major_id_periodic(i - local_0_start, j, k, N);
-        /* Compare and record maximum difference */
-        double diff = fabs(mesh_slice[local_key] - rho[global_key]);
+        /* Get index of this cell in the mesh from the non-MPI calculation */
+        int id = row_major_id_periodic(i, j, k, N);
+        /* Get index of this cell in the full MPI mesh */
+        size_t global_index = row_major_id_periodic_size_t_padded(i, j, k, N);        
+        /* Convert to index in the local slice of the MPI mesh */
+        size_t local_index = get_index_in_local_slice(global_index, N, local_0_start);
+        /* Compare and record maximum difference between MPI and non-MPI calculations */
+        double diff = fabs(mesh_slice[local_index] - rho[id]);
         if (diff > max_diff) {
           max_diff = diff;
         }
         double frac_diff =
-            fabs((mesh_slice[local_key] / rho[global_key]) - 1.0);
+          fabs((mesh_slice[local_index] / rho[id]) - 1.0);
         if (frac_diff > max_frac_diff) {
           max_frac_diff = frac_diff;
         }

@@ -123,35 +123,35 @@ void accumulate_local_gparts_to_hashmap(const int N, const double fac,
       const double mass = gp->mass;
       add_to_hashmap(
           map,
-          (hashmap_key_t)row_major_id_periodic_size_t(i + 0, j + 0, k + 0, N),
+          (hashmap_key_t)row_major_id_periodic_size_t_padded(i + 0, j + 0, k + 0, N),
           mass * tx * ty * tz);
       add_to_hashmap(
           map,
-          (hashmap_key_t)row_major_id_periodic_size_t(i + 0, j + 0, k + 1, N),
+          (hashmap_key_t)row_major_id_periodic_size_t_padded(i + 0, j + 0, k + 1, N),
           mass * tx * ty * dz);
       add_to_hashmap(
           map,
-          (hashmap_key_t)row_major_id_periodic_size_t(i + 0, j + 1, k + 0, N),
+          (hashmap_key_t)row_major_id_periodic_size_t_padded(i + 0, j + 1, k + 0, N),
           mass * tx * dy * tz);
       add_to_hashmap(
           map,
-          (hashmap_key_t)row_major_id_periodic_size_t(i + 0, j + 1, k + 1, N),
+          (hashmap_key_t)row_major_id_periodic_size_t_padded(i + 0, j + 1, k + 1, N),
           mass * tx * dy * dz);
       add_to_hashmap(
           map,
-          (hashmap_key_t)row_major_id_periodic_size_t(i + 1, j + 0, k + 0, N),
+          (hashmap_key_t)row_major_id_periodic_size_t_padded(i + 1, j + 0, k + 0, N),
           mass * dx * ty * tz);
       add_to_hashmap(
           map,
-          (hashmap_key_t)row_major_id_periodic_size_t(i + 1, j + 0, k + 1, N),
+          (hashmap_key_t)row_major_id_periodic_size_t_padded(i + 1, j + 0, k + 1, N),
           mass * dx * ty * dz);
       add_to_hashmap(
           map,
-          (hashmap_key_t)row_major_id_periodic_size_t(i + 1, j + 1, k + 0, N),
+          (hashmap_key_t)row_major_id_periodic_size_t_padded(i + 1, j + 1, k + 0, N),
           mass * dx * dy * tz);
       add_to_hashmap(
           map,
-          (hashmap_key_t)row_major_id_periodic_size_t(i + 1, j + 1, k + 1, N),
+          (hashmap_key_t)row_major_id_periodic_size_t_padded(i + 1, j + 1, k + 1, N),
           mass * dx * dy * dz);
 
     } /* Next particle */
@@ -372,8 +372,8 @@ void hashmaps_to_slices(const int N, const int Nslice, hashmap_t *map,
   }
   int dest_node = 0;
   for (size_t i = 0; i < nr_send_tot; i += 1) {
-    /* Get the x coordinate of this mesh cell */
-    int mesh_x = mesh_sendbuf[i].key / ((hashmap_key_t)(N * N));
+    /* Get the x coordinate of this mesh cell in the global mesh */
+    int mesh_x = get_xcoord_from_padded_row_major_id((size_t) mesh_sendbuf[i].key, N);
     /* Advance to the destination node that is to contain this x coordinate */
     while ((mesh_x >= slice_offset[dest_node] + slice_width[dest_node]) ||
            (slice_width[dest_node] == 0)) {
@@ -392,16 +392,15 @@ void hashmaps_to_slices(const int N, const int Nslice, hashmap_t *map,
   free(nr_send);
 
   /* Copy received data to the output buffer */
-  for (size_t i = 0; i < nr_recv_tot; i += 1) {
+  for (size_t i = 0; i < nr_recv_tot; i += 1) {    
 #ifdef SWIFT_DEBUG_CHECKS
-    if (mesh_recvbuf[i].key < N * N * slice_offset[nodeID])
-      error("Received cell's local index is negative");
-    if (mesh_recvbuf[i].key - N * N * slice_offset[nodeID] >=
-        N * N * slice_width[nodeID])
-      error("Received cell's local index is too large");
+    const int xcoord = get_xcoord_from_padded_row_major_id(mesh_recvbuf[i].key, N);
+    if(xcoord < slice_offset[nodeID])
+      error("Received mesh cell is not in the local slice (xcoord too small)");
+    if(xcoord >= slice_offset[nodeID] + slice_width[nodeID])
+      error("Received mesh cell is not in the local slice (xcoord too large)");
 #endif
-    mesh[mesh_recvbuf[i].key - (N * N * slice_offset[nodeID])] +=
-        mesh_recvbuf[i].value;
+    mesh[get_index_in_local_slice((size_t) mesh_recvbuf[i].key, N, slice_offset[nodeID])] += mesh_recvbuf[i].value;
   }
 
   /* Tidy up */
