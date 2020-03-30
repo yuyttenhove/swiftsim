@@ -36,24 +36,6 @@
 #include "space.h"
 
 /**
- * @brief Returns 1D index of a 3D NxNxN array using row-major style.
- *
- * Wraps around in the corresponding dimension if any of the 3 indices is >= N
- * or < 0. Note that indexes are of type size_t in this version!
- *
- * @param i Index along x.
- * @param j Index along y.
- * @param k Index along z.
- * @param N Size of the array along one axis.
- */
-__attribute__((always_inline, const)) INLINE static size_t
-row_major_id_periodic_size_t(const size_t i, const size_t j, const size_t k,
-                             const size_t N) {
-
-  return (((i + N) % N) * N * N + ((j + N) % N) * N + ((k + N) % N));
-}
-
-/**
  * @brief Increment the value associated with a hashmap key
  *
  * The hashmap entry specified by key is incremented by m_add
