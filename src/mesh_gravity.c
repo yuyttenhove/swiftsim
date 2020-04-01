@@ -705,8 +705,59 @@ void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
     message("MPI forward Fourier transform took %.3f %s.",
             clocks_from_ticks(getticks() - tic), clocks_getunit());
 
-  /* Check that the MPI FFT matches the non-MPI version */
-  
+  /*
+   * Layout of the MPI FFTW input and output:
+   *
+   * Input mesh contains N*N*N reals, padded to N*N*(2*(N/2+1)).
+   * Output Fourier transform is N*N*(N/2+1) complex values.
+   *
+   * The first two dimensions of the transform are transposed in
+   * the output. Each MPI rank has slice of thickness local_n0 
+   * starting at local_0_start in the first dimension.
+   */
+
+  /*
+   * Check that the MPI FFT matches the non-MPI version
+   *
+   * First loop over cells we have in the local slice of
+   * the Fourier transform.
+   */
+  max_frac_diff = 0.0;
+  for (int i = local_0_start; i < local_0_start + local_n0; i += 1) {
+    for (int j = 0; j < N; j += 1) {
+      for (int k = 0; k < (N/2+1); k += 1) {
+        /* Compute corresponding coordinate in the non-MPI transform */
+        int i_full = j;
+        int j_full = i;
+        int k_full = k;
+        /* Find index into the full non-MPI transform array */
+        size_t index_full = i_full*N*(N/2+1) + j_full*(N/2+1) + k_full;
+        /* Find index into the local slice */
+        size_t Ns = N;
+        size_t index_slice = (i-local_0_start)*Ns*(Ns/2+1) + j*(Ns/2+1) + k;
+        /* Compare real parts */
+        double frac_diff;
+        double real_part_full  = frho[index_full][0];
+        double real_part_slice = frho_slice[index_slice][0];
+        frac_diff = fabs(real_part_full/real_part_slice-1.0);
+        if (frac_diff > max_frac_diff) {
+          max_frac_diff = frac_diff;
+        }
+        /* Compare imaginary parts */
+        double im_part_full  = frho[index_full][1];
+        double im_part_slice = frho_slice[index_slice][1];
+        frac_diff = fabs(im_part_full/im_part_slice-1.0);
+        if (frac_diff > max_frac_diff) {
+          max_frac_diff = frac_diff;
+        }
+
+      }
+    }
+  }
+  MPI_Allreduce(MPI_IN_PLACE, &max_frac_diff, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+  message("Maximum Fourier transform fractional difference = %e\n",
+          max_frac_diff);
+
   /* Discard MPI mesh for now*/
   fftw_free(rho_slice);
   fftw_free(frho_slice);
