@@ -705,7 +705,7 @@ void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
    * two dimensions of the output.
    */
   fftw_plan mpi_plan = fftw_mpi_plan_dft_r2c_3d(N, N, N, rho_slice, frho_slice, MPI_COMM_WORLD,
-                                                FFTW_ESTIMATE | FFTW_MPI_TRANSPOSED_OUT);
+                                                FFTW_ESTIMATE | FFTW_MPI_TRANSPOSED_OUT | FFTW_DESTROY_INPUT);
   fftw_execute(mpi_plan);
   fftw_destroy_plan(mpi_plan);  
 
@@ -828,9 +828,18 @@ void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
   message("Maximum fractional difference in FT of potential = %e\n",
           max_frac_diff);
 
-  /* Discard MPI mesh for now*/
-  fftw_free(rho_slice);
-  fftw_free(frho_slice);
+  /* 
+   * For testing: carry out the reverse MPI Fourier transform.
+   */
+  fftw_plan mpi_inverse_plan = fftw_mpi_plan_dft_c2r_3d(N, N, N, frho_slice, rho_slice, MPI_COMM_WORLD,
+                                                        FFTW_ESTIMATE | FFTW_MPI_TRANSPOSED_IN | FFTW_DESTROY_INPUT);
+  fftw_execute(mpi_inverse_plan);
+  fftw_destroy_plan(mpi_inverse_plan);  
+
+  if (verbose)
+    message("MPI reverse Fourier transform took %.3f %s.",
+            clocks_from_ticks(getticks() - tic), clocks_getunit());
+
 #endif
 
   /* Fourier transform to come back from magic-land */
@@ -840,6 +849,43 @@ void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
     message("Backwards Fourier transform took %.3f %s.",
             clocks_from_ticks(getticks() - tic), clocks_getunit());
 
+
+#ifdef WITH_MPI
+
+  /* Check slices match the full mesh */
+  max_diff = 0.0;
+  max_frac_diff = 0.0;
+  for (int i = local_0_start; i < local_0_start + local_n0; i += 1) {
+    for (int j = 0; j < N; j += 1) {
+      for (int k = 0; k < N; k += 1) {
+        /* Get index of this cell in the mesh from the non-MPI calculation */
+        int id = row_major_id_periodic(i, j, k, N);
+        /* Get index of this cell in the full MPI mesh */
+        size_t global_index = row_major_id_periodic_size_t_padded(i, j, k, N);        
+        /* Convert to index in the local slice of the MPI mesh */
+        size_t local_index = get_index_in_local_slice(global_index, N, local_0_start);
+        /* Compare and record maximum difference between MPI and non-MPI calculations */
+        double diff = fabs(rho_slice[local_index] - rho[id]);
+        if (diff > max_diff) {
+          max_diff = diff;
+        }
+        double frac_diff =
+          fabs((rho_slice[local_index] / rho[id]) - 1.0);
+        if (frac_diff > max_frac_diff) {
+          max_frac_diff = frac_diff;
+        }
+      }
+    }
+  }
+  MPI_Allreduce(MPI_IN_PLACE, &max_diff, 1, MPI_DOUBLE, MPI_MAX,
+                MPI_COMM_WORLD);
+  message("Maximum global potential absolute difference = %e\n", max_diff);
+  MPI_Allreduce(MPI_IN_PLACE, &max_frac_diff, 1, MPI_DOUBLE, MPI_MAX,
+                MPI_COMM_WORLD);
+  message("Maximum global potential fractional difference = %e\n",
+          max_frac_diff);
+#endif
+
   /* rho now contains the potential */
   /* This array is now again NxNxN real numbers */
 
@@ -848,6 +894,12 @@ void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
 
   /* message("\n\n\n POTENTIAL"); */
   /* print_array(mesh->potential, N); */
+
+#ifdef WITH_MPI
+  /* Discard MPI mesh for now*/
+  fftw_free(rho_slice);
+  fftw_free(frho_slice);
+#endif
 
   /* Clean-up the mess */
   fftw_destroy_plan(forward_plan);
