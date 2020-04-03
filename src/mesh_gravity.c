@@ -489,7 +489,7 @@ void mesh_apply_Green_function(struct threadpool* tp, fftw_complex* frho,
                  sizeof(fftw_complex), threadpool_auto_chunk_size, &data);
 
   /* Correct singularity at (0,0,0), if it's in our local slice */
-  if(slice_offset==0) {
+  if(slice_offset==0 && slice_width > 0) {
     frho[0][0] = 0.;
     frho[0][1] = 0.;
   }
