@@ -282,6 +282,10 @@ void exchange_mesh_cells(size_t *nr_send, struct mesh_key_value *sendbuf,
    */
   for (int i = 0; i < nr_nodes; i += 1) {
     if (nr_send[i] > 0) {
+
+      /* TODO: handle very large messages */
+      if(nr_send[i] > INT_MAX) error("exchange_mesh_cells() fails if nr_send > INT_MAX!");
+
       MPI_Isend(&(sendbuf[send_offset[i]]), (int)nr_send[i],
                 mesh_key_value_mpi_type, i, 0, MPI_COMM_WORLD, &(request[i]));
     } else {
@@ -292,6 +296,10 @@ void exchange_mesh_cells(size_t *nr_send, struct mesh_key_value *sendbuf,
   /* Post the receives */
   for (int i = 0; i < nr_nodes; i += 1) {
     if (nr_recv[i] > 0) {
+
+      /* TODO: handle very large messages */
+      if(nr_recv[i] > INT_MAX) error("exchange_mesh_cells() fails if nr_recv > INT_MAX!");
+
       MPI_Irecv(&((*recvbuf)[recv_offset[i]]), (int)nr_recv[i],
                 mesh_key_value_mpi_type, i, 0, MPI_COMM_WORLD,
                 &(request[i + nr_nodes]));
