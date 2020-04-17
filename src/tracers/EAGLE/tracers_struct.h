@@ -36,6 +36,16 @@ struct tracers_xpart_data {
     /*! Time at which the maximal temperature was reached */
     float maximum_temperature_time;
   };
+
+  /*! Total amount of AGN feedback energy received by this particle
+   * (physical units) */
+  float AGN_feedback_energy;
+
+  /*! Has this particle been hit by SNII feedback? */
+  char hit_by_SNII_feedback;
+
+  /*! Has this particle been hit by AGN feedback? */
+  char hit_by_AGN_feedback;
 };
 
 #endif /* SWIFT_TRACERS_STRUCT_EAGLE_H */

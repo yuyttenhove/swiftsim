@@ -52,10 +52,12 @@ struct gpart {
   /*! Type of the #gpart (DM, gas, star, ...) */
   enum part_type type;
 
-#ifdef SWIFT_DEBUG_CHECKS
+#ifdef WITH_LOGGER
+  /* Additional data for the particle logger */
+  struct logger_part_data logger_data;
+#endif
 
-  /* Numer of gparts this gpart interacted with */
-  long long num_interacted;
+#ifdef SWIFT_DEBUG_CHECKS
 
   /* Time of the last drift */
   integertime_t ti_drift;
@@ -66,6 +68,8 @@ struct gpart {
   /* Has this particle been initialised? */
   int initialised;
 
+  /* Total number of gparts this gpart interacted with */
+  long long num_interacted;
 #endif
 
 #ifdef SWIFT_GRAVITY_FORCE_CHECKS
@@ -76,11 +80,24 @@ struct gpart {
   /*! Potential taken from the mesh only */
   float potential_PM;
 
-  /* Brute-force particle acceleration. */
+  /* Acceleration taken from each component of the tree */
+  float a_grav_p2p[3];
+  float a_grav_m2p[3];
+  float a_grav_m2l[3];
+
+  /* Brute-force particle accelerations */
   double a_grav_exact[3];
+  double a_grav_exact_long[3];
+  double a_grav_exact_short[3];
 
   /* Brute-force particle potential. */
   double potential_exact;
+
+  /* Type specific interaction counters */
+  long long num_interacted_m2l;
+  long long num_interacted_m2p;
+  long long num_interacted_p2p;
+  long long num_interacted_pm;
 #endif
 
 } SWIFT_STRUCT_ALIGN;

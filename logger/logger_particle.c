@@ -33,7 +33,7 @@
  * @param p The #logger_particle to print
  */
 void logger_particle_print(const struct logger_particle *p) {
-  message("ID:            %lu.", p->id);
+  message("ID:            %lli.", p->id);
   message("Mass:          %g", p->mass);
   message("Time:          %g.", p->time);
   message("Cutoff Radius: %g.", p->h);
@@ -42,6 +42,7 @@ void logger_particle_print(const struct logger_particle *p) {
   message("Accelerations: (%g, %g, %g).", p->acc[0], p->acc[1], p->acc[2]);
   message("Entropy:       %g.", p->entropy);
   message("Density:       %g.", p->density);
+  message("Type:          %i.", p->type);
 }
 
 /**
@@ -61,6 +62,8 @@ void logger_particle_init(struct logger_particle *part) {
   part->h = -1;
   part->mass = -1;
   part->id = SIZE_MAX;
+
+  part->type = 0;
 }
 
 /**
@@ -92,6 +95,8 @@ void *logger_particle_read_field(struct logger_particle *part, void *map,
     p = &part->density;
   } else if (strcmp("consts", field) == 0) {
     p = malloc(size);
+  } else if (strcmp("special flags", field) == 0) {
+    p = &part->type;
   } else {
     error("Type %s not defined.", field);
   }
@@ -104,9 +109,9 @@ void *logger_particle_read_field(struct logger_particle *part, void *map,
     part->mass = 0;
     part->id = 0;
     memcpy(&part->mass, p, sizeof(float));
-    p += sizeof(float);
+    p = (char *)p + sizeof(float);
     memcpy(&part->id, p, sizeof(size_t));
-    p -= sizeof(float);
+    p = (char *)p - sizeof(float);
     free(p);
   }
 
@@ -119,7 +124,7 @@ void *logger_particle_read_field(struct logger_particle *part, void *map,
  * @param reader The #logger_reader.
  * @param part The #logger_particle to update.
  * @param offset offset of the record to read.
- * @param time time to interpolate.
+ * @param time time to interpolate (not used if constant interpolation).
  * @param reader_type #logger_reader_type.
  *
  * @return position after the record.
@@ -128,6 +133,9 @@ size_t logger_particle_read(struct logger_particle *part,
                             const struct logger_reader *reader, size_t offset,
                             const double time,
                             const enum logger_reader_type reader_type) {
+
+  /* Save the offset */
+  part->offset = offset;
 
   /* Get a few pointers. */
   const struct header *h = &reader->log.header;
@@ -141,13 +149,20 @@ size_t logger_particle_read(struct logger_particle *part,
   logger_particle_init(part);
 
   /* Read the record's mask. */
-  map = logger_loader_io_read_mask(h, map + offset, &mask, &h_offset);
+  map = logger_loader_io_read_mask(h, (char *)map + offset, &mask, &h_offset);
+
+  /* Check that the mask is meaningful */
+  if (mask > (unsigned int)(1 << h->masks_count)) {
+    error("Found an unexpected mask %zi", mask);
+  }
 
   /* Check if it is not a time record. */
-  if (mask == 128) error("Unexpected mask: %lu.", mask);
+  if (mask == h->timestamp_mask) {
+    error("Unexpected timestamp while reading a particle: %lu.", mask);
+  }
 
   /* Read all the fields. */
-  for (size_t i = 0; i < h->number_mask; i++) {
+  for (size_t i = 0; i < h->masks_count; i++) {
     if (mask & h->masks[i].mask) {
       map = logger_particle_read_field(part, map, h->masks[i].name,
                                        h->masks[i].size);
@@ -163,7 +178,7 @@ size_t logger_particle_read(struct logger_particle *part,
     part->time = -1;
 
   /* update the offset. */
-  offset = (size_t)(map - reader->log.log.map);
+  offset = (size_t)((char *)map - (char *)reader->log.log.map);
 
   /* Check if an interpolation is required. */
   if (reader_type == logger_reader_const) return offset;
@@ -177,7 +192,7 @@ size_t logger_particle_read(struct logger_particle *part,
   }
 
   /* No next particle. */
-  if (h_offset == 0) return (size_t)(map - reader->log.log.map);
+  if (h_offset == 0) return (size_t)((char *)map - (char *)reader->log.log.map);
 
   /* get absolute offset of next particle. */
   h_offset += offset - header_get_record_size_from_mask(h, mask) -
@@ -194,6 +209,104 @@ size_t logger_particle_read(struct logger_particle *part,
   logger_particle_interpolate(part, &part_next, time);
 
   return offset;
+}
+
+/**
+ * @brief Compute the quintic hermite spline interpolation.
+ *
+ * @param t0 The time at the left of the interval.
+ * @param x0 The function at the left of the interval.
+ * @param v0 The first derivative at the left of the interval.
+ * @param a0 The second derivative at the left of the interval.
+ * @param t1 The time at the right of the interval.
+ * @param x1 The function at the right of the interval.
+ * @param v1 The first derivative at the right of the interval.
+ * @param a1 The second derivative at the right of the interval.
+ * @param t The time of the interpolation.
+ *
+ * @return The function evaluated at t.
+ */
+double logger_particle_quintic_hermite_spline(double t0, double x0, float v0,
+                                              float a0, double t1, double x1,
+                                              float v1, float a1, double t) {
+
+  /* Generates recurring variables  */
+  /* Time differences */
+  const double dt = t1 - t0;
+  const double dt2 = dt * dt;
+  const double dt3 = dt2 * dt;
+  const double dt4 = dt3 * dt;
+  const double dt5 = dt4 * dt;
+
+  const double t_t0 = t - t0;
+  const double t_t0_2 = t_t0 * t_t0;
+  const double t_t0_3 = t_t0_2 * t_t0;
+  const double t_t1 = t - t1;
+  const double t_t1_2 = t_t1 * t_t1;
+
+  /* Derivatives */
+  const double v0_dt = v0 * dt;
+  const double a0_dt2 = 0.5 * a0 * dt2;
+  const double v1_dt = v1 * dt;
+  const double a1_dt2 = 0.5 * a1 * dt2;
+
+  /* Do the first 3 terms of the hermite spline */
+  double x = x0 + v0 * t_t0 + 0.5 * a0 * t_t0_2;
+
+  /* Cubic term */
+  x += (x1 - x0 - v0_dt - a0_dt2) * t_t0_3 / dt3;
+
+  /* Quartic term */
+  x += (3. * x0 - 3. * x1 + v1_dt + 2. * v0_dt + a0_dt2) * t_t0_3 * t_t1 / dt4;
+
+  /* Quintic term */
+  x += (6. * x1 - 6. * x0 - 3. * v0_dt - 3. * v1_dt + a1_dt2 - a0_dt2) *
+       t_t0_3 * t_t1_2 / dt5;
+
+  return x;
+}
+
+/**
+ * @brief Compute the cubic hermite spline interpolation.
+ *
+ * @param t0 The time at the left of the interval.
+ * @param v0 The first derivative at the left of the interval.
+ * @param a0 The second derivative at the left of the interval.
+ * @param t1 The time at the right of the interval.
+ * @param v1 The first derivative at the right of the interval.
+ * @param a1 The second derivative at the right of the interval.
+ * @param t The time of the interpolation.
+ *
+ * @return The function evaluated at t.
+ */
+float logger_particle_cubic_hermite_spline(double t0, float v0, float a0,
+                                           double t1, float v1, float a1,
+                                           double t) {
+
+  /* Generates recurring variables  */
+  /* Time differences */
+  const float dt = t1 - t0;
+  const float dt2 = dt * dt;
+  const float dt3 = dt2 * dt;
+
+  const float t_t0 = t - t0;
+  const float t_t0_2 = t_t0 * t_t0;
+  const float t_t1 = t - t1;
+
+  /* Derivatives */
+  const float a0_dt = a0 * dt;
+  const float a1_dt = a1 * dt;
+
+  /* Do the first 2 terms of the hermite spline */
+  float x = v0 + a0 * t_t0;
+
+  /* Square term */
+  x += (v1 - v0 - a0_dt) * t_t0_2 / dt2;
+
+  /* Cubic term */
+  x += (2. * v0 - 2. * v1 + a1_dt + a0_dt) * t_t0_2 * t_t1 / dt3;
+
+  return x;
 }
 
 /**
@@ -215,8 +328,9 @@ void logger_particle_interpolate(struct logger_particle *part_curr,
 
 #ifdef SWIFT_DEBUG_CHECKS
   /* Check the particle order. */
-  if (part_next->time <= part_curr->time)
-    error("Wrong particle order (next before current).");
+  if (part_next->time < part_curr->time)
+    error("Wrong particle order (next before current): %g, %g", part_next->time,
+          part_curr->time);
   if ((time < part_curr->time) || (part_next->time < time))
     error(
         "Cannot extrapolate (particle time: %f, "
@@ -229,17 +343,22 @@ void logger_particle_interpolate(struct logger_particle *part_curr,
 
   scaling = (time - part_curr->time) / scaling;
 
-  double tmp;
   float ftmp;
 
   /* interpolate vectors. */
-  for (size_t i = 0; i < DIM; i++) {
-    tmp = (part_next->pos[i] - part_curr->pos[i]);
-    part_curr->pos[i] += tmp * scaling;
+  for (int i = 0; i < 3; i++) {
+    /* Positions */
+    part_curr->pos[i] = logger_particle_quintic_hermite_spline(
+        part_curr->time, part_curr->pos[i], part_curr->vel[i],
+        part_curr->acc[i], part_next->time, part_next->pos[i],
+        part_next->vel[i], part_next->acc[i], time);
 
-    ftmp = (part_next->vel[i] - part_curr->vel[i]);
-    part_curr->vel[i] += ftmp * scaling;
+    /* Velocities */
+    part_curr->vel[i] = logger_particle_cubic_hermite_spline(
+        part_curr->time, part_curr->vel[i], part_curr->acc[i], part_next->time,
+        part_next->vel[i], part_next->acc[i], time);
 
+    /* Accelerations */
     ftmp = (part_next->acc[i] - part_curr->acc[i]);
     part_curr->acc[i] += ftmp * scaling;
   }
@@ -247,6 +366,12 @@ void logger_particle_interpolate(struct logger_particle *part_curr,
   /* interpolate scalars. */
   ftmp = (part_next->entropy - part_curr->entropy);
   part_curr->entropy += ftmp * scaling;
+
+  ftmp = (part_next->h - part_curr->h);
+  part_curr->h += ftmp * scaling;
+
+  ftmp = (part_next->density - part_curr->density);
+  part_curr->density += ftmp * scaling;
 
   /* set time. */
   part_curr->time = time;

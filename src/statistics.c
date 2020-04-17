@@ -139,6 +139,11 @@ void stats_collect_part_mapper(void *map_data, int nr_parts, void *extra_data) {
     const struct xpart *xp = &xparts[k];
     const struct gpart *gp = p->gpart;
 
+    /* Ignore non-existing particles */
+    if (p->time_bin == time_bin_inhibited ||
+        p->time_bin == time_bin_not_created)
+      continue;
+
     /* Get useful time variables */
     const integertime_t ti_beg =
         get_integer_time_begin(ti_current, p->time_bin);
@@ -251,7 +256,14 @@ void stats_collect_gpart_mapper(void *map_data, int nr_gparts,
     const struct gpart *gp = &gparts[k];
 
     /* If the g-particle has a counterpart, ignore it */
-    if (gp->id_or_neg_offset < 0) continue;
+    if (gp->type != swift_type_dark_matter &&
+        gp->type != swift_type_dark_matter_background)
+      continue;
+
+    /* Ignore non-existing particles */
+    if (gp->time_bin == time_bin_inhibited ||
+        gp->time_bin == time_bin_not_created)
+      continue;
 
     /* Get useful variables */
     const integertime_t ti_beg =
@@ -325,12 +337,14 @@ void stats_collect(const struct space *s, struct statistics *stats) {
   /* Run parallel collection of statistics for parts */
   if (s->nr_parts > 0)
     threadpool_map(&s->e->threadpool, stats_collect_part_mapper, s->parts,
-                   s->nr_parts, sizeof(struct part), 0, &extra_data);
+                   s->nr_parts, sizeof(struct part), threadpool_auto_chunk_size,
+                   &extra_data);
 
   /* Run parallel collection of statistics for gparts */
   if (s->nr_gparts > 0)
     threadpool_map(&s->e->threadpool, stats_collect_gpart_mapper, s->gparts,
-                   s->nr_gparts, sizeof(struct gpart), 0, &extra_data);
+                   s->nr_gparts, sizeof(struct gpart),
+                   threadpool_auto_chunk_size, &extra_data);
 }
 
 /**

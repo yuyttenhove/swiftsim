@@ -19,6 +19,9 @@
 #ifndef SWIFT_TASK_ORDER_EAGLE_H
 #define SWIFT_TASK_ORDER_EAGLE_H
 
+/**
+ * Is the star-formation task running before the feedback task?
+ */
 #define task_order_star_formation_before_feedback 1
 
 /**
@@ -38,24 +41,6 @@ INLINE static void task_order_addunlock_star_formation_feedback(
 
   scheduler_addunlock(s, star_resort_cell->hydro.stars_resort,
                       c->stars.stars_in);
-}
-
-/**
- * @brief Place the cooling cell at the right place in the dependency
- * graph.
- *
- * The default model follows EAGLE.
- *
- * In EAGLE, the cooling takes place between the hydro and the kick2.
- *
- * @param s The #scheduler.
- * @param c The #cell on which to act.
- */
-INLINE static void task_order_addunlock_cooling(struct scheduler *s,
-                                                struct cell *c) {
-
-  scheduler_addunlock(s, c->hydro.end_force, c->hydro.cooling);
-  scheduler_addunlock(s, c->hydro.cooling, c->super->kick2);
 }
 
 #endif /* SWIFT_TASK_ORDER_EAGLE_H */

@@ -34,12 +34,14 @@
 #include "lock.h"
 #include "parser.h"
 #include "part.h"
+#include "space_unique_id.h"
 #include "velociraptor_struct.h"
 
 /* Avoid cyclic inclusions */
 struct cell;
 struct cosmology;
 struct gravity_props;
+struct star_formation;
 
 /* Some constants. */
 #define space_cellallocchunk 1000
@@ -276,6 +278,9 @@ struct space {
   /*! The group information returned by VELOCIraptor for each #gpart. */
   struct velociraptor_gpart_data *gpart_group_data;
 
+  /*! Structure dealing with the computation of a unique ID */
+  struct unique_id unique_id;
+
 #ifdef WITH_MPI
 
   /*! Buffers for parts that we will receive from foreign cells. */
@@ -315,8 +320,8 @@ void space_init(struct space *s, struct swift_params *params,
                 struct bpart *bparts, size_t Npart, size_t Ngpart,
                 size_t Nspart, size_t Nbpart, int periodic, int replicate,
                 int generate_gas_in_ics, int hydro, int gravity,
-                int star_formation, int DM_background, int verbose,
-                int dry_run);
+                int star_formation, int DM_background, int verbose, int dry_run,
+                int nr_nodes);
 void space_sanitize(struct space *s);
 void space_map_cells_pre(struct space *s, int full,
                          void (*fun)(struct cell *c, void *data), void *data);
@@ -365,7 +370,7 @@ void space_check_drift_point(struct space *s, integertime_t ti_drift,
                              int multipole);
 void space_check_top_multipoles_drift_point(struct space *s,
                                             integertime_t ti_drift);
-void space_check_timesteps(struct space *s);
+void space_check_timesteps(const struct space *s);
 void space_check_limiter(struct space *s);
 void space_check_swallow(struct space *s);
 void space_check_sort_flags(struct space *s);
@@ -379,10 +384,11 @@ void space_reset_task_counters(struct space *s);
 void space_clean(struct space *s);
 void space_free_cells(struct space *s);
 
-void space_free_foreign_parts(struct space *s);
+void space_free_foreign_parts(struct space *s, const int clear_cell_pointers);
 
 void space_struct_dump(struct space *s, FILE *stream);
 void space_struct_restore(struct space *s, FILE *stream);
 void space_write_cell_hierarchy(const struct space *s, int j);
-
+void space_compute_star_formation_stats(const struct space *s,
+                                        struct star_formation *star_form);
 #endif /* SWIFT_SPACE_H */

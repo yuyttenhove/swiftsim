@@ -68,13 +68,20 @@ void runner_do_stars_resort(struct runner *r, struct cell *c, const int timer) {
  * @param N The number of entries.
  */
 void runner_do_sort_ascending(struct sort_entry *sort, int N) {
+  const int stack_size = 10;
 
   struct {
     short int lo, hi;
-  } qstack[10];
+  } qstack[stack_size];
   int qpos, i, j, lo, hi, imin;
   struct sort_entry temp;
   float pivot;
+
+  if (N >= (1LL << stack_size)) {
+    error(
+        "The stack size for sorting is too small."
+        "Either increase it or reduce the number of parts per cell.");
+  }
 
   /* Sort parts in cell_i in decreasing order with quicksort */
   qstack[0].lo = 0;
@@ -84,11 +91,18 @@ void runner_do_sort_ascending(struct sort_entry *sort, int N) {
     lo = qstack[qpos].lo;
     hi = qstack[qpos].hi;
     qpos -= 1;
+    /* Do we have a low number of element to sort? */
     if (hi - lo < 15) {
+      /* Sort the last elements. */
       for (i = lo; i < hi; i++) {
         imin = i;
-        for (j = i + 1; j <= hi; j++)
-          if (sort[j].d < sort[imin].d) imin = j;
+        /* Find the minimal value. */
+        for (j = i + 1; j <= hi; j++) {
+          if (sort[j].d < sort[imin].d) {
+            imin = j;
+          }
+        }
+        /* Swap the elements if a smaller element exists. */
         if (imin != i) {
           temp = sort[imin];
           sort[imin] = sort[i];
@@ -96,14 +110,21 @@ void runner_do_sort_ascending(struct sort_entry *sort, int N) {
         }
       }
     } else {
+      /* Select a pivot */
       pivot = sort[(lo + hi) / 2].d;
       i = lo;
       j = hi;
+      /* Ensure that the elements before/after the pivot
+         are smaller/larger than the pivot. */
       while (i <= j) {
+        /* Find the first elements that do not respect
+           the order. */
         while (sort[i].d < pivot) i++;
         while (sort[j].d > pivot) j--;
+        /* Did we get two different elements */
         if (i <= j) {
           if (i < j) {
+            /* Swap the elements */
             temp = sort[i];
             sort[i] = sort[j];
             sort[j] = temp;
@@ -112,6 +133,9 @@ void runner_do_sort_ascending(struct sort_entry *sort, int N) {
           j -= 1;
         }
       }
+      /* Add the next operations to the stack.
+       * The order is important in order to decrease the stack size.
+       */
       if (j > (lo + hi) / 2) {
         if (lo < j) {
           qpos += 1;
@@ -273,7 +297,7 @@ void runner_do_hydro_sort(struct runner *r, struct cell *c, int flags,
       for (int k = 0; k < 8; k++) {
         inds[k] = k;
         if (c->progeny[k] != NULL && c->progeny[k]->hydro.count > 0) {
-          fingers[k] = c->progeny[k]->hydro.sort[j];
+          fingers[k] = cell_get_hydro_sorts(c->progeny[k], j);
           buff[k] = fingers[k]->d;
           off[k] = off[k];
         } else
@@ -290,7 +314,7 @@ void runner_do_hydro_sort(struct runner *r, struct cell *c, int flags,
           }
 
       /* For each entry in the new sort list. */
-      struct sort_entry *finger = c->hydro.sort[j];
+      struct sort_entry *finger = cell_get_hydro_sorts(c, j);
       for (int ind = 0; ind < count; ind++) {
 
         /* Copy the minimum into the new sort array. */
@@ -311,8 +335,10 @@ void runner_do_hydro_sort(struct runner *r, struct cell *c, int flags,
       } /* Merge. */
 
       /* Add a sentinel. */
-      c->hydro.sort[j][count].d = FLT_MAX;
-      c->hydro.sort[j][count].i = 0;
+
+      struct sort_entry *entries = cell_get_hydro_sorts(c, j);
+      entries[count].d = FLT_MAX;
+      entries[count].i = 0;
 
       /* Mark as sorted. */
       atomic_or(&c->hydro.sorted, 1 << j);
@@ -348,19 +374,21 @@ void runner_do_hydro_sort(struct runner *r, struct cell *c, int flags,
       const double px[3] = {parts[k].x[0], parts[k].x[1], parts[k].x[2]};
       for (int j = 0; j < 13; j++)
         if (flags & (1 << j)) {
-          c->hydro.sort[j][k].i = k;
-          c->hydro.sort[j][k].d = px[0] * runner_shift[j][0] +
-                                  px[1] * runner_shift[j][1] +
-                                  px[2] * runner_shift[j][2];
+          struct sort_entry *entries = cell_get_hydro_sorts(c, j);
+          entries[k].i = k;
+          entries[k].d = px[0] * runner_shift[j][0] +
+                         px[1] * runner_shift[j][1] +
+                         px[2] * runner_shift[j][2];
         }
     }
 
     /* Add the sentinel and sort. */
     for (int j = 0; j < 13; j++)
       if (flags & (1 << j)) {
-        c->hydro.sort[j][count].d = FLT_MAX;
-        c->hydro.sort[j][count].i = 0;
-        runner_do_sort_ascending(c->hydro.sort[j], count);
+        struct sort_entry *entries = cell_get_hydro_sorts(c, j);
+        entries[count].d = FLT_MAX;
+        entries[count].i = 0;
+        runner_do_sort_ascending(entries, count);
         atomic_or(&c->hydro.sorted, 1 << j);
       }
   }
@@ -369,7 +397,7 @@ void runner_do_hydro_sort(struct runner *r, struct cell *c, int flags,
   /* Verify the sorting. */
   for (int j = 0; j < 13; j++) {
     if (!(flags & (1 << j))) continue;
-    struct sort_entry *finger = c->hydro.sort[j];
+    struct sort_entry *finger = cell_get_hydro_sorts(c, j);
     for (int k = 1; k < count; k++) {
       if (finger[k].d < finger[k - 1].d)
         error("Sorting failed, ascending array.");
@@ -505,7 +533,7 @@ void runner_do_stars_sort(struct runner *r, struct cell *c, int flags,
       for (int k = 0; k < 8; k++) {
         inds[k] = k;
         if (c->progeny[k] != NULL && c->progeny[k]->stars.count > 0) {
-          fingers[k] = c->progeny[k]->stars.sort[j];
+          fingers[k] = cell_get_stars_sorts(c->progeny[k], j);
           buff[k] = fingers[k]->d;
           off[k] = off[k];
         } else
@@ -522,7 +550,7 @@ void runner_do_stars_sort(struct runner *r, struct cell *c, int flags,
           }
 
       /* For each entry in the new sort list. */
-      struct sort_entry *finger = c->stars.sort[j];
+      struct sort_entry *finger = cell_get_stars_sorts(c, j);
       for (int ind = 0; ind < count; ind++) {
 
         /* Copy the minimum into the new sort array. */
@@ -543,8 +571,9 @@ void runner_do_stars_sort(struct runner *r, struct cell *c, int flags,
       } /* Merge. */
 
       /* Add a sentinel. */
-      c->stars.sort[j][count].d = FLT_MAX;
-      c->stars.sort[j][count].i = 0;
+      struct sort_entry *entries = cell_get_stars_sorts(c, j);
+      entries[count].d = FLT_MAX;
+      entries[count].i = 0;
 
       /* Mark as sorted. */
       atomic_or(&c->stars.sorted, 1 << j);
@@ -574,19 +603,21 @@ void runner_do_stars_sort(struct runner *r, struct cell *c, int flags,
       const double px[3] = {sparts[k].x[0], sparts[k].x[1], sparts[k].x[2]};
       for (int j = 0; j < 13; j++)
         if (flags & (1 << j)) {
-          c->stars.sort[j][k].i = k;
-          c->stars.sort[j][k].d = px[0] * runner_shift[j][0] +
-                                  px[1] * runner_shift[j][1] +
-                                  px[2] * runner_shift[j][2];
+          struct sort_entry *entries = cell_get_stars_sorts(c, j);
+          entries[k].i = k;
+          entries[k].d = px[0] * runner_shift[j][0] +
+                         px[1] * runner_shift[j][1] +
+                         px[2] * runner_shift[j][2];
         }
     }
 
     /* Add the sentinel and sort. */
     for (int j = 0; j < 13; j++)
       if (flags & (1 << j)) {
-        c->stars.sort[j][count].d = FLT_MAX;
-        c->stars.sort[j][count].i = 0;
-        runner_do_sort_ascending(c->stars.sort[j], count);
+        struct sort_entry *entries = cell_get_stars_sorts(c, j);
+        entries[count].d = FLT_MAX;
+        entries[count].i = 0;
+        runner_do_sort_ascending(entries, count);
         atomic_or(&c->stars.sorted, 1 << j);
       }
   }
@@ -595,7 +626,7 @@ void runner_do_stars_sort(struct runner *r, struct cell *c, int flags,
   /* Verify the sorting. */
   for (int j = 0; j < 13; j++) {
     if (!(flags & (1 << j))) continue;
-    struct sort_entry *finger = c->stars.sort[j];
+    struct sort_entry *finger = cell_get_stars_sorts(c, j);
     for (int k = 1; k < count; k++) {
       if (finger[k].d < finger[k - 1].d)
         error("Sorting failed, ascending array.");

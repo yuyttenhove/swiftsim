@@ -1,6 +1,7 @@
 /*******************************************************************************
  * This file is part of SWIFT.
  * Copyright (c) 2017 Pedro Gonnet (pedro.gonnet@durham.ac.uk)
+ *               2018 Loic Hausammann (loic.hausammann@epfl.ch)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published
@@ -19,11 +20,14 @@
 #ifndef SWIFT_LOGGER_H
 #define SWIFT_LOGGER_H
 
+#include "../config.h"
+
 #ifdef WITH_LOGGER
 
 /* Includes. */
 #include "common_io.h"
 #include "dump.h"
+#include "error.h"
 #include "inline.h"
 #include "timeline.h"
 #include "units.h"
@@ -35,7 +39,7 @@ struct part;
 struct engine;
 
 #define logger_major_version 0
-#define logger_minor_version 1
+#define logger_minor_version 3
 
 /**
  * Logger entries contain messages representing the particle data at a given
@@ -84,8 +88,29 @@ enum logger_masks_number {
   logger_h = 4,
   logger_rho = 5,
   logger_consts = 6,
-  logger_timestamp = 7,  /* expect it to be before count. */
-  logger_count_mask = 8, /* Need to be the last. */
+  logger_special_flags = 7, /* Flag for special cases */
+  logger_timestamp = 8,     /* expect it to be before count. */
+  logger_count_mask = 9,    /* Need to be the last. */
+} __attribute__((packed));
+
+/* Defines some mask for logging all the fields */
+enum logger_masks_all {
+  logger_masks_all_part = (1 << logger_x) | (1 << logger_v) | (1 << logger_a) |
+                          (1 << logger_u) | (1 << logger_h) |
+                          (1 << logger_rho) | (1 << logger_consts),
+  logger_masks_all_gpart = (1 << logger_x) | (1 << logger_v) | (1 << logger_a) |
+                           (1 << logger_consts),
+  logger_masks_all_spart =
+      (1 << logger_x) | (1 << logger_v) | (1 << logger_consts),
+} __attribute__((packed));
+
+enum logger_special_flags {
+  logger_flag_change_type = 1, /* Flag for a change of particle type */
+  logger_flag_mpi_enter, /* Flag for a particle received from another  MPI rank
+                          */
+  logger_flag_mpi_exit,  /* Flag for a particle sent to another MPI rank */
+  logger_flag_delete,    /* Flag for a deleted particle */
+  logger_flag_create,    /* Flag for a created particle */
 } __attribute__((packed));
 
 struct mask_data {
@@ -104,13 +129,23 @@ extern const struct mask_data logger_mask_data[logger_count_mask];
 /* Size of the strings. */
 #define logger_string_length 200
 
-/* structure containing global data. */
+/**
+ * @brief structure containing global data for the particle logger.
+ */
 struct logger_writer {
   /* Number of particle steps between dumping a chunk of data. */
   short int delta_step;
 
   /* Logger basename. */
   char base_name[logger_string_length];
+
+  struct {
+    /* The total memory fraction reserved for the index files. */
+    float mem_frac;
+
+    /* Size of the dump since at the last output */
+    size_t dump_size_last_output;
+  } index;
 
   /*  Dump file (In the reader, the dump is cleaned, therefore it is renamed
    * logfile). */
@@ -133,16 +168,26 @@ struct logger_part_data {
   int steps_since_last_output;
 
   /* offset of last particle log entry. */
-  size_t last_offset;
+  uint64_t last_offset;
 };
 
 /* Function prototypes. */
 int logger_compute_chunk_size(unsigned int mask);
 void logger_log_all(struct logger_writer *log, const struct engine *e);
 void logger_log_part(struct logger_writer *log, const struct part *p,
-                     unsigned int mask, size_t *offset);
-void logger_log_gpart(struct logger_writer *log, const struct gpart *p,
-                      unsigned int mask, size_t *offset);
+                     struct xpart *xp, unsigned int mask,
+                     const uint32_t special_flags);
+void logger_log_parts(struct logger_writer *log, const struct part *p,
+                      struct xpart *xp, int count, unsigned int mask,
+                      const uint32_t special_flags);
+void logger_log_spart(struct logger_writer *log, struct spart *p,
+                      unsigned int mask, const uint32_t special_flags);
+void logger_log_sparts(struct logger_writer *log, struct spart *sp, int count,
+                       unsigned int mask, const uint32_t special_flags);
+void logger_log_gpart(struct logger_writer *log, struct gpart *p,
+                      unsigned int mask, const uint32_t special_flags);
+void logger_log_gparts(struct logger_writer *log, struct gpart *gp, int count,
+                       unsigned int mask, const uint32_t special_flags);
 void logger_init(struct logger_writer *log, struct swift_params *params);
 void logger_free(struct logger_writer *log);
 void logger_log_timestamp(struct logger_writer *log, integertime_t t,
@@ -155,6 +200,31 @@ int logger_read_part(struct part *p, size_t *offset, const char *buff);
 int logger_read_gpart(struct gpart *p, size_t *offset, const char *buff);
 int logger_read_timestamp(unsigned long long int *t, double *time,
                           size_t *offset, const char *buff);
+void logger_struct_dump(const struct logger_writer *log, FILE *stream);
+void logger_struct_restore(struct logger_writer *log, FILE *stream);
+
+/**
+ * @brief Generate the data for the special flags.
+ *
+ * @param flag The special flag to use.
+ * @param data The data to write in the .
+ */
+INLINE static uint32_t logger_pack_flags_and_data(
+    enum logger_special_flags flag, int data) {
+#ifdef SWIFT_DEBUG_CHECKS
+  if (flag & 0xFFFFFF00) {
+    error(
+        "The special flag in the particle logger cannot be larger than 1 "
+        "byte.");
+  }
+  if (data & ~0xFFFFFF) {
+    error(
+        "The data for the special flag in the particle logger cannot be larger "
+        "than 3 bytes.");
+  }
+#endif
+  return ((uint32_t)flag << (3 * 8)) | (data & 0xFFFFFF);
+}
 
 /**
  * @brief Initialize the logger data for a particle.
@@ -170,9 +240,9 @@ INLINE static void logger_part_data_init(struct logger_part_data *logger) {
  * @brief Should this particle write its data now ?
  *
  * @param logger_data The #logger_part_data of a particle.
- * @param log The #logger.
+ * @param log The #logger_writer.
  *
- * @return 1 if the particule should be writen, 0 otherwise.
+ * @return 1 if the particle should be writen, 0 otherwise.
  */
 __attribute__((always_inline)) INLINE static int logger_should_write(
     const struct logger_part_data *logger_data,

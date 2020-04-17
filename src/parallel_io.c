@@ -43,8 +43,8 @@
 #include "cooling_io.h"
 #include "dimension.h"
 #include "engine.h"
-#include "entropy_floor.h"
 #include "error.h"
+#include "feedback.h"
 #include "fof_io.h"
 #include "gravity_io.h"
 #include "gravity_properties.h"
@@ -342,6 +342,8 @@ void readArray(hid_t grp, struct io_props props, size_t N, long long N_total,
       props.parts += max_chunk_size;                  /* part* on the part */
       props.xparts += max_chunk_size;                 /* xpart* on the xpart */
       props.gparts += max_chunk_size;                 /* gpart* on the gpart */
+      props.sparts += max_chunk_size;                 /* spart* on the spart */
+      props.bparts += max_chunk_size;                 /* bpart* on the bpart */
       offset += max_chunk_size;
       redo = 1;
     } else {
@@ -646,6 +648,8 @@ void writeArray(struct engine* e, hid_t grp, char* fileName,
       props.parts += max_chunk_size;                  /* part* on the part */
       props.xparts += max_chunk_size;                 /* xpart* on the xpart */
       props.gparts += max_chunk_size;                 /* gpart* on the gpart */
+      props.sparts += max_chunk_size;                 /* spart* on the spart */
+      props.bparts += max_chunk_size;                 /* bpart* on the bpart */
       offset += max_chunk_size;
       redo = 1;
     } else {
@@ -1113,9 +1117,14 @@ void prepare_file(struct engine* e, const char* baseName, long long N_total[6],
   io_write_attribute(h_grp, "Redshift", DOUBLE, &e->cosmology->z, 1);
   io_write_attribute(h_grp, "Scale-factor", DOUBLE, &e->cosmology->a, 1);
   io_write_attribute_s(h_grp, "Code", "SWIFT");
-  time_t tm = time(NULL);
-  io_write_attribute_s(h_grp, "Snapshot date", ctime(&tm));
   io_write_attribute_s(h_grp, "RunName", e->run_name);
+
+  /* Store the time at which the snapshot was written */
+  time_t tm = time(NULL);
+  struct tm* timeinfo = localtime(&tm);
+  char snapshot_date[64];
+  strftime(snapshot_date, 64, "%T %F %Z", timeinfo);
+  io_write_attribute_s(h_grp, "Snapshot date", snapshot_date);
 
   /* GADGET-2 legacy values */
   /* Number of particles of each type */
@@ -1148,6 +1157,9 @@ void prepare_file(struct engine* e, const char* baseName, long long N_total[6],
   /* Print the run's policy */
   io_write_engine_policy(h_file, e);
 
+  /* Print the physical constants */
+  phys_const_print_snapshot(h_file, e->physical_constants);
+
   /* Print the SPH parameters */
   if (e->policy & engine_policy_hydro) {
     h_grp = H5Gcreate(h_file, "/HydroScheme", H5P_DEFAULT, H5P_DEFAULT,
@@ -1162,10 +1174,15 @@ void prepare_file(struct engine* e, const char* baseName, long long N_total[6],
   h_grp = H5Gcreate(h_file, "/SubgridScheme", H5P_DEFAULT, H5P_DEFAULT,
                     H5P_DEFAULT);
   if (h_grp < 0) error("Error while creating subgrid group");
+  hid_t h_grp_columns =
+      H5Gcreate(h_grp, "NamedColumns", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+  if (h_grp_columns < 0) error("Error while creating named columns group");
   entropy_floor_write_flavour(h_grp);
-  cooling_write_flavour(h_grp, e->cooling_func);
-  chemistry_write_flavour(h_grp);
+  cooling_write_flavour(h_grp, h_grp_columns, e->cooling_func);
+  chemistry_write_flavour(h_grp, h_grp_columns, e);
   tracers_write_flavour(h_grp);
+  feedback_write_flavour(e->feedback_props, h_grp);
+  H5Gclose(h_grp_columns);
   H5Gclose(h_grp);
 
   /* Print the gravity parameters */
@@ -1235,7 +1252,18 @@ void prepare_file(struct engine* e, const char* baseName, long long N_total[6],
     h_grp = H5Gcreate(h_file, partTypeGroupName, H5P_DEFAULT, H5P_DEFAULT,
                       H5P_DEFAULT);
     if (h_grp < 0)
-      error("Error while opening particle group %s.", partTypeGroupName);
+      error("Error while creating particle group %s.", partTypeGroupName);
+
+    /* Add an alias name for convenience */
+    char aliasName[PARTICLE_GROUP_BUFFER_SIZE];
+    snprintf(aliasName, PARTICLE_GROUP_BUFFER_SIZE, "/%sParticles",
+             part_type_names[ptype]);
+    hid_t h_err = H5Lcreate_soft(partTypeGroupName, h_grp, aliasName,
+                                 H5P_DEFAULT, H5P_DEFAULT);
+    if (h_err < 0) error("Error while creating alias for particle group.\n");
+
+    /* Write the number of particles as an attribute */
+    io_write_attribute_l(h_grp, "NumberOfParticles", N_total[ptype]);
 
     int num_fields = 0;
     struct io_props list[100];
@@ -1290,6 +1318,8 @@ void prepare_file(struct engine* e, const char* baseName, long long N_total[6],
         num_fields += chemistry_write_sparticles(sparts, list + num_fields);
         num_fields +=
             tracers_write_sparticles(sparts, list + num_fields, with_cosmology);
+        num_fields +=
+            star_formation_write_sparticles(sparts, list + num_fields);
         if (with_fof) {
           num_fields += fof_write_sparts(sparts, list + num_fields);
         }
@@ -1419,13 +1449,13 @@ void write_output_parallel(struct engine* e, const char* baseName,
                                 Nstars_written, Nblackholes_written};
   long long N_total[swift_type_count] = {0};
   long long offset[swift_type_count] = {0};
-  MPI_Exscan(&N, &offset, swift_type_count, MPI_LONG_LONG_INT, MPI_SUM, comm);
+  MPI_Exscan(N, offset, swift_type_count, MPI_LONG_LONG_INT, MPI_SUM, comm);
   for (int ptype = 0; ptype < swift_type_count; ++ptype)
     N_total[ptype] = offset[ptype] + N[ptype];
 
   /* The last rank now has the correct N_total. Let's
    * broadcast from there */
-  MPI_Bcast(&N_total, 6, MPI_LONG_LONG_INT, mpi_size - 1, comm);
+  MPI_Bcast(N_total, 6, MPI_LONG_LONG_INT, mpi_size - 1, comm);
 
   /* Now everybody konws its offset and the total number of
    * particles of each type */
@@ -1477,9 +1507,9 @@ void write_output_parallel(struct engine* e, const char* baseName,
   }
 
   /* Write the location of the particles in the arrays */
-  io_write_cell_offsets(h_grp_cells, e->s->cdim, e->s->cells_top,
-                        e->s->nr_cells, e->s->width, mpi_rank, N_total, offset,
-                        internal_units, snapshot_units);
+  io_write_cell_offsets(h_grp_cells, e->s->cdim, e->s->dim, e->s->pos_dithering,
+                        e->s->cells_top, e->s->nr_cells, e->s->width, mpi_rank,
+                        N_total, offset, internal_units, snapshot_units);
 
   /* Close everything */
   if (mpi_rank == 0) {
@@ -1771,6 +1801,8 @@ void write_output_parallel(struct engine* e, const char* baseName,
           num_fields += chemistry_write_sparticles(sparts, list + num_fields);
           num_fields += tracers_write_sparticles(sparts, list + num_fields,
                                                  with_cosmology);
+          num_fields +=
+              star_formation_write_sparticles(sparts, list + num_fields);
           if (with_fof) {
             num_fields += fof_write_sparts(sparts, list + num_fields);
           }
@@ -1799,6 +1831,8 @@ void write_output_parallel(struct engine* e, const char* baseName,
               chemistry_write_sparticles(sparts_written, list + num_fields);
           num_fields += tracers_write_sparticles(
               sparts_written, list + num_fields, with_cosmology);
+          num_fields += star_formation_write_sparticles(sparts_written,
+                                                        list + num_fields);
           if (with_fof) {
             num_fields += fof_write_sparts(sparts_written, list + num_fields);
           }

@@ -275,6 +275,8 @@ void runner_do_bh_swallow(struct runner *r, struct cell *c, int timer) {
 
   struct engine *e = r->e;
   struct space *s = e->s;
+  const int with_cosmology = (e->policy & engine_policy_cosmology);
+  const struct black_holes_props *props = e->black_holes_properties;
   struct bpart *bparts = s->bparts;
   const size_t nr_bpart = s->nr_bparts;
 #ifdef WITH_MPI
@@ -304,9 +306,10 @@ void runner_do_bh_swallow(struct runner *r, struct cell *c, int timer) {
     }
   } else {
 
-    /* Loop over all the gas particles in the cell
+    /* Loop over all the BH particles in the cell
      * Note that the cell (and hence the bparts) may be local or foreign. */
     const size_t nr_cell_bparts = c->black_holes.count;
+
     for (size_t k = 0; k < nr_cell_bparts; k++) {
 
       /* Get a handle on the part. */
@@ -315,7 +318,7 @@ void runner_do_bh_swallow(struct runner *r, struct cell *c, int timer) {
       /* Ignore inhibited particles (they have already been removed!) */
       if (bpart_is_inhibited(cell_bp, e)) continue;
 
-      /* Get the ID of the black holes that will swallow this part */
+      /* Get the ID of the black holes that will swallow this bpart */
       const long long swallow_id =
           black_holes_get_bpart_swallow_id(&cell_bp->merger_data);
 
@@ -344,12 +347,24 @@ void runner_do_bh_swallow(struct runner *r, struct cell *c, int timer) {
 
           if (bp->id == BH_id) {
 
-            /* Lock the space as we are going to work directly on the bpart list
-             */
+            /* Is the swallowing BH itself flagged for swallowing by
+               another BH? */
+            if (black_holes_get_bpart_swallow_id(&bp->merger_data) != -1) {
+
+              /* Pretend it was found and abort */
+              black_holes_mark_bpart_as_not_swallowed(&cell_bp->merger_data);
+              found = 1;
+              break;
+            }
+
+            /* Lock the space as we are going to work directly on the
+             * space's bpart list */
             lock_lock(&s->lock);
 
-            /* Swallow the gas particle (i.e. update the BH properties) */
-            black_holes_swallow_bpart(bp, cell_bp, e->cosmology);
+            /* Swallow the BH particle (i.e. update the swallowing BH
+             * properties with the properties of cell_bp) */
+            black_holes_swallow_bpart(bp, cell_bp, e->cosmology, e->time,
+                                      with_cosmology, props);
 
             /* Release the space as we are done updating the bpart */
             if (lock_unlock(&s->lock) != 0)
@@ -357,12 +372,12 @@ void runner_do_bh_swallow(struct runner *r, struct cell *c, int timer) {
 
             message("BH %lld swallowing BH particle %lld", bp->id, cell_bp->id);
 
-            /* If the gas particle is local, remove it */
+            /* If the BH particle is local, remove it */
             if (c->nodeID == e->nodeID) {
 
               message("BH %lld removing BH particle %lld", bp->id, cell_bp->id);
 
-              /* Finally, remove the gas particle from the system
+              /* Finally, remove the BH particle from the system
                * Recall that the gpart associated with it is also removed
                * at the same time. */
               cell_remove_bpart(e, c, cell_bp);
@@ -392,6 +407,16 @@ void runner_do_bh_swallow(struct runner *r, struct cell *c, int timer) {
 
             if (bp->id == BH_id) {
 
+              /* Is the swallowing BH itself flagged for swallowing by
+                 another BH? */
+              if (black_holes_get_bpart_swallow_id(&bp->merger_data) != -1) {
+
+                /* Pretend it was found and abort */
+                black_holes_mark_bpart_as_not_swallowed(&cell_bp->merger_data);
+                found = 1;
+                break;
+              }
+
               message("BH %lld removing BH particle %lld (foreign BH case)",
                       bp->id, cell_bp->id);
 
@@ -411,6 +436,7 @@ void runner_do_bh_swallow(struct runner *r, struct cell *c, int timer) {
           error("BH particle %lld could not find BH %lld to be swallowed",
                 cell_bp->id, swallow_id);
         }
+
       } /* Part was flagged for swallowing */
     }   /* Loop over the parts */
   }     /* Cell is not split */
