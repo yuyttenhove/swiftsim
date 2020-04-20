@@ -215,11 +215,40 @@ void hashmap_copy_elements_mapper(hashmap_key_t key, hashmap_value_t *value,
   mapper_data->offset += 1;
 }
 
+
+/**
+ * @brief Convert a hashmap to an array of struct mesh_key_value
+ *
+ * @param map The hashmap to convert
+ * @param array Returns a pointer to the new array
+ * @return The number of elements in the new array
+ *
+ */
+size_t hashmap_to_array(hashmap_t *map, struct mesh_key_value **array) {
+
+  /* Find how many elements are in the hashmap */
+  size_t num_in_map = hashmap_size(map);
+
+  /* Allocate the output array */
+  if (swift_memalign("hashmap_array", (void **) array, 32,
+                     num_in_map * sizeof(struct mesh_key_value)) != 0)
+    error("Failed to allocate array for hashmap entries!");
+
+  /* Copy the key-value pairs to the new array */
+  struct hashmap_mapper_data mapper_data = {(size_t)0, *array};
+  hashmap_iterate(map, hashmap_copy_elements_mapper, &mapper_data);
+
+  return num_in_map;
+}
+
+
 /**
  * @brief Given an array of structs of size element_size, send 
  * nr_send[i] elements to each node i. Allocates the receive 
  * buffer recvbuf to the appropriate size and returns its size
  * in nr_recv_tot.
+ *
+ * TODO: can/should we replace this with a call to engine_do_redistribute()?
  *
  * @param nr_send Number of elements to send to each other node
  * @param sendbuf The elements to send
@@ -344,16 +373,9 @@ void hashmaps_to_slices(const int N, const int Nslice, hashmap_t *map,
   MPI_Comm_size(MPI_COMM_WORLD, &nr_nodes);
   MPI_Comm_rank(MPI_COMM_WORLD, &nodeID);
 
-  /* Allocate storage for mesh cells to send */
-  size_t nr_send_tot = hashmap_size(map);
+  /* Make an array with the (key, value) pairs from the hashmap */
   struct mesh_key_value *mesh_sendbuf;
-  if (swift_memalign("mesh_sendbuf", (void **)&mesh_sendbuf, 32,
-                     nr_send_tot * sizeof(struct mesh_key_value)) != 0)
-    error("Failed to allocate send buffer for constructing MPI FFT mesh");
-
-  /* Copy the key-value pairs to the new array */
-  struct hashmap_mapper_data mapper_data = {(size_t)0, mesh_sendbuf};
-  hashmap_iterate(map, hashmap_copy_elements_mapper, &mapper_data);
+  size_t nr_send_tot = hashmap_to_array(map, &mesh_sendbuf);
 
   /* Then sort the array of local mesh cells by key. This means
    * they're sorted by x coordinate, then y coordinate, then z coordinate.
