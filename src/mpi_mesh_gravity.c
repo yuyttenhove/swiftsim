@@ -216,9 +216,10 @@ void hashmap_copy_elements_mapper(hashmap_key_t key, hashmap_value_t *value,
 }
 
 /**
- * @brief Given an array of struct mesh_key_value, send nr_send[i]
- * elements to each node i. Allocates the receive buffer recvbuf
- * to the appropriate size and returns its size in nr_recv_tot.
+ * @brief Given an array of structs of size element_size, send 
+ * nr_send[i] elements to each node i. Allocates the receive 
+ * buffer recvbuf to the appropriate size and returns its size
+ * in nr_recv_tot.
  *
  * @param nr_send Number of elements to send to each other node
  * @param sendbuf The elements to send
@@ -226,8 +227,9 @@ void hashmap_copy_elements_mapper(hashmap_key_t key, hashmap_value_t *value,
  * @param recvbuf Returns a pointer to the newly received data
  *
  */
-void exchange_mesh_cells(size_t *nr_send, struct mesh_key_value *sendbuf,
-                         size_t *nr_recv_tot, struct mesh_key_value **recvbuf) {
+void exchange_mesh_cells(size_t *nr_send, char *sendbuf,
+                         size_t *nr_recv_tot, char **recvbuf,
+                         size_t element_size) {
 
   /* Determine rank, number of ranks */
   int nr_nodes, nodeID;
@@ -247,7 +249,7 @@ void exchange_mesh_cells(size_t *nr_send, struct mesh_key_value *sendbuf,
 
   /* Allocate the receive buffer */
   if (swift_memalign("mesh_recvbuf", (void **)recvbuf, 32,
-                     *nr_recv_tot * sizeof(struct mesh_key_value)) != 0)
+                     *nr_recv_tot * element_size) != 0)
     error("Failed to allocate receive buffer for constructing MPI FFT mesh");
 
   /* Compute send offsets */
@@ -269,8 +271,7 @@ void exchange_mesh_cells(size_t *nr_send, struct mesh_key_value *sendbuf,
 
   /* Make type to communicate mesh_key_value struct */
   MPI_Datatype mesh_key_value_mpi_type;
-  if (MPI_Type_contiguous(sizeof(struct mesh_key_value) / sizeof(unsigned char),
-                          MPI_BYTE, &mesh_key_value_mpi_type) != MPI_SUCCESS ||
+  if (MPI_Type_contiguous(element_size, MPI_BYTE, &mesh_key_value_mpi_type) != MPI_SUCCESS ||
       MPI_Type_commit(&mesh_key_value_mpi_type) != MPI_SUCCESS) {
     error("Failed to create MPI type for mesh_key_value struct.");
   }
@@ -286,7 +287,7 @@ void exchange_mesh_cells(size_t *nr_send, struct mesh_key_value *sendbuf,
       /* TODO: handle very large messages */
       if(nr_send[i] > INT_MAX) error("exchange_mesh_cells() fails if nr_send > INT_MAX!");
 
-      MPI_Isend(&(sendbuf[send_offset[i]]), (int)nr_send[i],
+      MPI_Isend(&(sendbuf[send_offset[i]*element_size]), (int)nr_send[i],
                 mesh_key_value_mpi_type, i, 0, MPI_COMM_WORLD, &(request[i]));
     } else {
       request[i] = MPI_REQUEST_NULL;
@@ -300,7 +301,7 @@ void exchange_mesh_cells(size_t *nr_send, struct mesh_key_value *sendbuf,
       /* TODO: handle very large messages */
       if(nr_recv[i] > INT_MAX) error("exchange_mesh_cells() fails if nr_recv > INT_MAX!");
 
-      MPI_Irecv(&((*recvbuf)[recv_offset[i]]), (int)nr_recv[i],
+      MPI_Irecv(&((*recvbuf)[recv_offset[i]*element_size]), (int)nr_recv[i],
                 mesh_key_value_mpi_type, i, 0, MPI_COMM_WORLD,
                 &(request[i + nr_nodes]));
     } else {
@@ -393,7 +394,9 @@ void hashmaps_to_slices(const int N, const int Nslice, hashmap_t *map,
   /* Carry out the communication */
   size_t nr_recv_tot;
   struct mesh_key_value *mesh_recvbuf;
-  exchange_mesh_cells(nr_send, mesh_sendbuf, &nr_recv_tot, &mesh_recvbuf);
+  exchange_mesh_cells(nr_send, (char *) mesh_sendbuf,
+                      &nr_recv_tot, (char **) &mesh_recvbuf, 
+                      sizeof(struct mesh_key_value));
 
   /* No longer need the send buffer */
   swift_free("mesh_sendbuf", mesh_sendbuf);
