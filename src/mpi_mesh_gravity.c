@@ -217,14 +217,15 @@ void hashmap_copy_elements_mapper(hashmap_key_t key, hashmap_value_t *value,
 
 
 /**
- * @brief Convert a hashmap to an array of struct mesh_key_value
+ * @brief Convert a hashmap to an array of struct mesh_key_value,
+ * with the elements sorted by key
  *
  * @param map The hashmap to convert
  * @param array Returns a pointer to the new array
  * @return The number of elements in the new array
  *
  */
-size_t hashmap_to_array(hashmap_t *map, struct mesh_key_value **array) {
+size_t hashmap_to_sorted_array(hashmap_t *map, struct mesh_key_value **array) {
 
   /* Find how many elements are in the hashmap */
   size_t num_in_map = hashmap_size(map);
@@ -237,6 +238,10 @@ size_t hashmap_to_array(hashmap_t *map, struct mesh_key_value **array) {
   /* Copy the key-value pairs to the new array */
   struct hashmap_mapper_data mapper_data = {(size_t)0, *array};
   hashmap_iterate(map, hashmap_copy_elements_mapper, &mapper_data);
+
+  /* And sort the pairs by key */
+  qsort(*array, num_in_map, sizeof(struct mesh_key_value),
+        cmp_func_mesh_key_value);
 
   return num_in_map;
 }
@@ -256,9 +261,9 @@ size_t hashmap_to_array(hashmap_t *map, struct mesh_key_value **array) {
  * @param recvbuf Returns a pointer to the newly received data
  *
  */
-void exchange_mesh_cells(size_t *nr_send, char *sendbuf,
-                         size_t *nr_recv_tot, char **recvbuf,
-                         size_t element_size) {
+void exchange_structs(size_t *nr_send, char *sendbuf,
+                      size_t *nr_recv_tot, char **recvbuf,
+                      size_t element_size) {
 
   /* Determine rank, number of ranks */
   int nr_nodes, nodeID;
@@ -314,7 +319,7 @@ void exchange_mesh_cells(size_t *nr_send, char *sendbuf,
     if (nr_send[i] > 0) {
 
       /* TODO: handle very large messages */
-      if(nr_send[i] > INT_MAX) error("exchange_mesh_cells() fails if nr_send > INT_MAX!");
+      if(nr_send[i] > INT_MAX) error("exchange_structs() fails if nr_send > INT_MAX!");
 
       MPI_Isend(&(sendbuf[send_offset[i]*element_size]), (int)nr_send[i],
                 mesh_key_value_mpi_type, i, 0, MPI_COMM_WORLD, &(request[i]));
@@ -328,7 +333,7 @@ void exchange_mesh_cells(size_t *nr_send, char *sendbuf,
     if (nr_recv[i] > 0) {
 
       /* TODO: handle very large messages */
-      if(nr_recv[i] > INT_MAX) error("exchange_mesh_cells() fails if nr_recv > INT_MAX!");
+      if(nr_recv[i] > INT_MAX) error("exchange_structs() fails if nr_recv > INT_MAX!");
 
       MPI_Irecv(&((*recvbuf)[recv_offset[i]*element_size]), (int)nr_recv[i],
                 mesh_key_value_mpi_type, i, 0, MPI_COMM_WORLD,
@@ -373,17 +378,14 @@ void hashmaps_to_slices(const int N, const int Nslice, hashmap_t *map,
   MPI_Comm_size(MPI_COMM_WORLD, &nr_nodes);
   MPI_Comm_rank(MPI_COMM_WORLD, &nodeID);
 
-  /* Make an array with the (key, value) pairs from the hashmap */
-  struct mesh_key_value *mesh_sendbuf;
-  size_t nr_send_tot = hashmap_to_array(map, &mesh_sendbuf);
-
-  /* Then sort the array of local mesh cells by key. This means
-   * they're sorted by x coordinate, then y coordinate, then z coordinate.
+  /* Make an array with the (key, value) pairs from the hashmap.
+   * The elements are sorted by key, which means they're sorted 
+   * by x coordinate, then y coordinate, then z coordinate.
    * We're going to distribute them between ranks according to their
    * x coordinate, so this puts them in order of destination rank.
    */
-  qsort(mesh_sendbuf, nr_send_tot, sizeof(struct mesh_key_value),
-        cmp_func_mesh_key_value);
+  struct mesh_key_value *mesh_sendbuf;
+  size_t nr_send_tot = hashmap_to_sorted_array(map, &mesh_sendbuf);
 
   /* Get width of the slice on each rank */
   int *slice_width = malloc(sizeof(int) * nr_nodes);
@@ -416,9 +418,9 @@ void hashmaps_to_slices(const int N, const int Nslice, hashmap_t *map,
   /* Carry out the communication */
   size_t nr_recv_tot;
   struct mesh_key_value *mesh_recvbuf;
-  exchange_mesh_cells(nr_send, (char *) mesh_sendbuf,
-                      &nr_recv_tot, (char **) &mesh_recvbuf, 
-                      sizeof(struct mesh_key_value));
+  exchange_structs(nr_send, (char *) mesh_sendbuf,
+                   &nr_recv_tot, (char **) &mesh_recvbuf, 
+                   sizeof(struct mesh_key_value));
 
   /* No longer need the send buffer */
   swift_free("mesh_sendbuf", mesh_sendbuf);
@@ -440,4 +442,61 @@ void hashmaps_to_slices(const int N, const int Nslice, hashmap_t *map,
   free(slice_width);
   free(slice_offset);
   swift_free("mesh_recvbuf", mesh_recvbuf);
+}
+
+
+/**
+ * @brief Determine which mesh cells are needed to compute
+ * accelerations of particles in our local top level cells
+ *
+ * @param N The size of the mesh
+ * @param fac Inverse of the cell size
+ * @param s The #space containing the particles.
+ * @param cells_to_import Returns a pointer to the array of cell indexes
+ * @return The size of the cells_to_import array
+ *
+ */
+size_t find_cells_to_import(const int N, const double fac,
+                            const struct space *s, 
+                            struct mesh_key_value **import_cells) {
+
+  const int *local_cells = s->local_cells_top;
+  const int nr_local_cells = s->nr_local_cells;
+
+  /* Create a hashmap to store the indexes of the cells we need */
+  hashmap_t map;
+  hashmap_init(&map);
+
+  /* Loop over our local top level cells */
+  for (int icell = 0; icell < nr_local_cells; icell += 1) {
+    struct cell *cell = &(s->cells_top[local_cells[icell]]);
+    if(cell->grav.count > 0) {
+    
+      /* Determine range of mesh cells we need for particles in this top level cell */
+      int ixmin[3];
+      int ixmax[3];
+      for(int idim=0;idim<3;idim+=1) {
+        const double xmin = cell->loc[idim] - 2.0/fac;
+        const double xmax = cell->loc[idim] + cell->width[idim] + 2.0/fac;
+        ixmin[idim] = (int) floor(xmin*fac);
+        ixmax[idim] = (int) floor(xmax*fac);
+      }
+
+      /* Add the required cells to the map */
+      for(int i=ixmin[0]; i<=ixmax[0]; i+=1) {
+        for(int j=ixmin[1]; j<=ixmax[1]; j+=1) {
+          for(int k=ixmin[2]; k<=ixmax[2]; k+=1) {
+            const size_t index = row_major_id_periodic_size_t_padded(i, j, k, N);
+            /* We don't have a value associated with the entry yet */
+            hashmap_value_t value;
+            value.value_dbl = 0.0;
+            hashmap_put(&map, (hashmap_key_t) index, value);
+          }
+        }
+      }
+    }
+  }
+
+  /* Store a pointer to the result array in *import_cells and return its size */
+  return hashmap_to_sorted_array(&map, import_cells);
 }
