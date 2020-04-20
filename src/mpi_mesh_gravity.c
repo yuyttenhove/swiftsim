@@ -498,5 +498,7 @@ size_t find_cells_to_import(const int N, const double fac,
   }
 
   /* Store a pointer to the result array in *import_cells and return its size */
-  return hashmap_to_sorted_array(&map, import_cells);
+  size_t num_to_import = hashmap_to_sorted_array(&map, import_cells);
+  hashmap_free(&map);
+  return num_to_import;
 }
