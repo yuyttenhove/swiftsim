@@ -154,8 +154,8 @@ void fof_init(struct fof_props *props, struct swift_params *params,
   int with_gas_fof = 0;
   int with_dm_fof = 1;
   int with_dm_background_fof = 0;
-  int with_stars_fof = 0;
-  int with_black_hole_fof = 0;
+  int with_stars_fof = 1;
+  int with_black_hole_fof = 1;
 
   /* Initialize the fof mode */
   current_fof_policy = 0;
@@ -849,6 +849,9 @@ void fof_search_self_cell(const struct fof_props *props, const double l_x2,
       /* Ignore inhibited particles */
       if (pj->time_bin >= time_bin_inhibited) continue;
 
+      /* Check if the particle if the particle is in the fof policy  */
+      if (!(current_fof_policy & (1<<pj->type))) continue;
+
 #ifdef SWIFT_DEBUG_CHECKS
       if (pj->ti_drift != ti_current)
         error("Running FOF on an un-drifted particle!");
@@ -941,7 +944,7 @@ void fof_search_pair_cells(const struct fof_props *props, const double dim[3],
     /* Ignore inhibited particles */
     if (pi->time_bin >= time_bin_inhibited) continue;
 
-    /* Ignore particles not being a star */
+    /* Ignore particles of the incorrect particle type */
     if (!(current_fof_policy & (1<<pi->type))) continue;
 
 #ifdef SWIFT_DEBUG_CHECKS
@@ -962,6 +965,9 @@ void fof_search_pair_cells(const struct fof_props *props, const double dim[3],
 
       /* Ignore inhibited particles */
       if (pj->time_bin >= time_bin_inhibited) continue;
+
+      /* Ignore particles of the incorrect particle type */
+      if (!(current_fof_policy & (1<<pj->type))) continue;
 
 #ifdef SWIFT_DEBUG_CHECKS
       if (pj->ti_drift != ti_current)
