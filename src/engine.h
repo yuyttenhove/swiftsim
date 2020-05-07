@@ -290,6 +290,7 @@ struct engine {
 
   char snapshot_base_name[PARSER_MAX_LINE_SIZE];
   char snapshot_subdir[PARSER_MAX_LINE_SIZE];
+  int snapshot_distributed;
   int snapshot_compression;
   int snapshot_int_time_label_on;
   int snapshot_invoke_stf;
@@ -565,7 +566,7 @@ void engine_print_policy(struct engine *e);
 int engine_is_done(struct engine *e);
 void engine_pin(void);
 void engine_unpin(void);
-void engine_clean(struct engine *e, const int fof);
+void engine_clean(struct engine *e, const int fof, const int restart);
 int engine_estimate_nr_tasks(const struct engine *e);
 void engine_print_task_counts(const struct engine *e);
 void engine_fof(struct engine *e, const int dump_results,

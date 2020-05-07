@@ -215,7 +215,6 @@ void hashmap_copy_elements_mapper(hashmap_key_t key, hashmap_value_t *value,
   mapper_data->offset += 1;
 }
 
-
 /**
  * @brief Convert a hashmap to an array of struct mesh_key_value,
  * with the elements sorted by key

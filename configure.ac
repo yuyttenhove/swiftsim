@@ -239,6 +239,23 @@ if test "x$enable_debug" = "xyes"; then
    fi
 fi
 
+# Are we using the regular tasks (with atomics and no task conflicts) or
+# are we using the atomic-free task-conflicting (slower) version?
+AC_ARG_ENABLE([atomics-within-tasks],
+   [AS_HELP_STRING([--disable-atomics-within-tasks],
+     [Disable the use of atomic operations within tasks. This creates more task conflicts
+      but allows for atomic-free and lock-free code within the tasks. This likely slows down
+      the code @<:@yes/no@:>@]
+   )],
+   [enable_atomics_within_tasks="$enableval"],
+   [enable_atomics_within_tasks="yes"]
+)
+AS_IF([test "x$enable_atomics_within_tasks" != "xno"],
+   , # Note: atomics are allowed by default, we define the macro if we don't want them.
+   [AC_DEFINE([SWIFT_TASKS_WITHOUT_ATOMICS],1,[Makes SWIFT use atomic-free and lock-free tasks.])
+])
+
+
 # Check if task debugging is on.
 AC_ARG_ENABLE([task-debugging],
    [AS_HELP_STRING([--enable-task-debugging],
@@ -1481,6 +1498,7 @@ with_subgrid_stars=none
 with_subgrid_star_formation=none
 with_subgrid_feedback=none
 with_subgrid_task_order=default
+with_subgrid_sink=none
 
 case "$with_subgrid" in
    yes)
@@ -1496,8 +1514,8 @@ case "$with_subgrid" in
 	with_subgrid_star_formation=GEAR
 	with_subgrid_feedback=GEAR
 	with_subgrid_black_holes=none
-  # GEAR's order is not used anymore
-	with_subgrid_task_order=default
+	with_subgrid_task_order=GEAR
+  	with_subgrid_sink=none
 	enable_fof=no
    ;;
    QLA)
@@ -1510,6 +1528,7 @@ case "$with_subgrid" in
 	with_subgrid_feedback=none
 	with_subgrid_black_holes=none
 	with_subgrid_task_order=default
+  	with_subgrid_sink=none
 	enable_fof=no
    ;;
    EAGLE)
@@ -1522,6 +1541,7 @@ case "$with_subgrid" in
 	with_subgrid_feedback=EAGLE
 	with_subgrid_black_holes=EAGLE
 	with_subgrid_task_order=EAGLE
+  	with_subgrid_sink=none
 	enable_fof=yes
    ;;
    *)
@@ -2027,36 +2047,62 @@ case "$with_black_holes" in
    ;;
 esac
 
-# Task order
-AC_ARG_WITH([task-order],
-[AS_HELP_STRING([--with-task-order=<model>],
-[Task order to use @<:@default, EAGLE, GEAR default: default@:>@]
-)],
-[with_task_order="$withval"],
-[with_task_order="default"]
+# Sink model.
+AC_ARG_WITH([sink],
+   [AS_HELP_STRING([--with-sink=<model>],
+      [Sink particle model to use @<:@none, default: none@:>@]
+   )],
+   [with_sink="$withval"],
+   [with_sink="none"]
 )
 
 if test "$with_subgrid" != "none"; then
-if test "$with_task_order" != "default"; then
-AC_MSG_ERROR([Cannot provide with-subgrid and with-task-order together])
-else
-with_task_order="$with_subgrid_task_order"
+   if test "$with_sink" != "none"; then
+      AC_MSG_ERROR([Cannot provide with-subgrid and with-sink together])
+   else
+      with_sink="$with_subgrid_sink"
+   fi
 fi
+
+case "$with_sink" in
+   none)
+      AC_DEFINE([SINK_NONE], [1], [No sink particle model])
+   ;;
+   *)
+      AC_MSG_ERROR([Unknown sink particle model model: $with_sink])
+   ;;
+esac
+
+# Task order
+AC_ARG_WITH([task-order],
+   [AS_HELP_STRING([--with-task-order=<model>],
+       [Task order to use @<:@default, EAGLE, GEAR default: default@:>@]
+   )],
+   [with_task_order="$withval"],
+   [with_task_order="default"]
+)
+
+if test "$with_subgrid" != "none"; then
+   if test "$with_task_order" != "default"; then
+      AC_MSG_ERROR([Cannot provide with-subgrid and with-task-order together])
+   else
+      with_task_order="$with_subgrid_task_order"
+   fi
 fi
 
 case "$with_task_order" in
-EAGLE)
-AC_DEFINE([TASK_ORDER_EAGLE], [1], [EAGLE task order])
-;;
-default)
-AC_DEFINE([TASK_ORDER_DEFAULT], [1], [Default (i.e. EAGLE/OWLS) task order])
-;;
-GEAR)
-AC_DEFINE([TASK_ORDER_GEAR], [1], [GEAR task order])
-;;
-*)
-AC_MSG_ERROR([Unknown task ordering: $with_task_order])
-;;
+   EAGLE)
+       AC_DEFINE([TASK_ORDER_EAGLE], [1], [EAGLE task order])
+   ;;
+   default)
+       AC_DEFINE([TASK_ORDER_DEFAULT], [1], [Default (i.e. EAGLE/OWLS) task order])
+   ;;
+   GEAR)
+       AC_DEFINE([TASK_ORDER_GEAR], [1], [GEAR task order])
+   ;;
+   *)
+       AC_MSG_ERROR([Unknown task ordering: $with_task_order])
+   ;;
 esac
 
 #  External potential
@@ -2323,9 +2369,11 @@ AC_MSG_RESULT([
    Stellar model        : $with_stars
    Star formation model : $with_star_formation
    Star feedback model  : $with_feedback
+   Sink particle model  : $with_sink
    Black holes model    : $with_black_holes
    Task dependencies    : $with_task_order
 
+   Atomic operations in tasks  : $enable_atomics_within_tasks
    Individual timers           : $enable_timers
    Task debugging              : $enable_task_debugging
    Threadpool debugging        : $enable_threadpool_debugging

@@ -132,7 +132,8 @@ Snapshots:
   time_first: 0.          # (Optional) Time of the first output if non-cosmological time-integration (in internal units)
   delta_time: 0.01        # Time difference between consecutive outputs (in internal units)
   invoke_stf: 0           # (Optional) Call VELOCIraptor every time a snapshot is written irrespective of the VELOCIraptor output strategy.
-  compression: 0          # (Optional) Set the level of compression of the HDF5 datasets [0-9]. 0 does no compression.
+  compression: 0          # (Optional) Set the level of GZIP compression of the HDF5 datasets [0-9]. 0 does no compression. The lossless compression is applied to *all* the fields.
+  distributed: 0          # (Optional) When running over MPI, should each rank write a partial snapshot or do we want a single file? 1 implies one file per MPI rank.
   int_time_label_on:   0  # (Optional) Enable to label the snapshots using the time rounded to an integer (in internal units)
   UnitMass_in_cgs:     1  # (Optional) Unit system for the outputs (Grams)
   UnitLength_in_cgs:   1  # (Optional) Unit system for the outputs (Centimeters)
@@ -239,7 +240,7 @@ EoS:
 
 # Point mass external potentials
 PointMassPotential:
-  useabspos:       0        # 0 -> positions based on centre, 1 -> absolute positions 
+  useabspos:       0                   # 0 -> positions based on centre, 1 -> absolute positions 
   position:        [50.,50.0,50.]      # location of external point mass (internal units)
   mass:            1e10                # mass of external point mass (internal units)
   timestep_mult:   0.03                # Dimensionless pre-factor for the time-step condition
@@ -247,16 +248,16 @@ PointMassPotential:
 
 # Isothermal potential parameters
 IsothermalPotential:
-  useabspos:       0        # 0 -> positions based on centre, 1 -> absolute positions 
+  useabspos:       0                   # 0 -> positions based on centre, 1 -> absolute positions 
   position:        [100.,100.,100.]    # Location of centre of isothermal potential with respect to centre of the box (internal units)
-  vrot:            200.     # Rotation speed of isothermal potential (internal units)
-  timestep_mult:   0.03     # Dimensionless pre-factor for the time-step condition
-  epsilon:         0.1      # Softening size (internal units)
+  vrot:            200.                # Rotation speed of isothermal potential (internal units)
+  timestep_mult:   0.03                # Dimensionless pre-factor for the time-step condition
+  epsilon:         0.1                 # Softening size (internal units)
   
 # Hernquist potential parameters
 HernquistPotential:
   useabspos:       0        # 0 -> positions based on centre, 1 -> absolute positions 
-  position:        [100.,100.,100.]    # Location of centre of isothermal potential with respect to centre of the box (if 0) otherwise absolute (if 1) (internal units)
+  position:        [100.,100.,100.]    # Location of centre of Henrquist potential with respect to centre of the box (if 0) otherwise absolute (if 1) (internal units)
   idealizeddisk:   0        # (Optional) Whether to run with idealizeddisk or without, 0 used the mass and scalelength as mandatory parameters, while 1 uses more advanced disk dependent paramters
   mass:            1e10     # (Optional 0) default parameter, Mass of the Hernquist potential
   scalelength:     10.0     # (Optional 0) default parameter, Scale length of the potential
@@ -271,22 +272,22 @@ HernquistPotential:
   timestep_mult:   0.01     # Dimensionless pre-factor for the time-step condition, basically determines the fraction of the orbital time we use to do the time integration
   epsilon:         0.1      # Softening size (internal units)
  
-# Isothermal potential parameters
+# NFW potential parameters
 NFWPotential:
-  useabspos:          0
-  position:           [0.0,0.0,0.0]      # Location of centre of isothermal potential with respect to centre of the box (internal units) if useabspos=0 otherwise with respect to the 0,0,0, coordinates.
-  concentration:      8.       # Concentration of the halo
-  M_200:              2.0e+12  # Mass of the halo (M_200 in internal units)
-  critical_density:   127.4    # Critical density (internal units).
-  timestep_mult:      0.01     # Dimensionless pre-factor for the time-step condition, basically determines fraction of orbital time we need to do an integration step
+  useabspos:          0             # 0 -> positions based on centre, 1 -> absolute positions 
+  position:           [0.0,0.0,0.0] # Location of centre of the NFW potential with respect to centre of the box (internal units) if useabspos=0 otherwise with respect to the 0,0,0, coordinates.
+  concentration:      8.            # Concentration of the halo
+  M_200:              2.0e+12       # Mass of the halo (M_200 in internal units)
+  critical_density:   127.4         # Critical density (internal units).
+  timestep_mult:      0.01          # Dimensionless pre-factor for the time-step condition, basically determines fraction of orbital time we need to do an integration step
 
-# Disk-patch potential parameters
+# Disk-patch potential parameters. The potential is along the x-axis.
 DiscPatchPotential:
   surface_density: 10.      # Surface density of the disc (internal units)
   scale_height:    100.     # Scale height of the disc (internal units)
-  z_disc:          400.     # Position of the disc along the z-axis (internal units)
-  z_trunc:         300.     # (Optional) Distance from the disc along z-axis above which the potential gets truncated.
-  z_max:           380.     # (Optional) Distance from the disc along z-axis above which the potential is set to 0.
+  x_disc:          400.     # Position of the disc along the z-axis (internal units)
+  x_trunc:         300.     # (Optional) Distance from the disc along z-axis above which the potential gets truncated.
+  x_max:           380.     # (Optional) Distance from the disc along z-axis above which the potential is set to 0.
   timestep_mult:   0.03     # Dimensionless pre-factor for the time-step condition
   growth_time:     5.       # (Optional) Time for the disc to grow to its final size (multiple of the dynamical time)
 
@@ -419,6 +420,8 @@ QLAStarFormation:
 GEARStarFormation:
   star_formation_efficiency: 0.01   # star formation efficiency (c_*)
   maximal_temperature:  3e4         # Upper limit to the temperature of a star forming particle
+  n_stars_per_particle: 4           # Number of stars that an hydro particle can generate
+  min_mass_frac: 0.5                # Minimal mass for a stellar particle as a fraction of the average mass for the stellar particles.
 
 
 # Parameters related to feedback models  -----------------------------------------------
@@ -478,6 +481,7 @@ EAGLEAGN:
   subgrid_seed_mass_Msun:           1.5e5      # Black hole subgrid mass at creation time in solar masses.
   max_eddington_fraction:           1.         # Maximal allowed accretion rate in units of the Eddington rate.
   eddington_fraction_for_recording: 0.1        # Record the last time BHs reached an Eddington ratio above this threshold.
+  with_angmom_limiter:              1          # Are we applying the Rosas-Guevara (2015) viscous time-scale reduction term?
   viscous_alpha:                    1e6        # Normalisation constant of the Bondi viscuous time-scale accretion reduction term
   radiative_efficiency:             0.1        # Fraction of the accreted mass that gets radiated.
   coupling_efficiency:              0.15       # Fraction of the radiated energy that couples to the gas in feedback events.
