@@ -701,7 +701,7 @@ void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
 #ifdef WITH_MPI
   tic = getticks();
 
-  /* 
+  /*
    * For testing: carry out the MPI Fourier transform.
    * We can save a bit of time if we allow FFTW to transpose the first
    * two dimensions of the output.
@@ -722,7 +722,7 @@ void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
    * Output Fourier transform is N*N*(N/2+1) complex values.
    *
    * The first two dimensions of the transform are transposed in
-   * the output. Each MPI rank has slice of thickness local_n0 
+   * the output. Each MPI rank has slice of thickness local_n0
    * starting at local_0_start in the first dimension.
    */
 
@@ -830,7 +830,7 @@ void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
   message("Maximum fractional difference in FT of potential = %e\n",
           max_frac_diff);
 
-  /* 
+  /*
    * For testing: carry out the reverse MPI Fourier transform.
    */
   fftw_plan mpi_inverse_plan = fftw_mpi_plan_dft_c2r_3d(N, N, N, frho_slice, rho_slice, MPI_COMM_WORLD,
@@ -863,7 +863,7 @@ void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
         /* Get index of this cell in the mesh from the non-MPI calculation */
         int id = row_major_id_periodic(i, j, k, N);
         /* Get index of this cell in the full MPI mesh */
-        size_t global_index = row_major_id_periodic_size_t_padded(i, j, k, N);        
+        size_t global_index = row_major_id_periodic_size_t_padded(i, j, k, N);
         /* Convert to index in the local slice of the MPI mesh */
         size_t local_index = get_index_in_local_slice(global_index, N, local_0_start);
         /* Compare and record maximum difference between MPI and non-MPI calculations */
