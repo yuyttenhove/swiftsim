@@ -169,7 +169,10 @@ int main(int argc, char *argv[]) {
   int with_drift_all = 0;
   int with_mpole_reconstruction = 0;
   int with_structure_finding = 0;
+  int with_logger = 0;
+  int with_qla = 0;
   int with_eagle = 0;
+  int with_gear = 0;
   int verbose = 0;
   int nr_threads = 1;
   int with_verbose_timers = 0;
@@ -227,13 +230,26 @@ int main(int argc, char *argv[]) {
                   "Run with time-step synchronization of particles hit by "
                   "feedback events.",
                   NULL, 0, 0),
+      OPT_BOOLEAN(0, "logger", &with_logger, "Run with the particle logger.",
+                  NULL, 0, 0),
 
       OPT_GROUP("  Simulation meta-options:\n"),
+      OPT_BOOLEAN(0, "quick-lyman-alpha", &with_qla,
+                  "Run with all the options needed for the quick Lyman-alpha "
+                  "model. This is equivalent to --hydro --self-gravity --stars "
+                  "--star-formation --cooling.",
+                  NULL, 0, 0),
       OPT_BOOLEAN(
           0, "eagle", &with_eagle,
           "Run with all the options needed for the EAGLE model. This is "
           "equivalent to --hydro --limiter --sync --self-gravity --stars "
           "--star-formation --cooling --feedback --black-holes --fof.",
+          NULL, 0, 0),
+      OPT_BOOLEAN(
+          0, "gear", &with_gear,
+          "Run with all the options needed for the GEAR model. This is "
+          "equivalent to --hydro --limiter --sync --self-gravity --stars "
+          "--star-formation --cooling --feedback.",
           NULL, 0, 0),
 
       OPT_GROUP("  Control options:\n"),
@@ -294,6 +310,13 @@ int main(int argc, char *argv[]) {
   int nargs = argparse_parse(&argparse, argc, (const char **)argv);
 
   /* Deal with meta options */
+  if (with_qla) {
+    with_hydro = 1;
+    with_self_gravity = 1;
+    with_stars = 1;
+    with_star_formation = 1;
+    with_cooling = 1;
+  }
   if (with_eagle) {
     with_hydro = 1;
     with_timestep_limiter = 1;
@@ -305,6 +328,16 @@ int main(int argc, char *argv[]) {
     with_feedback = 1;
     with_black_holes = 1;
     with_fof = 1;
+  }
+  if (with_gear) {
+    with_hydro = 1;
+    with_timestep_limiter = 1;
+    with_timestep_sync = 1;
+    with_self_gravity = 1;
+    with_stars = 1;
+    with_star_formation = 1;
+    with_cooling = 1;
+    with_feedback = 1;
   }
 
   /* Write output parameter file */
@@ -326,6 +359,15 @@ int main(int argc, char *argv[]) {
 #if !defined(HAVE_SETAFFINITY) || !defined(HAVE_LIBNUMA)
   if (with_aff) {
     printf("Error: no NUMA support for thread affinity\n");
+    return 1;
+  }
+#endif
+
+#if !defined(WITH_LOGGER)
+  if (with_logger) {
+    printf(
+        "Error: the particle logger is not available, please compile with "
+        "--enable-logger.");
     return 1;
   }
 #endif
@@ -583,12 +625,9 @@ int main(int argc, char *argv[]) {
 #ifdef WITH_MPI
   if (with_mpole_reconstruction && nr_nodes > 1)
     error("Cannot reconstruct m-poles every step over MPI (yet).");
-#ifdef WITH_LOGGER
-  error("Can't run with the particle logger over MPI (yet)");
-#endif
 #endif
 
-  /* Temporary early aborts for modes not supported with hand-vec. */
+    /* Temporary early aborts for modes not supported with hand-vec. */
 #if defined(WITH_VECTORIZATION) && defined(GADGET2_SPH) && \
     !defined(CHEMISTRY_NONE)
   error(
@@ -741,6 +780,9 @@ int main(int argc, char *argv[]) {
 
     /* Just one restart file. */
     strcpy(restart_file, restart_files[0]);
+
+    /* Finished with the list. */
+    restart_locate_free(1, restart_files);
 #endif
 
     /* Now read it. */
@@ -1019,7 +1061,7 @@ int main(int argc, char *argv[]) {
     space_init(&s, params, &cosmo, dim, parts, gparts, sparts, bparts, Ngas,
                Ngpart, Nspart, Nbpart, periodic, replicate, generate_gas_in_ics,
                with_hydro, with_self_gravity, with_star_formation,
-               with_DM_background_particles, talking, dry_run);
+               with_DM_background_particles, talking, dry_run, nr_nodes);
 
     if (myrank == 0) {
       clocks_gettime(&toc);
@@ -1143,6 +1185,7 @@ int main(int argc, char *argv[]) {
     if (with_structure_finding)
       engine_policies |= engine_policy_structure_finding;
     if (with_fof) engine_policies |= engine_policy_fof;
+    if (with_logger) engine_policies |= engine_policy_logger;
 
     /* Initialize the engine with the space and policies. */
     if (myrank == 0) clocks_gettime(&tic);
@@ -1162,6 +1205,11 @@ int main(int argc, char *argv[]) {
       message("engine_init took %.3f %s.", clocks_diff(&tic, &toc),
               clocks_getunit());
       fflush(stdout);
+    }
+
+    /* Compute some stats for the star formation */
+    if (with_star_formation) {
+      star_formation_first_init_stats(&starform, &e);
     }
 
     /* Get some info to the user. */
@@ -1190,7 +1238,7 @@ int main(int argc, char *argv[]) {
 #endif
     if (myrank == 0)
       message("Time integration ready to start. End of dry-run.");
-    engine_clean(&e, /*fof=*/0);
+    engine_clean(&e, /*fof=*/0, /*restart=*/0);
     free(params);
     return 0;
   }
@@ -1205,7 +1253,12 @@ int main(int argc, char *argv[]) {
 #ifdef WITH_MPI
     /* Split the space. */
     engine_split(&e, &initial_partition);
+    /* Turn off the logger to avoid writing the communications */
+    if (with_logger) e.policy &= ~engine_policy_logger;
+
     engine_redistribute(&e);
+    /* Turn it back on */
+    if (with_logger) e.policy |= engine_policy_logger;
 #endif
 
     /* Initialise the particles */
@@ -1213,8 +1266,10 @@ int main(int argc, char *argv[]) {
 
     /* Write the state of the system before starting time integration. */
 #ifdef WITH_LOGGER
-    logger_log_all(e.logger, &e);
-    engine_dump_index(&e);
+    if (e.policy & engine_policy_logger) {
+      logger_log_all(e.logger, &e);
+      engine_dump_index(&e);
+    }
 #endif
     /* Dump initial state snapshot, if not working with an output list */
     if (!e.output_list_snapshots) engine_dump_snapshot(&e);
@@ -1317,7 +1372,7 @@ int main(int argc, char *argv[]) {
 
       /* Generate the task statistics. */
       char dumpfile[40];
-      snprintf(dumpfile, 40, "thread_stats-step%d.dat", j + 1);
+      snprintf(dumpfile, 40, "thread_stats-step%d.dat", e.step + 1);
       task_dump_stats(dumpfile, &e, /* header = */ 0, /* allranks = */ 1);
     }
 
@@ -1336,7 +1391,7 @@ int main(int argc, char *argv[]) {
       snprintf(dumpfile, 40, "memuse_report-rank%d-step%d.dat", engine_rank,
                j + 1);
 #else
-      snprintf(dumpfile, 40, "memuse_report-step%d.dat", j + 1);
+      snprintf(dumpfile, 40, "memuse_report-step%d.dat", e.step + 1);
 #endif  // WITH_MPI
       memuse_log_dump(dumpfile);
     }
@@ -1416,11 +1471,16 @@ int main(int argc, char *argv[]) {
       engine_print_stats(&e);
     }
 #ifdef WITH_LOGGER
-    logger_log_all(e.logger, &e);
+    if (e.policy & engine_policy_logger) {
+      logger_log_all(e.logger, &e);
 
-    /* Write a sentinel timestamp */
-    logger_log_timestamp(e.logger, e.ti_current, e.time,
-                         &e.logger->timestamp_offset);
+      /* Write a final index file */
+      engine_dump_index(&e);
+
+      /* Write a sentinel timestamp */
+      logger_log_timestamp(e.logger, e.ti_current, e.time,
+                           &e.logger->timestamp_offset);
+    }
 #endif
 
     /* Write final snapshot? */
@@ -1467,7 +1527,7 @@ int main(int argc, char *argv[]) {
   if (with_self_gravity) pm_mesh_clean(e.mesh);
   if (with_cooling || with_temperature) cooling_clean(e.cooling_func);
   if (with_feedback) feedback_clean(e.feedback_props);
-  engine_clean(&e, /*fof=*/0);
+  engine_clean(&e, /*fof=*/0, restart);
   free(params);
 
 #ifdef WITH_MPI

@@ -25,6 +25,7 @@
 /* Read additional subgrid models */
 #include "chemistry_struct.h"
 #include "feedback_struct.h"
+#include "star_formation_struct.h"
 #include "tracers_struct.h"
 
 /**
@@ -58,9 +59,6 @@ struct spart {
   /* Particle cutoff radius. */
   float h;
 
-  /*! Particle time bin */
-  timebin_t time_bin;
-
   struct {
 
     /* Number of neighbours. */
@@ -73,10 +71,16 @@ struct spart {
 
   /* Not used in the default stars */
   union {
-    double birth_time;
+    float birth_time;
 
-    double birth_scale_factor;
+    float birth_scale_factor;
   };
+
+  /*! Particle time bin */
+  timebin_t time_bin;
+
+  /*! Star formation struct */
+  struct star_formation_spart_data sf_data;
 
   /*! Feedback structure */
   struct feedback_spart_data feedback_data;

@@ -239,6 +239,23 @@ if test "x$enable_debug" = "xyes"; then
    fi
 fi
 
+# Are we using the regular tasks (with atomics and no task conflicts) or
+# are we using the atomic-free task-conflicting (slower) version?
+AC_ARG_ENABLE([atomics-within-tasks],
+   [AS_HELP_STRING([--disable-atomics-within-tasks],
+     [Disable the use of atomic operations within tasks. This creates more task conflicts
+      but allows for atomic-free and lock-free code within the tasks. This likely slows down
+      the code @<:@yes/no@:>@]
+   )],
+   [enable_atomics_within_tasks="$enableval"],
+   [enable_atomics_within_tasks="yes"]
+)
+AS_IF([test "x$enable_atomics_within_tasks" != "xno"],
+   , # Note: atomics are allowed by default, we define the macro if we don't want them.
+   [AC_DEFINE([SWIFT_TASKS_WITHOUT_ATOMICS],1,[Makes SWIFT use atomic-free and lock-free tasks.])
+])
+
+
 # Check if task debugging is on.
 AC_ARG_ENABLE([task-debugging],
    [AS_HELP_STRING([--enable-task-debugging],
@@ -1465,7 +1482,7 @@ AC_SUBST([NUMA_INCS])
 # As an example for this, see the call to AC_ARG_WITH for cooling.
 AC_ARG_WITH([subgrid],
 	[AS_HELP_STRING([--with-subgrid=<subgrid>],
-		[Master switch for subgrid methods. Inexperienced user should start from here @<:@none, GEAR, EAGLE default: none@:>@]
+		[Master switch for subgrid methods. Inexperienced user should start here. Options are: @<:@none, GEAR, QLA, EAGLE default: none@:>@]
 	)],
 	[with_subgrid="$withval"],
 	[with_subgrid=none]
@@ -1480,7 +1497,8 @@ with_subgrid_pressure_floor=none
 with_subgrid_stars=none
 with_subgrid_star_formation=none
 with_subgrid_feedback=none
-with_subgrid_task_order=none
+with_subgrid_task_order=default
+with_subgrid_sink=none
 
 case "$with_subgrid" in
    yes)
@@ -1496,8 +1514,21 @@ case "$with_subgrid" in
 	with_subgrid_star_formation=GEAR
 	with_subgrid_feedback=GEAR
 	with_subgrid_black_holes=none
-  # GEAR's order is not used anymore
-	with_subgrid_task_order=none
+	with_subgrid_task_order=GEAR
+  	with_subgrid_sink=none
+	enable_fof=no
+   ;;
+   QLA)
+	with_subgrid_cooling=QLA
+	with_subgrid_chemistry=QLA
+	with_subgrid_tracers=none
+	with_subgrid_entropy_floor=QLA
+	with_subgrid_stars=none
+	with_subgrid_star_formation=QLA
+	with_subgrid_feedback=none
+	with_subgrid_black_holes=none
+	with_subgrid_task_order=default
+  	with_subgrid_sink=none
 	enable_fof=no
    ;;
    EAGLE)
@@ -1510,6 +1541,7 @@ case "$with_subgrid" in
 	with_subgrid_feedback=EAGLE
 	with_subgrid_black_holes=EAGLE
 	with_subgrid_task_order=EAGLE
+  	with_subgrid_sink=none
 	enable_fof=yes
    ;;
    *)
@@ -1799,7 +1831,7 @@ esac
 #  Cooling function
 AC_ARG_WITH([cooling],
    [AS_HELP_STRING([--with-cooling=<function>],
-      [cooling function @<:@none, const-du, const-lambda, EAGLE, grackle_* default: none@:>@.
+      [cooling function @<:@none, const-du, const-lambda, QLA, EAGLE, grackle_* default: none@:>@.
       For Grackle, you need to provide the primordial chemistry parameter (e.g. grackle_0)]
    )],
    [with_cooling="$withval"],
@@ -1832,6 +1864,9 @@ case "$with_cooling" in
       primordial_chemistry=${with_cooling:8}
       AC_DEFINE_UNQUOTED([COOLING_GRACKLE_MODE], [$primordial_chemistry], [Grackle chemistry network])
    ;;
+   QLA)
+      AC_DEFINE([COOLING_QLA], [1], [Cooling following the Quick-Lyman-alpha model])
+   ;;
    EAGLE)
       AC_DEFINE([COOLING_EAGLE], [1], [Cooling following the EAGLE model])
    ;;
@@ -1843,7 +1878,7 @@ esac
 #  chemistry function
 AC_ARG_WITH([chemistry],
    [AS_HELP_STRING([--with-chemistry=<function>],
-      [chemistry function @<:@none, GEAR_*, EAGLE default: none@:>@
+      [chemistry function @<:@none, GEAR_*, QLA, EAGLE default: none@:>@
       For GEAR, you need to provide the number of elements (e.g. GEAR_10)]
    )],
    [with_chemistry="$withval"],
@@ -1866,6 +1901,9 @@ case "$with_chemistry" in
       AC_DEFINE([CHEMISTRY_GEAR], [1], [Chemistry taken from the GEAR model])
       number_element=${with_chemistry:5}
       AC_DEFINE_UNQUOTED([GEAR_CHEMISTRY_ELEMENT_COUNT], [$number_element], [Number of element to follow])
+   ;;
+   QLA)
+      AC_DEFINE([CHEMISTRY_QLA], [1], [Chemistry taken from the Quick-Lyman-alpha model])
    ;;
    EAGLE)
       AC_DEFINE([CHEMISTRY_EAGLE], [1], [Chemistry taken from the EAGLE model])
@@ -2009,36 +2047,62 @@ case "$with_black_holes" in
    ;;
 esac
 
-# Task order
-AC_ARG_WITH([task-order],
-[AS_HELP_STRING([--with-task-order=<model>],
-[Task order to use @<:@default, EAGLE, GEAR default: default@:>@]
-)],
-[with_task_order="$withval"],
-[with_task_order="default"]
+# Sink model.
+AC_ARG_WITH([sink],
+   [AS_HELP_STRING([--with-sink=<model>],
+      [Sink particle model to use @<:@none, default: none@:>@]
+   )],
+   [with_sink="$withval"],
+   [with_sink="none"]
 )
 
 if test "$with_subgrid" != "none"; then
-if test "$with_task_order" != "default"; then
-AC_MSG_ERROR([Cannot provide with-subgrid and with-task-order together])
-else
-with_task_order="$with_subgrid_task_order"
+   if test "$with_sink" != "none"; then
+      AC_MSG_ERROR([Cannot provide with-subgrid and with-sink together])
+   else
+      with_sink="$with_subgrid_sink"
+   fi
 fi
+
+case "$with_sink" in
+   none)
+      AC_DEFINE([SINK_NONE], [1], [No sink particle model])
+   ;;
+   *)
+      AC_MSG_ERROR([Unknown sink particle model model: $with_sink])
+   ;;
+esac
+
+# Task order
+AC_ARG_WITH([task-order],
+   [AS_HELP_STRING([--with-task-order=<model>],
+       [Task order to use @<:@default, EAGLE, GEAR default: default@:>@]
+   )],
+   [with_task_order="$withval"],
+   [with_task_order="default"]
+)
+
+if test "$with_subgrid" != "none"; then
+   if test "$with_task_order" != "default"; then
+      AC_MSG_ERROR([Cannot provide with-subgrid and with-task-order together])
+   else
+      with_task_order="$with_subgrid_task_order"
+   fi
 fi
 
 case "$with_task_order" in
-EAGLE)
-AC_DEFINE([TASK_ORDER_EAGLE], [1], [EAGLE task order])
-;;
-default)
-AC_DEFINE([TASK_ORDER_NONE], [1], [Default (i.e. EAGLE/OWLS) task order])
-;;
-GEAR)
-AC_DEFINE([TASK_ORDER_GEAR], [1], [GEAR task order])
-;;
-*)
-AC_MSG_ERROR([Unknown task ordering: $with_task_order])
-;;
+   EAGLE)
+       AC_DEFINE([TASK_ORDER_EAGLE], [1], [EAGLE task order])
+   ;;
+   default)
+       AC_DEFINE([TASK_ORDER_DEFAULT], [1], [Default (i.e. EAGLE/OWLS) task order])
+   ;;
+   GEAR)
+       AC_DEFINE([TASK_ORDER_GEAR], [1], [GEAR task order])
+   ;;
+   *)
+       AC_MSG_ERROR([Unknown task ordering: $with_task_order])
+   ;;
 esac
 
 #  External potential
@@ -2088,7 +2152,7 @@ esac
 #  Entropy floor
 AC_ARG_WITH([entropy-floor], 
     [AS_HELP_STRING([--with-entropy-floor=<floor>],
-       [entropy floor @<:@none, EAGLE, default: none@:>@] 
+       [entropy floor @<:@none, QLA, EAGLE, default: none@:>@] 
     )],
     [with_entropy_floor="$withval"],
     [with_entropy_floor="none"]
@@ -2104,6 +2168,9 @@ fi
 case "$with_entropy_floor" in
    none)
       AC_DEFINE([ENTROPY_FLOOR_NONE], [1], [No entropy floor])
+   ;;
+   QLA)
+      AC_DEFINE([ENTROPY_FLOOR_QLA], [1], [Quick Lyman-alpha entropy floor])
    ;;
    EAGLE)
       AC_DEFINE([ENTROPY_FLOOR_EAGLE], [1], [EAGLE entropy floor])
@@ -2145,7 +2212,7 @@ esac
 #  Star formation
 AC_ARG_WITH([star-formation], 
     [AS_HELP_STRING([--with-star-formation=<sfm>],
-       [star formation @<:@none, EAGLE, GEAR, default: none@:>@] 
+       [star formation @<:@none, QLA, EAGLE, GEAR, default: none@:>@] 
     )],
     [with_star_formation="$withval"],
     [with_star_formation="none"]
@@ -2162,6 +2229,9 @@ case "$with_star_formation" in
    none)
       AC_DEFINE([STAR_FORMATION_NONE], [1], [No star formation])
    ;;
+   QLA)
+      AC_DEFINE([STAR_FORMATION_QLA], [1], [Quick Lyman-alpha star formation model)])
+   ;;
    EAGLE)
       AC_DEFINE([STAR_FORMATION_EAGLE], [1], [EAGLE star formation model (Schaye and Dalla Vecchia (2008))])
    ;;
@@ -2172,6 +2242,17 @@ case "$with_star_formation" in
       AC_MSG_ERROR([Unknown star formation model])
    ;;
 esac 
+
+AC_ARG_WITH([gadget2-physical-constants],
+    [AS_HELP_STRING([--with-gadget2-physical-constants],
+       [Use the same physical constants (G, Msun, Mpc) as the Gadget-2 code rather than more up-to-date values.]
+    )],
+    [with_gadget2_physical_constants="$withval"],
+    [with_gadget2_physical_constants="no"]
+)
+if test "$with_gadget2_physical_constants" = "yes"; then
+   AC_DEFINE([SWIFT_USE_GADGET2_PHYSICAL_CONSTANTS],1,[Use the same physical constants as Gadget-2])
+fi
 
 #  Gravity multipole order
 AC_ARG_WITH([multipole-order],
@@ -2188,8 +2269,12 @@ AC_PATH_PROG([GIT_CMD], [git])
 AC_SUBST([GIT_CMD])
 
 # Make the documentation. Add conditional to handle disable option.
-DX_INIT_DOXYGEN(libswift,doc/Doxyfile,doc/)
+DX_DOXYGEN_FEATURE(OFF)
+DX_INIT_DOXYGEN(SWIFT, doc/Doxyfile, doc/)
 AM_CONDITIONAL([HAVE_DOXYGEN], [test "$ac_cv_path_ac_pt_DX_DOXYGEN" != ""])
+
+# Check if using QLA cooling
+AM_CONDITIONAL([HAVEQLACOOLING], [test $with_cooling = "QLA"])
 
 # Check if using EAGLE cooling
 AM_CONDITIONAL([HAVEEAGLECOOLING], [test $with_cooling = "EAGLE"])
@@ -2284,9 +2369,11 @@ AC_MSG_RESULT([
    Stellar model        : $with_stars
    Star formation model : $with_star_formation
    Star feedback model  : $with_feedback
+   Sink particle model  : $with_sink
    Black holes model    : $with_black_holes
    Task dependencies    : $with_task_order
 
+   Atomic operations in tasks  : $enable_atomics_within_tasks
    Individual timers           : $enable_timers
    Task debugging              : $enable_task_debugging
    Threadpool debugging        : $enable_threadpool_debugging

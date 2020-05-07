@@ -831,6 +831,9 @@ void engine_make_hierarchical_tasks_common(struct engine *e, struct cell *c) {
   const int with_timestep_limiter =
       (e->policy & engine_policy_timestep_limiter);
   const int with_timestep_sync = (e->policy & engine_policy_timestep_sync);
+#ifdef WITH_LOGGER
+  const int with_logger = e->policy & engine_policy_logger;
+#endif
 
   /* Are we at the top-level? */
   if (c->top == c && c->nodeID == e->nodeID) {
@@ -855,15 +858,20 @@ void engine_make_hierarchical_tasks_common(struct engine *e, struct cell *c) {
                                    c, NULL);
 
 #if defined(WITH_LOGGER)
-      /* Add the hydro logger task. */
-      c->logger = scheduler_addtask(s, task_type_logger, task_subtype_none, 0,
-                                    0, c, NULL);
+      struct task *kick2_or_logger;
+      if (with_logger) {
+        /* Add the hydro logger task. */
+        c->logger = scheduler_addtask(s, task_type_logger, task_subtype_none, 0,
+                                      0, c, NULL);
 
-      /* Add the kick2 dependency */
-      scheduler_addunlock(s, c->kick2, c->logger);
+        /* Add the kick2 dependency */
+        scheduler_addunlock(s, c->kick2, c->logger);
 
-      /* Create a variable in order to avoid to many ifdef */
-      struct task *kick2_or_logger = c->logger;
+        /* Create a variable in order to avoid to many ifdef */
+        kick2_or_logger = c->logger;
+      } else {
+        kick2_or_logger = c->kick2;
+      }
 #else
       struct task *kick2_or_logger = c->kick2;
 #endif
@@ -1070,6 +1078,9 @@ void engine_make_hierarchical_tasks_hydro(struct engine *e, struct cell *c,
   const int with_cooling = (e->policy & engine_policy_cooling);
   const int with_star_formation = (e->policy & engine_policy_star_formation);
   const int with_black_holes = (e->policy & engine_policy_black_holes);
+#ifdef WITH_LOGGER
+  const int with_logger = (e->policy & engine_policy_logger);
+#endif
 
   /* Are we are the level where we create the stars' resort tasks?
    * If the tree is shallow, we need to do this at the super-level if the
@@ -1155,7 +1166,8 @@ void engine_make_hierarchical_tasks_hydro(struct engine *e, struct cell *c,
         c->hydro.cooling = scheduler_addtask(s, task_type_cooling,
                                              task_subtype_none, 0, 0, c, NULL);
 
-        task_order_addunlock_cooling(s, c);
+        scheduler_addunlock(s, c->hydro.end_force, c->hydro.cooling);
+        scheduler_addunlock(s, c->hydro.cooling, c->super->kick2);
 
       } else {
         scheduler_addunlock(s, c->hydro.end_force, c->super->kick2);
@@ -1176,7 +1188,11 @@ void engine_make_hierarchical_tasks_hydro(struct engine *e, struct cell *c,
                                            task_subtype_none, 0, 0, c, NULL);
 
 #ifdef WITH_LOGGER
-        scheduler_addunlock(s, c->super->logger, c->stars.stars_in);
+        if (with_logger) {
+          scheduler_addunlock(s, c->super->logger, c->stars.stars_in);
+        } else {
+          scheduler_addunlock(s, c->super->kick2, c->stars.stars_in);
+        }
 #else
         scheduler_addunlock(s, c->super->kick2, c->stars.stars_in);
 #endif
@@ -1209,12 +1225,25 @@ void engine_make_hierarchical_tasks_hydro(struct engine *e, struct cell *c,
             s, task_type_bh_swallow_ghost3, task_subtype_none, 0, 0, c, NULL);
 
 #ifdef WITH_LOGGER
-        scheduler_addunlock(s, c->super->logger, c->black_holes.black_holes_in);
+        if (with_logger) {
+          scheduler_addunlock(s, c->super->logger,
+                              c->black_holes.black_holes_in);
+        } else {
+          scheduler_addunlock(s, c->super->kick2,
+                              c->black_holes.black_holes_in);
+        }
 #else
         scheduler_addunlock(s, c->super->kick2, c->black_holes.black_holes_in);
 #endif
         scheduler_addunlock(s, c->black_holes.black_holes_out,
                             c->super->timestep);
+      }
+
+      if (with_black_holes && with_feedback) {
+
+        /* Make sure we don't start swallowing gas particles before the stars
+           have converged on their smoothing lengths. */
+        scheduler_addunlock(s, c->stars.ghost, c->black_holes.swallow_ghost[0]);
       }
     }
   } else { /* We are above the super-cell so need to go deeper */
@@ -1465,22 +1494,21 @@ void engine_count_and_link_tasks_mapper(void *map_data, int num_elements,
     /* Link sort tasks to all the higher sort task. */
     if (t_type == task_type_sort) {
       for (struct cell *finger = t->ci->parent; finger != NULL;
-           finger = finger->parent)
+           finger = finger->parent) {
         if (finger->hydro.sorts != NULL)
           scheduler_addunlock(sched, t, finger->hydro.sorts);
-    }
+      }
 
-    /* Link stars sort tasks to all the higher sort task. */
-    if (t_type == task_type_stars_sort) {
+      /* Link stars sort tasks to all the higher sort task. */
+    } else if (t_type == task_type_stars_sort) {
       for (struct cell *finger = t->ci->parent; finger != NULL;
            finger = finger->parent) {
         if (finger->stars.sorts != NULL)
           scheduler_addunlock(sched, t, finger->stars.sorts);
       }
-    }
 
-    /* Link self tasks to cells. */
-    else if (t_type == task_type_self) {
+      /* Link self tasks to cells. */
+    } else if (t_type == task_type_self) {
       atomic_inc(&ci->nr_tasks);
 
       if (t_subtype == task_subtype_density) {
@@ -3396,6 +3424,12 @@ void engine_maketasks(struct engine *e) {
         "Nr. of links: %zd allocated links: %zd ratio: %f memory use: %zd MB.",
         e->nr_links, e->size_links, (float)e->nr_links / (float)e->size_links,
         e->size_links * sizeof(struct link) / (1024 * 1024));
+
+  /* Report the values that could have been used */
+  if (e->verbose)
+    message("Actual usage: tasks/cell: %f links/task: %f",
+            (float)e->sched.nr_tasks / s->tot_cells,
+            (float)e->nr_links / e->sched.nr_tasks);
 
   tic2 = getticks();
 

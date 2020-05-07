@@ -77,9 +77,10 @@ enum engine_policy {
   engine_policy_black_holes = (1 << 19),
   engine_policy_fof = (1 << 20),
   engine_policy_timestep_limiter = (1 << 21),
-  engine_policy_timestep_sync = (1 << 22)
+  engine_policy_timestep_sync = (1 << 22),
+  engine_policy_logger = (1 << 23),
 };
-#define engine_maxpolicy 23
+#define engine_maxpolicy 24
 extern const char *engine_policy_names[engine_maxpolicy + 1];
 
 /**
@@ -289,6 +290,7 @@ struct engine {
 
   char snapshot_base_name[PARSER_MAX_LINE_SIZE];
   char snapshot_subdir[PARSER_MAX_LINE_SIZE];
+  int snapshot_distributed;
   int snapshot_compression;
   int snapshot_int_time_label_on;
   int snapshot_invoke_stf;
@@ -402,7 +404,7 @@ struct engine {
 
   /* Average number of links per tasks. This number is used before
      the creation of communication tasks so needs to be large enough. */
-  size_t links_per_tasks;
+  float links_per_tasks;
 
   /* Are we talkative ? */
   int verbose;
@@ -485,6 +487,20 @@ struct engine {
 
   /* Has there been an stf this timestep? */
   char stf_this_timestep;
+
+#ifdef SWIFT_GRAVITY_FORCE_CHECKS
+  /* Run brute force checks only on steps when all gparts active? */
+  int force_checks_only_all_active;
+
+  /* Run brute force checks only during snapshot timesteps? */
+  int force_checks_only_at_snapshots;
+
+  /* Are all gparts active this timestep? */
+  int all_gparts_active;
+
+  /* Flag to tell brute force checks a snapshot was recently written. */
+  int force_checks_snapshot_flag;
+#endif
 };
 
 /* Function prototypes, engine.c. */
@@ -550,7 +566,7 @@ void engine_print_policy(struct engine *e);
 int engine_is_done(struct engine *e);
 void engine_pin(void);
 void engine_unpin(void);
-void engine_clean(struct engine *e, const int fof);
+void engine_clean(struct engine *e, const int fof, const int restart);
 int engine_estimate_nr_tasks(const struct engine *e);
 void engine_print_task_counts(const struct engine *e);
 void engine_fof(struct engine *e, const int dump_results,

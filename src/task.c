@@ -112,6 +112,11 @@ const char *subtaskID_names[task_subtype_count] = {
     "bh_density", "bh_swallow",   "do_gas_swallow", "do_bh_swallow",
     "bh_feedback"};
 
+const char *task_category_names[task_category_count] = {
+    "drift",       "sort",    "hydro",          "gravity", "feedback",
+    "black holes", "cooling", "star formation", "limiter", "time integration",
+    "mpi",         "fof",     "others"};
+
 #ifdef WITH_MPI
 /* MPI communicators for the subtypes. */
 MPI_Comm subtaskMPI_comms[task_subtype_count];
@@ -451,8 +456,10 @@ void task_unlock(struct task *t) {
     case task_type_self:
     case task_type_sub_self:
       if (subtype == task_subtype_grav) {
+#ifdef SWIFT_TASKS_WITHOUT_ATOMICS
         cell_gunlocktree(ci);
         cell_munlocktree(ci);
+#endif
       } else if ((subtype == task_subtype_stars_density) ||
                  (subtype == task_subtype_stars_feedback)) {
         cell_sunlocktree(ci);
@@ -465,7 +472,11 @@ void task_unlock(struct task *t) {
         cell_unlocktree(ci);
       } else if (subtype == task_subtype_do_bh_swallow) {
         cell_bunlocktree(ci);
-      } else {
+      } else if (subtype == task_subtype_limiter) {
+#ifdef SWIFT_TASKS_WITHOUT_ATOMICS
+        cell_unlocktree(ci);
+#endif
+      } else { /* hydro */
         cell_unlocktree(ci);
       }
       break;
@@ -473,10 +484,12 @@ void task_unlock(struct task *t) {
     case task_type_pair:
     case task_type_sub_pair:
       if (subtype == task_subtype_grav) {
+#ifdef SWIFT_TASKS_WITHOUT_ATOMICS
         cell_gunlocktree(ci);
         cell_gunlocktree(cj);
         cell_munlocktree(ci);
         cell_munlocktree(cj);
+#endif
       } else if ((subtype == task_subtype_stars_density) ||
                  (subtype == task_subtype_stars_feedback)) {
         cell_sunlocktree(ci);
@@ -494,24 +507,35 @@ void task_unlock(struct task *t) {
       } else if (subtype == task_subtype_do_bh_swallow) {
         cell_bunlocktree(ci);
         cell_bunlocktree(cj);
-      } else {
+      } else if (subtype == task_subtype_limiter) {
+#ifdef SWIFT_TASKS_WITHOUT_ATOMICS
+        cell_unlocktree(ci);
+        cell_unlocktree(cj);
+#endif
+      } else { /* hydro */
         cell_unlocktree(ci);
         cell_unlocktree(cj);
       }
       break;
 
     case task_type_grav_down:
+#ifdef SWIFT_TASKS_WITHOUT_ATOMICS
       cell_gunlocktree(ci);
       cell_munlocktree(ci);
+#endif
       break;
 
     case task_type_grav_long_range:
+#ifdef SWIFT_TASKS_WITHOUT_ATOMICS
       cell_munlocktree(ci);
+#endif
       break;
 
     case task_type_grav_mm:
+#ifdef SWIFT_TASKS_WITHOUT_ATOMICS
       cell_munlocktree(ci);
       cell_munlocktree(cj);
+#endif
       break;
 
     case task_type_star_formation:
@@ -607,6 +631,7 @@ int task_lock(struct task *t) {
     case task_type_self:
     case task_type_sub_self:
       if (subtype == task_subtype_grav) {
+#ifdef SWIFT_TASKS_WITHOUT_ATOMICS
         /* Lock the gparts and the m-pole */
         if (ci->grav.phold || ci->grav.mhold) return 0;
         if (cell_glocktree(ci) != 0)
@@ -615,6 +640,7 @@ int task_lock(struct task *t) {
           cell_gunlocktree(ci);
           return 0;
         }
+#endif
       } else if ((subtype == task_subtype_stars_density) ||
                  (subtype == task_subtype_stars_feedback)) {
         if (ci->stars.hold) return 0;
@@ -638,6 +664,11 @@ int task_lock(struct task *t) {
       } else if (subtype == task_subtype_do_bh_swallow) {
         if (ci->black_holes.hold) return 0;
         if (cell_blocktree(ci) != 0) return 0;
+      } else if (subtype == task_subtype_limiter) {
+#ifdef SWIFT_TASKS_WITHOUT_ATOMICS
+        if (ci->hydro.hold) return 0;
+        if (cell_locktree(ci) != 0) return 0;
+#endif
       } else { /* subtype == hydro */
         if (ci->hydro.hold) return 0;
         if (cell_locktree(ci) != 0) return 0;
@@ -647,6 +678,7 @@ int task_lock(struct task *t) {
     case task_type_pair:
     case task_type_sub_pair:
       if (subtype == task_subtype_grav) {
+#ifdef SWIFT_TASKS_WITHOUT_ATOMICS
         /* Lock the gparts and the m-pole in both cells */
         if (ci->grav.phold || cj->grav.phold) return 0;
         if (cell_glocktree(ci) != 0) return 0;
@@ -663,6 +695,7 @@ int task_lock(struct task *t) {
           cell_munlocktree(ci);
           return 0;
         }
+#endif
       } else if ((subtype == task_subtype_stars_density) ||
                  (subtype == task_subtype_stars_feedback)) {
         /* Lock the stars and the gas particles in both cells */
@@ -714,6 +747,15 @@ int task_lock(struct task *t) {
           cell_bunlocktree(ci);
           return 0;
         }
+      } else if (subtype == task_subtype_limiter) {
+#ifdef SWIFT_TASKS_WITHOUT_ATOMICS
+        if (ci->hydro.hold || cj->hydro.hold) return 0;
+        if (cell_locktree(ci) != 0) return 0;
+        if (cell_locktree(cj) != 0) {
+          cell_unlocktree(ci);
+          return 0;
+        }
+#endif
       } else { /* subtype == hydro */
         /* Lock the parts in both cells */
         if (ci->hydro.hold || cj->hydro.hold) return 0;
@@ -726,6 +768,7 @@ int task_lock(struct task *t) {
       break;
 
     case task_type_grav_down:
+#ifdef SWIFT_TASKS_WITHOUT_ATOMICS
       /* Lock the gparts and the m-poles */
       if (ci->grav.phold || ci->grav.mhold) return 0;
       if (cell_glocktree(ci) != 0)
@@ -734,15 +777,19 @@ int task_lock(struct task *t) {
         cell_gunlocktree(ci);
         return 0;
       }
+#endif
       break;
 
     case task_type_grav_long_range:
+#ifdef SWIFT_TASKS_WITHOUT_ATOMICS
       /* Lock the m-poles */
       if (ci->grav.mhold) return 0;
       if (cell_mlocktree(ci) != 0) return 0;
+#endif
       break;
 
     case task_type_grav_mm:
+#ifdef SWIFT_TASKS_WITHOUT_ATOMICS
       /* Lock both m-poles */
       if (ci->grav.mhold || cj->grav.mhold) return 0;
       if (cell_mlocktree(ci) != 0) return 0;
@@ -750,6 +797,7 @@ int task_lock(struct task *t) {
         cell_munlocktree(ci);
         return 0;
       }
+#endif
       break;
 
     case task_type_star_formation:
@@ -915,6 +963,8 @@ void task_dump_all(struct engine *e, int step) {
 
 #ifdef SWIFT_DEBUG_TASKS
 
+  const ticks tic = getticks();
+
   /* Need this to convert ticks to seconds. */
   const unsigned long long cpufreq = clocks_get_cpufreq();
 
@@ -1008,6 +1058,10 @@ void task_dump_all(struct engine *e, int step) {
   }
   fclose(file_thread);
 #endif  // WITH_MPI
+
+  if (e->verbose)
+    message("took %.3f %s.", clocks_from_ticks(getticks() - tic),
+            clocks_getunit());
 #endif  // SWIFT_DEBUG_TASKS
 }
 
@@ -1035,6 +1089,8 @@ void task_dump_all(struct engine *e, int step) {
  */
 void task_dump_stats(const char *dumpfile, struct engine *e, int header,
                      int allranks) {
+
+  const ticks function_tic = getticks();
 
   /* Need arrays for sum, min and max across all types and subtypes. */
   double sum[task_type_count][task_subtype_count];
@@ -1171,6 +1227,10 @@ void task_dump_stats(const char *dumpfile, struct engine *e, int header,
 #ifdef WITH_MPI
   }
 #endif
+
+  if (e->verbose)
+    message("took %.3f %s.", clocks_from_ticks(getticks() - function_tic),
+            clocks_getunit());
 }
 
 /**
@@ -1187,6 +1247,8 @@ void task_dump_stats(const char *dumpfile, struct engine *e, int header,
  * @param e the #engine
  */
 void task_dump_active(struct engine *e) {
+
+  const ticks tic = getticks();
 
   /* Need this to convert ticks to seconds. */
   unsigned long long cpufreq = clocks_get_cpufreq();
@@ -1234,4 +1296,106 @@ void task_dump_active(struct engine *e) {
     count++;
   }
   fclose(file_thread);
+
+  if (e->verbose)
+    message("took %.3f %s.", clocks_from_ticks(getticks() - tic),
+            clocks_getunit());
+}
+
+/**
+ * @brief Return the #task_categories of a given #task.
+ *
+ * @param t The #task.
+ */
+enum task_categories task_get_category(const struct task *t) {
+
+  switch (t->type) {
+
+    case task_type_cooling:
+      return task_category_cooling;
+
+    case task_type_star_formation:
+      return task_category_star_formation;
+
+    case task_type_drift_part:
+    case task_type_drift_spart:
+    case task_type_drift_bpart:
+    case task_type_drift_gpart:
+      return task_category_drift;
+
+    case task_type_sort:
+    case task_type_stars_sort:
+    case task_type_stars_resort:
+      return task_category_sort;
+
+    case task_type_send:
+    case task_type_recv:
+      return task_category_mpi;
+
+    case task_type_kick1:
+    case task_type_kick2:
+    case task_type_timestep:
+      return task_category_time_integration;
+
+    case task_type_timestep_limiter:
+    case task_type_timestep_sync:
+      return task_category_limiter;
+
+    case task_type_ghost:
+    case task_type_extra_ghost:
+    case task_type_end_hydro_force:
+      return task_category_hydro;
+
+    case task_type_stars_ghost:
+      return task_category_feedback;
+
+    case task_type_bh_density_ghost:
+    case task_type_bh_swallow_ghost2:
+      return task_category_black_holes;
+
+    case task_type_init_grav:
+    case task_type_grav_long_range:
+    case task_type_grav_mm:
+    case task_type_grav_down:
+    case task_type_grav_mesh:
+    case task_type_end_grav_force:
+      return task_category_gravity;
+
+    case task_type_self:
+    case task_type_pair:
+    case task_type_sub_self:
+    case task_type_sub_pair: {
+      switch (t->subtype) {
+
+        case task_subtype_density:
+        case task_subtype_gradient:
+        case task_subtype_force:
+          return task_category_hydro;
+
+        case task_subtype_limiter:
+          return task_category_limiter;
+
+        case task_subtype_grav:
+        case task_subtype_external_grav:
+          return task_category_gravity;
+
+        case task_subtype_stars_density:
+        case task_subtype_stars_feedback:
+          return task_category_feedback;
+
+        case task_subtype_bh_density:
+        case task_subtype_bh_swallow:
+        case task_subtype_do_gas_swallow:
+        case task_subtype_do_bh_swallow:
+        case task_subtype_bh_feedback:
+          return task_category_black_holes;
+
+        default:
+          return task_category_others;
+      }
+    }
+
+    default:
+      return task_category_others;
+  }
 }

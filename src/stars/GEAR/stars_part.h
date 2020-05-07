@@ -25,6 +25,7 @@
 /* Read additional subgrid models */
 #include "chemistry_struct.h"
 #include "feedback_struct.h"
+#include "star_formation_struct.h"
 #include "tracers_struct.h"
 
 /**
@@ -68,17 +69,6 @@ struct spart {
 
   } density;
 
-  struct {
-    /*! birth density*/
-    float density;
-
-    /*! birth temperature*/
-    float temperature;
-
-    /*! birth mass */
-    float mass;
-  } birth;
-
   /*! Union for the birth time and birth scale factor */
   union {
 
@@ -88,6 +78,9 @@ struct spart {
     /*! Birth scale factor */
     float birth_scale_factor;
   };
+
+  /*! Star formation struct */
+  struct star_formation_spart_data sf_data;
 
   /*! Feedback structure */
   struct feedback_spart_data feedback_data;

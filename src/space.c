@@ -60,6 +60,7 @@
 #include "proxy.h"
 #include "restart.h"
 #include "sort_part.h"
+#include "space_unique_id.h"
 #include "star_formation.h"
 #include "star_formation_logger.h"
 #include "stars.h"
@@ -202,6 +203,7 @@ void space_rebuild_recycle_mapper(void *map_data, int num_elements,
     c->stars.dx_max_sort = 0.f;
     c->black_holes.dx_max_part = 0.f;
     c->hydro.sorted = 0;
+    c->hydro.sort_allocated = 0;
     c->stars.sorted = 0;
     c->hydro.count = 0;
     c->hydro.count_total = 0;
@@ -577,12 +579,14 @@ void space_regrid(struct space *s, int verbose) {
         error("Failed to init spinlock for gravity.");
       if (lock_init(&s->cells_top[k].grav.mlock) != 0)
         error("Failed to init spinlock for multipoles.");
+      if (lock_init(&s->cells_top[k].grav.star_formation_lock) != 0)
+        error("Failed to init spinlock for star formation (gpart).");
       if (lock_init(&s->cells_top[k].stars.lock) != 0)
         error("Failed to init spinlock for stars.");
       if (lock_init(&s->cells_top[k].black_holes.lock) != 0)
         error("Failed to init spinlock for black holes.");
       if (lock_init(&s->cells_top[k].stars.star_formation_lock) != 0)
-        error("Failed to init spinlock for star formation.");
+        error("Failed to init spinlock for star formation (spart).");
     }
 
     /* Set the cell location and sizes. */
@@ -781,7 +785,7 @@ void space_allocate_extras(struct space *s, int verbose) {
 
   /* Do we have enough space for the extra gparts (i.e. we haven't used up any)
    * ? */
-  if (nr_gparts + expected_num_extra_gparts > size_gparts) {
+  if (nr_actual_gparts + expected_num_extra_gparts > nr_gparts) {
 
     /* Ok... need to put some more in the game */
 
@@ -816,6 +820,10 @@ void space_allocate_extras(struct space *s, int verbose) {
       for (size_t i = 0; i < nr_sparts; ++i) {
         if (s->sparts[i].time_bin != time_bin_not_created)
           s->sparts[i].gpart += delta;
+      }
+      for (size_t i = 0; i < nr_bparts; ++i) {
+        if (s->bparts[i].time_bin != time_bin_not_created)
+          s->bparts[i].gpart += delta;
       }
     }
 
@@ -1194,7 +1202,8 @@ void space_rebuild(struct space *s, int repartitioned, int verbose) {
 #ifdef SWIFT_DEBUG_CHECKS
   if (s->e->nodeID == 0 || verbose) message("(re)building space");
   fflush(stdout);
-
+#endif
+#if defined(SWIFT_DEBUG_CHECKS) || defined(SWIFT_CELL_GRAPH)
   /* Reset the cell counter */
   last_cell_id = 1;
 #endif
@@ -1320,6 +1329,8 @@ void space_rebuild(struct space *s, int repartitioned, int verbose) {
         "Number of extra bparts in the bpart array not matching the space "
         "counter.");
 #endif
+
+  const ticks tic2 = getticks();
 
   /* Move non-local parts and inhibited parts to the end of the list. */
   if ((with_dithering || !repartitioned) &&
@@ -1519,6 +1530,10 @@ void space_rebuild(struct space *s, int repartitioned, int verbose) {
       }
     }
   }
+
+  if (verbose)
+    message("Moving non-local particles took %.3f %s.",
+            clocks_from_ticks(getticks() - tic2), clocks_getunit());
 
 #ifdef SWIFT_DEBUG_CHECKS
   /* Check that all gparts are in the correct place. */
@@ -1804,6 +1819,9 @@ void space_rebuild(struct space *s, int repartitioned, int verbose) {
   swift_free("b_index", b_index);
   swift_free("cell_bpart_counts", cell_bpart_counts);
 
+  /* Update the slice of unique IDs. */
+  space_update_unique_id(s);
+
 #ifdef WITH_MPI
 
   /* Re-allocate the index array for the gparts if needed.. */
@@ -1900,7 +1918,7 @@ void space_rebuild(struct space *s, int repartitioned, int verbose) {
 #endif
 
   /* Hook the cells up to the parts. Make list of local and non-empty cells */
-  ticks tic2 = getticks();
+  const ticks tic3 = getticks();
   struct part *finger = s->parts;
   struct xpart *xfinger = s->xparts;
   struct gpart *gfinger = s->gparts;
@@ -1966,7 +1984,7 @@ void space_rebuild(struct space *s, int repartitioned, int verbose) {
     message("Have %d local top-level cells (total=%d)", s->nr_local_cells,
             s->nr_cells);
     message("hooking up cells took %.3f %s.",
-            clocks_from_ticks(getticks() - tic2), clocks_getunit());
+            clocks_from_ticks(getticks() - tic3), clocks_getunit());
   }
 
   /* Re-order the extra particles such that they are at the end of their cell's
@@ -2191,9 +2209,16 @@ void space_parts_get_cell_index_mapper(void *map_data, int nr_parts,
 #endif
 
     /* Put it back into the simulation volume */
-    const double pos_x = box_wrap(old_pos_x, 0.0, dim_x);
-    const double pos_y = box_wrap(old_pos_y, 0.0, dim_y);
-    const double pos_z = box_wrap(old_pos_z, 0.0, dim_z);
+    double pos_x = box_wrap(old_pos_x, 0.0, dim_x);
+    double pos_y = box_wrap(old_pos_y, 0.0, dim_y);
+    double pos_z = box_wrap(old_pos_z, 0.0, dim_z);
+
+    /* Treat the case where a particle was wrapped back exactly onto
+     * the edge because of rounding issues (more accuracy around 0
+     * than around dim) */
+    if (pos_x == dim_x) pos_x = 0.0;
+    if (pos_y == dim_y) pos_y = 0.0;
+    if (pos_z == dim_z) pos_z = 0.0;
 
     /* Get its cell index */
     const int index =
@@ -2324,9 +2349,16 @@ void space_gparts_get_cell_index_mapper(void *map_data, int nr_gparts,
 #endif
 
     /* Put it back into the simulation volume */
-    const double pos_x = box_wrap(old_pos_x, 0.0, dim_x);
-    const double pos_y = box_wrap(old_pos_y, 0.0, dim_y);
-    const double pos_z = box_wrap(old_pos_z, 0.0, dim_z);
+    double pos_x = box_wrap(old_pos_x, 0.0, dim_x);
+    double pos_y = box_wrap(old_pos_y, 0.0, dim_y);
+    double pos_z = box_wrap(old_pos_z, 0.0, dim_z);
+
+    /* Treat the case where a particle was wrapped back exactly onto
+     * the edge because of rounding issues (more accuracy around 0
+     * than around dim) */
+    if (pos_x == dim_x) pos_x = 0.0;
+    if (pos_y == dim_y) pos_y = 0.0;
+    if (pos_z == dim_z) pos_z = 0.0;
 
     /* Get its cell index */
     const int index =
@@ -2463,9 +2495,16 @@ void space_sparts_get_cell_index_mapper(void *map_data, int nr_sparts,
 #endif
 
     /* Put it back into the simulation volume */
-    const double pos_x = box_wrap(old_pos_x, 0.0, dim_x);
-    const double pos_y = box_wrap(old_pos_y, 0.0, dim_y);
-    const double pos_z = box_wrap(old_pos_z, 0.0, dim_z);
+    double pos_x = box_wrap(old_pos_x, 0.0, dim_x);
+    double pos_y = box_wrap(old_pos_y, 0.0, dim_y);
+    double pos_z = box_wrap(old_pos_z, 0.0, dim_z);
+
+    /* Treat the case where a particle was wrapped back exactly onto
+     * the edge because of rounding issues (more accuracy around 0
+     * than around dim) */
+    if (pos_x == dim_x) pos_x = 0.0;
+    if (pos_y == dim_y) pos_y = 0.0;
+    if (pos_z == dim_z) pos_z = 0.0;
 
     /* Get its cell index */
     const int index =
@@ -2598,9 +2637,16 @@ void space_bparts_get_cell_index_mapper(void *map_data, int nr_bparts,
 #endif
 
     /* Put it back into the simulation volume */
-    const double pos_x = box_wrap(old_pos_x, 0.0, dim_x);
-    const double pos_y = box_wrap(old_pos_y, 0.0, dim_y);
-    const double pos_z = box_wrap(old_pos_z, 0.0, dim_z);
+    double pos_x = box_wrap(old_pos_x, 0.0, dim_x);
+    double pos_y = box_wrap(old_pos_y, 0.0, dim_y);
+    double pos_z = box_wrap(old_pos_z, 0.0, dim_z);
+
+    /* Treat the case where a particle was wrapped back exactly onto
+     * the edge because of rounding issues (more accuracy around 0
+     * than around dim) */
+    if (pos_x == dim_x) pos_x = 0.0;
+    if (pos_y == dim_y) pos_y = 0.0;
+    if (pos_z == dim_z) pos_z = 0.0;
 
     /* Get its cell index */
     const int index =
@@ -3863,7 +3909,8 @@ void space_recycle(struct space *s, struct cell *c) {
   if (lock_destroy(&c->hydro.lock) != 0 || lock_destroy(&c->grav.plock) != 0 ||
       lock_destroy(&c->grav.mlock) != 0 || lock_destroy(&c->stars.lock) != 0 ||
       lock_destroy(&c->black_holes.lock) != 0 ||
-      lock_destroy(&c->stars.star_formation_lock))
+      lock_destroy(&c->grav.star_formation_lock) != 0 ||
+      lock_destroy(&c->stars.star_formation_lock) != 0)
     error("Failed to destroy spinlocks.");
 
   /* Lock the space. */
@@ -3916,7 +3963,8 @@ void space_recycle_list(struct space *s, struct cell *cell_list_begin,
         lock_destroy(&c->grav.mlock) != 0 ||
         lock_destroy(&c->stars.lock) != 0 ||
         lock_destroy(&c->black_holes.lock) != 0 ||
-        lock_destroy(&c->stars.star_formation_lock))
+        lock_destroy(&c->stars.star_formation_lock) != 0 ||
+        lock_destroy(&c->grav.star_formation_lock) != 0)
       error("Failed to destroy spinlocks.");
 
     /* Count this cell. */
@@ -4017,7 +4065,8 @@ void space_getcells(struct space *s, int nr_cells, struct cell **cells) {
         lock_init(&cells[j]->grav.mlock) != 0 ||
         lock_init(&cells[j]->stars.lock) != 0 ||
         lock_init(&cells[j]->black_holes.lock) != 0 ||
-        lock_init(&cells[j]->stars.star_formation_lock) != 0)
+        lock_init(&cells[j]->stars.star_formation_lock) != 0 ||
+        lock_init(&cells[j]->grav.star_formation_lock) != 0)
       error("Failed to initialize cell spinlocks.");
   }
 }
@@ -4773,6 +4822,7 @@ void space_convert_quantities(struct space *s, int verbose) {
  * @param DM_background Are we running with some DM background particles?
  * @param verbose Print messages to stdout or not.
  * @param dry_run If 1, just initialise stuff, don't do anything with the parts.
+ * @param nr_nodes The number of MPI rank.
  *
  * Makes a grid of edge length > r_max and fills the particles
  * into the respective cells. Cells containing more than #space_splitsize
@@ -4785,8 +4835,8 @@ void space_init(struct space *s, struct swift_params *params,
                 struct bpart *bparts, size_t Npart, size_t Ngpart,
                 size_t Nspart, size_t Nbpart, int periodic, int replicate,
                 int generate_gas_in_ics, int hydro, int self_gravity,
-                int star_formation, int DM_background, int verbose,
-                int dry_run) {
+                int star_formation, int DM_background, int verbose, int dry_run,
+                int nr_nodes) {
 
   /* Clean-up everything */
   bzero(s, sizeof(struct space));
@@ -5066,10 +5116,17 @@ void space_init(struct space *s, struct swift_params *params,
 #endif
 
   /* Do we want any spare particles for on the fly creation? */
-  if (!star_formation) space_extra_sparts = 0;
+  if (!star_formation || !swift_star_formation_model_creates_stars) {
+    space_extra_sparts = 0;
+  }
 
   /* Build the cells recursively. */
   if (!dry_run) space_regrid(s, verbose);
+
+  /* Compute the max id for the generation of unique id. */
+  if (star_formation && swift_star_formation_model_creates_stars) {
+    space_init_unique_id(s, nr_nodes);
+  }
 }
 
 /**
@@ -5718,6 +5775,9 @@ void space_clean(struct space *s) {
   swift_free("gparts_foreign", s->gparts_foreign);
   swift_free("bparts_foreign", s->bparts_foreign);
 #endif
+
+  if (lock_destroy(&s->unique_id.lock) != 0)
+    error("Failed to destroy spinlocks.");
 }
 
 /**

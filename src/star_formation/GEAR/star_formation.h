@@ -40,14 +40,15 @@
  *
  * Use the star formation criterion given by eq. 3 in Revaz & Jablonka 2018.
  *
- * @param starform the star formation law properties to use.
  * @param p the gas particles.
  * @param xp the additional properties of the gas particles.
+ * @param starform the star formation law properties to use.
  * @param phys_const the physical constants in internal units.
  * @param cosmo the cosmological parameters and properties.
  * @param hydro_props The properties of the hydro scheme.
  * @param us The internal system of units.
  * @param cooling The cooling data struct.
+ * @param entropy_floor The #entropy_floor_properties.
  *
  */
 INLINE static int star_formation_is_star_forming(
@@ -75,11 +76,10 @@ INLINE static int star_formation_is_star_forming(
   }
 
   /* Get the required variables */
-  const float sigma2 = p->pressure_floor_data.sigma2 * cosmo->a * cosmo->a;
+  const float density = hydro_get_physical_density(p, cosmo);
   const float n_jeans_2_3 = starform->n_jeans_2_3;
 
-  const float h = p->h * kernel_gamma;
-  const float density = hydro_get_physical_density(p, cosmo);
+  const float h = p->h * kernel_gamma * cosmo->a;
 
   // TODO use GRACKLE */
   const float mu = hydro_props->mu_neutral;
@@ -87,10 +87,9 @@ INLINE static int star_formation_is_star_forming(
   /* Compute the density criterion */
   const float coef =
       M_PI_4 / (phys_const->const_newton_G * n_jeans_2_3 * h * h);
-  const float density_criterion =
-      coef * (hydro_gamma * phys_const->const_boltzmann_k * temperature /
-                  (mu * phys_const->const_proton_mass) +
-              sigma2);
+  const float density_criterion = coef * hydro_gamma *
+                                  phys_const->const_boltzmann_k * temperature /
+                                  (mu * phys_const->const_proton_mass);
 
   /* Check the density criterion */
   return density > density_criterion;
@@ -145,11 +144,24 @@ INLINE static int star_formation_should_convert_to_star(
   const float G = phys_const->const_newton_G;
   const float density = hydro_get_physical_density(p, cosmo);
 
+  /* Get the mass of the future possible star */
+  const float mass_gas = hydro_get_mass(p);
+
   /* Compute the probability */
   const float inv_free_fall_time =
       sqrtf(density * 32.f * G * 0.33333333f * M_1_PI);
-  const float prob = 1.f - exp(-starform->star_formation_efficiency *
-                               inv_free_fall_time * dt_star);
+  float prob = 1.f - expf(-starform->star_formation_efficiency *
+                          inv_free_fall_time * dt_star);
+
+  /* Add the mass factor */
+  if (starform->n_stars_per_part != 1) {
+    const float min_mass =
+        starform->mass_stars * starform->min_mass_frac_plus_one;
+    const float mass_star =
+        mass_gas > min_mass ? starform->mass_stars : mass_gas;
+
+    prob *= mass_gas / mass_star;
+  }
 
   /* Roll the dice... */
   const float random_number =
@@ -157,6 +169,29 @@ INLINE static int star_formation_should_convert_to_star(
 
   /* Can we form a star? */
   return random_number < prob;
+}
+
+/**
+ * @brief Decides whether a new particle should be created or if the hydro
+ * particle needs to be transformed.
+ *
+ * @param p The #part.
+ * @param xp The #xpart.
+ * @param starform The properties of the star formation model.
+ *
+ * @return 1 if a new spart needs to be created.
+ */
+INLINE static int star_formation_should_spawn_spart(
+    struct part* p, struct xpart* xp, const struct star_formation* starform) {
+
+  /* Check if we are splitting the particles or not */
+  if (starform->n_stars_per_part == 1) {
+    return 0;
+  }
+
+  const float mass_min =
+      starform->min_mass_frac_plus_one * starform->mass_stars;
+  return hydro_get_mass(p) > mass_min;
 }
 
 /**
@@ -176,27 +211,46 @@ INLINE static void star_formation_update_part_not_SFR(
  * @brief Copies the properties of the gas particle over to the
  * star particle.
  *
- * @param e The #engine
  * @param p the gas particles.
  * @param xp the additional properties of the gas particles.
  * @param sp the new created star particle with its properties.
+ * @param e The #engine
  * @param starform the star formation law properties to use.
- * @param phys_const the physical constants in internal units.
  * @param cosmo the cosmological parameters and properties.
- * @param with_cosmology if we run with cosmology.
+ * @param with_cosmology Are we running a cosmological simulation?
+ * @param phys_const the physical constants in internal units.
+ * @param hydro_props The #hydro_props.
+ * @param us The #unit_system.
+ * @param cooling The #cooling_function_data.
+ * @param convert_part Did we convert a part (or spawned one)?
  */
 INLINE static void star_formation_copy_properties(
-    const struct part* p, const struct xpart* xp, struct spart* sp,
+    struct part* p, const struct xpart* xp, struct spart* sp,
     const struct engine* e, const struct star_formation* starform,
     const struct cosmology* cosmo, const int with_cosmology,
     const struct phys_const* phys_const,
     const struct hydro_props* restrict hydro_props,
     const struct unit_system* restrict us,
-    const struct cooling_function_data* restrict cooling) {
+    const struct cooling_function_data* restrict cooling,
+    const int convert_part) {
 
   /* Store the current mass */
-  sp->mass = hydro_get_mass(p);
-  sp->birth.mass = sp->mass;
+  const float mass_gas = hydro_get_mass(p);
+  if (!convert_part) {
+    const float mass_star = starform->mass_stars;
+    const float new_mass_gas = mass_gas - mass_star;
+
+    /* Update the spart */
+    sp->mass = mass_star;
+    sp->gpart->mass = mass_star;
+
+    /* Update the part */
+    hydro_set_mass(p, new_mass_gas);
+    p->gpart->mass = new_mass_gas;
+  } else {
+    sp->mass = mass_gas;
+  }
+  sp->sf_data.birth_mass = sp->mass;
 
   /* Store either the birth_scale_factor or birth_time depending  */
   if (with_cosmology) {
@@ -209,14 +263,17 @@ INLINE static void star_formation_copy_properties(
   sp->tracers_data = xp->tracers_data;
 
   /* Store the birth density in the star particle */
-  sp->birth.density = hydro_get_physical_density(p, cosmo);
+  sp->sf_data.birth_density = hydro_get_physical_density(p, cosmo);
 
   /* Store the birth temperature*/
-  sp->birth.temperature = cooling_get_temperature(phys_const, hydro_props, us,
-                                                  cosmo, cooling, p, xp);
+  sp->sf_data.birth_temperature = cooling_get_temperature(
+      phys_const, hydro_props, us, cosmo, cooling, p, xp);
 
   /* Copy the chemistry properties */
   chemistry_copy_star_formation_properties(p, xp, sp);
+
+  /* Copy the progenitor id */
+  sp->sf_data.progenitor_id = p->id;
 }
 
 /**
@@ -243,8 +300,18 @@ __attribute__((always_inline)) INLINE static void star_formation_end_density(
     struct part* restrict p, struct xpart* restrict xp,
     const struct star_formation* cd, const struct cosmology* cosmo) {
 
+#ifdef SPHENIX_SPH
+  /* Copy the velocity divergence */
+  xp->sf_data.div_v = p->viscosity.div_v;
+  /* SPHENIX is already including the Hubble flow */
+#elif GADGET2_SPH
   /* Copy the velocity divergence */
   xp->sf_data.div_v = p->density.div_v;
+  xp->sf_data.div_v += hydro_dimension * cosmo->H;
+#else
+#error  This scheme is not implemented. Different scheme apply the Hubble flow \
+  at different place. Be careful about it.
+#endif
 }
 
 /**
@@ -307,6 +374,57 @@ star_formation_first_init_part(const struct phys_const* restrict phys_const,
 __attribute__((always_inline)) INLINE static void star_formation_split_part(
     struct part* p, struct xpart* xp, const double n) {
   error("Loic: to be implemented");
+}
+
+/**
+ * @brief Deal with the case where no spart are available for star formation.
+ *
+ * @param e The #engine.
+ * @param p The #part.
+ * @param xp The #xpart.
+ */
+__attribute__((always_inline)) INLINE static void
+star_formation_no_spart_available(const struct engine* e, const struct part* p,
+                                  const struct xpart* xp) {
+  error(
+      "Failed to get a new particle. Please increase "
+      "Scheduler:cell_extra_sparts "
+      "or Scheduler:cell_extra_gparts");
+}
+
+/**
+ * @brief Compute some information for the star formation model based
+ * on all the particles that were read in.
+ *
+ * This is called once on start-up of the code.
+ *
+ * @param star_form The #star_formation structure.
+ * @param e The #engine.
+ */
+__attribute__((always_inline)) INLINE static void
+star_formation_first_init_stats(struct star_formation* star_form,
+                                const struct engine* e) {
+
+  const struct space* s = e->s;
+  double avg_mass = 0;
+
+  /* Sum the mass over all the particles. */
+  for (size_t i = 0; i < s->nr_parts; i++) {
+    avg_mass += hydro_get_mass(&s->parts[i]);
+  }
+
+#ifdef WITH_MPI
+  /* Compute the contribution from the other nodes. */
+  MPI_Allreduce(MPI_IN_PLACE, &avg_mass, 1, MPI_DOUBLE, MPI_SUM,
+                MPI_COMM_WORLD);
+#endif
+
+  star_form->mass_stars =
+      avg_mass / (e->total_nr_parts * star_form->n_stars_per_part);
+
+  if (e->nodeID == 0) {
+    message("Mass new stars: %g", star_form->mass_stars);
+  }
 }
 
 #endif /* SWIFT_GEAR_STAR_FORMATION_H */

@@ -65,6 +65,15 @@ The rest of this page describes all the SWIFT parameters, split by
 section. A list of all the possible parameters is kept in the file
 ``examples/parameter_examples.yml``.
 
+.. _Parameters_meta_data:
+
+Meta Data
+---------
+
+The ``MetaData`` section contains basic information about the simulation. It
+currently only contains one parameter: ``run_name``. This is a string of
+characters describing the simulation. It is written to the snapshots' headers.
+
 .. _Parameters_units:
 
 Internal Unit System
@@ -73,7 +82,7 @@ Internal Unit System
 The ``InternalUnitSystem`` section describes the units used internally by the
 code. This is the system of units in which all the equations are solved. All
 physical constants are converted to this system and if the ICs use a different
-system (see the snapshots' ref:`ICs_units_label` section of the documentation)
+system (see the snapshots' :ref:`ICs_units_label` section of the documentation)
 the particle quantities will be converted when read in.
 
 The system of units is described using the value of the 5 basic units
@@ -643,6 +652,16 @@ the case of non-cosmological runs, the time of the first snapshot is expressed
 in the internal units of time. Users also have to provide the difference in time
 (or scale-factor) between consecutive outputs:
 
+* Time difference between consecutive outputs: ``delta_time``.
+
+In non-cosmological runs this is also expressed in internal units. For
+cosmological runs, this value is *multiplied* to obtain the
+scale-factor of the next snapshot. This implies that the outputs are
+equally spaced in :math:`\log(a)` (See :ref:`Output_list_label` to have
+snapshots not regularly spaced in time).
+
+The location and naming of the snapshots is altered by the following options:
+
 * Directory in which to write snapshots: ``subdir``.
   (default: empty string).
 
@@ -651,14 +670,6 @@ taking this value and appending a slash and then the snapshot file name
 described above - e.g. ``subdir/base_name_1234.hdf5``. The directory is
 created if necessary. Any VELOCIraptor output produced by the run is also written
 to this directory.
-
-* Time difference between consecutive outputs: ``delta_time``.
-
-In non-cosmological runs this is also expressed in internal units. For
-cosmological runs, this value is *multiplied* to obtain the
-scale-factor of the next snapshot. This implies that the outputs are
-equally spaced in :math:`\log(a)` (See :ref:`Output_list_label` to have
-snapshots not regularly spaced in time).
 
 When running the code with structure finding activated, it is often
 useful to have a structure catalog written at the same simulation time
@@ -674,7 +685,23 @@ with a base name and output number that matches the snapshot name
 (e.g. ``stf_base_name_1234.hdf5``) irrespective of the name specified in the
 section dedicated to VELOCIraptor. Note that the invocation of VELOCIraptor at
 every dump is done additionally to the stand-alone dumps that can be specified
-in the corresponding section of the YAML parameter file.
+in the corresponding section of the YAML parameter file. When running with
+_more_ calls to VELOCIraptor than snapshots, gaps between snapshot numbers will
+be created to accommodate for the intervening VELOCIraptor-only catalogs.
+
+When running over MPI, users have the option to split the snapshot over more
+than one file. This can be useful if the parallel-io on a given system is slow
+but has the drawback of producing many files per time slice. This is activated
+by setting the parameter:
+
+* Distributed snapshots over MPI: ``distributed`` (default: ``0``).
+
+This option has no effect when running the non-MPI version of the code. Note
+also that unlike other codes, SWIFT does *not* let the users chose the number of
+individual files over which a snapshot is distributed. This is set by the number
+of MPI ranks used in a given run. The individual files of snapshot 1234 will
+have the name ``base_name_1234.x.hdf5`` where when running on N MPI ranks, ``x``
+runs from 0 to N-1.
 
 Users can optionally specify the level of compression used by the HDF5 library
 using the parameter:
@@ -683,10 +710,12 @@ using the parameter:
 
 The default level of ``0`` implies no compression and values have to be in the
 range :math:`[0-9]`. This integer is passed to the i/o library and used for the
-loss-less GZIP compression algorithm. Higher values imply higher compression but
-also more time spent deflating and inflating the data. Note that up until HDF5
-1.10.x this option is not available when using the MPI-parallel version of the
-i/o routines.
+loss-less GZIP compression algorithm. The compression is applied to *all* the
+fields in the snapshots. Higher values imply higher compression but also more
+time spent deflating and inflating the data.  When compression is switched on
+the SHUFFLE filter is also applied to get higher compression rates. Note that up
+until HDF5 1.10.x this option is not available when using the MPI-parallel
+version of the i/o routines.
 
 Finally, it is possible to specify a different system of units for the snapshots
 than the one that was used internally by SWIFT. The format is identical to the
@@ -698,7 +727,7 @@ one described above (See the :ref:`Parameters_units` section) and read:
 * a unit of electric current ``UnitCurrent_in_cgs`` (default: ``InternalUnitSystem:UnitCurrent_in_cgs``),
 * a unit of temperature ``UnitTemp_in_cgs`` (default: ``InternalUnitSystem:UnitTemp_in_cgs``).
 
-When un-specified, these all take the same value as assumed by the internal
+When unspecified, these all take the same value as assumed by the internal
 system of units. These are rarely used but can offer a practical alternative to
 converting data in the post-processing of the simulations.
 
@@ -719,11 +748,13 @@ Showing all the parameters for a basic hydro test-case, one would have:
 
    Snapshots:
      basename:            sedov
+     subdir:              snapshots
      time_first:          0.01
      delta_time:          0.005
      invoke_stf:          0
      int_time_label_on:   0
      compression:         3
+     distributed:         1
      UnitLength_in_cgs:   1.  # Use cm in outputs
      UnitMass_in_cgs:     1.  # Use grams in outputs
      UnitVelocity_in_cgs: 1.  # Use cm/s in outputs
@@ -1263,3 +1294,23 @@ Showing all the parameters for a basic cosmologica test-case, one would have:
 	 snapshots. Snapshots at a given time would always have the same set of
 	 digits irrespective of the number of snapshots produced before.
 
+Gravity Force Checks
+--------------------
+
+By default, when the code is configured with ``--enable-gravity-force-checks``,
+the "exact" forces of all active gparts are computed during each timestep.
+
+To give a bit more control over this, you can select to only perform the exact
+force computation during the timesteps that all gparts are active, and/or only
+at the timesteps when a snapshot is being dumped, i.e.,
+
+.. code:: YAML
+
+  ForceChecks:
+    only_when_all_active:   1    # Only compute exact forces during timesteps when all gparts are active.
+    only_at_snapshots:      1    # Only compute exact forces during timesteps when a snapshot is being dumped.
+
+If ``only_when_all_active:1`` and ``only_at_snapshots:1`` are enabled together,
+and all the gparts are not active during the timestep of the snapshot dump, the
+exact forces computation is performed on the first timestep at which all the
+gparts are active after that snapshot output timestep.
