@@ -890,8 +890,42 @@ void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
   /* Fetch MPI mesh entries we need on this rank */
   hashmap_t potential_map;
   hashmap_init(&potential_map);
-  fetch_potential(N, ((double) N)/s->dim[0], s, local_0_start, local_n0,
+  fetch_potential(N, cell_fac, s, local_0_start, local_n0,
                   rho_slice, &potential_map);
+
+  /* Check that cells we have stored locally have the same potential
+   * as in the global mesh */
+  max_diff = 0.0;
+  max_frac_diff = 0.0;
+  int num_checked = 0;
+  for(int i=0; i<N; i+=1) {
+    for(int j=0; j<N; j+=1) {
+      for(int k=0; k<N; k+=1) {
+        int row_major_id = row_major_id_periodic(i, j, k, N);
+        size_t row_major_id_padded = row_major_id_periodic_size_t_padded(i, j, k, N);
+        hashmap_value_t *value = hashmap_lookup(&potential_map, row_major_id_padded);
+        if(value) {
+          double pot_hashmap = value->value_dbl;
+          double pot_mesh = rho[row_major_id];
+          double abs_diff = fabs(pot_hashmap-pot_mesh);
+          if(abs_diff > max_diff)max_diff = abs_diff;
+          double frac_diff = fabs(pot_hashmap/pot_mesh-1.0);
+          if(frac_diff > max_frac_diff)max_frac_diff = frac_diff;
+          num_checked += 1;
+        }
+      }
+    }
+  }
+  MPI_Allreduce(MPI_IN_PLACE, &max_diff, 1, MPI_DOUBLE, MPI_MAX,
+                MPI_COMM_WORLD);
+  message("Maximum potential absolute difference in local cells = %e\n", max_diff);
+  MPI_Allreduce(MPI_IN_PLACE, &max_frac_diff, 1, MPI_DOUBLE, MPI_MAX,
+                MPI_COMM_WORLD);
+  message("Maximum potential fractional difference in local cells = %e\n",
+          max_frac_diff);
+  MPI_Allreduce(MPI_IN_PLACE, &num_checked, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+  message("Total cells checked = %d", num_checked);
+
   hashmap_free(&potential_map);
 
 #endif

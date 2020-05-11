@@ -448,8 +448,15 @@ void hashmaps_to_slices(const int N, const int local_n0, hashmap_t *map,
  * returned in the supplied hashmap, which should be initially
  * empty.
  *
+ * We need all cells containing points two mesh cell widths
+ * away from each particle along each axis to compute the
+ * potential gradient. We also need to allow for the movement
+ * of the particles between calculation of the mesh at rebuild time
+ * and evaluation of the forces on each timestep. Particles can move
+ * up to half of a top level cell size between updates of the mesh.
+ *
  * @param N The size of the mesh
- * @param fac Inverse of the cell size
+ * @param fac Inverse of the FFT mesh cell size
  * @param s The #space containing the particles.
  * @param local_0_start Offset to the first mesh x coordinate on this rank
  * @param local_n0 Width of the mesh slab on this rank
@@ -484,8 +491,8 @@ void fetch_potential(const int N, const double fac,
       int ixmin[3];
       int ixmax[3];
       for(int idim=0;idim<3;idim+=1) {
-        const double xmin = cell->loc[idim] - 2.0/fac;
-        const double xmax = cell->loc[idim] + cell->width[idim] + 2.0/fac;
+        const double xmin = cell->loc[idim] - 0.5*cell->width[idim] - 2.0/fac;
+        const double xmax = cell->loc[idim] + 1.5*cell->width[idim] + 2.0/fac;
         ixmin[idim] = (int) floor(xmin*fac);
         ixmax[idim] = (int) floor(xmax*fac);
       }
@@ -535,9 +542,9 @@ void fetch_potential(const int N, const double fac,
     while(get_xcoord_from_padded_row_major_id(send_cells[i].key, N) >= (slice_offset[dest_rank]+slice_width[dest_rank]) || slice_width[dest_rank] == 0) {
       dest_rank += 1;
     }
-//#ifdef SWIFT_DEBUG_CHECKS
+#ifdef SWIFT_DEBUG_CHECKS
     if(dest_rank >= nr_nodes || dest_rank < 0)error("Destination rank out of range");
-//#endif
+#endif
     nr_send[dest_rank] += 1;
   }
 
@@ -563,19 +570,19 @@ void fetch_potential(const int N, const double fac,
   
   /* Look up potential in the requested cells */
   for(int i=0; i<nr_recv_tot; i+=1) {
-//#ifdef SWIFT_DEBUG_CHECKS
+#ifdef SWIFT_DEBUG_CHECKS
     const size_t cells_in_slab  = ((size_t) N)*(2*(N/2+1));
     const size_t first_local_id = local_0_start*cells_in_slab;
     const size_t num_local_ids  = local_n0*cells_in_slab;
     if(recv_cells[i].key < first_local_id || recv_cells[i].key >= first_local_id+num_local_ids) {
       error("Requested potential mesh cell ID is out of range");
     }
-//#endif
+#endif
     size_t local_id = get_index_in_local_slice(recv_cells[i].key, N, local_0_start);
-//#ifdef SWIFT_DEBUG_CHECKS
+#ifdef SWIFT_DEBUG_CHECKS
     const size_t Ns = N;
     if(local_id >= Ns*(2*(Ns/2+1))*local_n0)error("Local potential mesh cell ID is out of range");
-//#endif
+#endif
     recv_cells[i].value = potential_slice[local_id];
   }
 
@@ -588,10 +595,10 @@ void fetch_potential(const int N, const double fac,
   for(size_t i=0; i<nr_send_tot; i+=1) {
     hashmap_value_t value;
     value.value_dbl = send_cells[i].value;
-//#ifdef SWIFT_DEBUG_CHECKS
+#ifdef SWIFT_DEBUG_CHECKS
     const size_t Ns = N;
     if(send_cells[i].key >= Ns*Ns*(2*(Ns/2+1)))error("Received potential mesh cell ID out of range");
-//#endif
+#endif
     hashmap_put(potential_map, send_cells[i].key, value);
   }
 
