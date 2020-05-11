@@ -123,4 +123,24 @@ void accumulate_local_gparts_to_hashmap(const int N, const double fac,
 void hashmaps_to_slices(const int N, const int Nslice, hashmap_t *map,
                         double *mesh);
 
+/**
+ * @brief Retrieve the potential in the mesh cells we need to
+ * compute the force on particles on this MPI rank. Result is
+ * returned in the supplied hashmap, which should be initially
+ * empty.
+ *
+ * @param N The size of the mesh
+ * @param fac Inverse of the cell size
+ * @param s The #space containing the particles.
+ * @param local_0_start Offset to the first mesh x coordinate on this rank
+ * @param local_n0 Width of the mesh slab on this rank
+ * @param potential_slice Array with the potential on the local slice of the mesh
+ * @param potential_map A hashmap in which to store the potential data
+ *
+ */
+void fetch_potential(const int N, const double fac,
+                     const struct space *s,
+                     int local_0_start, int local_n0,
+                     double *potential_slice,
+                     hashmap_t *potential_map);
 #endif

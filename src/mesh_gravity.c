@@ -886,8 +886,16 @@ void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
                 MPI_COMM_WORLD);
   message("Maximum global potential fractional difference = %e\n",
           max_frac_diff);
-#endif
 
+  /* Fetch MPI mesh entries we need on this rank */
+  hashmap_t potential_map;
+  hashmap_init(&potential_map);
+  fetch_potential(N, ((double) N)/s->dim[0], s, local_0_start, local_n0,
+                  rho_slice, &potential_map);
+  hashmap_free(&potential_map);
+
+#endif
+  
   /* rho now contains the potential */
   /* This array is now again NxNxN real numbers */
 

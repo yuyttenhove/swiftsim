@@ -532,12 +532,15 @@ void fetch_potential(const int N, const double fac,
     nr_send[i] = 0;
   }
   for(size_t i=0; i<nr_send_tot; i+=1) {
-    while(slice_offset[dest_rank] < get_xcoord_from_padded_row_major_id(send_cells[i].key, N) || slice_width[dest_rank] == 0) {
+    while(get_xcoord_from_padded_row_major_id(send_cells[i].key, N) >= (slice_offset[dest_rank]+slice_width[dest_rank]) || slice_width[dest_rank] == 0) {
       dest_rank += 1;
     }
+//#ifdef SWIFT_DEBUG_CHECKS
+    if(dest_rank >= nr_nodes || dest_rank < 0)error("Destination rank out of range");
+//#endif
     nr_send[dest_rank] += 1;
   }
-  
+
   /* Determine how many requests we'll receive from each MPI rank */
   size_t *nr_recv = malloc(sizeof(size_t)*nr_nodes);
   MPI_Alltoall(nr_send, sizeof(size_t), MPI_BYTE, nr_recv, sizeof(size_t),
@@ -560,7 +563,19 @@ void fetch_potential(const int N, const double fac,
   
   /* Look up potential in the requested cells */
   for(int i=0; i<nr_recv_tot; i+=1) {
+//#ifdef SWIFT_DEBUG_CHECKS
+    const size_t cells_in_slab  = ((size_t) N)*(2*(N/2+1));
+    const size_t first_local_id = local_0_start*cells_in_slab;
+    const size_t num_local_ids  = local_n0*cells_in_slab;
+    if(recv_cells[i].key < first_local_id || recv_cells[i].key >= first_local_id+num_local_ids) {
+      error("Requested potential mesh cell ID is out of range");
+    }
+//#endif
     size_t local_id = get_index_in_local_slice(recv_cells[i].key, N, local_0_start);
+//#ifdef SWIFT_DEBUG_CHECKS
+    const size_t Ns = N;
+    if(local_id >= Ns*(2*(Ns/2+1))*local_n0)error("Local potential mesh cell ID is out of range");
+//#endif
     recv_cells[i].value = potential_slice[local_id];
   }
 
@@ -572,8 +587,12 @@ void fetch_potential(const int N, const double fac,
   /* Store the results in the hashmap */
   for(size_t i=0; i<nr_send_tot; i+=1) {
     hashmap_value_t value;
-    value.value_dbl = recv_cells[i].value;
-    hashmap_put(potential_map, recv_cells[i].key, value);
+    value.value_dbl = send_cells[i].value;
+//#ifdef SWIFT_DEBUG_CHECKS
+    const size_t Ns = N;
+    if(send_cells[i].key >= Ns*Ns*(2*(Ns/2+1)))error("Received potential mesh cell ID out of range");
+//#endif
+    hashmap_put(potential_map, send_cells[i].key, value);
   }
 
   /* Tidy up */
