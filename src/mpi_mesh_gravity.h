@@ -84,7 +84,7 @@ get_xcoord_from_padded_row_major_id(const size_t id, const int N) {
  * @param N Size of the array along one axis.
  * @param slice_offset Index of the first slice on this rank
  */
-__attribute__((always_inline, const)) INLINE static int
+__attribute__((always_inline, const)) INLINE static size_t
 get_index_in_local_slice(const size_t id, const int N, const int slice_offset) {
   const size_t Nj = N;
   const size_t Nk = 2*(N/2+1);

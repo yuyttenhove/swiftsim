@@ -216,30 +216,29 @@ void hashmap_copy_elements_mapper(hashmap_key_t key, hashmap_value_t *value,
 }
 
 /**
- * @brief Convert a hashmap to an array of struct mesh_key_value,
- * with the elements sorted by key
+ * @brief Copy keys and values from a hashmap into an array of struct
+ * mesh_key_value, with the elements sorted by key
  *
- * @param map The hashmap to convert
- * @param array Returns a pointer to the new array
- * @return The number of elements in the new array
+ * @param map The hashmap to copy into the array
+ * @param array The output array
+ * @param n The size of the array
+ * @return The number of elements copied into the array
  *
  */
-size_t hashmap_to_sorted_array(hashmap_t *map, struct mesh_key_value **array) {
+size_t hashmap_to_sorted_array(hashmap_t *map, struct mesh_key_value *array, size_t n) {
 
   /* Find how many elements are in the hashmap */
   size_t num_in_map = hashmap_size(map);
-
-  /* Allocate the output array */
-  if (swift_memalign("hashmap_array", (void **) array, 32,
-                     num_in_map * sizeof(struct mesh_key_value)) != 0)
-    error("Failed to allocate array for hashmap entries!");
+  if(num_in_map > n) {
+    error("Array is to small to contain hash map elements!");
+  }
 
   /* Copy the key-value pairs to the new array */
-  struct hashmap_mapper_data mapper_data = {(size_t)0, *array};
+  struct hashmap_mapper_data mapper_data = {(size_t)0, array};
   hashmap_iterate(map, hashmap_copy_elements_mapper, &mapper_data);
 
   /* And sort the pairs by key */
-  qsort(*array, num_in_map, sizeof(struct mesh_key_value),
+  qsort(array, num_in_map, sizeof(struct mesh_key_value),
         cmp_func_mesh_key_value);
 
   return num_in_map;
@@ -248,42 +247,26 @@ size_t hashmap_to_sorted_array(hashmap_t *map, struct mesh_key_value **array) {
 
 /**
  * @brief Given an array of structs of size element_size, send 
- * nr_send[i] elements to each node i. Allocates the receive 
+ * nr_send[i] elements to each node i. Allocates the receive
  * buffer recvbuf to the appropriate size and returns its size
  * in nr_recv_tot.
  *
  * TODO: can/should we replace this with a call to engine_do_redistribute()?
  *
- * @param nr_send Number of elements to send to each other node
+ * @param nr_send Number of elements to send to each node
+ * @param nr_recv Number of elements to receive from each node
  * @param sendbuf The elements to send
- * @param nr_recv_tot Returns total number of elements received
- * @param recvbuf Returns a pointer to the newly received data
+ * @param recvbuf The output buffer
  *
  */
 void exchange_structs(size_t *nr_send, char *sendbuf,
-                      size_t *nr_recv_tot, char **recvbuf,
+                      size_t *nr_recv, char *recvbuf,
                       size_t element_size) {
 
   /* Determine rank, number of ranks */
   int nr_nodes, nodeID;
   MPI_Comm_size(MPI_COMM_WORLD, &nr_nodes);
   MPI_Comm_rank(MPI_COMM_WORLD, &nodeID);
-
-  /* Determine number of elements to receive */
-  size_t *nr_recv = malloc(nr_nodes * sizeof(size_t));
-  MPI_Alltoall(nr_send, sizeof(size_t), MPI_BYTE, nr_recv, sizeof(size_t),
-               MPI_BYTE, MPI_COMM_WORLD);
-
-  /* Find total elements to receive */
-  *nr_recv_tot = 0;
-  for (int i = 0; i < nr_nodes; i += 1) {
-    *nr_recv_tot += nr_recv[i];
-  }
-
-  /* Allocate the receive buffer */
-  if (swift_memalign("mesh_recvbuf", (void **)recvbuf, 32,
-                     *nr_recv_tot * element_size) != 0)
-    error("Failed to allocate receive buffer for constructing MPI FFT mesh");
 
   /* Compute send offsets */
   size_t *send_offset = malloc(nr_nodes * sizeof(size_t));
@@ -334,7 +317,7 @@ void exchange_structs(size_t *nr_send, char *sendbuf,
       /* TODO: handle very large messages */
       if(nr_recv[i] > INT_MAX) error("exchange_structs() fails if nr_recv > INT_MAX!");
 
-      MPI_Irecv(&((*recvbuf)[recv_offset[i]*element_size]), (int)nr_recv[i],
+      MPI_Irecv(&(recvbuf[recv_offset[i]*element_size]), (int)nr_recv[i],
                 mesh_key_value_mpi_type, i, 0, MPI_COMM_WORLD,
                 &(request[i + nr_nodes]));
     } else {
@@ -352,7 +335,6 @@ void exchange_structs(size_t *nr_send, char *sendbuf,
   free(recv_offset);
   free(send_offset);
   free(request);
-  free(nr_recv);
 }
 
 /**
@@ -364,12 +346,12 @@ void exchange_structs(size_t *nr_send, char *sendbuf,
  *
  * @param e Pointer to the engine struct
  * @param N The size of the mesh
- * @param Nslice The thickness of the slice to store on this rank
+ * @param local_n0 The thickness of the slice to store on this rank
  * @param map The hashmap with the local part of the mesh
  * @param mesh Pointer to the output data buffer
  *
  */
-void hashmaps_to_slices(const int N, const int Nslice, hashmap_t *map,
+void hashmaps_to_slices(const int N, const int local_n0, hashmap_t *map,
                         double *mesh) {
 
   /* Determine rank, number of ranks */
@@ -383,12 +365,16 @@ void hashmaps_to_slices(const int N, const int Nslice, hashmap_t *map,
    * We're going to distribute them between ranks according to their
    * x coordinate, so this puts them in order of destination rank.
    */
+  size_t map_size = hashmap_size(map);
   struct mesh_key_value *mesh_sendbuf;
-  size_t nr_send_tot = hashmap_to_sorted_array(map, &mesh_sendbuf);
+  if (swift_memalign("mesh_sendbuf", (void **) &mesh_sendbuf, 32,
+                     map_size * sizeof(struct mesh_key_value)) != 0)
+    error("Failed to allocate array for mesh send buffer!");
+  size_t nr_send_tot = hashmap_to_sorted_array(map, mesh_sendbuf, map_size);
 
   /* Get width of the slice on each rank */
   int *slice_width = malloc(sizeof(int) * nr_nodes);
-  MPI_Allgather(&Nslice, 1, MPI_INT, slice_width, 1, MPI_INT, MPI_COMM_WORLD);
+  MPI_Allgather(&local_n0, 1, MPI_INT, slice_width, 1, MPI_INT, MPI_COMM_WORLD);
 
   /* Determine offset to the slice on each rank */
   int *slice_offset = malloc(sizeof(int) * nr_nodes);
@@ -414,19 +400,28 @@ void hashmaps_to_slices(const int N, const int Nslice, hashmap_t *map,
     nr_send[dest_node] += 1;
   }
 
-  /* Carry out the communication */
-  size_t nr_recv_tot;
+  /* Determine how many requests we'll receive from each MPI rank */
+  size_t *nr_recv = malloc(sizeof(size_t)*nr_nodes);
+  MPI_Alltoall(nr_send, sizeof(size_t), MPI_BYTE, nr_recv, sizeof(size_t),
+               MPI_BYTE, MPI_COMM_WORLD);
+  size_t nr_recv_tot = 0;
+  for(int i=0; i<nr_nodes; i+=1) {
+    nr_recv_tot += nr_recv[i];
+  }
+
+  /* Allocate the receive buffer */
   struct mesh_key_value *mesh_recvbuf;
+  if (swift_memalign("mesh_recvbuf", (void **) &mesh_recvbuf, 32,
+                     nr_recv_tot * sizeof(struct mesh_key_value)) != 0)
+    error("Failed to allocate receive buffer for constructing MPI FFT mesh");
+
+  /* Carry out the communication */
   exchange_structs(nr_send, (char *) mesh_sendbuf,
-                   &nr_recv_tot, (char **) &mesh_recvbuf, 
+                   nr_recv, (char *) mesh_recvbuf, 
                    sizeof(struct mesh_key_value));
 
-  /* No longer need the send buffer */
-  swift_free("mesh_sendbuf", mesh_sendbuf);
-  free(nr_send);
-
   /* Copy received data to the output buffer */
-  for (size_t i = 0; i < nr_recv_tot; i += 1) {    
+  for (size_t i = 0; i < nr_recv_tot; i += 1) {
 #ifdef SWIFT_DEBUG_CHECKS
     const int xcoord = get_xcoord_from_padded_row_major_id(mesh_recvbuf[i].key, N);
     if(xcoord < slice_offset[nodeID])
@@ -440,27 +435,41 @@ void hashmaps_to_slices(const int N, const int Nslice, hashmap_t *map,
   /* Tidy up */
   free(slice_width);
   free(slice_offset);
+  free(nr_send);
+  free(nr_recv);
   swift_free("mesh_recvbuf", mesh_recvbuf);
+  swift_free("mesh_sendbuf", mesh_sendbuf);
 }
 
 
 /**
- * @brief Determine which mesh cells are needed to compute
- * accelerations of particles in our local top level cells
+ * @brief Retrieve the potential in the mesh cells we need to
+ * compute the force on particles on this MPI rank. Result is
+ * returned in the supplied hashmap, which should be initially
+ * empty.
  *
  * @param N The size of the mesh
  * @param fac Inverse of the cell size
  * @param s The #space containing the particles.
- * @param cells_to_import Returns a pointer to the array of cell indexes
- * @return The size of the cells_to_import array
+ * @param local_0_start Offset to the first mesh x coordinate on this rank
+ * @param local_n0 Width of the mesh slab on this rank
+ * @param potential_slice Array with the potential on the local slice of the mesh
+ * @param potential_map A hashmap in which to store the potential data
  *
  */
-size_t find_cells_to_import(const int N, const double fac,
-                            const struct space *s, 
-                            struct mesh_key_value **import_cells) {
+void fetch_potential(const int N, const double fac,
+                     const struct space *s,
+                     int local_0_start, int local_n0,
+                     double *potential_slice,
+                     hashmap_t *potential_map) {
 
   const int *local_cells = s->local_cells_top;
   const int nr_local_cells = s->nr_local_cells;
+
+  /* Determine rank, number of MPI ranks */
+  int nr_nodes, nodeID;
+  MPI_Comm_size(MPI_COMM_WORLD, &nr_nodes);
+  MPI_Comm_rank(MPI_COMM_WORLD, &nodeID);
 
   /* Create a hashmap to store the indexes of the cells we need */
   hashmap_t map;
@@ -470,7 +479,7 @@ size_t find_cells_to_import(const int N, const double fac,
   for (int icell = 0; icell < nr_local_cells; icell += 1) {
     struct cell *cell = &(s->cells_top[local_cells[icell]]);
     if(cell->grav.count > 0) {
-    
+
       /* Determine range of mesh cells we need for particles in this top level cell */
       int ixmin[3];
       int ixmax[3];
@@ -496,8 +505,82 @@ size_t find_cells_to_import(const int N, const double fac,
     }
   }
 
-  /* Store a pointer to the result array in *import_cells and return its size */
-  size_t num_to_import = hashmap_to_sorted_array(&map, import_cells);
+  /* Make an array with the cell IDs we need to request from other ranks */
+  size_t nr_send_tot = hashmap_size(&map);
+  struct mesh_key_value *send_cells;
+  if (swift_memalign("send_cells", (void **) &send_cells, 32,
+                     nr_send_tot * sizeof(struct mesh_key_value)) != 0)
+    error("Failed to allocate array for cells to request!");
+  nr_send_tot = hashmap_to_sorted_array(&map, send_cells, nr_send_tot);
   hashmap_free(&map);
-  return num_to_import;
+
+  /* Get width of the mesh slice on each rank */
+  int *slice_width = malloc(sizeof(int) * nr_nodes);
+  MPI_Allgather(&local_n0, 1, MPI_INT, slice_width, 1, MPI_INT, MPI_COMM_WORLD);
+
+  /* Determine first mesh x coordinate stored on each rank */
+  int *slice_offset = malloc(sizeof(int) * nr_nodes);
+  slice_offset[0] = 0;
+  for (int i = 1; i < nr_nodes; i += 1) {
+    slice_offset[i] = slice_offset[i - 1] + slice_width[i - 1];
+  }
+
+  /* Count how many mesh cells we need to request from each MPI rank */
+  int dest_rank = 0;
+  size_t *nr_send = malloc(sizeof(size_t)*nr_nodes);
+  for(int i=0; i<nr_nodes; i+=1) {
+    nr_send[i] = 0;
+  }
+  for(size_t i=0; i<nr_send_tot; i+=1) {
+    while(slice_offset[dest_rank] < get_xcoord_from_padded_row_major_id(send_cells[i].key, N) || slice_width[dest_rank] == 0) {
+      dest_rank += 1;
+    }
+    nr_send[dest_rank] += 1;
+  }
+  
+  /* Determine how many requests we'll receive from each MPI rank */
+  size_t *nr_recv = malloc(sizeof(size_t)*nr_nodes);
+  MPI_Alltoall(nr_send, sizeof(size_t), MPI_BYTE, nr_recv, sizeof(size_t),
+               MPI_BYTE, MPI_COMM_WORLD);
+  size_t nr_recv_tot = 0;
+  for(int i=0; i<nr_nodes; i+=1) {
+    nr_recv_tot += nr_recv[i];
+  }
+
+  /* Allocate buffer to receive requests */
+  struct mesh_key_value *recv_cells;
+  if (swift_memalign("recv_cells", (void **) &recv_cells, 32,
+                     nr_recv_tot * sizeof(struct mesh_key_value)) != 0)
+    error("Failed to allocate array for mesh receive buffer!");
+
+  /* Send requests for cells to other ranks */
+  exchange_structs(nr_send, (char *) send_cells,
+                   nr_recv, (char *) recv_cells,
+                   sizeof(struct mesh_key_value));
+  
+  /* Look up potential in the requested cells */
+  for(int i=0; i<nr_recv_tot; i+=1) {
+    size_t local_id = get_index_in_local_slice(recv_cells[i].key, N, local_0_start);
+    recv_cells[i].value = potential_slice[local_id];
+  }
+
+  /* Return the results */
+  exchange_structs(nr_recv, (char *) recv_cells,
+                   nr_send, (char *) send_cells,
+                   sizeof(struct mesh_key_value));
+
+  /* Store the results in the hashmap */
+  for(size_t i=0; i<nr_send_tot; i+=1) {
+    hashmap_value_t value;
+    value.value_dbl = recv_cells[i].value;
+    hashmap_put(potential_map, recv_cells[i].key, value);
+  }
+
+  /* Tidy up */
+  swift_free("send_cells", send_cells);
+  swift_free("recv_cells", recv_cells);
+  free(slice_width);
+  free(slice_offset);
+  free(nr_send);
+  free(nr_recv);
 }
