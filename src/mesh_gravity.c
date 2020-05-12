@@ -548,7 +548,7 @@ void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
   /* Calculate contributions to density field on this MPI rank */
   hashmap_t rho_map;
   hashmap_init(&rho_map);
-  accumulate_local_gparts_to_hashmap(N, cell_fac, s, &rho_map);
+  mpi_mesh_accumulate_gparts_to_hashmap(N, cell_fac, s, &rho_map);
   if(verbose)message("Accumulating mass to hashmap took %.3f %s.",
                      clocks_from_ticks(getticks() - tic), clocks_getunit());
 
@@ -573,7 +573,7 @@ void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
   tic = getticks();
 
   /* Construct density field slices from contributions stored in hashmaps */
-  hashmaps_to_slices(N, (int)local_n0, &rho_map, rho_slice);
+  mpi_mesh_hashmaps_to_slices(N, (int)local_n0, &rho_map, rho_slice);
   if (verbose)
     message("Assembling mesh slices took %.3f %s.",
             clocks_from_ticks(getticks() - tic), clocks_getunit());
@@ -626,8 +626,8 @@ void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
   hashmap_init(mesh->potential);
 
   /* Fetch MPI mesh entries we need on this rank from other ranks */
-  fetch_potential(N, cell_fac, s, local_0_start, local_n0,
-                  rho_slice, mesh->potential);
+  mpi_mesh_fetch_potential(N, cell_fac, s, local_0_start, local_n0,
+                           rho_slice, mesh->potential);
   
   /* Discard per-task mesh slices */
   fftw_free(rho_slice);

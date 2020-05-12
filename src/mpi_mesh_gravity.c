@@ -78,8 +78,8 @@ __attribute__((always_inline, const)) INLINE static void add_to_hashmap(
  * @param map The hashmap in which to store the results
  *
  */
-void accumulate_local_gparts_to_hashmap(const int N, const double fac,
-                                        const struct space *s, hashmap_t *map) {
+void mpi_mesh_accumulate_gparts_to_hashmap(const int N, const double fac,
+                                           const struct space *s, hashmap_t *map) {
 
   const double dim[3] = {s->dim[0], s->dim[1], s->dim[2]};
   const int *local_cells = s->local_cells_top;
@@ -353,8 +353,8 @@ void exchange_structs(size_t *nr_send, char *sendbuf,
  * @param mesh Pointer to the output data buffer
  *
  */
-void hashmaps_to_slices(const int N, const int local_n0, hashmap_t *map,
-                        double *mesh) {
+void mpi_mesh_hashmaps_to_slices(const int N, const int local_n0, hashmap_t *map,
+                                 double *mesh) {
 
   /* Determine rank, number of ranks */
   int nr_nodes, nodeID;
@@ -466,11 +466,11 @@ void hashmaps_to_slices(const int N, const int local_n0, hashmap_t *map,
  * @param potential_map A hashmap in which to store the potential data
  *
  */
-void fetch_potential(const int N, const double fac,
-                     const struct space *s,
-                     int local_0_start, int local_n0,
-                     double *potential_slice,
-                     hashmap_t *potential_map) {
+void mpi_mesh_fetch_potential(const int N, const double fac,
+                              const struct space *s,
+                              int local_0_start, int local_n0,
+                              double *potential_slice,
+                              hashmap_t *potential_map) {
 
   const int *local_cells = s->local_cells_top;
   const int nr_local_cells = s->nr_local_cells;

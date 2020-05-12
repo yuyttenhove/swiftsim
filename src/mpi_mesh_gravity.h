@@ -105,8 +105,8 @@ get_index_in_local_slice(const size_t id, const int N, const int slice_offset) {
  * @param map The hashmap in which to store the results
  *
  */
-void accumulate_local_gparts_to_hashmap(const int N, const double fac,
-                                        const struct space *s, hashmap_t *map);
+void mpi_mesh_accumulate_gparts_to_hashmap(const int N, const double fac,
+                                           const struct space *s, hashmap_t *map);
 
 /**
  * @brief Convert hashmaps to a slab-distributed 3D mesh
@@ -122,8 +122,8 @@ void accumulate_local_gparts_to_hashmap(const int N, const double fac,
  * @param mesh Pointer to the output data buffer
  *
  */
-void hashmaps_to_slices(const int N, const int Nslice, hashmap_t *map,
-                        double *mesh);
+void mpi_mesh_hashmaps_to_slices(const int N, const int Nslice, hashmap_t *map,
+                                 double *mesh);
 
 /**
  * @brief Retrieve the potential in the mesh cells we need to
@@ -140,11 +140,11 @@ void hashmaps_to_slices(const int N, const int Nslice, hashmap_t *map,
  * @param potential_map A hashmap in which to store the potential data
  *
  */
-void fetch_potential(const int N, const double fac,
-                     const struct space *s,
-                     int local_0_start, int local_n0,
-                     double *potential_slice,
-                     hashmap_t *potential_map);
+void mpi_mesh_fetch_potential(const int N, const double fac,
+                              const struct space *s,
+                              int local_0_start, int local_n0,
+                              double *potential_slice,
+                              hashmap_t *potential_map);
 
 #endif
 #endif
