@@ -27,6 +27,8 @@
 #include "hashmap.h"
 #include "space.h"
 
+#if defined(WITH_MPI) && defined(HAVE_MPI_FFTW)
+
 /**
  * @brief Returns 1D index of a FFTW-padded 3D NxNxN array using row-major style.
  *
@@ -143,4 +145,6 @@ void fetch_potential(const int N, const double fac,
                      int local_0_start, int local_n0,
                      double *potential_slice,
                      hashmap_t *potential_map);
+
+#endif
 #endif

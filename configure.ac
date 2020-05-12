@@ -846,27 +846,27 @@ if test "x$with_fftw" != "xno"; then
       fi
    fi
 
-   # Now, check whether we have the MPI version of FFTW
+   # If we're using MPI, check whether we have the MPI version of FFTW
    if test "x$have_fftw" = "xyes"; then
+      if test "x$enable_mpi" = "xyes" ; then
+         # Was FFTW's location specifically given?
+         if test "x$with_fftw" != "xyes" -a "x$with_fftw" != "xtest" -a "x$with_fftw" != "x"; then
+            FFTW_MPI_LIBS="-L$with_fftw/lib -lfftw3_mpi -lfftw3"
+            FFTW_MPI_INCS="-I$with_fftw/include"
+         else
+            FFTW_MPI_LIBS="-lfftw3_mpi -lfftw3"
+            FFTW_MPI_INCS=""
+         fi
 
-      # Was FFTW's location specifically given?
-      if test "x$with_fftw" != "xyes" -a "x$with_fftw" != "xtest" -a "x$with_fftw" != "x"; then
-        FFTW_MPI_LIBS="-L$with_fftw/lib -lfftw3_mpi -lfftw3"
-        FFTW_MPI_INCS="-I$with_fftw/include"
-      else
-        FFTW_MPI_LIBS="-lfftw3_mpi -lfftw3"
-        FFTW_MPI_INCS=""
-      fi
+         # Verify that the library has MPI support
+         AC_CHECK_LIB([fftw3],[fftw_mpi_init],[have_mpi_fftw="yes"],
+                      [have_mpi_fftw="no"], $FFTW_MPI_LIBS)
 
-      # Verify that the library has MPI support
-      AC_CHECK_LIB([fftw3],[fftw_mpi_init],[have_mpi_fftw="yes"],
-		   [have_mpi_fftw="no"], $FFTW_MPI_LIBS)
-
-      # If found, update things
-      if test "x$have_mpi_fftw" = "xyes"; then
-         AC_DEFINE([HAVE_MPI_FFTW],1,[The MPI FFTW library appears to be present.])
-         FFTW_LIBS="$FFTW_LIBS $FFTW_MPI_LIBS"
-         FFTW_INCS="$FFTW_INCS $FFTW_MPI_INCS"
+         # If found, update things. Don't add MPI flags to FFTW_*_LIBS etc because
+         # we don't want to link the MPI library into the non-MPI swift executable.
+         if test "x$have_mpi_fftw" = "xyes"; then
+            AC_DEFINE([HAVE_MPI_FFTW],1,[The MPI FFTW library appears to be present.])
+         fi
       fi
    fi
 
@@ -937,6 +937,10 @@ fi
 AC_SUBST([FFTW_LIBS])
 AC_SUBST([FFTW_INCS])
 AM_CONDITIONAL([HAVEFFTW],[test -n "$FFTW_LIBS"])
+
+AC_SUBST([FFTW_MPI_LIBS])
+AC_SUBST([FFTW_MPI_INCS])
+AM_CONDITIONAL([HAVEMPIFFTW],[test -n "$FFTW_MPI_LIBS"])
 
 #  Check for -lprofiler usually part of the gperftools along with tcmalloc.
 have_profiler="no"

@@ -22,7 +22,7 @@
 
 #ifdef HAVE_FFTW
 #include <fftw3.h>
-#ifdef HAVE_MPI_FFTW
+#if defined(WITH_MPI) && defined(HAVE_MPI_FFTW)
 #include <fftw3-mpi.h>
 #endif
 #endif
@@ -578,6 +578,8 @@ void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
     message("Gpart assignment took %.3f %s.",
             clocks_from_ticks(getticks() - tic), clocks_getunit());
 
+#ifdef WITH_MPI
+
   /* Alternate density field calculation for testing */
   tic = getticks();
   hashmap_t rho_map;
@@ -604,8 +606,6 @@ void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
     }
   }
   message("Maximum local mesh mass difference = %e\n", max_diff);
-
-#ifdef WITH_MPI
 
   MPI_Barrier(MPI_COMM_WORLD);
   tic = getticks();
@@ -682,9 +682,10 @@ void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
   if (verbose)
     message("Alternate mesh communication took %.3f %s.",
             clocks_from_ticks(getticks() - tic), clocks_getunit());
-#endif
 
   hashmap_free(&rho_map);
+
+#endif
 
   /* message("\n\n\n DENSITY"); */
   /* print_array(rho, N); */
@@ -1088,7 +1089,7 @@ void pm_mesh_init(struct pm_mesh* mesh, const struct gravity_props* props,
   /* Initialise the thread-parallel FFTW version */
   if (N >= 64) fftw_init_threads();
 #endif
-#ifdef HAVE_MPI_FFTW
+#if defined(WITH_MPI) && defined(HAVE_MPI_FFTW)
   /* Initialize FFTW MPI support - must be after fftw_init_threads() */
   fftw_mpi_init();
 #endif
@@ -1136,7 +1137,7 @@ void pm_mesh_clean(struct pm_mesh* mesh) {
 #ifdef HAVE_THREADED_FFTW
   fftw_cleanup_threads();
 #endif
-#ifdef HAVE_MPI_FFTW
+#if defined(WITH_MPI) && defined(HAVE_MPI_FFTW)
   fftw_mpi_cleanup();
 #endif
 
@@ -1175,7 +1176,7 @@ void pm_mesh_struct_restore(struct pm_mesh* mesh, FILE* stream) {
     /* Initialise the thread-parallel FFTW version */
     if (N >= 64) fftw_init_threads();
 #endif
-#ifdef HAVE_MPI_FFTW
+#if defined(WITH_MPI) && defined(HAVE_MPI_FFTW)
     /* Initialize FFTW MPI support - must be after fftw_init_threads() */
     fftw_mpi_init();
 #endif

@@ -35,6 +35,8 @@
 #include "part.h"
 #include "space.h"
 
+#if defined(WITH_MPI) && defined(HAVE_MPI_FFTW)
+
 /**
  * @brief Increment the value associated with a hashmap key
  *
@@ -610,3 +612,5 @@ void fetch_potential(const int N, const double fac,
   free(nr_send);
   free(nr_recv);
 }
+
+#endif
