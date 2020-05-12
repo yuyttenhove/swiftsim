@@ -793,6 +793,8 @@ AH_VERBATIM([__STDC_FORMAT_MACROS],
 # is given FFTW must be found.
 # If FFTW is found, we check whether this is the threaded version.
 have_fftw="no"
+have_mpi_fftw="no"
+have_threaded_fftw="no"
 AC_ARG_WITH([fftw],
     [AS_HELP_STRING([--with-fftw=PATH],
        [root directory where fftw is installed @<:@yes/no@:>@]
@@ -880,7 +882,6 @@ if test "x$with_fftw" != "xno"; then
          fi
       fi
    fi
-
 fi
 
 
