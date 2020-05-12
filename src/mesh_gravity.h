@@ -24,6 +24,7 @@
 
 /* Local headers */
 #include "gravity_properties.h"
+#include "hashmap.h"
 
 /* Forward declarations */
 struct space;
@@ -63,7 +64,11 @@ struct pm_mesh {
   double r_cut_min;
 
   /*! Potential field */
+#if defined(WITH_MPI) && defined(HAVE_MPI_FFTW)
+  hashmap_t *potential;
+#else
   double *potential;
+#endif
 };
 
 void pm_mesh_init(struct pm_mesh *mesh, const struct gravity_props *props,

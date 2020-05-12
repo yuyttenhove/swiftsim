@@ -499,6 +499,8 @@ void mesh_apply_Green_function(struct threadpool* tp, fftw_complex* frho,
 
 #endif
 
+
+#if defined(WITH_MPI) && defined(HAVE_MPI_FFTW)
 /**
  * @brief Compute the potential, including periodic correction on the mesh.
  *
@@ -507,6 +509,135 @@ void mesh_apply_Green_function(struct threadpool* tp, fftw_complex* frho,
  * to real space. We use CIC for the interpolation.
  *
  * Note that there is no multiplication by G_newton at this stage.
+ *
+ * The output from this version is a hashmap containing the potential
+ * in mesh cells which will be needed on this MPI rank. This is stored
+ * in mesh->potential. The FFTW MPI library is used to do the FFTs.
+ *
+ * @param mesh The #pm_mesh used to store the potential.
+ * @param s The #space containing the particles.
+ * @param tp The #threadpool object used for parallelisation.
+ * @param verbose Are we talkative?
+ */
+void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
+                               struct threadpool* tp, const int verbose) {
+
+  const double r_s = mesh->r_s;
+  const double box_size = s->dim[0];
+  const double dim[3] = {s->dim[0], s->dim[1], s->dim[2]};
+
+  if (r_s <= 0.) error("Invalid value of a_smooth");
+  if (mesh->dim[0] != dim[0] || mesh->dim[1] != dim[1] ||
+      mesh->dim[2] != dim[2])
+    error("Domain size does not match the value stored in the space.");
+
+  /* Some useful constants */
+  const int N = mesh->N;
+  const double cell_fac = N / box_size;
+
+  MPI_Barrier(MPI_COMM_WORLD);
+  ticks tic = getticks();
+
+  /* Calculate contributions to density field on this MPI rank */
+  hashmap_t rho_map;
+  hashmap_init(&rho_map);
+  accumulate_local_gparts_to_hashmap(N, cell_fac, s, &rho_map);
+  if(verbose)message("Accumulating mass to hashmap took %.3f %s.",
+                     clocks_from_ticks(getticks() - tic), clocks_getunit());
+
+  /* Ask FFTW what slice of the density field we need to store on this task.
+     Note that fftw_mpi_local_size_3d works in terms of the size of the complex
+     output. The last dimension of the real input is padded to 2*(N/2+1). */
+  ptrdiff_t local_n0;
+  ptrdiff_t local_0_start;
+  ptrdiff_t nalloc =
+    fftw_mpi_local_size_3d((ptrdiff_t)N, (ptrdiff_t)N, (ptrdiff_t) (N/2+1),
+                           MPI_COMM_WORLD, &local_n0, &local_0_start);
+  if(verbose)message("Local density field slice has thickness %d.", (int)local_n0);
+  if(verbose)message("Hashmap size = %d, local cells = %d\n", (int)hashmap_size(&rho_map), (int) (local_n0*N*N));
+
+  /* Allocate storage for mesh slices. nalloc is the number of *complex* values. */
+  double* rho_slice = (double*)fftw_malloc(2 * nalloc * sizeof(double));
+  for (int i = 0; i < 2*nalloc; i += 1) rho_slice[i] = 0.0;
+
+  /* Allocate storage for the slices of the FFT of the density mesh */
+  fftw_complex* frho_slice = (fftw_complex*) fftw_malloc(nalloc * sizeof(fftw_complex));
+
+  tic = getticks();
+
+  /* Construct density field slices from contributions stored in hashmaps */
+  hashmaps_to_slices(N, (int)local_n0, &rho_map, rho_slice);
+  if (verbose)
+    message("Assembling mesh slices took %.3f %s.",
+            clocks_from_ticks(getticks() - tic), clocks_getunit());
+  hashmap_free(&rho_map);
+
+  tic = getticks();
+
+  /* Carry out the MPI Fourier transform. We can save a bit of time
+   * if we allow FFTW to transpose the first two dimensions of the output.
+   *
+   * Layout of the MPI FFTW input and output:
+   *
+   * Input mesh contains N*N*N reals, padded to N*N*(2*(N/2+1)).
+   * Output Fourier transform is N*N*(N/2+1) complex values.
+   *
+   * The first two dimensions of the transform are transposed in
+   * the output. Each MPI rank has slice of thickness local_n0
+   * starting at local_0_start in the first dimension.
+   */
+  fftw_plan mpi_plan = fftw_mpi_plan_dft_r2c_3d(N, N, N, rho_slice, frho_slice, MPI_COMM_WORLD,
+                                                FFTW_ESTIMATE | FFTW_MPI_TRANSPOSED_OUT | FFTW_DESTROY_INPUT);
+  fftw_execute(mpi_plan);
+  fftw_destroy_plan(mpi_plan);
+  if (verbose)
+    message("MPI forward Fourier transform took %.3f %s.",
+            clocks_from_ticks(getticks() - tic), clocks_getunit());
+
+  tic = getticks();
+
+  /* Apply Green function to local slice of the MPI mesh */
+  mesh_apply_Green_function(tp, frho_slice, local_0_start, local_n0, N, r_s, box_size);
+  if (verbose)
+    message("Applying Green function to MPI mesh took %.3f %s.",
+            clocks_from_ticks(getticks() - tic), clocks_getunit());
+
+  tic = getticks();
+
+  /* Carry out the reverse MPI Fourier transform */
+  fftw_plan mpi_inverse_plan = fftw_mpi_plan_dft_c2r_3d(N, N, N, frho_slice, rho_slice, MPI_COMM_WORLD,
+                                                        FFTW_ESTIMATE | FFTW_MPI_TRANSPOSED_IN | FFTW_DESTROY_INPUT);
+  fftw_execute(mpi_inverse_plan);
+  fftw_destroy_plan(mpi_inverse_plan);  
+
+  if (verbose)
+    message("MPI reverse Fourier transform took %.3f %s.",
+            clocks_from_ticks(getticks() - tic), clocks_getunit());
+
+  /* Fetch MPI mesh entries we need on this rank from other ranks */
+  hashmap_free(mesh->potential);
+  hashmap_init(mesh->potential);
+  fetch_potential(N, cell_fac, s, local_0_start, local_n0,
+                  rho_slice, mesh->potential);
+  
+  /* Discard per-task mesh slices */
+  fftw_free(rho_slice);
+  fftw_free(frho_slice);
+}
+
+#else
+
+/**
+ * @brief Compute the potential, including periodic correction on the mesh.
+ *
+ * Interpolates the top-level multipoles on-to a mesh, move to Fourier space,
+ * compute the potential including short-range correction and move back
+ * to real space. We use CIC for the interpolation.
+ *
+ * Note that there is no multiplication by G_newton at this stage.
+ *
+ * This version stores the full N*N*N mesh on each MPI rank and uses the
+ * non-MPI version of FFTW.
  *
  * @param mesh The #pm_mesh used to store the potential.
  * @param s The #space containing the particles.
@@ -580,33 +711,6 @@ void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
 
 #ifdef WITH_MPI
 
-  /* Alternate density field calculation for testing */
-  tic = getticks();
-  hashmap_t rho_map;
-  hashmap_init(&rho_map);
-  accumulate_local_gparts_to_hashmap(N, cell_fac, s, &rho_map);
-  message("Accumulating mass to hashmap took %.3f %s.",
-          clocks_from_ticks(getticks() - tic), clocks_getunit());
-
-  /* Check meshes match before MPI reduce */
-  double max_diff = 0.0;
-  for (int i = 0; i < N; i += 1) {
-    for (int j = 0; j < N; j += 1) {
-      for (int k = 0; k < N; k += 1) {
-        int id = row_major_id_periodic(i, j, k, N);
-        hashmap_key_t key  = (hashmap_key_t)row_major_id_periodic_size_t_padded(i, j, k, N);        
-        hashmap_value_t* value = hashmap_lookup(&rho_map, key);
-        double rho_from_map = 0.0;
-        if (value) rho_from_map = value->value_dbl;
-        double diff = fabs(rho_from_map - rho[id]);
-        if (diff > max_diff) {
-          max_diff = diff;
-        }
-      }
-    }
-  }
-  message("Maximum local mesh mass difference = %e\n", max_diff);
-
   MPI_Barrier(MPI_COMM_WORLD);
   tic = getticks();
 
@@ -617,74 +721,6 @@ void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
   if (verbose)
     message("Mesh communication took %.3f %s.",
             clocks_from_ticks(getticks() - tic), clocks_getunit());
-#endif
-
-    /* Alternate calculation for testing */
-#ifdef WITH_MPI
-
-  MPI_Barrier(MPI_COMM_WORLD);
-  tic = getticks();
-
-  /* Ask FFTW what slice of the density field we need to store on this task.
-     Note that fftw_mpi_local_size_3d works in terms of the size of the complex
-     output. The last dimension of the real input is padded to 2*(N/2+1). */
-  ptrdiff_t local_n0;
-  ptrdiff_t local_0_start;
-  ptrdiff_t nalloc =
-    fftw_mpi_local_size_3d((ptrdiff_t)N, (ptrdiff_t)N, (ptrdiff_t) (N/2+1),
-                           MPI_COMM_WORLD, &local_n0, &local_0_start);
-  message("Local density field slice has thickness %d.", (int)local_n0);
-  message("Hashmap size = %d, local cells = %d\n", (int)hashmap_size(&rho_map), (int) (local_n0*N*N));
-
-  /* Allocate storage for mesh slices. nalloc is the number of *complex* values. */
-  double* rho_slice = (double*)fftw_malloc(2 * nalloc * sizeof(double));
-  for (int i = 0; i < 2*nalloc; i += 1) rho_slice[i] = 0.0;
-
-  /* Allocate storage for the slices of the FFT of the density mesh */
-  fftw_complex* frho_slice = (fftw_complex*) fftw_malloc(nalloc * sizeof(fftw_complex));
-
-  /* Construct density field slices */
-  hashmaps_to_slices(N, (int)local_n0, &rho_map, rho_slice);
-
-  /* Check slices match the full mesh */
-  max_diff = 0.0;
-  double max_frac_diff = 0.0;
-  for (int i = local_0_start; i < local_0_start + local_n0; i += 1) {
-    for (int j = 0; j < N; j += 1) {
-      for (int k = 0; k < N; k += 1) {
-        /* Get index of this cell in the mesh from the non-MPI calculation */
-        int id = row_major_id_periodic(i, j, k, N);
-        /* Get index of this cell in the full MPI mesh */
-        size_t global_index = row_major_id_periodic_size_t_padded(i, j, k, N);        
-        /* Convert to index in the local slice of the MPI mesh */
-        size_t local_index = get_index_in_local_slice(global_index, N, local_0_start);
-        /* Compare and record maximum difference between MPI and non-MPI calculations */
-        double diff = fabs(rho_slice[local_index] - rho[id]);
-        if (diff > max_diff) {
-          max_diff = diff;
-        }
-        double frac_diff =
-          fabs((rho_slice[local_index] / rho[id]) - 1.0);
-        if (frac_diff > max_frac_diff) {
-          max_frac_diff = frac_diff;
-        }
-      }
-    }
-  }
-  MPI_Allreduce(MPI_IN_PLACE, &max_diff, 1, MPI_DOUBLE, MPI_MAX,
-                MPI_COMM_WORLD);
-  message("Maximum global mesh mass absolute difference = %e\n", max_diff);
-  MPI_Allreduce(MPI_IN_PLACE, &max_frac_diff, 1, MPI_DOUBLE, MPI_MAX,
-                MPI_COMM_WORLD);
-  message("Maximum global mesh mass fractional difference = %e\n",
-          max_frac_diff);
-
-  if (verbose)
-    message("Alternate mesh communication took %.3f %s.",
-            clocks_from_ticks(getticks() - tic), clocks_getunit());
-
-  hashmap_free(&rho_map);
-
 #endif
 
   /* message("\n\n\n DENSITY"); */
@@ -698,77 +734,6 @@ void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
   if (verbose)
     message("Forward Fourier transform took %.3f %s.",
             clocks_from_ticks(getticks() - tic), clocks_getunit());
-
-#ifdef WITH_MPI
-  tic = getticks();
-
-  /*
-   * For testing: carry out the MPI Fourier transform.
-   * We can save a bit of time if we allow FFTW to transpose the first
-   * two dimensions of the output.
-   */
-  fftw_plan mpi_plan = fftw_mpi_plan_dft_r2c_3d(N, N, N, rho_slice, frho_slice, MPI_COMM_WORLD,
-                                                FFTW_ESTIMATE | FFTW_MPI_TRANSPOSED_OUT | FFTW_DESTROY_INPUT);
-  fftw_execute(mpi_plan);
-  fftw_destroy_plan(mpi_plan);  
-
-  if (verbose)
-    message("MPI forward Fourier transform took %.3f %s.",
-            clocks_from_ticks(getticks() - tic), clocks_getunit());
-
-  /*
-   * Layout of the MPI FFTW input and output:
-   *
-   * Input mesh contains N*N*N reals, padded to N*N*(2*(N/2+1)).
-   * Output Fourier transform is N*N*(N/2+1) complex values.
-   *
-   * The first two dimensions of the transform are transposed in
-   * the output. Each MPI rank has slice of thickness local_n0
-   * starting at local_0_start in the first dimension.
-   */
-
-  /*
-   * Check that the MPI FFT matches the non-MPI version
-   *
-   * First loop over cells we have in the local slice of
-   * the Fourier transform.
-   */
-  max_frac_diff = 0.0;
-  for (int i = local_0_start; i < local_0_start + local_n0; i += 1) {
-    for (int j = 0; j < N; j += 1) {
-      for (int k = 0; k < (N/2+1); k += 1) {
-        /* Compute corresponding coordinate in the non-MPI transform */
-        int i_full = j;
-        int j_full = i;
-        int k_full = k;
-        /* Find index into the full non-MPI transform array */
-        size_t index_full = i_full*N*(N/2+1) + j_full*(N/2+1) + k_full;
-        /* Find index into the local slice */
-        size_t Ns = N;
-        size_t index_slice = (i-local_0_start)*Ns*(Ns/2+1) + j*(Ns/2+1) + k;
-        /* Compare real parts */
-        double frac_diff;
-        double real_part_full  = frho[index_full][0];
-        double real_part_slice = frho_slice[index_slice][0];
-        frac_diff = fabs(real_part_full/real_part_slice-1.0);
-        if (frac_diff > max_frac_diff) {
-          max_frac_diff = frac_diff;
-        }
-        /* Compare imaginary parts */
-        double im_part_full  = frho[index_full][1];
-        double im_part_slice = frho_slice[index_slice][1];
-        frac_diff = fabs(im_part_full/im_part_slice-1.0);
-        if (frac_diff > max_frac_diff) {
-          max_frac_diff = frac_diff;
-        }
-
-      }
-    }
-  }
-  MPI_Allreduce(MPI_IN_PLACE, &max_frac_diff, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
-  message("Maximum Fourier transform fractional difference = %e\n",
-          max_frac_diff);
-#endif
 
   /* frho now contains the Fourier transform of the density field */
   /* frho contains NxNx(N/2+1) complex numbers */
@@ -784,152 +749,12 @@ void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
 
   tic = getticks();
 
-#ifdef WITH_MPI
-  /* Apply Green function to local slice of the MPI mesh */
-  tic = getticks();
-
-  mesh_apply_Green_function(tp, frho_slice, local_0_start, local_n0, N, r_s, box_size);
-  if (verbose)
-    message("Applying Green function to MPI mesh took %.3f %s.",
-            clocks_from_ticks(getticks() - tic), clocks_getunit());
-
-  tic = getticks();
-
-  /* Check we have the same values after the green function etc */
-  max_frac_diff = 0.0;
-  for (int i = local_0_start; i < local_0_start + local_n0; i += 1) {
-    for (int j = 0; j < N; j += 1) {
-      for (int k = 0; k < (N/2+1); k += 1) {
-        /* Compute corresponding coordinate in the non-MPI transform */
-        int i_full = j;
-        int j_full = i;
-        int k_full = k;
-        /* Find index into the full non-MPI transform array */
-        size_t index_full = i_full*N*(N/2+1) + j_full*(N/2+1) + k_full;
-        /* Find index into the local slice */
-        size_t Ns = N;
-        size_t index_slice = (i-local_0_start)*Ns*(Ns/2+1) + j*(Ns/2+1) + k;
-        /* Compare real parts */
-        double frac_diff;
-        double real_part_full  = frho[index_full][0];
-        double real_part_slice = frho_slice[index_slice][0];
-        frac_diff = fabs(real_part_full/real_part_slice-1.0);
-        if (frac_diff > max_frac_diff) {
-          max_frac_diff = frac_diff;
-        }
-        /* Compare imaginary parts */
-        double im_part_full  = frho[index_full][1];
-        double im_part_slice = frho_slice[index_slice][1];
-        frac_diff = fabs(im_part_full/im_part_slice-1.0);
-        if (frac_diff > max_frac_diff) {
-          max_frac_diff = frac_diff;
-        }
-      }
-    }
-  }
-  MPI_Allreduce(MPI_IN_PLACE, &max_frac_diff, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
-  message("Maximum fractional difference in FT of potential = %e\n",
-          max_frac_diff);
-
-  /*
-   * For testing: carry out the reverse MPI Fourier transform.
-   */
-  fftw_plan mpi_inverse_plan = fftw_mpi_plan_dft_c2r_3d(N, N, N, frho_slice, rho_slice, MPI_COMM_WORLD,
-                                                        FFTW_ESTIMATE | FFTW_MPI_TRANSPOSED_IN | FFTW_DESTROY_INPUT);
-  fftw_execute(mpi_inverse_plan);
-  fftw_destroy_plan(mpi_inverse_plan);  
-
-  if (verbose)
-    message("MPI reverse Fourier transform took %.3f %s.",
-            clocks_from_ticks(getticks() - tic), clocks_getunit());
-
-#endif
-
   /* Fourier transform to come back from magic-land */
   fftw_execute(inverse_plan);
 
   if (verbose)
     message("Backwards Fourier transform took %.3f %s.",
             clocks_from_ticks(getticks() - tic), clocks_getunit());
-
-
-#ifdef WITH_MPI
-
-  /* Check slices match the full mesh */
-  max_diff = 0.0;
-  max_frac_diff = 0.0;
-  for (int i = local_0_start; i < local_0_start + local_n0; i += 1) {
-    for (int j = 0; j < N; j += 1) {
-      for (int k = 0; k < N; k += 1) {
-        /* Get index of this cell in the mesh from the non-MPI calculation */
-        int id = row_major_id_periodic(i, j, k, N);
-        /* Get index of this cell in the full MPI mesh */
-        size_t global_index = row_major_id_periodic_size_t_padded(i, j, k, N);
-        /* Convert to index in the local slice of the MPI mesh */
-        size_t local_index = get_index_in_local_slice(global_index, N, local_0_start);
-        /* Compare and record maximum difference between MPI and non-MPI calculations */
-        double diff = fabs(rho_slice[local_index] - rho[id]);
-        if (diff > max_diff) {
-          max_diff = diff;
-        }
-        double frac_diff =
-          fabs((rho_slice[local_index] / rho[id]) - 1.0);
-        if (frac_diff > max_frac_diff) {
-          max_frac_diff = frac_diff;
-        }
-      }
-    }
-  }
-  MPI_Allreduce(MPI_IN_PLACE, &max_diff, 1, MPI_DOUBLE, MPI_MAX,
-                MPI_COMM_WORLD);
-  message("Maximum global potential absolute difference = %e\n", max_diff);
-  MPI_Allreduce(MPI_IN_PLACE, &max_frac_diff, 1, MPI_DOUBLE, MPI_MAX,
-                MPI_COMM_WORLD);
-  message("Maximum global potential fractional difference = %e\n",
-          max_frac_diff);
-
-  /* Fetch MPI mesh entries we need on this rank */
-  hashmap_t potential_map;
-  hashmap_init(&potential_map);
-  fetch_potential(N, cell_fac, s, local_0_start, local_n0,
-                  rho_slice, &potential_map);
-
-  /* Check that cells we have stored locally have the same potential
-   * as in the global mesh */
-  max_diff = 0.0;
-  max_frac_diff = 0.0;
-  int num_checked = 0;
-  for(int i=0; i<N; i+=1) {
-    for(int j=0; j<N; j+=1) {
-      for(int k=0; k<N; k+=1) {
-        int row_major_id = row_major_id_periodic(i, j, k, N);
-        size_t row_major_id_padded = row_major_id_periodic_size_t_padded(i, j, k, N);
-        hashmap_value_t *value = hashmap_lookup(&potential_map, row_major_id_padded);
-        if(value) {
-          double pot_hashmap = value->value_dbl;
-          double pot_mesh = rho[row_major_id];
-          double abs_diff = fabs(pot_hashmap-pot_mesh);
-          if(abs_diff > max_diff)max_diff = abs_diff;
-          double frac_diff = fabs(pot_hashmap/pot_mesh-1.0);
-          if(frac_diff > max_frac_diff)max_frac_diff = frac_diff;
-          num_checked += 1;
-        }
-      }
-    }
-  }
-  MPI_Allreduce(MPI_IN_PLACE, &max_diff, 1, MPI_DOUBLE, MPI_MAX,
-                MPI_COMM_WORLD);
-  message("Maximum potential absolute difference in local cells = %e\n", max_diff);
-  MPI_Allreduce(MPI_IN_PLACE, &max_frac_diff, 1, MPI_DOUBLE, MPI_MAX,
-                MPI_COMM_WORLD);
-  message("Maximum potential fractional difference in local cells = %e\n",
-          max_frac_diff);
-  MPI_Allreduce(MPI_IN_PLACE, &num_checked, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
-  message("Total cells checked = %d", num_checked);
-
-  hashmap_free(&potential_map);
-
-#endif
   
   /* rho now contains the potential */
   /* This array is now again NxNxN real numbers */
@@ -939,12 +764,6 @@ void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
 
   /* message("\n\n\n POTENTIAL"); */
   /* print_array(mesh->potential, N); */
-
-#ifdef WITH_MPI
-  /* Discard MPI mesh for now*/
-  fftw_free(rho_slice);
-  fftw_free(frho_slice);
-#endif
 
   /* Clean-up the mess */
   fftw_destroy_plan(forward_plan);
@@ -956,6 +775,8 @@ void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
   error("No FFTW library found. Cannot compute periodic long-range forces.");
 #endif
 }
+#endif
+
 
 /**
  * @brief Interpolate the forces and potential from the mesh to the #gpart.
@@ -1013,6 +834,10 @@ void pm_mesh_allocate(struct pm_mesh* mesh) {
 #ifdef HAVE_FFTW
   if (mesh->potential != NULL) error("Mesh already allocated!");
 
+#if defined(WITH_MPI) && defined(HAVE_MPI_FFTW)
+  mesh->potential = malloc(sizeof(hashmap_t));
+  hashmap_init(mesh->potential);
+#else
   const int N = mesh->N;
 
   /* Allocate the memory for the combined density and potential array */
@@ -1021,6 +846,8 @@ void pm_mesh_allocate(struct pm_mesh* mesh) {
     error("Error allocating memory for the long-range gravity mesh.");
   memuse_log_allocation("fftw_mesh.potential", mesh->potential, 1,
                         sizeof(double) * N * N * N);
+#endif
+
 #else
   error("No FFTW library found. Cannot compute periodic long-range forces.");
 #endif
@@ -1034,16 +861,43 @@ void pm_mesh_allocate(struct pm_mesh* mesh) {
 void pm_mesh_free(struct pm_mesh* mesh) {
 
 #ifdef HAVE_FFTW
-
   if (mesh->potential) {
+#if defined(WITH_MPI) && defined(HAVE_MPI_FFTW)
+    hashmap_free(mesh->potential);
+    free(mesh->potential);
+#else
     memuse_log_allocation("fftw_mesh.potential", mesh->potential, 0, 0);
     free(mesh->potential);
+#endif
   }
   mesh->potential = NULL;
 #else
   error("No FFTW library found. Cannot compute periodic long-range forces.");
 #endif
 }
+
+/**
+ * @brief Initialises FFTW for MPI and thread usage as necessary
+ *
+ * @param N The size of the FFT mesh
+ */
+void initialise_fftw(int N) {
+
+#ifdef HAVE_THREADED_FFTW
+  /* Initialise the thread-parallel FFTW version */
+  if (N >= 64) fftw_init_threads();
+#endif
+#if defined(WITH_MPI) && defined(HAVE_MPI_FFTW)
+  /* Initialize FFTW MPI support - must be called after fftw_init_threads() */
+  fftw_mpi_init();
+#endif
+#ifdef HAVE_THREADED_FFTW
+  /* Set  number of threads to use */
+  if (N >= 64) fftw_plan_with_nthreads(mesh->nr_threads);
+#endif
+
+}
+
 
 /**
  * @brief Initialisses the mesh used for the long-range periodic forces
@@ -1077,27 +931,18 @@ void pm_mesh_init(struct pm_mesh* mesh, const struct gravity_props* props,
   mesh->r_cut_min = mesh->r_s * props->r_cut_min_ratio;
   mesh->potential = NULL;
 
+#if defined(WITH_MPI) && defined(HAVE_MPI_FFTW)
+#else
   if (mesh->N > 1290)
     error(
         "Mesh too big. The number of cells is larger than 2^31. "
         "Use a mesh side-length <= 1290.");
+#endif
 
   if (2. * mesh->r_cut_max > box_size)
     error("Mesh too small or r_cut_max too big for this box size");
 
-#ifdef HAVE_THREADED_FFTW
-  /* Initialise the thread-parallel FFTW version */
-  if (N >= 64) fftw_init_threads();
-#endif
-#if defined(WITH_MPI) && defined(HAVE_MPI_FFTW)
-  /* Initialize FFTW MPI support - must be after fftw_init_threads() */
-  fftw_mpi_init();
-#endif
-#ifdef HAVE_THREADED_FFTW
-  /* Set  number of threads to use */
-  if (N >= 64) fftw_plan_with_nthreads(mesh->nr_threads);
-#endif
-
+  initialise_fftw(N);
   pm_mesh_allocate(mesh);
 
 #else
@@ -1171,26 +1016,20 @@ void pm_mesh_struct_restore(struct pm_mesh* mesh, FILE* stream) {
 
 #ifdef HAVE_FFTW
     const int N = mesh->N;
+    initialise_fftw(N);
 
-#ifdef HAVE_THREADED_FFTW
-    /* Initialise the thread-parallel FFTW version */
-    if (N >= 64) fftw_init_threads();
-#endif
 #if defined(WITH_MPI) && defined(HAVE_MPI_FFTW)
-    /* Initialize FFTW MPI support - must be after fftw_init_threads() */
-    fftw_mpi_init();
-#endif
-#ifdef HAVE_THREADED_FFTW
-    /* Set  number of threads to use */
-    if (N >= 64) fftw_plan_with_nthreads(mesh->nr_threads);
-#endif
-
+    mesh->potential = malloc(sizeof(hashmap_t));
+    hashmap_init(mesh->potential);
+#else
     /* Allocate the memory for the combined density and potential array */
     mesh->potential = (double*)fftw_malloc(sizeof(double) * N * N * N);
     if (mesh->potential == NULL)
       error("Error allocating memory for the long-range gravity mesh.");
     memuse_log_allocation("fftw_mesh.potential", mesh->potential, 1,
                           sizeof(double) * N * N * N);
+#endif
+
 #else
     error("No FFTW library found. Cannot compute periodic long-range forces.");
 #endif
