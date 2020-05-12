@@ -267,7 +267,7 @@ void cell_gpart_to_mesh_CIC_mapper(void* map_data, int num, void* extra) {
  * @param fac width of a mesh cell.
  * @param dim The dimensions of the simulation box.
  */
-void mesh_to_gparts_CIC(struct gpart* gp, const double* pot, const int N,
+void mesh_to_gparts_CIC(struct gpart* gp, const void* pot, const int N,
                         const double fac, const double dim[3]) {
 
   /* Box wrap the gpart's position */
@@ -307,8 +307,15 @@ void mesh_to_gparts_CIC(struct gpart* gp, const double* pot, const int N,
   for (int iii = -2; iii <= 3; ++iii) {
     for (int jjj = -2; jjj <= 3; ++jjj) {
       for (int kkk = -2; kkk <= 3; ++kkk) {
+#if defined(WITH_MPI) && defined(HAVE_MPI_FFTW)
+        size_t key = row_major_id_periodic_size_t_padded(i + iii, j + jjj, k + kkk, N);
+        hashmap_value_t *value = hashmap_lookup((hashmap_t *) pot, (hashmap_key_t) key);
+        if(!value)error("Required mesh cell has not been imported!");
+        phi[iii + 2][jjj + 2][kkk + 2] = value->value_dbl;
+#else
         phi[iii + 2][jjj + 2][kkk + 2] =
-            pot[row_major_id_periodic(i + iii, j + jjj, k + kkk, N)];
+          ((double *) pot)[row_major_id_periodic(i + iii, j + jjj, k + kkk, N)];
+#endif
       }
     }
   }
@@ -614,9 +621,11 @@ void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
     message("MPI reverse Fourier transform took %.3f %s.",
             clocks_from_ticks(getticks() - tic), clocks_getunit());
 
-  /* Fetch MPI mesh entries we need on this rank from other ranks */
+  /* Clear the potential hashmap */
   hashmap_free(mesh->potential);
   hashmap_init(mesh->potential);
+
+  /* Fetch MPI mesh entries we need on this rank from other ranks */
   fetch_potential(N, cell_fac, s, local_0_start, local_n0,
                   rho_slice, mesh->potential);
   
@@ -797,7 +806,6 @@ void pm_mesh_interpolate_forces(const struct pm_mesh* mesh,
 
   const int N = mesh->N;
   const double cell_fac = mesh->cell_fac;
-  const double* potential = mesh->potential;
   const double dim[3] = {e->s->dim[0], e->s->dim[1], e->s->dim[2]};
 
   /* Get the potential from the mesh to the active gparts using CIC */
@@ -816,7 +824,7 @@ void pm_mesh_interpolate_forces(const struct pm_mesh* mesh,
         error("Adding forces to an un-initialised gpart.");
 #endif
 
-      mesh_to_gparts_CIC(gp, potential, N, cell_fac, dim);
+      mesh_to_gparts_CIC(gp, mesh->potential, N, cell_fac, dim);
     }
   }
 #else
@@ -881,7 +889,7 @@ void pm_mesh_free(struct pm_mesh* mesh) {
  *
  * @param N The size of the FFT mesh
  */
-void initialise_fftw(int N) {
+void initialise_fftw(int N, int nr_threads) {
 
 #ifdef HAVE_THREADED_FFTW
   /* Initialise the thread-parallel FFTW version */
@@ -893,7 +901,7 @@ void initialise_fftw(int N) {
 #endif
 #ifdef HAVE_THREADED_FFTW
   /* Set  number of threads to use */
-  if (N >= 64) fftw_plan_with_nthreads(mesh->nr_threads);
+  if (N >= 64) fftw_plan_with_nthreads(nr_threads);
 #endif
 
 }
@@ -942,7 +950,7 @@ void pm_mesh_init(struct pm_mesh* mesh, const struct gravity_props* props,
   if (2. * mesh->r_cut_max > box_size)
     error("Mesh too small or r_cut_max too big for this box size");
 
-  initialise_fftw(N);
+  initialise_fftw(N, mesh->nr_threads);
   pm_mesh_allocate(mesh);
 
 #else
@@ -1016,7 +1024,7 @@ void pm_mesh_struct_restore(struct pm_mesh* mesh, FILE* stream) {
 
 #ifdef HAVE_FFTW
     const int N = mesh->N;
-    initialise_fftw(N);
+    initialise_fftw(N, mesh->nr_threads);
 
 #if defined(WITH_MPI) && defined(HAVE_MPI_FFTW)
     mesh->potential = malloc(sizeof(hashmap_t));
