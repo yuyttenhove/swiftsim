@@ -267,7 +267,7 @@ void cell_gpart_to_mesh_CIC_mapper(void* map_data, int num, void* extra) {
  * @param fac width of a mesh cell.
  * @param dim The dimensions of the simulation box.
  */
-void mesh_to_gparts_CIC(struct gpart* gp, const void* pot, const int N,
+void mesh_to_gparts_CIC(struct gpart* gp, const struct pm_mesh* mesh, const int N,
                         const double fac, const double dim[3]) {
 
   /* Box wrap the gpart's position */
@@ -304,18 +304,26 @@ void mesh_to_gparts_CIC(struct gpart* gp, const void* pot, const int N,
   /* First, copy the necessary part of the mesh for stencil operations */
   /* This includes box-wrapping in all 3 dimensions. */
   double phi[6][6][6];
-  for (int iii = -2; iii <= 3; ++iii) {
-    for (int jjj = -2; jjj <= 3; ++jjj) {
-      for (int kkk = -2; kkk <= 3; ++kkk) {
-#if defined(WITH_MPI) && defined(HAVE_MPI_FFTW)
-        size_t key = row_major_id_periodic_size_t_padded(i + iii, j + jjj, k + kkk, N);
-        hashmap_value_t *value = hashmap_lookup((hashmap_t *) pot, (hashmap_key_t) key);
-        if(!value)error("Required mesh cell has not been imported!");
-        phi[iii + 2][jjj + 2][kkk + 2] = value->value_dbl;
-#else
-        phi[iii + 2][jjj + 2][kkk + 2] =
-          ((double *) pot)[row_major_id_periodic(i + iii, j + jjj, k + kkk, N)];
-#endif
+  if(mesh->distributed_mesh) {
+    const hashmap_t *pot = mesh->potential_local;
+    for (int iii = -2; iii <= 3; ++iii) {
+      for (int jjj = -2; jjj <= 3; ++jjj) {
+        for (int kkk = -2; kkk <= 3; ++kkk) {
+          size_t key = row_major_id_periodic_size_t_padded(i + iii, j + jjj, k + kkk, N);
+          hashmap_value_t *value = hashmap_lookup(pot, (hashmap_key_t) key);
+          if(!value)error("Required mesh cell has not been imported!");
+          phi[iii + 2][jjj + 2][kkk + 2] = value->value_dbl;
+        }
+      }
+    }
+  } else {
+    const double *pot = mesh->potential_global;
+    for (int iii = -2; iii <= 3; ++iii) {
+      for (int jjj = -2; jjj <= 3; ++jjj) {
+        for (int kkk = -2; kkk <= 3; ++kkk) {
+          phi[iii + 2][jjj + 2][kkk + 2] =
+            pot[row_major_id_periodic(i + iii, j + jjj, k + kkk, N)];
+        }
       }
     }
   }
@@ -507,7 +515,29 @@ void mesh_apply_Green_function(struct threadpool* tp, fftw_complex* frho,
 #endif
 
 
-#if defined(WITH_MPI) && defined(HAVE_MPI_FFTW)
+/**
+ * @brief Compute the potential, including periodic correction on the mesh.
+ *
+ * Interpolates the top-level multipoles on-to a mesh, move to Fourier space,
+ * compute the potential including short-range correction and move back
+ * to real space. We use CIC for the interpolation.
+ *
+ * Note that there is no multiplication by G_newton at this stage.
+ *
+ * @param mesh The #pm_mesh used to store the potential.
+ * @param s The #space containing the particles.
+ * @param tp The #threadpool object used for parallelisation.
+ * @param verbose Are we talkative?
+ */
+void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
+                               struct threadpool* tp, const int verbose) {
+  if(mesh->distributed_mesh) {
+    compute_potential_distributed(mesh, s, tp, verbose);
+  } else {
+    compute_potential_global(mesh, s, tp, verbose);    
+  }
+}
+
 /**
  * @brief Compute the potential, including periodic correction on the mesh.
  *
@@ -519,15 +549,17 @@ void mesh_apply_Green_function(struct threadpool* tp, fftw_complex* frho,
  *
  * The output from this version is a hashmap containing the potential
  * in mesh cells which will be needed on this MPI rank. This is stored
- * in mesh->potential. The FFTW MPI library is used to do the FFTs.
+ * in mesh->potential_local. The FFTW MPI library is used to do the FFTs.
  *
  * @param mesh The #pm_mesh used to store the potential.
  * @param s The #space containing the particles.
  * @param tp The #threadpool object used for parallelisation.
  * @param verbose Are we talkative?
  */
-void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
-                               struct threadpool* tp, const int verbose) {
+void compute_potential_distributed(struct pm_mesh* mesh, const struct space* s,
+                                   struct threadpool* tp, const int verbose) {
+
+#if defined(WITH_MPI) && defined(HAVE_MPI_FFTW)
 
   const double r_s = mesh->r_s;
   const double box_size = s->dim[0];
@@ -622,19 +654,21 @@ void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
             clocks_from_ticks(getticks() - tic), clocks_getunit());
 
   /* Clear the potential hashmap */
-  hashmap_free(mesh->potential);
-  hashmap_init(mesh->potential);
+  hashmap_free(mesh->potential_local);
+  hashmap_init(mesh->potential_local);
 
   /* Fetch MPI mesh entries we need on this rank from other ranks */
   mpi_mesh_fetch_potential(N, cell_fac, s, local_0_start, local_n0,
-                           rho_slice, mesh->potential);
+                           rho_slice, mesh->potential_local);
   
   /* Discard per-task mesh slices */
   fftw_free(rho_slice);
   fftw_free(frho_slice);
+#else
+  error("No FFTW MPI library available. Cannot compute distributed mesh.");
+#endif
 }
 
-#else
 
 /**
  * @brief Compute the potential, including periodic correction on the mesh.
@@ -653,8 +687,8 @@ void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
  * @param tp The #threadpool object used for parallelisation.
  * @param verbose Are we talkative?
  */
-void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
-                               struct threadpool* tp, const int verbose) {
+void compute_potential_global(struct pm_mesh* mesh, const struct space* s,
+                              struct threadpool* tp, const int verbose) {
 
 #ifdef HAVE_FFTW
 
@@ -675,7 +709,7 @@ void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
   const double cell_fac = N / box_size;
 
   /* Use the memory allocated for the potential to temporarily store rho */
-  double* restrict rho = mesh->potential;
+  double* restrict rho = mesh->potential_global;
   if (rho == NULL) error("Error allocating memory for density mesh");
   bzero(rho, N * N * N * sizeof(double));
 
@@ -769,10 +803,10 @@ void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
   /* This array is now again NxNxN real numbers */
 
   /* Let's store it in the structure */
-  mesh->potential = rho;
+  mesh->potential_global = rho;
 
   /* message("\n\n\n POTENTIAL"); */
-  /* print_array(mesh->potential, N); */
+  /* print_array(mesh->potential_global, N); */
 
   /* Clean-up the mess */
   fftw_destroy_plan(forward_plan);
@@ -784,7 +818,6 @@ void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
   error("No FFTW library found. Cannot compute periodic long-range forces.");
 #endif
 }
-#endif
 
 
 /**
@@ -824,7 +857,7 @@ void pm_mesh_interpolate_forces(const struct pm_mesh* mesh,
         error("Adding forces to an un-initialised gpart.");
 #endif
 
-      mesh_to_gparts_CIC(gp, mesh->potential, N, cell_fac, dim);
+      mesh_to_gparts_CIC(gp, mesh, N, cell_fac, dim);
     }
   }
 #else
@@ -840,21 +873,21 @@ void pm_mesh_interpolate_forces(const struct pm_mesh* mesh,
 void pm_mesh_allocate(struct pm_mesh* mesh) {
 
 #ifdef HAVE_FFTW
-  if (mesh->potential != NULL) error("Mesh already allocated!");
 
-#if defined(WITH_MPI) && defined(HAVE_MPI_FFTW)
-  mesh->potential = malloc(sizeof(hashmap_t));
-  hashmap_init(mesh->potential);
-#else
-  const int N = mesh->N;
+  if(mesh->distributed_mesh) {
+    if (mesh->potential_local != NULL) error("Mesh already allocated!");
+    mesh->potential_local = malloc(sizeof(hashmap_t));
+    hashmap_init(mesh->potential_local);
+  } else {
+    const int N = mesh->N;
 
-  /* Allocate the memory for the combined density and potential array */
-  mesh->potential = (double*)fftw_malloc(sizeof(double) * N * N * N);
-  if (mesh->potential == NULL)
-    error("Error allocating memory for the long-range gravity mesh.");
-  memuse_log_allocation("fftw_mesh.potential", mesh->potential, 1,
-                        sizeof(double) * N * N * N);
-#endif
+    /* Allocate the memory for the combined density and potential array */
+    mesh->potential_global = (double*)fftw_malloc(sizeof(double) * N * N * N);
+    if (mesh->potential_global == NULL)
+      error("Error allocating memory for the long-range gravity mesh.");
+    memuse_log_allocation("fftw_mesh.potential", mesh->potential_global, 1,
+                          sizeof(double) * N * N * N);
+  }
 
 #else
   error("No FFTW library found. Cannot compute periodic long-range forces.");
@@ -867,18 +900,18 @@ void pm_mesh_allocate(struct pm_mesh* mesh) {
  * @param mesh The #pm_mesh structure.
  */
 void pm_mesh_free(struct pm_mesh* mesh) {
-
+  
 #ifdef HAVE_FFTW
-  if (mesh->potential) {
-#if defined(WITH_MPI) && defined(HAVE_MPI_FFTW)
-    hashmap_free(mesh->potential);
-    free(mesh->potential);
-#else
-    memuse_log_allocation("fftw_mesh.potential", mesh->potential, 0, 0);
-    free(mesh->potential);
-#endif
+  if(mesh->distributed_mesh && mesh->potential_local) {
+    hashmap_free(mesh->potential_local);
+    free(mesh->potential_local);
+    mesh->potential_local = NULL;
   }
-  mesh->potential = NULL;
+  if(!mesh->distributed_mesh && mesh->potential_global) {
+    memuse_log_allocation("fftw_mesh.potential", mesh->potential_global, 0, 0);
+    free(mesh->potential_global);
+    mesh->potential_global = NULL;
+  }
 #else
   error("No FFTW library found. Cannot compute periodic long-range forces.");
 #endif
@@ -908,7 +941,7 @@ void initialise_fftw(int N, int nr_threads) {
 
 
 /**
- * @brief Initialisses the mesh used for the long-range periodic forces
+ * @brief Initialises the mesh used for the long-range periodic forces
  *
  * @param mesh The #pm_mesh to initialise.
  * @param props The propoerties of the gravity scheme.
@@ -929,6 +962,7 @@ void pm_mesh_init(struct pm_mesh* mesh, const struct gravity_props* props,
   mesh->nr_threads = nr_threads;
   mesh->periodic = 1;
   mesh->N = N;
+  mesh->distributed_mesh = props->distributed_mesh;
   mesh->dim[0] = dim[0];
   mesh->dim[1] = dim[1];
   mesh->dim[2] = dim[2];
@@ -937,15 +971,12 @@ void pm_mesh_init(struct pm_mesh* mesh, const struct gravity_props* props,
   mesh->r_s_inv = 1. / mesh->r_s;
   mesh->r_cut_max = mesh->r_s * props->r_cut_max_ratio;
   mesh->r_cut_min = mesh->r_s * props->r_cut_min_ratio;
-  mesh->potential = NULL;
+  mesh->potential_local = NULL;
+  mesh->potential_global = NULL;
 
-#if defined(WITH_MPI) && defined(HAVE_MPI_FFTW)
-#else
-  if (mesh->N > 1290)
-    error(
-        "Mesh too big. The number of cells is larger than 2^31. "
-        "Use a mesh side-length <= 1290.");
-#endif
+  if(!mesh->distributed_mesh && mesh->N > 1290)
+    error("Mesh too big. The number of cells is larger than 2^31. "
+          "Use a mesh side-length <= 1290.");
 
   if (2. * mesh->r_cut_max > box_size)
     error("Mesh too small or r_cut_max too big for this box size");
@@ -1026,18 +1057,18 @@ void pm_mesh_struct_restore(struct pm_mesh* mesh, FILE* stream) {
     const int N = mesh->N;
     initialise_fftw(N, mesh->nr_threads);
 
-#if defined(WITH_MPI) && defined(HAVE_MPI_FFTW)
-    mesh->potential = malloc(sizeof(hashmap_t));
-    hashmap_init(mesh->potential);
-#else
-    /* Allocate the memory for the combined density and potential array */
-    mesh->potential = (double*)fftw_malloc(sizeof(double) * N * N * N);
-    if (mesh->potential == NULL)
-      error("Error allocating memory for the long-range gravity mesh.");
-    memuse_log_allocation("fftw_mesh.potential", mesh->potential, 1,
-                          sizeof(double) * N * N * N);
-#endif
-
+    if(mesh->distributed_mesh) {
+      /* Allocate hashmap to store local part of density and potential array */
+      mesh->potential_local = malloc(sizeof(hashmap_t));
+      hashmap_init(mesh->potential_local);
+    } else {
+      /* Allocate the memory for the combined density and potential array */
+      mesh->potential_global = (double*)fftw_malloc(sizeof(double) * N * N * N);
+      if (mesh->potential_global == NULL)
+        error("Error allocating memory for the long-range gravity mesh.");
+      memuse_log_allocation("fftw_mesh.potential", mesh->potential_global, 1,
+        sizeof(double) * N * N * N);
+    }
 #else
     error("No FFTW library found. Cannot compute periodic long-range forces.");
 #endif

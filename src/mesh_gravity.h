@@ -45,6 +45,9 @@ struct pm_mesh {
   /*! Side-length of the mesh */
   int N;
 
+  /*! Whether mesh is distributed between MPI ranks */
+  int distributed_mesh;
+
   /*! Conversion factor between box and mesh size */
   double cell_fac;
 
@@ -63,11 +66,12 @@ struct pm_mesh {
   /*! Distance below which tree forces are Newtonian */
   double r_cut_min;
 
-  /*! Potential field */
-#if defined(WITH_MPI) && defined(HAVE_MPI_FFTW)
-  hashmap_t *potential;
-#else
-  double *potential;
+  /*! Full N*N*N potential field */
+  double *potential_global;
+
+  /*! Local part of the potential field (only used if distributed_mesh=1) */
+  hashmap_t *potential_local;
+
 #endif
 };
 
