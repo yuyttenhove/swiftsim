@@ -305,7 +305,7 @@ void mesh_to_gparts_CIC(struct gpart* gp, const struct pm_mesh* mesh, const int 
   /* This includes box-wrapping in all 3 dimensions. */
   double phi[6][6][6];
   if(mesh->distributed_mesh) {
-    const hashmap_t *pot = mesh->potential_local;
+    hashmap_t *pot = mesh->potential_local;
     for (int iii = -2; iii <= 3; ++iii) {
       for (int jjj = -2; jjj <= 3; ++jjj) {
         for (int kkk = -2; kkk <= 3; ++kkk) {
@@ -514,29 +514,6 @@ void mesh_apply_Green_function(struct threadpool* tp, fftw_complex* frho,
 
 #endif
 
-
-/**
- * @brief Compute the potential, including periodic correction on the mesh.
- *
- * Interpolates the top-level multipoles on-to a mesh, move to Fourier space,
- * compute the potential including short-range correction and move back
- * to real space. We use CIC for the interpolation.
- *
- * Note that there is no multiplication by G_newton at this stage.
- *
- * @param mesh The #pm_mesh used to store the potential.
- * @param s The #space containing the particles.
- * @param tp The #threadpool object used for parallelisation.
- * @param verbose Are we talkative?
- */
-void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
-                               struct threadpool* tp, const int verbose) {
-  if(mesh->distributed_mesh) {
-    compute_potential_distributed(mesh, s, tp, verbose);
-  } else {
-    compute_potential_global(mesh, s, tp, verbose);    
-  }
-}
 
 /**
  * @brief Compute the potential, including periodic correction on the mesh.
@@ -817,6 +794,30 @@ void compute_potential_global(struct pm_mesh* mesh, const struct space* s,
 #else
   error("No FFTW library found. Cannot compute periodic long-range forces.");
 #endif
+}
+
+
+/**
+ * @brief Compute the potential, including periodic correction on the mesh.
+ *
+ * Interpolates the top-level multipoles on-to a mesh, move to Fourier space,
+ * compute the potential including short-range correction and move back
+ * to real space. We use CIC for the interpolation.
+ *
+ * Note that there is no multiplication by G_newton at this stage.
+ *
+ * @param mesh The #pm_mesh used to store the potential.
+ * @param s The #space containing the particles.
+ * @param tp The #threadpool object used for parallelisation.
+ * @param verbose Are we talkative?
+ */
+void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
+                               struct threadpool* tp, const int verbose) {
+  if(mesh->distributed_mesh) {
+    compute_potential_distributed(mesh, s, tp, verbose);
+  } else {
+    compute_potential_global(mesh, s, tp, verbose);    
+  }
 }
 
 

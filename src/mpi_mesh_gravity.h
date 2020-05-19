@@ -27,8 +27,6 @@
 #include "hashmap.h"
 #include "space.h"
 
-#if defined(WITH_MPI) && defined(HAVE_MPI_FFTW)
-
 /**
  * @brief Returns 1D index of a FFTW-padded 3D NxNxN array using row-major style.
  *
@@ -92,6 +90,9 @@ get_index_in_local_slice(const size_t id, const int N, const int slice_offset) {
   const size_t Nk = 2*(N/2+1);
   return id - ((size_t) slice_offset)*Nj*Nk;
 }
+
+
+#if defined(WITH_MPI) && defined(HAVE_MPI_FFTW)
 
 /**
  * @brief Accumulate local contributions to the density field
