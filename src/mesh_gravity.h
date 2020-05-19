@@ -72,7 +72,6 @@ struct pm_mesh {
   /*! Local part of the potential field (only used if distributed_mesh=1) */
   hashmap_t *potential_local;
 
-#endif
 };
 
 void pm_mesh_init(struct pm_mesh *mesh, const struct gravity_props *props,
