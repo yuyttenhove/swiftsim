@@ -603,7 +603,6 @@ void mpi_mesh_fetch_potential(const int N, const double fac,
     const size_t Ns = N;
     if(send_cells[i].key >= Ns*Ns*(2*(Ns/2+1)))error("Received potential mesh cell ID out of range");
 #endif
-    hashmap_put(potential_map, send_cells[i].key, *value);
   }
 
   /* Tidy up */
