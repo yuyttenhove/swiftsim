@@ -48,7 +48,7 @@
  * @param key Which hash key to update.
  * @param m_add Amount by which to increment the value in the hash map.
  */
-__attribute__((always_inline, const)) INLINE static void add_to_hashmap(
+__attribute__((always_inline)) INLINE static void add_to_hashmap(
     hashmap_t *map, hashmap_key_t key, double m_add) {
 
   int created = 0;
