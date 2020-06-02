@@ -571,7 +571,7 @@ void mpi_mesh_fetch_potential(const int N, const double fac,
                    sizeof(struct mesh_key_value));
   
   /* Look up potential in the requested cells */
-  for(int i=0; i<nr_recv_tot; i+=1) {
+  for(size_t i=0; i<nr_recv_tot; i+=1) {
 #ifdef SWIFT_DEBUG_CHECKS
     const size_t cells_in_slab  = ((size_t) N)*(2*(N/2+1));
     const size_t first_local_id = local_0_start*cells_in_slab;
