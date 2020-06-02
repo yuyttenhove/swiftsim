@@ -505,9 +505,8 @@ void mpi_mesh_fetch_potential(const int N, const double fac,
           for(int k=ixmin[2]; k<=ixmax[2]; k+=1) {
             const size_t index = row_major_id_periodic_size_t_padded(i, j, k, N);
             /* We don't have a value associated with the entry yet */
-            hashmap_value_t value;
-            value.value_dbl = 0.0;
-            hashmap_put(&map, (hashmap_key_t) index, value);
+	    hashmap_value_t *value = hashmap_get(potential_map, (hashmap_key_t) index);
+	    value->value_dbl = 0.0;
           }
         }
       }
@@ -595,13 +594,16 @@ void mpi_mesh_fetch_potential(const int N, const double fac,
 
   /* Store the results in the hashmap */
   for(size_t i=0; i<nr_send_tot; i+=1) {
-    hashmap_value_t value;
-    value.value_dbl = send_cells[i].value;
+    int created = 0;
+    hashmap_value_t *value = hashmap_get_new(potential_map, send_cells[i].value,
+					     &created);
+    value->value_dbl = send_cells[i].value;
 #ifdef SWIFT_DEBUG_CHECKS
+    if(!created)error("Received duplicate potential hash map value");
     const size_t Ns = N;
     if(send_cells[i].key >= Ns*Ns*(2*(Ns/2+1)))error("Received potential mesh cell ID out of range");
 #endif
-    hashmap_put(potential_map, send_cells[i].key, value);
+    hashmap_put(potential_map, send_cells[i].key, *value);
   }
 
   /* Tidy up */
