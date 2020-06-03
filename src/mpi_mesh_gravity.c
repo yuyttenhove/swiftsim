@@ -62,6 +62,135 @@ __attribute__((always_inline)) INLINE static void add_to_hashmap(
   }
 }
 
+
+/**
+ * @brief Increment a value in the specified local mesh, which corresponds
+ * to a small patch of the global FFT mesh.
+ *
+ * @param mesh Pointer to the local mesh array
+ * @param mesh_min Minimum coordinates of the local mesh in the global mesh
+ * @param mesh_size Size of the local mesh in each dimension
+ * @param i global x coordinate of element to increment
+ * @param j global y coordinate of element to increment
+ * @param k global z coordinate of element to increment
+ * @param mass Amount by which to increment the element
+ *
+ */
+__attribute__((always_inline)) INLINE static void add_to_local_mesh(
+      double *mesh, int *mesh_min, int *mesh_size, int i, int j, int k, double mass) {
+
+  const int ilocal = i - mesh_min[0];
+  const int jlocal = j - mesh_min[1];
+  const int klocal = k - mesh_min[2];
+  /* #ifdef SWIFT_DEBUG_CHECKS */
+  if(ilocal < 0 || ilocal >= mesh_size[0])error("Coordinate in local mesh out of range!");
+  if(jlocal < 0 || jlocal >= mesh_size[1])error("Coordinate in local mesh out of range!");
+  if(klocal < 0 || klocal >= mesh_size[2])error("Coordinate in local mesh out of range!");
+  /* #endif */
+  const int index = (ilocal*mesh_size[1]*mesh_size[2]) + (jlocal*mesh_size[2]) + klocal;
+  mesh[index] += mass;
+}
+
+
+/**
+ * @brief Accumulate contributions from cell to density field
+ *
+ * Allocates a temporary mesh which covers the top level cell,
+ * accumulates density contributions to this mesh, and then
+ * adds these contributions to the supplied hashmap.
+ *
+ * Here we assume that particle coordinates are never more than
+ * half the cell width outside their cell.
+ *
+ * @param N The size of the mesh
+ * @param fac Inverse of the cell size
+ * @param c The #cell containing the particles.
+ * @param map The hashmap in which to store the results
+ *
+ */
+void accumulate_cell_to_hashmap(const int N, const double fac,
+				const struct space *s, const struct cell *cell,
+				hashmap_t *map) {
+
+  const double dim[3] = {s->dim[0], s->dim[1], s->dim[2]};
+
+  /* Determine extent of the part of the mesh we're updating */
+  int mesh_min[3];
+  int mesh_max[3];
+  int mesh_size[3];
+  int mesh_num_cells = 1;
+  for(int i=0; i<3; i+=1) {
+    mesh_min[i] = floor((cell->loc[i]-0.5*cell->width[i])*fac) - 1;
+    mesh_max[i] = floor((cell->loc[i]+1.5*cell->width[i])*fac) + 1;
+    mesh_size[i] = mesh_max[i] - mesh_min[i] + 1;
+    mesh_num_cells *= mesh_size[i];
+  }
+  
+  /* Allocate the local mesh */
+  double *mesh = malloc(mesh_num_cells*sizeof(double));
+  for(int i=0; i<mesh_num_cells; i+=1)
+    mesh[i] = 0.0;
+
+  /* Need to wrap particles to position nearest the cell centre */
+  double wrap_min[3];
+  double wrap_max[3];
+  for(int i=0; i<3; i+=1) {
+    wrap_min[i] = cell->loc[i] + 0.5*cell->width[i] - 0.5*dim[i];
+    wrap_max[i] = cell->loc[i] + 0.5*cell->width[i] + 0.5*dim[i];
+  }
+
+  /* Loop over particles in this cell */
+  for (int ipart = 0; ipart < cell->grav.count; ipart += 1) {
+
+    struct gpart *gp = &(cell->grav.parts[ipart]);
+
+    /* Box wrap the multipole's position to the copy nearest the cell centre */
+    const double pos_x = box_wrap(gp->x[0], wrap_min[0], wrap_max[0]);
+    const double pos_y = box_wrap(gp->x[1], wrap_min[1], wrap_max[1]);
+    const double pos_z = box_wrap(gp->x[2], wrap_min[2], wrap_max[2]);
+
+    /* Workout the CIC coefficients */
+    int i = (int) floor(fac * pos_x);
+    const double dx = fac * pos_x - i;
+    const double tx = 1. - dx;
+
+    int j = (int) floor(fac * pos_y);
+    const double dy = fac * pos_y - j;
+    const double ty = 1. - dy;
+    
+    int k = (int) floor(fac * pos_z);
+    const double dz = fac * pos_z - k;
+    const double tz = 1. - dz;
+
+    /* Accumulate contributions to the local mesh */
+    const double mass = gp->mass;
+    add_to_local_mesh(mesh, mesh_min, mesh_size, i + 0, j + 0, k + 0, mass * tx * ty * tz);
+    add_to_local_mesh(mesh, mesh_min, mesh_size, i + 0, j + 0, k + 1, mass * tx * ty * dz);
+    add_to_local_mesh(mesh, mesh_min, mesh_size, i + 0, j + 1, k + 0, mass * tx * dy * tz);
+    add_to_local_mesh(mesh, mesh_min, mesh_size, i + 0, j + 1, k + 1, mass * tx * dy * dz);
+    add_to_local_mesh(mesh, mesh_min, mesh_size, i + 1, j + 0, k + 0, mass * dx * ty * tz);
+    add_to_local_mesh(mesh, mesh_min, mesh_size, i + 1, j + 0, k + 1, mass * dx * ty * dz);
+    add_to_local_mesh(mesh, mesh_min, mesh_size, i + 1, j + 1, k + 0, mass * dx * dy * tz);
+    add_to_local_mesh(mesh, mesh_min, mesh_size, i + 1, j + 1, k + 1, mass * dx * dy * dz);   
+  }
+
+  /* Add contributions from the local mesh to the hashmap */
+  for(int i=0; i<mesh_size[0]; i+=1) {
+    for(int j=0; j<mesh_size[1]; j+=1) {
+      for(int k=0; k<mesh_size[2]; k+=1) {
+	const int local_index = (i*mesh_size[1]*mesh_size[2]) + (j*mesh_size[2]) + k;
+	const size_t global_index = row_major_id_periodic_size_t_padded(i+mesh_min[0], j+mesh_min[1], k+mesh_min[2], N);
+	add_to_hashmap(map, global_index, mesh[local_index]);
+      }
+    }
+  }
+  
+  /* Done*/
+  free(mesh);
+}
+
+
+
 /**
  * @brief Accumulate local contributions to the density field
  *
@@ -81,83 +210,14 @@ __attribute__((always_inline)) INLINE static void add_to_hashmap(
 void mpi_mesh_accumulate_gparts_to_hashmap(const int N, const double fac,
                                            const struct space *s, hashmap_t *map) {
 
-  const double dim[3] = {s->dim[0], s->dim[1], s->dim[2]};
   const int *local_cells = s->local_cells_top;
   const int nr_local_cells = s->nr_local_cells;
 
-  /* Loop over local cells */
+  /* Loop over local cells and add contributions */
   for (int icell = 0; icell < nr_local_cells; icell += 1) {
-    /* Get a pointer to this cell */
     struct cell *cell = &(s->cells_top[local_cells[icell]]);
-    /* Loop over particles in this cell */
-    for (int ipart = 0; ipart < cell->grav.count; ipart += 1) {
-
-      struct gpart *gp = &(cell->grav.parts[ipart]);
-
-      /* Box wrap the multipole's position */
-      const double pos_x = box_wrap(gp->x[0], 0., dim[0]);
-      const double pos_y = box_wrap(gp->x[1], 0., dim[1]);
-      const double pos_z = box_wrap(gp->x[2], 0., dim[2]);
-
-      /* Workout the CIC coefficients */
-      int i = (int)(fac * pos_x);
-      if (i >= N) i = N - 1;
-      const double dx = fac * pos_x - i;
-      const double tx = 1. - dx;
-
-      int j = (int)(fac * pos_y);
-      if (j >= N) j = N - 1;
-      const double dy = fac * pos_y - j;
-      const double ty = 1. - dy;
-
-      int k = (int)(fac * pos_z);
-      if (k >= N) k = N - 1;
-      const double dz = fac * pos_z - k;
-      const double tz = 1. - dz;
-
-#ifdef SWIFT_DEBUG_CHECKS
-      if (i < 0 || i >= N) error("Invalid gpart position in x");
-      if (j < 0 || j >= N) error("Invalid gpart position in y");
-      if (k < 0 || k >= N) error("Invalid gpart position in z");
-#endif
-
-      /* Accumulate contributions to the hashmap */
-      const double mass = gp->mass;
-      add_to_hashmap(
-          map,
-          (hashmap_key_t)row_major_id_periodic_size_t_padded(i + 0, j + 0, k + 0, N),
-          mass * tx * ty * tz);
-      add_to_hashmap(
-          map,
-          (hashmap_key_t)row_major_id_periodic_size_t_padded(i + 0, j + 0, k + 1, N),
-          mass * tx * ty * dz);
-      add_to_hashmap(
-          map,
-          (hashmap_key_t)row_major_id_periodic_size_t_padded(i + 0, j + 1, k + 0, N),
-          mass * tx * dy * tz);
-      add_to_hashmap(
-          map,
-          (hashmap_key_t)row_major_id_periodic_size_t_padded(i + 0, j + 1, k + 1, N),
-          mass * tx * dy * dz);
-      add_to_hashmap(
-          map,
-          (hashmap_key_t)row_major_id_periodic_size_t_padded(i + 1, j + 0, k + 0, N),
-          mass * dx * ty * tz);
-      add_to_hashmap(
-          map,
-          (hashmap_key_t)row_major_id_periodic_size_t_padded(i + 1, j + 0, k + 1, N),
-          mass * dx * ty * dz);
-      add_to_hashmap(
-          map,
-          (hashmap_key_t)row_major_id_periodic_size_t_padded(i + 1, j + 1, k + 0, N),
-          mass * dx * dy * tz);
-      add_to_hashmap(
-          map,
-          (hashmap_key_t)row_major_id_periodic_size_t_padded(i + 1, j + 1, k + 1, N),
-          mass * dx * dy * dz);
-
-    } /* Next particle */
-  }   /* Next cell */
+    accumulate_cell_to_hashmap(N, fac, s, cell, map);
+  }   
 
   return;
 }
