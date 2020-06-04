@@ -106,10 +106,8 @@ __attribute__((always_inline)) INLINE static void add_to_local_mesh(
  *
  */
 void accumulate_cell_to_hashmap(const int N, const double fac,
-				const struct space *s, const struct cell *cell,
+				const double *dim, const struct cell *cell,
 				hashmap_t *map) {
-
-  const double dim[3] = {s->dim[0], s->dim[1], s->dim[2]};
 
   /* If the cell is empty, then there's nothing to do
      (and the code to find the extent of the cell would fail) */
@@ -229,11 +227,12 @@ void mpi_mesh_accumulate_gparts_to_hashmap(const int N, const double fac,
 
   const int *local_cells = s->local_cells_top;
   const int nr_local_cells = s->nr_local_cells;
+  const double dim[3] = {s->dim[0], s->dim[1], s->dim[2]};
 
   /* Loop over local cells and add contributions */
   for (int icell = 0; icell < nr_local_cells; icell += 1) {
     struct cell *cell = &(s->cells_top[local_cells[icell]]);
-    accumulate_cell_to_hashmap(N, fac, s, cell, map);
+    accumulate_cell_to_hashmap(N, fac, dim, cell, map);
   }   
 
   return;
