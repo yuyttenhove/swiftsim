@@ -192,18 +192,22 @@ void accumulate_cell_to_hashmap(const int N, const double fac,
     add_to_local_mesh(mesh, mesh_min, mesh_size, i + 1, j + 1, k + 1, mass * dx * dy * dz);   
   }
 
-  /* Add contributions from the local mesh to the hashmap */
+  /* Add contributions from the local mesh to the hashmap.
+   * Need to use a lock here because the hashmap can't be modified
+   * by more than one thread at a time. Keeping the lock while we
+   * do all our updates seems to be a bit faster than unlocking
+   * after each one (in one test case at least) */
+  lock_lock(lock);
   for(int i=0; i<mesh_size[0]; i+=1) {
     for(int j=0; j<mesh_size[1]; j+=1) {
       for(int k=0; k<mesh_size[2]; k+=1) {
 	const int local_index = (i*mesh_size[1]*mesh_size[2]) + (j*mesh_size[2]) + k;
 	const size_t global_index = row_major_id_periodic_size_t_padded(i+mesh_min[0], j+mesh_min[1], k+mesh_min[2], N);
-        lock_lock(lock);
 	add_to_hashmap(map, global_index, mesh[local_index]);
-        lock_unlock(lock);
       }
     }
   }
+  lock_unlock(lock);
   
   /* Done*/
   free(mesh);
