@@ -96,11 +96,8 @@ __attribute__((always_inline)) INLINE static void add_to_local_mesh(
  * @brief Accumulate contributions from cell to density field
  *
  * Allocates a temporary mesh which covers the top level cell,
- * accumulates density contributions to this mesh, and then
+ * accumulates mass contributions to this mesh, and then
  * adds these contributions to the supplied hashmap.
- *
- * Here we assume that particle coordinates are never more than
- * half the cell width outside their cell.
  *
  * @param N The size of the mesh
  * @param fac Inverse of the cell size
@@ -114,14 +111,42 @@ void accumulate_cell_to_hashmap(const int N, const double fac,
 
   const double dim[3] = {s->dim[0], s->dim[1], s->dim[2]};
 
-  /* Determine extent of the part of the mesh we're updating */
+  /* If the cell is empty, then there's nothing to do
+     (and the code to find the extent of the cell would fail) */
+  if(cell->grav.count == 0)return;
+
+  /* Will need to wrap particles to position nearest the cell centre */
+  double wrap_min[3];
+  double wrap_max[3];
+  for(int i=0; i<3; i+=1) {
+    wrap_min[i] = cell->loc[i] + 0.5*cell->width[i] - 0.5*dim[i];
+    wrap_max[i] = cell->loc[i] + 0.5*cell->width[i] + 0.5*dim[i];
+  }
+
+  /* Determine the extent of the mesh we need for this cell */
+  double pos_min[3];
+  double pos_max[3];
+  for(int i=0; i<3; i+=1) {
+    pos_min[i] = wrap_max[i];
+    pos_max[i] = wrap_min[i];
+  }
+  for (int ipart = 0; ipart < cell->grav.count; ipart += 1) {
+    struct gpart *gp = &(cell->grav.parts[ipart]);
+    for(int i=0; i<3; i+=1) {
+      const double pos_wrap = box_wrap(gp->x[i], wrap_min[i], wrap_max[i]);
+      if(pos_wrap < pos_min[i])pos_min[i] = pos_wrap;
+      if(pos_wrap > pos_max[i])pos_max[i] = pos_wrap;
+    }
+  }
+
+  /* Determine the integer size and coordinates of the mesh */
   int mesh_min[3];
   int mesh_max[3];
   int mesh_size[3];
   int mesh_num_cells = 1;
   for(int i=0; i<3; i+=1) {
-    mesh_min[i] = floor((cell->loc[i]-0.5*cell->width[i])*fac) - 1;
-    mesh_max[i] = floor((cell->loc[i]+1.5*cell->width[i])*fac) + 1;
+    mesh_min[i] = floor(pos_min[i]*fac) - 1;
+    mesh_max[i] = floor(pos_max[i]*fac) + 1;
     mesh_size[i] = mesh_max[i] - mesh_min[i] + 1;
     mesh_num_cells *= mesh_size[i];
   }
@@ -130,14 +155,6 @@ void accumulate_cell_to_hashmap(const int N, const double fac,
   double *mesh = malloc(mesh_num_cells*sizeof(double));
   for(int i=0; i<mesh_num_cells; i+=1)
     mesh[i] = 0.0;
-
-  /* Need to wrap particles to position nearest the cell centre */
-  double wrap_min[3];
-  double wrap_max[3];
-  for(int i=0; i<3; i+=1) {
-    wrap_min[i] = cell->loc[i] + 0.5*cell->width[i] - 0.5*dim[i];
-    wrap_max[i] = cell->loc[i] + 0.5*cell->width[i] + 0.5*dim[i];
-  }
 
   /* Loop over particles in this cell */
   for (int ipart = 0; ipart < cell->grav.count; ipart += 1) {
