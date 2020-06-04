@@ -100,13 +100,15 @@ get_index_in_local_slice(const size_t id, const int N, const int slice_offset) {
  * Creates a hashmap with the contributions to the density
  * mesh from local particles.
  *
+ * @param tp The threadpool
  * @param N The size of the mesh
  * @param fac Inverse of the cell size
  * @param s The #space containing the particles.
  * @param map The hashmap in which to store the results
  *
  */
-void mpi_mesh_accumulate_gparts_to_hashmap(const int N, const double fac,
+void mpi_mesh_accumulate_gparts_to_hashmap(struct threadpool* tp,
+                                           const int N, const double fac,
                                            const struct space *s, hashmap_t *map);
 
 /**

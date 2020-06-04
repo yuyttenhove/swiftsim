@@ -557,7 +557,7 @@ void compute_potential_distributed(struct pm_mesh* mesh, const struct space* s,
   /* Calculate contributions to density field on this MPI rank */
   hashmap_t rho_map;
   hashmap_init(&rho_map);
-  mpi_mesh_accumulate_gparts_to_hashmap(N, cell_fac, s, &rho_map);
+  mpi_mesh_accumulate_gparts_to_hashmap(tp, N, cell_fac, s, &rho_map);
   if(verbose)message("Accumulating mass to hashmap took %.3f %s.",
                      clocks_from_ticks(getticks() - tic), clocks_getunit());
 

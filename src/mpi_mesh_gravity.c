@@ -34,6 +34,8 @@
 #include "error.h"
 #include "part.h"
 #include "space.h"
+#include "lock.h"
+#include "threadpool.h"
 
 #if defined(WITH_MPI) && defined(HAVE_MPI_FFTW)
 
@@ -103,11 +105,12 @@ __attribute__((always_inline)) INLINE static void add_to_local_mesh(
  * @param fac Inverse of the cell size
  * @param c The #cell containing the particles.
  * @param map The hashmap in which to store the results
+ * @param lock A lock used to prevent concurrent access to map
  *
  */
 void accumulate_cell_to_hashmap(const int N, const double fac,
 				const double *dim, const struct cell *cell,
-				hashmap_t *map) {
+				hashmap_t *map, swift_lock_type *lock) {
 
   /* If the cell is empty, then there's nothing to do
      (and the code to find the extent of the cell would fail) */
@@ -195,7 +198,9 @@ void accumulate_cell_to_hashmap(const int N, const double fac,
       for(int k=0; k<mesh_size[2]; k+=1) {
 	const int local_index = (i*mesh_size[1]*mesh_size[2]) + (j*mesh_size[2]) + k;
 	const size_t global_index = row_major_id_periodic_size_t_padded(i+mesh_min[0], j+mesh_min[1], k+mesh_min[2], N);
+        lock_lock(lock);
 	add_to_hashmap(map, global_index, mesh[local_index]);
+        lock_unlock(lock);
       }
     }
   }
@@ -205,6 +210,52 @@ void accumulate_cell_to_hashmap(const int N, const double fac,
 }
 
 
+/**
+ * @brief Shared information about the mesh to be used by all the threads in the
+ * pool.
+ */
+struct accumulate_mapper_data {
+  const struct cell* cells;
+  int N;
+  double fac;
+  double dim[3];
+  hashmap_t *map;
+  swift_lock_type *lock;
+};
+
+
+/**
+ * @brief Threadpool mapper function for the mesh CIC assignment of a cell.
+ *
+ * @param map_data A chunk of the list of local cells.
+ * @param num The number of cells in the chunk.
+ * @param extra The information about the mesh and cells.
+ */
+void accumulate_cell_to_hashmap_mapper(void* map_data, int num, void* extra) {
+
+  /* Unpack the shared information */
+  const struct accumulate_mapper_data* data = (struct accumulate_mapper_data*)extra;
+  const struct cell* cells = data->cells;
+  const int N = data->N;
+  const double fac = data->fac;
+  const double dim[3] = {data->dim[0], data->dim[1], data->dim[2]};
+  hashmap_t *map = data->map;
+  swift_lock_type *lock = data->lock;
+  
+  /* Pointer to the chunk to be processed */
+  int* local_cells = (int*)map_data;
+
+  /* Loop over the elements assigned to this thread */
+  for (int i = 0; i < num; ++i) {
+
+    /* Pointer to local cell */
+    const struct cell* c = &cells[local_cells[i]];
+
+    /* Assign this cell's content to the mesh */
+    accumulate_cell_to_hashmap(N, fac, dim, c, map, lock);
+  }
+}
+
 
 /**
  * @brief Accumulate local contributions to the density field
@@ -213,27 +264,42 @@ void accumulate_cell_to_hashmap(const int N, const double fac,
  * mesh from local particles. Here we require that hash_key_t
  * can store values up to at least N*N*N.
  *
- * TODO: parallelize. E.g. one hashmap per thread and combine
- * when done.
- *
  * @param N The size of the mesh
  * @param fac Inverse of the cell size
  * @param s The #space containing the particles.
  * @param map The hashmap in which to store the results
  *
  */
-void mpi_mesh_accumulate_gparts_to_hashmap(const int N, const double fac,
+void mpi_mesh_accumulate_gparts_to_hashmap(struct threadpool* tp,
+                                           const int N, const double fac,
                                            const struct space *s, hashmap_t *map) {
 
   const int *local_cells = s->local_cells_top;
   const int nr_local_cells = s->nr_local_cells;
   const double dim[3] = {s->dim[0], s->dim[1], s->dim[2]};
 
-  /* Loop over local cells and add contributions */
-  for (int icell = 0; icell < nr_local_cells; icell += 1) {
-    struct cell *cell = &(s->cells_top[local_cells[icell]]);
-    accumulate_cell_to_hashmap(N, fac, dim, cell, map);
-  }   
+  /* \* Serial implementation: loop over local cells and add contributions *\/ */
+  /* for (int icell = 0; icell < nr_local_cells; icell += 1) { */
+  /*   struct cell *cell = &(s->cells_top[local_cells[icell]]); */
+  /*   accumulate_cell_to_hashmap(N, fac, dim, cell, map); */
+  /* } */
+
+  /* Use the threadpool to parallelize over cells */
+  struct accumulate_mapper_data data;
+  data.cells = s->cells_top;
+  data.N = N;
+  data.fac = fac;
+  data.dim[0] = dim[0];
+  data.dim[1] = dim[1];
+  data.dim[2] = dim[2];
+  data.map = map;
+  swift_lock_type lock;
+  lock_init(&lock);
+  data.lock = &lock;
+  threadpool_map(tp, accumulate_cell_to_hashmap_mapper, (void*)local_cells,
+                 nr_local_cells, sizeof(int), threadpool_auto_chunk_size,
+                 (void*)&data);
+  lock_destroy(&lock);
 
   return;
 }
