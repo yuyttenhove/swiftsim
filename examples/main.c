@@ -106,6 +106,7 @@ int main(int argc, char *argv[]) {
   struct spart *sparts = NULL;
   struct bpart *bparts = NULL;
   struct unit_system us;
+  struct los_props los_properties;
 
   int nr_nodes = 1, myrank = 0;
 
@@ -173,6 +174,7 @@ int main(int argc, char *argv[]) {
   int with_qla = 0;
   int with_eagle = 0;
   int with_gear = 0;
+  int with_line_of_sight = 0;
   int verbose = 0;
   int nr_threads = 1;
   int with_verbose_timers = 0;
@@ -224,6 +226,8 @@ int main(int argc, char *argv[]) {
           NULL, 0, 0),
       OPT_BOOLEAN('x', "velociraptor", &with_structure_finding,
                   "Run with structure finding.", NULL, 0, 0),
+      OPT_BOOLEAN(0, "line-of-sight", &with_line_of_sight,
+                  "Run with line-of-sight outputs.", NULL, 0, 0),
       OPT_BOOLEAN(0, "limiter", &with_timestep_limiter,
                   "Run with time-step limiter.", NULL, 0, 0),
       OPT_BOOLEAN(0, "sync", &with_timestep_sync,
@@ -342,7 +346,7 @@ int main(int argc, char *argv[]) {
 
   /* Write output parameter file */
   if (myrank == 0 && output_parameters_filename != NULL) {
-    io_write_output_field_parameter(output_parameters_filename);
+    io_write_output_field_parameter(output_parameters_filename, with_cosmology);
     printf("End of run.\n");
     return 0;
   }
@@ -514,6 +518,16 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
+  if (!with_hydro && with_line_of_sight) {
+    if (myrank == 0) {
+      argparse_usage(&argparse);
+      printf(
+          "\nError: Cannot use line-of-sight outputs without gas, --hydro must "
+          "be chosen.\n");
+    }
+    return 1;
+  }
+
 /* Let's pin the main thread, now we know if affinity will be used. */
 #if defined(HAVE_SETAFFINITY) && defined(HAVE_LIBNUMA) && defined(_GNU_SOURCE)
   if (with_aff &&
@@ -616,10 +630,19 @@ int main(int argc, char *argv[]) {
         parser_set_param(params, cmdps.param[k]);
     }
   }
+
 #ifdef WITH_MPI
   /* Broadcast the parameter file */
   MPI_Bcast(params, sizeof(struct swift_params), MPI_BYTE, 0, MPI_COMM_WORLD);
 #endif
+
+  /* Read the provided output selection file, if available. Best to
+   * do this after broadcasting the parameters as there may be code in this
+   * function that is repeated on each node based on the parameter file. */
+
+  struct output_options *output_options =
+      (struct output_options *)malloc(sizeof(struct output_options));
+  output_options_init(params, myrank, output_options);
 
   /* Temporary early aborts for modes not supported over MPI. */
 #ifdef WITH_MPI
@@ -652,6 +675,18 @@ int main(int argc, char *argv[]) {
     const char *stfdirp = dirname(stfbasename);
     if (access(stfdirp, W_OK | X_OK) != 0) {
       error("Cannot write stf catalogues in directory %s (%s)", stfdirp,
+            strerror(errno));
+    }
+  }
+
+  /* Check that we can write the line of sight files by testing if the
+   * output directory exists and is searchable and writable. */
+  if (with_line_of_sight) {
+    char losbasename[PARSER_MAX_LINE_SIZE];
+    parser_get_param_string(params, "LineOfSight:basename", losbasename);
+    const char *losdirp = dirname(losbasename);
+    if (access(losdirp, W_OK | X_OK) != 0) {
+      error("Cannot write line of sight in directory %s (%s)", losdirp,
             strerror(errno));
     }
   }
@@ -1053,15 +1088,15 @@ int main(int argc, char *argv[]) {
     const int with_DM_background_particles =
         N_total[swift_type_dark_matter_background] > 0;
 
-    /* Verify that the fields to dump actually exist */
-    if (myrank == 0) io_check_output_fields(params, N_total);
-
     /* Initialize the space with these data. */
     if (myrank == 0) clocks_gettime(&tic);
     space_init(&s, params, &cosmo, dim, parts, gparts, sparts, bparts, Ngas,
                Ngpart, Nspart, Nbpart, periodic, replicate, generate_gas_in_ics,
                with_hydro, with_self_gravity, with_star_formation,
                with_DM_background_particles, talking, dry_run, nr_nodes);
+
+    /* Initialise the line of sight properties. */
+    if (with_line_of_sight) los_init(s.dim, &los_properties, params);
 
     if (myrank == 0) {
       clocks_gettime(&toc);
@@ -1121,6 +1156,12 @@ int main(int argc, char *argv[]) {
     N_total[swift_type_stars] = s.nr_sparts;
     N_total[swift_type_black_hole] = s.nr_bparts;
 #endif
+
+    /* Verify that the fields to dump actually exist - this must be done after
+     * space_init so we know whether or not we have gas particles. */
+    if (myrank == 0)
+      io_check_output_fields(output_options->select_output, N_total,
+                             with_cosmology);
 
     /* Say a few nice things about the space we just created. */
     if (myrank == 0) {
@@ -1186,17 +1227,19 @@ int main(int argc, char *argv[]) {
       engine_policies |= engine_policy_structure_finding;
     if (with_fof) engine_policies |= engine_policy_fof;
     if (with_logger) engine_policies |= engine_policy_logger;
+    if (with_line_of_sight) engine_policies |= engine_policy_line_of_sight;
 
     /* Initialize the engine with the space and policies. */
     if (myrank == 0) clocks_gettime(&tic);
-    engine_init(
-        &e, &s, params, N_total[swift_type_gas], N_total[swift_type_count],
-        N_total[swift_type_stars], N_total[swift_type_black_hole],
-        N_total[swift_type_dark_matter_background], engine_policies, talking,
-        &reparttype, &us, &prog_const, &cosmo, &hydro_properties,
-        &entropy_floor, &gravity_properties, &stars_properties,
-        &black_holes_properties, &feedback_properties, &mesh, &potential,
-        &cooling_func, &starform, &chemistry, &fof_properties);
+    engine_init(&e, &s, params, output_options, N_total[swift_type_gas],
+                N_total[swift_type_count], N_total[swift_type_stars],
+                N_total[swift_type_black_hole],
+                N_total[swift_type_dark_matter_background], engine_policies,
+                talking, &reparttype, &us, &prog_const, &cosmo,
+                &hydro_properties, &entropy_floor, &gravity_properties,
+                &stars_properties, &black_holes_properties,
+                &feedback_properties, &mesh, &potential, &cooling_func,
+                &starform, &chemistry, &fof_properties, &los_properties);
     engine_config(/*restart=*/0, /*fof=*/0, &e, params, nr_nodes, myrank,
                   nr_threads, with_aff, talking, restart_file);
 
@@ -1529,6 +1572,7 @@ int main(int argc, char *argv[]) {
   if (with_feedback) feedback_clean(e.feedback_props);
   engine_clean(&e, /*fof=*/0, restart);
   free(params);
+  free(output_options);
 
 #ifdef WITH_MPI
   if ((res = MPI_Finalize()) != MPI_SUCCESS)

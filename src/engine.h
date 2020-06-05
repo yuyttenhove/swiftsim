@@ -38,6 +38,7 @@
 #include "collectgroup.h"
 #include "dump.h"
 #include "mesh_gravity.h"
+#include "output_options.h"
 #include "parser.h"
 #include "partition.h"
 #include "potential.h"
@@ -79,8 +80,9 @@ enum engine_policy {
   engine_policy_timestep_limiter = (1 << 21),
   engine_policy_timestep_sync = (1 << 22),
   engine_policy_logger = (1 << 23),
+  engine_policy_line_of_sight = (1 << 24),
 };
-#define engine_maxpolicy 24
+#define engine_maxpolicy 25
 extern const char *engine_policy_names[engine_maxpolicy + 1];
 
 /**
@@ -454,6 +456,9 @@ struct engine {
   /* The (parsed) parameter file */
   struct swift_params *parameter_file;
 
+  /* The output selection options */
+  struct output_options *output_options;
+
   /* Temporary struct to hold a group of deferable properties (in MPI mode
    * these are reduced together, but may not be required just yet). */
   struct collectgroup1 collect_group1;
@@ -488,6 +493,17 @@ struct engine {
   /* Has there been an stf this timestep? */
   char stf_this_timestep;
 
+  /* Line of sight properties. */
+  struct los_props *los_properties;
+
+  /* Line of sight outputs information. */
+  struct output_list *output_list_los;
+  double a_first_los;
+  double time_first_los;
+  double delta_time_los;
+  integertime_t ti_next_los;
+  int los_output_count;
+
 #ifdef SWIFT_GRAVITY_FORCE_CHECKS
   /* Run brute force checks only on steps when all gparts active? */
   int force_checks_only_all_active;
@@ -510,6 +526,7 @@ void engine_compute_next_snapshot_time(struct engine *e);
 void engine_compute_next_stf_time(struct engine *e);
 void engine_compute_next_fof_time(struct engine *e);
 void engine_compute_next_statistics_time(struct engine *e);
+void engine_compute_next_los_time(struct engine *e);
 void engine_recompute_displacement_constraint(struct engine *e);
 void engine_unskip(struct engine *e);
 void engine_unskip_timestep_communications(struct engine *e);
@@ -524,9 +541,10 @@ void engine_collect_end_of_step(struct engine *e, int apply);
 void engine_dump_snapshot(struct engine *e);
 void engine_init_output_lists(struct engine *e, struct swift_params *params);
 void engine_init(struct engine *e, struct space *s, struct swift_params *params,
-                 long long Ngas, long long Ngparts, long long Nstars,
-                 long long Nblackholes, long long Nbackground_gparts,
-                 int policy, int verbose, struct repartition *reparttype,
+                 struct output_options *output_options, long long Ngas,
+                 long long Ngparts, long long Nstars, long long Nblackholes,
+                 long long Nbackground_gparts, int policy, int verbose,
+                 struct repartition *reparttype,
                  const struct unit_system *internal_units,
                  const struct phys_const *physical_constants,
                  struct cosmology *cosmo, struct hydro_props *hydro,
@@ -538,7 +556,8 @@ void engine_init(struct engine *e, struct space *s, struct swift_params *params,
                  struct cooling_function_data *cooling_func,
                  const struct star_formation *starform,
                  const struct chemistry_global_data *chemistry,
-                 struct fof_props *fof_properties);
+                 struct fof_props *fof_properties,
+                 struct los_props *los_properties);
 void engine_config(int restart, int fof, struct engine *e,
                    struct swift_params *params, int nr_nodes, int nodeID,
                    int nr_threads, int with_aff, int verbose,
