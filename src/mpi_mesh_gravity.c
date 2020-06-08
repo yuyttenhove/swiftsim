@@ -142,6 +142,12 @@ __attribute__((always_inline)) INLINE static void add_to_hashmap(
  *
  */
 __attribute__((always_inline)) INLINE static int local_mesh_index(const int *mesh_size, int i, int j, int k) {
+  /* Probably best to always check this for now... */
+  /* #ifdef SWIFT_DEBUG_CHECKS */
+  if(i < 0 || i >= mesh_size[0])error("Coordinate in local mesh out of range!");
+  if(j < 0 || j >= mesh_size[1])error("Coordinate in local mesh out of range!");
+  if(k < 0 || k >= mesh_size[2])error("Coordinate in local mesh out of range!");
+  /* #endif */
   return (i*mesh_size[1]*mesh_size[2]) + (j*mesh_size[2]) + k;
 }
 
@@ -165,11 +171,6 @@ __attribute__((always_inline)) INLINE static void add_to_local_mesh(
   const int ilocal = i - mesh_min[0];
   const int jlocal = j - mesh_min[1];
   const int klocal = k - mesh_min[2];
-  /* #ifdef SWIFT_DEBUG_CHECKS */
-  if(ilocal < 0 || ilocal >= mesh_size[0])error("Coordinate in local mesh out of range!");
-  if(jlocal < 0 || jlocal >= mesh_size[1])error("Coordinate in local mesh out of range!");
-  if(klocal < 0 || klocal >= mesh_size[2])error("Coordinate in local mesh out of range!");
-  /* #endif */
   const int index = local_mesh_index(mesh_size, ilocal, jlocal, klocal);
   mesh[index] += mass;
 }
@@ -236,7 +237,7 @@ void determine_mesh_size_for_cell(const struct cell *cell, const double fac,
   *num_cells = 1;
   for(int i=0; i<3; i+=1) {
     mesh_min[i] = floor(pos_min[i]*fac) - boundary_size;
-    mesh_max[i] = floor(pos_max[i]*fac) + boundary_size;
+    mesh_max[i] = floor(pos_max[i]*fac) + boundary_size + 1;
     mesh_size[i] = mesh_max[i] - mesh_min[i] + 1;
     (*num_cells) *= mesh_size[i];
   }
