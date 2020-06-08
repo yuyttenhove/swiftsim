@@ -267,7 +267,7 @@ void cell_gpart_to_mesh_CIC_mapper(void* map_data, int num, void* extra) {
  * @param fac width of a mesh cell.
  * @param dim The dimensions of the simulation box.
  */
-void mesh_to_gparts_CIC(struct gpart* gp, const struct pm_mesh* mesh, const int N,
+void mesh_to_gparts_CIC(struct gpart* gp, const double* pot, const int N,
                         const double fac, const double dim[3]) {
 
   /* Box wrap the gpart's position */
@@ -304,12 +304,11 @@ void mesh_to_gparts_CIC(struct gpart* gp, const struct pm_mesh* mesh, const int 
   /* First, copy the necessary part of the mesh for stencil operations */
   /* This includes box-wrapping in all 3 dimensions. */
   double phi[6][6][6];
-  const double *pot = mesh->potential_global;
   for (int iii = -2; iii <= 3; ++iii) {
     for (int jjj = -2; jjj <= 3; ++jjj) {
       for (int kkk = -2; kkk <= 3; ++kkk) {
         phi[iii + 2][jjj + 2][kkk + 2] =
-          pot[row_major_id_periodic(i + iii, j + jjj, k + kkk, N)];
+            pot[row_major_id_periodic(i + iii, j + jjj, k + kkk, N)];
       }
     }
   }
@@ -825,6 +824,7 @@ void interpolate_forces(const struct pm_mesh* mesh,
 
   const int N = mesh->N;
   const double cell_fac = mesh->cell_fac;
+  const double* potential = mesh->potential_global;
   const double dim[3] = {e->s->dim[0], e->s->dim[1], e->s->dim[2]};
 
   /* Get the potential from the mesh to the active gparts using CIC */
@@ -843,7 +843,7 @@ void interpolate_forces(const struct pm_mesh* mesh,
         error("Adding forces to an un-initialised gpart.");
 #endif
 
-      mesh_to_gparts_CIC(gp, mesh, N, cell_fac, dim);
+      mesh_to_gparts_CIC(gp, potential, N, cell_fac, dim);
     }
   }
 #else
