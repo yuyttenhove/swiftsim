@@ -106,6 +106,7 @@ get_index_in_local_slice(const size_t id, const int N, const int slice_offset) {
 }
 #endif /* #if defined(WITH_MPI) && defined(HAVE_MPI_FFTW) */
 
+
 /**
  * @brief Increment the value associated with a hashmap key
  *
@@ -141,7 +142,7 @@ __attribute__((always_inline)) INLINE static void add_to_hashmap(
  * @param k z coordinate within the mesh
  *
  */
-__attribute__((always_inline)) INLINE static int local_mesh_index(const int *mesh_size, int i, int j, int k) {
+__attribute__((always_inline)) INLINE static int local_mesh_index(const int mesh_size[3], int i, int j, int k) {
   /* Probably best to always check this for now... */
   /* #ifdef SWIFT_DEBUG_CHECKS */
   if(i < 0 || i >= mesh_size[0])error("Coordinate in local mesh out of range!");
@@ -166,8 +167,8 @@ __attribute__((always_inline)) INLINE static int local_mesh_index(const int *mes
  *
  */
 __attribute__((always_inline)) INLINE static void add_to_local_mesh(
-      double *mesh, int *mesh_min, int *mesh_size, int i, int j, int k, double mass) {
-
+      double *mesh, const int mesh_min[3], const int mesh_size[3], 
+      int i, int j, int k, double mass) {
   const int ilocal = i - mesh_min[0];
   const int jlocal = j - mesh_min[1];
   const int klocal = k - mesh_min[2];
@@ -204,9 +205,9 @@ __attribute__((always_inline)) INLINE static void add_to_local_mesh(
  *
  */
 void determine_mesh_size_for_cell(const struct cell *cell, const double fac,
-                                  const double *dim, int boundary_size,
-                                  double *wrap_min, double *wrap_max, 
-                                  int *mesh_min, int *mesh_size, int *num_cells) {
+                                  const double dim[3], int boundary_size,
+                                  double wrap_min[3], double wrap_max[3], 
+                                  int mesh_min[3], int mesh_size[3], int *num_cells) {
   
   const int gcount = cell->grav.count;
   const struct gpart *gp = cell->grav.parts;
@@ -919,7 +920,7 @@ void mpi_mesh_fetch_potential(const int N, const double fac,
  */
 #if defined(WITH_MPI) && defined(HAVE_MPI_FFTW)
 __attribute__((always_inline, const)) INLINE static double local_mesh_CIC_get(
-    const double *mesh, const int *mesh_size, const int i, const int j, const int k,
+    const double *mesh, const int mesh_size[3], const int i, const int j, const int k,
     const double tx, const double ty, const double tz, const double dx,
     const double dy, const double dz) {
   double temp;
@@ -934,6 +935,94 @@ __attribute__((always_inline, const)) INLINE static double local_mesh_CIC_get(
   return temp;
 }
 #endif
+
+
+/**
+ * @brief Computes the potential on a gpart from a given mesh using the CIC
+ * method.
+ *
+ * @param gp The #gpart.
+ * @param mesh The local potential mesh covering the cell
+ * @param mesh_size The size of mesh in each dimension
+ * @param N the size of the mesh along one axis.
+ * @param fac width of a mesh cell.
+ * @param dim The dimensions of the simulation box.
+ * @param wrap_min Minimum coordinates of range into which
+ * particles must be wrapped
+ * @param wrap_min Maximum coordinates of range into which
+ * particles must be wrapped
+ */
+#if defined(WITH_MPI) && defined(HAVE_MPI_FFTW)
+void local_mesh_to_gparts_CIC(struct gpart *gp, const double *mesh,
+                              const int mesh_size[3], const int mesh_min[3],
+                              const int N, const double fac, const double dim[3],
+                              const double wrap_min[3], const double wrap_max[3]) {
+
+  /* Box wrap the gpart's position */
+  const double pos_x = box_wrap(gp->x[0], wrap_min[0], wrap_max[0]);
+  const double pos_y = box_wrap(gp->x[1], wrap_min[1], wrap_max[1]);
+  const double pos_z = box_wrap(gp->x[2], wrap_min[2], wrap_max[2]);
+
+  /* Workout the CIC coefficients */
+  int i = (int) floor(fac * pos_x);
+  const double dx = fac * pos_x - i;
+  const double tx = 1. - dx;
+
+  int j = (int) floor(fac * pos_y);
+  const double dy = fac * pos_y - j;
+  const double ty = 1. - dy;
+    
+  int k = (int) floor(fac * pos_z);
+  const double dz = fac * pos_z - k;
+  const double tz = 1. - dz;
+
+#ifdef SWIFT_GRAVITY_FORCE_CHECKS
+  if (gp->a_grav_PM[0] != 0. || gp->potential_PM != 0.)
+    error("Particle with non-initalised stuff");
+#endif
+  
+  /* Some local accumulators */
+  double p = 0.;
+  double a[3] = {0.};
+
+  /* Indices of (i,j,k) in the local copy of the mesh */
+  const int ii = i - mesh_min[0];
+  const int jj = j - mesh_min[1];
+  const int kk = k - mesh_min[2];
+
+  /* Simple CIC for the potential itself */
+  p += local_mesh_CIC_get(mesh, mesh_size, ii, jj, kk, tx, ty, tz, dx, dy, dz);
+
+  /* 5-point stencil along each axis for the accelerations */
+  a[0] += (1. / 12.) * local_mesh_CIC_get(mesh, mesh_size, ii + 2, jj, kk, tx, ty, tz, dx, dy, dz);
+  a[0] -= (2. / 3.)  * local_mesh_CIC_get(mesh, mesh_size, ii + 1, jj, kk, tx, ty, tz, dx, dy, dz);
+  a[0] += (2. / 3.)  * local_mesh_CIC_get(mesh, mesh_size, ii - 1, jj, kk, tx, ty, tz, dx, dy, dz);
+  a[0] -= (1. / 12.) * local_mesh_CIC_get(mesh, mesh_size, ii - 2, jj, kk, tx, ty, tz, dx, dy, dz);
+  
+  a[1] += (1. / 12.) * local_mesh_CIC_get(mesh, mesh_size, ii, jj + 2, kk, tx, ty, tz, dx, dy, dz);
+  a[1] -= (2. / 3.)  * local_mesh_CIC_get(mesh, mesh_size, ii, jj + 1, kk, tx, ty, tz, dx, dy, dz);
+  a[1] += (2. / 3.)  * local_mesh_CIC_get(mesh, mesh_size, ii, jj - 1, kk, tx, ty, tz, dx, dy, dz);
+  a[1] -= (1. / 12.) * local_mesh_CIC_get(mesh, mesh_size, ii, jj - 2, kk, tx, ty, tz, dx, dy, dz);
+  
+  a[2] += (1. / 12.) * local_mesh_CIC_get(mesh, mesh_size, ii, jj, kk + 2, tx, ty, tz, dx, dy, dz);
+  a[2] -= (2. / 3.)  * local_mesh_CIC_get(mesh, mesh_size, ii, jj, kk + 1, tx, ty, tz, dx, dy, dz);
+  a[2] += (2. / 3.)  * local_mesh_CIC_get(mesh, mesh_size, ii, jj, kk - 1, tx, ty, tz, dx, dy, dz);
+  a[2] -= (1. / 12.) * local_mesh_CIC_get(mesh, mesh_size, ii, jj, kk - 2, tx, ty, tz, dx, dy, dz);
+
+  /* Store things back */
+  accumulate_add_f(&gp->a_grav[0], fac * a[0]);
+  accumulate_add_f(&gp->a_grav[1], fac * a[1]);
+  accumulate_add_f(&gp->a_grav[2], fac * a[2]);
+  gravity_add_comoving_potential(gp, p);
+#ifdef SWIFT_GRAVITY_FORCE_CHECKS
+  gp->potential_PM = p;
+  gp->a_grav_PM[0] = fac * a[0];
+  gp->a_grav_PM[1] = fac * a[1];
+  gp->a_grav_PM[2] = fac * a[2];
+#endif
+}
+#endif
+
 
 /**
  * @brief Interpolate the forces and potential from the mesh to the #gpart.
@@ -1007,69 +1096,9 @@ void mpi_mesh_interpolate_forces(hashmap_t *potential, const int N,
       if (gp->initialised == 0)
         error("Adding forces to an un-initialised gpart.");
 #endif
-
-      /* Box wrap the gpart's position */
-      const double pos_x = box_wrap(gp->x[0], wrap_min[0], wrap_max[0]);
-      const double pos_y = box_wrap(gp->x[1], wrap_min[1], wrap_max[1]);
-      const double pos_z = box_wrap(gp->x[2], wrap_min[2], wrap_max[2]);
-
-      /* Workout the CIC coefficients */
-      int ip = (int) floor(fac * pos_x);
-      const double dx = fac * pos_x - ip;
-      const double tx = 1. - dx;
-
-      int jp = (int) floor(fac * pos_y);
-      const double dy = fac * pos_y - jp;
-      const double ty = 1. - dy;
-    
-      int kp = (int) floor(fac * pos_z);
-      const double dz = fac * pos_z - kp;
-      const double tz = 1. - dz;
-
-#ifdef SWIFT_GRAVITY_FORCE_CHECKS
-      if (gp->a_grav_PM[0] != 0. || gp->potential_PM != 0.)
-        error("Particle with non-initalised stuff");
-#endif
-
-      /* Some local accumulators */
-      double p = 0.;
-      double a[3] = {0.};
-
-      /* Indices of (i,j,k) in the local copy of the mesh */
-      const int ii = ip - mesh_min[0];
-      const int jj = jp - mesh_min[1];
-      const int kk = kp - mesh_min[2];
-
-      /* Simple CIC for the potential itself */
-      p += local_mesh_CIC_get(mesh, mesh_size, ii, jj, kk, tx, ty, tz, dx, dy, dz);
-
-      /* 5-point stencil along each axis for the accelerations */
-      a[0] += (1. / 12.) * local_mesh_CIC_get(mesh, mesh_size, ii + 2, jj, kk, tx, ty, tz, dx, dy, dz);
-      a[0] -= (2. / 3.)  * local_mesh_CIC_get(mesh, mesh_size, ii + 1, jj, kk, tx, ty, tz, dx, dy, dz);
-      a[0] += (2. / 3.)  * local_mesh_CIC_get(mesh, mesh_size, ii - 1, jj, kk, tx, ty, tz, dx, dy, dz);
-      a[0] -= (1. / 12.) * local_mesh_CIC_get(mesh, mesh_size, ii - 2, jj, kk, tx, ty, tz, dx, dy, dz);
-
-      a[1] += (1. / 12.) * local_mesh_CIC_get(mesh, mesh_size, ii, jj + 2, kk, tx, ty, tz, dx, dy, dz);
-      a[1] -= (2. / 3.)  * local_mesh_CIC_get(mesh, mesh_size, ii, jj + 1, kk, tx, ty, tz, dx, dy, dz);
-      a[1] += (2. / 3.)  * local_mesh_CIC_get(mesh, mesh_size, ii, jj - 1, kk, tx, ty, tz, dx, dy, dz);
-      a[1] -= (1. / 12.) * local_mesh_CIC_get(mesh, mesh_size, ii, jj - 2, kk, tx, ty, tz, dx, dy, dz);
-
-      a[2] += (1. / 12.) * local_mesh_CIC_get(mesh, mesh_size, ii, jj, kk + 2, tx, ty, tz, dx, dy, dz);
-      a[2] -= (2. / 3.)  * local_mesh_CIC_get(mesh, mesh_size, ii, jj, kk + 1, tx, ty, tz, dx, dy, dz);
-      a[2] += (2. / 3.)  * local_mesh_CIC_get(mesh, mesh_size, ii, jj, kk - 1, tx, ty, tz, dx, dy, dz);
-      a[2] -= (1. / 12.) * local_mesh_CIC_get(mesh, mesh_size, ii, jj, kk - 2, tx, ty, tz, dx, dy, dz);
-
-      /* Store things back */
-      accumulate_add_f(&gp->a_grav[0], fac * a[0]);
-      accumulate_add_f(&gp->a_grav[1], fac * a[1]);
-      accumulate_add_f(&gp->a_grav[2], fac * a[2]);
-      gravity_add_comoving_potential(gp, p);
-#ifdef SWIFT_GRAVITY_FORCE_CHECKS
-      gp->potential_PM = p;
-      gp->a_grav_PM[0] = fac * a[0];
-      gp->a_grav_PM[1] = fac * a[1];
-      gp->a_grav_PM[2] = fac * a[2];
-#endif
+      /* Evaluate the potential and acceleration for this gpart */
+      local_mesh_to_gparts_CIC(gp, mesh, mesh_size, mesh_min,
+                               N, fac, dim, wrap_min, wrap_max);
     }
   }
 
@@ -1079,3 +1108,6 @@ void mpi_mesh_interpolate_forces(hashmap_t *potential, const int N,
   error("FFTW MPI not found - unable to use distributed mesh");
 #endif
 }
+
+
+
