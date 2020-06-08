@@ -111,8 +111,6 @@ void runner_do_grav_external(struct runner *r, struct cell *c, int timer) {
  */
 void runner_do_grav_mesh(struct runner *r, struct cell *c, int timer) {
 
-  struct gpart *restrict gparts = c->grav.parts;
-  const int gcount = c->grav.count;
   const struct engine *e = r->e;
 
 #ifdef SWIFT_DEBUG_CHECKS
@@ -131,7 +129,7 @@ void runner_do_grav_mesh(struct runner *r, struct cell *c, int timer) {
   } else {
 
     /* Get the forces from the gravity mesh */
-    pm_mesh_interpolate_forces(e->mesh, e, gparts, gcount);
+    pm_mesh_interpolate_forces(e->mesh, e, c);
   }
 
   if (timer) TIMER_TOC(timer_dograv_mesh);

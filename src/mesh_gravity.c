@@ -304,26 +304,12 @@ void mesh_to_gparts_CIC(struct gpart* gp, const struct pm_mesh* mesh, const int 
   /* First, copy the necessary part of the mesh for stencil operations */
   /* This includes box-wrapping in all 3 dimensions. */
   double phi[6][6][6];
-  if(mesh->distributed_mesh) {
-    hashmap_t *pot = mesh->potential_local;
-    for (int iii = -2; iii <= 3; ++iii) {
-      for (int jjj = -2; jjj <= 3; ++jjj) {
-        for (int kkk = -2; kkk <= 3; ++kkk) {
-          size_t key = row_major_id_periodic_size_t_padded(i + iii, j + jjj, k + kkk, N);
-          hashmap_value_t *value = hashmap_lookup(pot, (hashmap_key_t) key);
-          if(!value)error("Required mesh cell has not been imported!");
-          phi[iii + 2][jjj + 2][kkk + 2] = value->value_dbl;
-        }
-      }
-    }
-  } else {
-    const double *pot = mesh->potential_global;
-    for (int iii = -2; iii <= 3; ++iii) {
-      for (int jjj = -2; jjj <= 3; ++jjj) {
-        for (int kkk = -2; kkk <= 3; ++kkk) {
-          phi[iii + 2][jjj + 2][kkk + 2] =
-            pot[row_major_id_periodic(i + iii, j + jjj, k + kkk, N)];
-        }
+  const double *pot = mesh->potential_global;
+  for (int iii = -2; iii <= 3; ++iii) {
+    for (int jjj = -2; jjj <= 3; ++jjj) {
+      for (int kkk = -2; kkk <= 3; ++kkk) {
+        phi[iii + 2][jjj + 2][kkk + 2] =
+          pot[row_major_id_periodic(i + iii, j + jjj, k + kkk, N)];
       }
     }
   }
@@ -832,10 +818,9 @@ void pm_mesh_compute_potential(struct pm_mesh* mesh, const struct space* s,
  * @param gparts The #gpart to interpolate to.
  * @param gcount The number of #gpart.
  */
-void pm_mesh_interpolate_forces(const struct pm_mesh* mesh,
-                                const struct engine* e, struct gpart* gparts,
-                                int gcount) {
-
+void interpolate_forces(const struct pm_mesh* mesh,
+                        const struct engine* e, struct gpart* gparts,
+                        int gcount) {
 #ifdef HAVE_FFTW
 
   const int N = mesh->N;
@@ -864,6 +849,28 @@ void pm_mesh_interpolate_forces(const struct pm_mesh* mesh,
 #else
   error("No FFTW library found. Cannot compute periodic long-range forces.");
 #endif
+}
+
+
+/**
+ * @brief Interpolate the forces and potential from the mesh to the #gpart.
+ *
+ * We use CIC interpolation. The resulting accelerations and potential must
+ * be multiplied by G_newton.
+ *
+ * @param mesh The #pm_mesh (containing the potential) to interpolate from.
+ * @param e The #engine (to check active status).
+ * @param gparts The #gpart to interpolate to.
+ * @param gcount The number of #gpart.
+ */
+void pm_mesh_interpolate_forces(const struct pm_mesh* mesh,
+                                const struct engine* e,
+                                const struct cell *cell) {
+  if(mesh->distributed_mesh) {
+    mpi_mesh_interpolate_forces(mesh->potential_local, mesh->N, mesh->cell_fac, e, cell);
+  } else {
+    interpolate_forces(mesh, e, cell->grav.parts, cell->grav.count);
+  }
 }
 
 /**

@@ -30,6 +30,7 @@
 struct space;
 struct gpart;
 struct threadpool;
+struct cell;
 
 /**
  * @brief Data structure for the long-range periodic forces using a mesh
@@ -80,8 +81,8 @@ void pm_mesh_init_no_mesh(struct pm_mesh *mesh, double dim[3]);
 void pm_mesh_compute_potential(struct pm_mesh *mesh, const struct space *s,
                                struct threadpool *tp, int verbose);
 void pm_mesh_interpolate_forces(const struct pm_mesh *mesh,
-                                const struct engine *e, struct gpart *gparts,
-                                int gcount);
+                                const struct engine *e, 
+                                const struct cell *cell);
 void pm_mesh_clean(struct pm_mesh *mesh);
 
 void pm_mesh_allocate(struct pm_mesh *mesh);

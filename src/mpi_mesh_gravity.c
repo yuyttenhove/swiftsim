@@ -36,8 +36,75 @@
 #include "space.h"
 #include "lock.h"
 #include "threadpool.h"
+#include "active.h"
+
+/**
+ * @brief Returns 1D index of a FFTW-padded 3D NxNxN array using row-major style.
+ *
+ * Wraps around in the corresponding dimension if any of the 3 indices is >= N
+ * or < 0. Note that indexes are of type size_t in this version and the array
+ * is assumed to be padded to size 2*(N/2+1) in the last dimension as required
+ * by FFTW MPI routines.
+ *
+ * @param i Index along x.
+ * @param j Index along y.
+ * @param k Index along z.
+ * @param N Size of the array along one axis.
+ */
+__attribute__((always_inline, const)) INLINE static size_t
+row_major_id_periodic_size_t_padded(const int i, const int j, const int k,
+                                    const int N) {
+  /* Find last two dimensions of the padded array */
+  const size_t Nj = N;
+  const size_t Nk = 2*(N/2+1);
+  
+  /* Get box-wrapped coordinates (note that we don't use the padded size here) */
+  const size_t i_wrap = (size_t) ((i + N) % N);
+  const size_t j_wrap = (size_t) ((j + N) % N);
+  const size_t k_wrap = (size_t) ((k + N) % N);
+
+  /* Compute index in the padded array */
+  return (i_wrap*Nj*Nk) + (j_wrap*Nk) + k_wrap;
+}
+
 
 #if defined(WITH_MPI) && defined(HAVE_MPI_FFTW)
+/**
+ * @brief Return i coordinate from an id returned by row_major_id_periodic_size_t_padded
+ *
+ * This extracts the index in the first dimension from a row major id
+ * returned by row_major_id_periodic_size_t_padded. I.e. it finds the
+ * 'i' input parameter that was used to generate the id.
+ *
+ * @param id The padded row major ID.
+ * @param N Size of the array along one axis.
+ */
+__attribute__((always_inline, const)) INLINE static int
+get_xcoord_from_padded_row_major_id(const size_t id, const int N) {
+  const size_t Nj = N;
+  const size_t Nk = 2*(N/2+1);
+  return (int) (id / (Nj*Nk));
+}
+
+
+/**
+ * @brief Convert a global mesh array index to local slice index
+ * 
+ * Given an index into the padded N*N*2*(N/2+1) array, compute
+ * the corresponding index in the slice of the array stored
+ * on the local MPI rank.
+ *
+ * @param id The padded row major ID.
+ * @param N Size of the array along one axis.
+ * @param slice_offset Index of the first slice on this rank
+ */
+__attribute__((always_inline, const)) INLINE static size_t
+get_index_in_local_slice(const size_t id, const int N, const int slice_offset) {
+  const size_t Nj = N;
+  const size_t Nk = 2*(N/2+1);
+  return id - ((size_t) slice_offset)*Nj*Nk;
+}
+#endif /* #if defined(WITH_MPI) && defined(HAVE_MPI_FFTW) */
 
 /**
  * @brief Increment the value associated with a hashmap key
@@ -66,6 +133,20 @@ __attribute__((always_inline)) INLINE static void add_to_hashmap(
 
 
 /**
+ * @brief Convert coordinates in the local mesh to an array index
+ *
+ * @param mesh_size Size of the mesh in each dimension
+ * @param i x coordinate within the mesh
+ * @param j y coordinate within the mesh
+ * @param k z coordinate within the mesh
+ *
+ */
+__attribute__((always_inline)) INLINE static int local_mesh_index(const int *mesh_size, int i, int j, int k) {
+  return (i*mesh_size[1]*mesh_size[2]) + (j*mesh_size[2]) + k;
+}
+
+
+/**
  * @brief Increment a value in the specified local mesh, which corresponds
  * to a small patch of the global FFT mesh.
  *
@@ -89,8 +170,76 @@ __attribute__((always_inline)) INLINE static void add_to_local_mesh(
   if(jlocal < 0 || jlocal >= mesh_size[1])error("Coordinate in local mesh out of range!");
   if(klocal < 0 || klocal >= mesh_size[2])error("Coordinate in local mesh out of range!");
   /* #endif */
-  const int index = (ilocal*mesh_size[1]*mesh_size[2]) + (jlocal*mesh_size[2]) + klocal;
+  const int index = local_mesh_index(mesh_size, ilocal, jlocal, klocal);
   mesh[index] += mass;
+}
+
+
+/**
+ * @brief Determine the size and coordinates of local mesh covering a #cell
+ *
+ * Given the array of gparts in a cell, this determines the coordinates
+ * and size of a local mesh which covers the cell. The boundary_size
+ * parameter can be used to include a boundary layer of cells around the
+ * local mesh.
+ *
+ * To use this mesh, all particles must be periodic wrapped to the copy
+ * closest to the cell centre. The parameters wrap_min and wrap_max
+ * return minimum and maximum coordinates in each dimension which
+ * can be used with box_wrap() to suitably wrap the particle coordinates.
+ *
+ * @param gcount Number of gparts in the cell
+ * @param gp Pointer to the gpart array
+ * @param dim Size of the space in each dimension
+ * @param boundary_size Size of the desired boundary layer in mesh cells
+ * @param wrap_min Returns minimum coordinates of range into which
+ * particles must be wrapped
+ * @param wrap_min Returns maximum coordinates of range into which
+ * particles must be wrapped
+ * @param mesh_min Returns minimum coordinates of the local mesh in the 
+ * global mesh in each dimensions
+ * @param mesh_size Returns size of the local mesh in each dimension
+ * @param num_cells Total number of cells in the local mesh
+ *
+ */
+void determine_mesh_size_for_cell(const struct cell *cell, const double fac,
+                                  const double *dim, int boundary_size,
+                                  double *wrap_min, double *wrap_max, 
+                                  int *mesh_min, int *mesh_size, int *num_cells) {
+  
+  const int gcount = cell->grav.count;
+  const struct gpart *gp = cell->grav.parts;
+
+  /* Will need to wrap particles to position nearest the cell centre */
+  for(int i=0; i<3; i+=1) {
+    wrap_min[i] = cell->loc[i] + 0.5*cell->width[i] - 0.5*dim[i];
+    wrap_max[i] = cell->loc[i] + 0.5*cell->width[i] + 0.5*dim[i];
+  }
+
+  /* Find the extent of the particle distribution in the cell */
+  double pos_min[3];
+  double pos_max[3];
+  for(int i=0; i<3; i+=1) {
+    pos_min[i] = wrap_max[i];
+    pos_max[i] = wrap_min[i];
+  }
+  for (int ipart = 0; ipart < gcount; ipart += 1) {
+    for(int i=0; i<3; i+=1) {
+      const double pos_wrap = box_wrap(gp[ipart].x[i], wrap_min[i], wrap_max[i]);
+      if(pos_wrap < pos_min[i])pos_min[i] = pos_wrap;
+      if(pos_wrap > pos_max[i])pos_max[i] = pos_wrap;
+    }
+  }
+
+  /* Determine the integer size and coordinates of the mesh */
+  int mesh_max[3];
+  *num_cells = 1;
+  for(int i=0; i<3; i+=1) {
+    mesh_min[i] = floor(pos_min[i]*fac) - boundary_size;
+    mesh_max[i] = floor(pos_max[i]*fac) + boundary_size;
+    mesh_size[i] = mesh_max[i] - mesh_min[i] + 1;
+    (*num_cells) *= mesh_size[i];
+  }
 }
 
 
@@ -116,53 +265,27 @@ void accumulate_cell_to_hashmap(const int N, const double fac,
      (and the code to find the extent of the cell would fail) */
   if(cell->grav.count == 0)return;
 
-  /* Will need to wrap particles to position nearest the cell centre */
+  /* Determine the extent of the mesh we need */
   double wrap_min[3];
   double wrap_max[3];
-  for(int i=0; i<3; i+=1) {
-    wrap_min[i] = cell->loc[i] + 0.5*cell->width[i] - 0.5*dim[i];
-    wrap_max[i] = cell->loc[i] + 0.5*cell->width[i] + 0.5*dim[i];
-  }
-
-  /* Determine the extent of the mesh we need for this cell */
-  double pos_min[3];
-  double pos_max[3];
-  for(int i=0; i<3; i+=1) {
-    pos_min[i] = wrap_max[i];
-    pos_max[i] = wrap_min[i];
-  }
-  for (int ipart = 0; ipart < cell->grav.count; ipart += 1) {
-    struct gpart *gp = &(cell->grav.parts[ipart]);
-    for(int i=0; i<3; i+=1) {
-      const double pos_wrap = box_wrap(gp->x[i], wrap_min[i], wrap_max[i]);
-      if(pos_wrap < pos_min[i])pos_min[i] = pos_wrap;
-      if(pos_wrap > pos_max[i])pos_max[i] = pos_wrap;
-    }
-  }
-
-  /* Determine the integer size and coordinates of the mesh */
   int mesh_min[3];
-  int mesh_max[3];
   int mesh_size[3];
-  int mesh_num_cells = 1;
-  for(int i=0; i<3; i+=1) {
-    mesh_min[i] = floor(pos_min[i]*fac) - 1;
-    mesh_max[i] = floor(pos_max[i]*fac) + 1;
-    mesh_size[i] = mesh_max[i] - mesh_min[i] + 1;
-    mesh_num_cells *= mesh_size[i];
-  }
+  int num_cells;
+  determine_mesh_size_for_cell(cell, fac, dim, /*boundary_size=*/1, 
+                               wrap_min, wrap_max, 
+                               mesh_min, mesh_size, &num_cells);
   
   /* Allocate the local mesh */
-  double *mesh = malloc(mesh_num_cells*sizeof(double));
-  for(int i=0; i<mesh_num_cells; i+=1)
+  double *mesh = malloc(num_cells*sizeof(double));
+  for(int i=0; i<num_cells; i+=1)
     mesh[i] = 0.0;
 
   /* Loop over particles in this cell */
   for (int ipart = 0; ipart < cell->grav.count; ipart += 1) {
 
-    struct gpart *gp = &(cell->grav.parts[ipart]);
+    const struct gpart *gp = &(cell->grav.parts[ipart]);
 
-    /* Box wrap the multipole's position to the copy nearest the cell centre */
+    /* Box wrap the particle's position to the copy nearest the cell centre */
     const double pos_x = box_wrap(gp->x[0], wrap_min[0], wrap_max[0]);
     const double pos_y = box_wrap(gp->x[1], wrap_min[1], wrap_max[1]);
     const double pos_z = box_wrap(gp->x[2], wrap_min[2], wrap_max[2]);
@@ -201,7 +324,7 @@ void accumulate_cell_to_hashmap(const int N, const double fac,
   for(int i=0; i<mesh_size[0]; i+=1) {
     for(int j=0; j<mesh_size[1]; j+=1) {
       for(int k=0; k<mesh_size[2]; k+=1) {
-	const int local_index = (i*mesh_size[1]*mesh_size[2]) + (j*mesh_size[2]) + k;
+	const int local_index = local_mesh_index(mesh_size, i, j, k);
 	const size_t global_index = row_major_id_periodic_size_t_padded(i+mesh_min[0], j+mesh_min[1], k+mesh_min[2], N);
 	add_to_hashmap(map, global_index, mesh[local_index]);
       }
@@ -278,6 +401,7 @@ void mpi_mesh_accumulate_gparts_to_hashmap(struct threadpool* tp,
                                            const int N, const double fac,
                                            const struct space *s, hashmap_t *map) {
 
+#if defined(WITH_MPI) && defined(HAVE_MPI_FFTW)
   const int *local_cells = s->local_cells_top;
   const int nr_local_cells = s->nr_local_cells;
   const double dim[3] = {s->dim[0], s->dim[1], s->dim[2]};
@@ -304,8 +428,10 @@ void mpi_mesh_accumulate_gparts_to_hashmap(struct threadpool* tp,
                  nr_local_cells, sizeof(int), threadpool_auto_chunk_size,
                  (void*)&data);
   lock_destroy(&lock);
-
   return;
+#else
+  error("FFTW MPI not found - unable to use distributed mesh");
+#endif
 }
 
 /**
@@ -411,6 +537,8 @@ void exchange_structs(size_t *nr_send, char *sendbuf,
                       size_t *nr_recv, char *recvbuf,
                       size_t element_size) {
 
+#if defined(WITH_MPI) && defined(HAVE_MPI_FFTW)
+
   /* Determine rank, number of ranks */
   int nr_nodes, nodeID;
   MPI_Comm_size(MPI_COMM_WORLD, &nr_nodes);
@@ -483,6 +611,9 @@ void exchange_structs(size_t *nr_send, char *sendbuf,
   free(recv_offset);
   free(send_offset);
   free(request);
+#else
+  error("FFTW MPI not found - unable to use distributed mesh");
+#endif
 }
 
 /**
@@ -492,7 +623,6 @@ void exchange_structs(size_t *nr_send, char *sendbuf,
  * This routine does the necessary communication to convert
  * the per-rank hashmaps into a slab-distributed mesh.
  *
- * @param e Pointer to the engine struct
  * @param N The size of the mesh
  * @param local_n0 The thickness of the slice to store on this rank
  * @param map The hashmap with the local part of the mesh
@@ -501,6 +631,8 @@ void exchange_structs(size_t *nr_send, char *sendbuf,
  */
 void mpi_mesh_hashmaps_to_slices(const int N, const int local_n0, hashmap_t *map,
                                  double *mesh) {
+
+#if defined(WITH_MPI) && defined(HAVE_MPI_FFTW)
 
   /* Determine rank, number of ranks */
   int nr_nodes, nodeID;
@@ -587,6 +719,9 @@ void mpi_mesh_hashmaps_to_slices(const int N, const int local_n0, hashmap_t *map
   free(nr_recv);
   swift_free("mesh_recvbuf", mesh_recvbuf);
   swift_free("mesh_sendbuf", mesh_sendbuf);
+#else
+  error("FFTW MPI not found - unable to use distributed mesh");
+#endif
 }
 
 
@@ -617,6 +752,8 @@ void mpi_mesh_fetch_potential(const int N, const double fac,
                               int local_0_start, int local_n0,
                               double *potential_slice,
                               hashmap_t *potential_map) {
+
+#if defined(WITH_MPI) && defined(HAVE_MPI_FFTW)
 
   const int *local_cells = s->local_cells_top;
   const int nr_local_cells = s->nr_local_cells;
@@ -758,6 +895,186 @@ void mpi_mesh_fetch_potential(const int N, const double fac,
   free(slice_offset);
   free(nr_send);
   free(nr_recv);
+#else
+  error("FFTW MPI not found - unable to use distributed mesh");
+#endif
 }
 
+
+/**
+ * @brief Interpolate values from the local mesh using CIC.
+ *
+ * @param mesh The mesh to read from.
+ * @param mesh_size Dimensions of the mesh
+ * @param i The index of the cell along x
+ * @param j The index of the cell along y
+ * @param k The index of the cell along z
+ * @param tx First CIC coefficient along x
+ * @param ty First CIC coefficient along y
+ * @param tz First CIC coefficient along z
+ * @param dx Second CIC coefficient along x
+ * @param dy Second CIC coefficient along y
+ * @param dz Second CIC coefficient along z
+ */
+#if defined(WITH_MPI) && defined(HAVE_MPI_FFTW)
+__attribute__((always_inline, const)) INLINE static double local_mesh_CIC_get(
+    const double *mesh, const int *mesh_size, const int i, const int j, const int k,
+    const double tx, const double ty, const double tz, const double dx,
+    const double dy, const double dz) {
+  double temp;
+  temp  = mesh[local_mesh_index(mesh_size, i + 0, j + 0, k + 0)] * tx * ty * tz;
+  temp += mesh[local_mesh_index(mesh_size, i + 0, j + 0, k + 1)] * tx * ty * dz;
+  temp += mesh[local_mesh_index(mesh_size, i + 0, j + 1, k + 0)] * tx * dy * tz;
+  temp += mesh[local_mesh_index(mesh_size, i + 0, j + 1, k + 1)] * tx * dy * dz;
+  temp += mesh[local_mesh_index(mesh_size, i + 1, j + 0, k + 0)] * dx * ty * tz;
+  temp += mesh[local_mesh_index(mesh_size, i + 1, j + 0, k + 1)] * dx * ty * dz;
+  temp += mesh[local_mesh_index(mesh_size, i + 1, j + 1, k + 0)] * dx * dy * tz;
+  temp += mesh[local_mesh_index(mesh_size, i + 1, j + 1, k + 1)] * dx * dy * dz;
+  return temp;
+}
 #endif
+
+/**
+ * @brief Interpolate the forces and potential from the mesh to the #gpart.
+ *
+ * We use CIC interpolation. The resulting accelerations and potential must
+ * be multiplied by G_newton.
+ *
+ * This version is for the case where the mesh is distributed between
+ * MPI ranks and stored in the form of a hashmap.
+ *
+ * @param potential Hashmap containing the potential to interpolate from.
+ * @param N Size of the full mesh
+ * @param fac Inverse of the FFT mesh cell size
+ * @param e The #engine (to check active status).
+ * @param cell The #cell containing the #gpart
+ */
+void mpi_mesh_interpolate_forces(hashmap_t *potential, const int N,
+                                 const double fac, const struct engine *e,
+                                 const struct cell *cell) {
+
+#if defined(WITH_MPI) && defined(HAVE_MPI_FFTW)
+
+  const int gcount = cell->grav.count;
+  struct gpart* gparts = cell->grav.parts;
+  const double dim[3] = {e->s->dim[0], e->s->dim[1], e->s->dim[2]};
+
+  /* Check for empty cell as this would cause problems finding the extent */
+  if(gcount==0)return;
+
+  /* Determine the extent of the mesh we need */
+  double wrap_min[3];
+  double wrap_max[3];
+  int mesh_min[3];
+  int mesh_size[3];
+  int num_cells;
+  determine_mesh_size_for_cell(cell, fac, dim, /*boundary_size=*/2, 
+                               wrap_min, wrap_max, 
+                               mesh_min, mesh_size, &num_cells);
+  
+  /* Allocate the local mesh */
+  double *mesh = malloc(num_cells*sizeof(double));
+  
+  /* Look up the potential in each local mesh cell */
+  for(int i=0; i<mesh_size[0];i+=1) {
+    for(int j=0; j<mesh_size[1];j+=1) {
+      for(int k=0; k<mesh_size[2];k+=1) {
+	const int local_index = local_mesh_index(mesh_size, i, j, k);
+	const size_t global_index = row_major_id_periodic_size_t_padded(i+mesh_min[0], j+mesh_min[1], k+mesh_min[2], N);
+        hashmap_value_t *value = hashmap_lookup(potential, global_index);
+        if(!value) {
+          error("Required cell is not present in potential hashmap");
+        } else {
+          mesh[local_index] = value->value_dbl;
+        }
+      }
+    }
+  }
+
+  /* Get the potential from the mesh to the active gparts using CIC */
+  for (int i = 0; i < gcount; ++i) {
+    struct gpart* gp = &gparts[i];
+
+    if (gpart_is_active(gp, e)) {
+
+#ifdef SWIFT_DEBUG_CHECKS
+      /* Check that particles have been drifted to the current time */
+      if (gp->ti_drift != e->ti_current)
+        error("gpart not drifted to current time");
+      
+      /* Check that the particle was initialised */
+      if (gp->initialised == 0)
+        error("Adding forces to an un-initialised gpart.");
+#endif
+
+      /* Box wrap the gpart's position */
+      const double pos_x = box_wrap(gp->x[0], wrap_min[0], wrap_max[0]);
+      const double pos_y = box_wrap(gp->x[1], wrap_min[1], wrap_max[1]);
+      const double pos_z = box_wrap(gp->x[2], wrap_min[2], wrap_max[2]);
+
+      /* Workout the CIC coefficients */
+      int ip = (int) floor(fac * pos_x);
+      const double dx = fac * pos_x - ip;
+      const double tx = 1. - dx;
+
+      int jp = (int) floor(fac * pos_y);
+      const double dy = fac * pos_y - jp;
+      const double ty = 1. - dy;
+    
+      int kp = (int) floor(fac * pos_z);
+      const double dz = fac * pos_z - kp;
+      const double tz = 1. - dz;
+
+#ifdef SWIFT_GRAVITY_FORCE_CHECKS
+      if (gp->a_grav_PM[0] != 0. || gp->potential_PM != 0.)
+        error("Particle with non-initalised stuff");
+#endif
+
+      /* Some local accumulators */
+      double p = 0.;
+      double a[3] = {0.};
+
+      /* Indices of (i,j,k) in the local copy of the mesh */
+      const int ii = ip - mesh_min[0];
+      const int jj = jp - mesh_min[1];
+      const int kk = kp - mesh_min[2];
+
+      /* Simple CIC for the potential itself */
+      p += local_mesh_CIC_get(mesh, mesh_size, ii, jj, kk, tx, ty, tz, dx, dy, dz);
+
+      /* 5-point stencil along each axis for the accelerations */
+      a[0] += (1. / 12.) * local_mesh_CIC_get(mesh, mesh_size, ii + 2, jj, kk, tx, ty, tz, dx, dy, dz);
+      a[0] -= (2. / 3.)  * local_mesh_CIC_get(mesh, mesh_size, ii + 1, jj, kk, tx, ty, tz, dx, dy, dz);
+      a[0] += (2. / 3.)  * local_mesh_CIC_get(mesh, mesh_size, ii - 1, jj, kk, tx, ty, tz, dx, dy, dz);
+      a[0] -= (1. / 12.) * local_mesh_CIC_get(mesh, mesh_size, ii - 2, jj, kk, tx, ty, tz, dx, dy, dz);
+
+      a[1] += (1. / 12.) * local_mesh_CIC_get(mesh, mesh_size, ii, jj + 2, kk, tx, ty, tz, dx, dy, dz);
+      a[1] -= (2. / 3.)  * local_mesh_CIC_get(mesh, mesh_size, ii, jj + 1, kk, tx, ty, tz, dx, dy, dz);
+      a[1] += (2. / 3.)  * local_mesh_CIC_get(mesh, mesh_size, ii, jj - 1, kk, tx, ty, tz, dx, dy, dz);
+      a[1] -= (1. / 12.) * local_mesh_CIC_get(mesh, mesh_size, ii, jj - 2, kk, tx, ty, tz, dx, dy, dz);
+
+      a[2] += (1. / 12.) * local_mesh_CIC_get(mesh, mesh_size, ii, jj, kk + 2, tx, ty, tz, dx, dy, dz);
+      a[2] -= (2. / 3.)  * local_mesh_CIC_get(mesh, mesh_size, ii, jj, kk + 1, tx, ty, tz, dx, dy, dz);
+      a[2] += (2. / 3.)  * local_mesh_CIC_get(mesh, mesh_size, ii, jj, kk - 1, tx, ty, tz, dx, dy, dz);
+      a[2] -= (1. / 12.) * local_mesh_CIC_get(mesh, mesh_size, ii, jj, kk - 2, tx, ty, tz, dx, dy, dz);
+
+      /* Store things back */
+      accumulate_add_f(&gp->a_grav[0], fac * a[0]);
+      accumulate_add_f(&gp->a_grav[1], fac * a[1]);
+      accumulate_add_f(&gp->a_grav[2], fac * a[2]);
+      gravity_add_comoving_potential(gp, p);
+#ifdef SWIFT_GRAVITY_FORCE_CHECKS
+      gp->potential_PM = p;
+      gp->a_grav_PM[0] = fac * a[0];
+      gp->a_grav_PM[1] = fac * a[1];
+      gp->a_grav_PM[2] = fac * a[2];
+#endif
+    }
+  }
+
+  /* Discard the temporary mesh */
+  free(mesh);
+#else
+  error("FFTW MPI not found - unable to use distributed mesh");
+#endif
+}
