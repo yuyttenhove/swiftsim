@@ -73,8 +73,6 @@ void pm_mesh_patch_add_values_to_hashmap(struct pm_mesh_patch *patch, hashmap_t 
 
 void pm_mesh_patch_clean(struct pm_mesh_patch *patch);
 
-void pm_mesh_patch_evaluate(struct pm_mesh_patch *patch, double pos[3], double *accel, double *pot);
-
 /**
  * @brief Return the array index in the patch corresponding to
  * coordinates in the full mesh
@@ -102,24 +100,67 @@ __attribute__((always_inline)) INLINE static int pm_mesh_patch_index(
   return (ilocal*patch->mesh_size[1]*patch->mesh_size[2]) + (jlocal*patch->mesh_size[2]) + klocal;
 }
 
+
 /**
- * @brief Increment a value in the specified mesh patch
+ * @brief Cloud in cell evaluation of the mesh patch
  *
  * @param patch Pointer to the patch
- * @param i Integer x coordinate in the full mesh
- * @param j Integer y coordinate in the full mesh
- * @param k Integer z coordinate in the full mesh
- * @param mass Amount by which to increment the element
+ * @param i Integer x coordinate in the mesh patch
+ * @param j Integer y coordinate in the mesh patch
+ * @param k Integer z coordinate in the mesh patch
+ * @param tx CIC parameter in the x direction
+ * @param ty CIC parameter in the y direction
+ * @param tz CIC parameter in the z direction
+ * @param dx CIC parameter in the x direction
+ * @param dy CIC parameter in the y direction
+ * @param dz CIC parameter in the z direction
  *
  */
-__attribute__((always_inline)) INLINE static void pm_mesh_patch_accumulate(
-      struct pm_mesh_patch *patch, const int i, const int j, const int k, const double mass) {
-  
-  /* Calculate array index*/
-  const int index = pm_mesh_patch_index(patch, i, j, k);
+__attribute__((always_inline, const)) INLINE static double pm_mesh_patch_CIC_get(
+    const struct pm_mesh_patch *patch, const int i, const int j, const int k,
+    const double tx, const double ty, const double tz, const double dx,
+    const double dy, const double dz) {
+  double temp;
+  temp  = patch->mesh[pm_mesh_patch_index(patch, i + 0, j + 0, k + 0)] * tx * ty * tz;
+  temp += patch->mesh[pm_mesh_patch_index(patch, i + 0, j + 0, k + 1)] * tx * ty * dz;
+  temp += patch->mesh[pm_mesh_patch_index(patch, i + 0, j + 1, k + 0)] * tx * dy * tz;
+  temp += patch->mesh[pm_mesh_patch_index(patch, i + 0, j + 1, k + 1)] * tx * dy * dz;
+  temp += patch->mesh[pm_mesh_patch_index(patch, i + 1, j + 0, k + 0)] * dx * ty * tz;
+  temp += patch->mesh[pm_mesh_patch_index(patch, i + 1, j + 0, k + 1)] * dx * ty * dz;
+  temp += patch->mesh[pm_mesh_patch_index(patch, i + 1, j + 1, k + 0)] * dx * dy * tz;
+  temp += patch->mesh[pm_mesh_patch_index(patch, i + 1, j + 1, k + 1)] * dx * dy * dz;
+  return temp;
+}
 
-  /* Add the value */
-  patch->mesh[index] += mass;
+
+/**
+ * @brief Cloud in cell assignment to the mesh patch
+ *
+ * @param patch Pointer to the patch
+ * @param i Integer x coordinate in the mesh patch
+ * @param j Integer y coordinate in the mesh patch
+ * @param k Integer z coordinate in the mesh patch
+ * @param tx CIC parameter in the x direction
+ * @param ty CIC parameter in the y direction
+ * @param tz CIC parameter in the z direction
+ * @param dx CIC parameter in the x direction
+ * @param dy CIC parameter in the y direction
+ * @param dz CIC parameter in the z direction
+ * @param value The value to set
+ */
+__attribute__((always_inline, const)) INLINE static void pm_mesh_patch_CIC_set(
+    const struct pm_mesh_patch *patch, const int i, const int j, const int k,
+    const double tx, const double ty, const double tz, const double dx,
+    const double dy, const double dz, const double value) {
+
+  patch->mesh[pm_mesh_patch_index(patch, i + 0, j + 0, k + 0)] += value * tx * ty * tz;
+  patch->mesh[pm_mesh_patch_index(patch, i + 0, j + 0, k + 1)] += value * tx * ty * dz;
+  patch->mesh[pm_mesh_patch_index(patch, i + 0, j + 1, k + 0)] += value * tx * dy * tz;
+  patch->mesh[pm_mesh_patch_index(patch, i + 0, j + 1, k + 1)] += value * tx * dy * dz;
+  patch->mesh[pm_mesh_patch_index(patch, i + 1, j + 0, k + 0)] += value * dx * ty * tz;
+  patch->mesh[pm_mesh_patch_index(patch, i + 1, j + 0, k + 1)] += value * dx * ty * dz;
+  patch->mesh[pm_mesh_patch_index(patch, i + 1, j + 1, k + 0)] += value * dx * dy * tz;
+  patch->mesh[pm_mesh_patch_index(patch, i + 1, j + 1, k + 1)] += value * dx * dy * dz;  
 }
 
 #endif

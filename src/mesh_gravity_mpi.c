@@ -37,213 +37,9 @@
 #include "lock.h"
 #include "threadpool.h"
 #include "active.h"
-
-/**
- * @brief Returns 1D index of a FFTW-padded 3D NxNxN array using row-major style.
- *
- * Wraps around in the corresponding dimension if any of the 3 indices is >= N
- * or < 0. Note that indexes are of type size_t in this version and the array
- * is assumed to be padded to size 2*(N/2+1) in the last dimension as required
- * by FFTW MPI routines.
- *
- * @param i Index along x.
- * @param j Index along y.
- * @param k Index along z.
- * @param N Size of the array along one axis.
- */
-__attribute__((always_inline, const)) INLINE static size_t
-row_major_id_periodic_size_t_padded(const int i, const int j, const int k,
-                                    const int N) {
-  /* Find last two dimensions of the padded array */
-  const size_t Nj = N;
-  const size_t Nk = 2*(N/2+1);
-  
-  /* Get box-wrapped coordinates (note that we don't use the padded size here) */
-  const size_t i_wrap = (size_t) ((i + N) % N);
-  const size_t j_wrap = (size_t) ((j + N) % N);
-  const size_t k_wrap = (size_t) ((k + N) % N);
-
-  /* Compute index in the padded array */
-  return (i_wrap*Nj*Nk) + (j_wrap*Nk) + k_wrap;
-}
-
-
-#if defined(WITH_MPI) && defined(HAVE_MPI_FFTW)
-/**
- * @brief Return i coordinate from an id returned by row_major_id_periodic_size_t_padded
- *
- * This extracts the index in the first dimension from a row major id
- * returned by row_major_id_periodic_size_t_padded. I.e. it finds the
- * 'i' input parameter that was used to generate the id.
- *
- * @param id The padded row major ID.
- * @param N Size of the array along one axis.
- */
-__attribute__((always_inline, const)) INLINE static int
-get_xcoord_from_padded_row_major_id(const size_t id, const int N) {
-  const size_t Nj = N;
-  const size_t Nk = 2*(N/2+1);
-  return (int) (id / (Nj*Nk));
-}
-
-
-/**
- * @brief Convert a global mesh array index to local slice index
- * 
- * Given an index into the padded N*N*2*(N/2+1) array, compute
- * the corresponding index in the slice of the array stored
- * on the local MPI rank.
- *
- * @param id The padded row major ID.
- * @param N Size of the array along one axis.
- * @param slice_offset Index of the first slice on this rank
- */
-__attribute__((always_inline, const)) INLINE static size_t
-get_index_in_local_slice(const size_t id, const int N, const int slice_offset) {
-  const size_t Nj = N;
-  const size_t Nk = 2*(N/2+1);
-  return id - ((size_t) slice_offset)*Nj*Nk;
-}
-#endif /* #if defined(WITH_MPI) && defined(HAVE_MPI_FFTW) */
-
-
-/**
- * @brief Increment the value associated with a hashmap key
- *
- * The hashmap entry specified by key is incremented by m_add
- * if it already exists, otherwise it is created and set equal
- * to m_add.
- *
- * @param map Pointer to the hash map.
- * @param key Which hash key to update.
- * @param m_add Amount by which to increment the value in the hash map.
- */
-__attribute__((always_inline)) INLINE static void add_to_hashmap(
-    hashmap_t *map, hashmap_key_t key, double m_add) {
-
-  int created = 0;
-  hashmap_value_t *value = hashmap_get_new(map, key, &created);
-  if (created) {
-    /* Key was not present, so this is a new element */
-    value->value_dbl = m_add;
-  } else {
-    /* Key was present, so add m_add to previous value */
-    value->value_dbl += m_add;
-  }
-}
-
-
-/**
- * @brief Convert coordinates in the local mesh to an array index
- *
- * @param mesh_size Size of the mesh in each dimension
- * @param i x coordinate within the mesh
- * @param j y coordinate within the mesh
- * @param k z coordinate within the mesh
- *
- */
-__attribute__((always_inline)) INLINE static int local_mesh_index(const int mesh_size[3], int i, int j, int k) {
-  /* Probably best to always check this for now... */
-  /* #ifdef SWIFT_DEBUG_CHECKS */
-  if(i < 0 || i >= mesh_size[0])error("Coordinate in local mesh out of range!");
-  if(j < 0 || j >= mesh_size[1])error("Coordinate in local mesh out of range!");
-  if(k < 0 || k >= mesh_size[2])error("Coordinate in local mesh out of range!");
-  /* #endif */
-  return (i*mesh_size[1]*mesh_size[2]) + (j*mesh_size[2]) + k;
-}
-
-
-/**
- * @brief Increment a value in the specified local mesh, which corresponds
- * to a small patch of the global FFT mesh.
- *
- * @param mesh Pointer to the local mesh array
- * @param mesh_min Minimum coordinates of the local mesh in the global mesh
- * @param mesh_size Size of the local mesh in each dimension
- * @param i global x coordinate of element to increment
- * @param j global y coordinate of element to increment
- * @param k global z coordinate of element to increment
- * @param mass Amount by which to increment the element
- *
- */
-__attribute__((always_inline)) INLINE static void add_to_local_mesh(
-      double *mesh, const int mesh_min[3], const int mesh_size[3], 
-      int i, int j, int k, double mass) {
-  const int ilocal = i - mesh_min[0];
-  const int jlocal = j - mesh_min[1];
-  const int klocal = k - mesh_min[2];
-  const int index = local_mesh_index(mesh_size, ilocal, jlocal, klocal);
-  mesh[index] += mass;
-}
-
-
-/**
- * @brief Determine the size and coordinates of local mesh covering a #cell
- *
- * Given the array of gparts in a cell, this determines the coordinates
- * and size of a local mesh which covers the cell. The boundary_size
- * parameter can be used to include a boundary layer of cells around the
- * local mesh.
- *
- * To use this mesh, all particles must be periodic wrapped to the copy
- * closest to the cell centre. The parameters wrap_min and wrap_max
- * return minimum and maximum coordinates in each dimension which
- * can be used with box_wrap() to suitably wrap the particle coordinates.
- *
- * @param gcount Number of gparts in the cell
- * @param gp Pointer to the gpart array
- * @param dim Size of the space in each dimension
- * @param boundary_size Size of the desired boundary layer in mesh cells
- * @param wrap_min Returns minimum coordinates of range into which
- * particles must be wrapped
- * @param wrap_min Returns maximum coordinates of range into which
- * particles must be wrapped
- * @param mesh_min Returns minimum coordinates of the local mesh in the 
- * global mesh in each dimensions
- * @param mesh_size Returns size of the local mesh in each dimension
- * @param num_cells Total number of cells in the local mesh
- *
- */
-void determine_mesh_size_for_cell(const struct cell *cell, const double fac,
-                                  const double dim[3], int boundary_size,
-                                  double wrap_min[3], double wrap_max[3], 
-                                  int mesh_min[3], int mesh_size[3], int *num_cells) {
-  
-  const int gcount = cell->grav.count;
-  const struct gpart *gp = cell->grav.parts;
-
-  /* Will need to wrap particles to position nearest the cell centre */
-  for(int i=0; i<3; i+=1) {
-    wrap_min[i] = cell->loc[i] + 0.5*cell->width[i] - 0.5*dim[i];
-    wrap_max[i] = cell->loc[i] + 0.5*cell->width[i] + 0.5*dim[i];
-  }
-
-  /* Find the extent of the particle distribution in the cell */
-  double pos_min[3];
-  double pos_max[3];
-  for(int i=0; i<3; i+=1) {
-    pos_min[i] = wrap_max[i];
-    pos_max[i] = wrap_min[i];
-  }
-  for (int ipart = 0; ipart < gcount; ipart += 1) {
-    for(int i=0; i<3; i+=1) {
-      const double pos_wrap = box_wrap(gp[ipart].x[i], wrap_min[i], wrap_max[i]);
-      if(pos_wrap < pos_min[i])pos_min[i] = pos_wrap;
-      if(pos_wrap > pos_max[i])pos_max[i] = pos_wrap;
-    }
-  }
-
-  /* Determine the integer size and coordinates of the mesh */
-  int mesh_max[3];
-  *num_cells = 1;
-  for(int i=0; i<3; i+=1) {
-    mesh_min[i] = floor(pos_min[i]*fac) - boundary_size;
-    mesh_max[i] = floor(pos_max[i]*fac) + boundary_size + 1;
-    mesh_size[i] = mesh_max[i] - mesh_min[i] + 1;
-    (*num_cells) *= mesh_size[i];
-  }
-}
-
+#include "mesh_gravity_patch.h"
+#include "row_major_id.h"
+#include "periodic.h"
 
 /**
  * @brief Accumulate contributions from cell to density field
@@ -267,20 +63,10 @@ void accumulate_cell_to_hashmap(const int N, const double fac,
      (and the code to find the extent of the cell would fail) */
   if(cell->grav.count == 0)return;
 
-  /* Determine the extent of the mesh we need */
-  double wrap_min[3];
-  double wrap_max[3];
-  int mesh_min[3];
-  int mesh_size[3];
-  int num_cells;
-  determine_mesh_size_for_cell(cell, fac, dim, /*boundary_size=*/1, 
-                               wrap_min, wrap_max, 
-                               mesh_min, mesh_size, &num_cells);
-  
-  /* Allocate the local mesh */
-  double *mesh = malloc(num_cells*sizeof(double));
-  for(int i=0; i<num_cells; i+=1)
-    mesh[i] = 0.0;
+  /* Allocate the local mesh patch */
+  struct pm_mesh_patch patch;
+  pm_mesh_patch_init(&patch, cell, N, fac, dim, /*boundary_size=*/1);
+  pm_mesh_patch_zero(&patch);
 
   /* Loop over particles in this cell */
   for (int ipart = 0; ipart < cell->grav.count; ipart += 1) {
@@ -288,9 +74,9 @@ void accumulate_cell_to_hashmap(const int N, const double fac,
     const struct gpart *gp = &(cell->grav.parts[ipart]);
 
     /* Box wrap the particle's position to the copy nearest the cell centre */
-    const double pos_x = box_wrap(gp->x[0], wrap_min[0], wrap_max[0]);
-    const double pos_y = box_wrap(gp->x[1], wrap_min[1], wrap_max[1]);
-    const double pos_z = box_wrap(gp->x[2], wrap_min[2], wrap_max[2]);
+    const double pos_x = box_wrap(gp->x[0], patch.wrap_min[0], patch.wrap_max[0]);
+    const double pos_y = box_wrap(gp->x[1], patch.wrap_min[1], patch.wrap_max[1]);
+    const double pos_z = box_wrap(gp->x[2], patch.wrap_min[2], patch.wrap_max[2]);
 
     /* Workout the CIC coefficients */
     int i = (int) floor(fac * pos_x);
@@ -305,37 +91,22 @@ void accumulate_cell_to_hashmap(const int N, const double fac,
     const double dz = fac * pos_z - k;
     const double tz = 1. - dz;
 
-    /* Accumulate contributions to the local mesh */
+    /* Accumulate contributions to the local mesh patch */
     const double mass = gp->mass;
-    add_to_local_mesh(mesh, mesh_min, mesh_size, i + 0, j + 0, k + 0, mass * tx * ty * tz);
-    add_to_local_mesh(mesh, mesh_min, mesh_size, i + 0, j + 0, k + 1, mass * tx * ty * dz);
-    add_to_local_mesh(mesh, mesh_min, mesh_size, i + 0, j + 1, k + 0, mass * tx * dy * tz);
-    add_to_local_mesh(mesh, mesh_min, mesh_size, i + 0, j + 1, k + 1, mass * tx * dy * dz);
-    add_to_local_mesh(mesh, mesh_min, mesh_size, i + 1, j + 0, k + 0, mass * dx * ty * tz);
-    add_to_local_mesh(mesh, mesh_min, mesh_size, i + 1, j + 0, k + 1, mass * dx * ty * dz);
-    add_to_local_mesh(mesh, mesh_min, mesh_size, i + 1, j + 1, k + 0, mass * dx * dy * tz);
-    add_to_local_mesh(mesh, mesh_min, mesh_size, i + 1, j + 1, k + 1, mass * dx * dy * dz);   
+    pm_mesh_patch_CIC_set(&patch, i, j, k, tx, ty, tz, dx, dy, dz, mass);   
   }
 
-  /* Add contributions from the local mesh to the hashmap.
+  /* Add contributions from the local mesh patch to the hashmap.
    * Need to use a lock here because the hashmap can't be modified
    * by more than one thread at a time. Keeping the lock while we
    * do all our updates seems to be a bit faster than unlocking
    * after each one (in one test case at least) */
   lock_lock(lock);
-  for(int i=0; i<mesh_size[0]; i+=1) {
-    for(int j=0; j<mesh_size[1]; j+=1) {
-      for(int k=0; k<mesh_size[2]; k+=1) {
-	const int local_index = local_mesh_index(mesh_size, i, j, k);
-	const size_t global_index = row_major_id_periodic_size_t_padded(i+mesh_min[0], j+mesh_min[1], k+mesh_min[2], N);
-	add_to_hashmap(map, global_index, mesh[local_index]);
-      }
-    }
-  }
+  pm_mesh_patch_add_values_to_hashmap(&patch, map);
   lock_unlock(lock);
   
   /* Done*/
-  free(mesh);
+  pm_mesh_patch_clean(&patch);
 }
 
 
@@ -407,12 +178,6 @@ void mpi_mesh_accumulate_gparts_to_hashmap(struct threadpool* tp,
   const int *local_cells = s->local_cells_top;
   const int nr_local_cells = s->nr_local_cells;
   const double dim[3] = {s->dim[0], s->dim[1], s->dim[2]};
-
-  /* \* Serial implementation: loop over local cells and add contributions *\/ */
-  /* for (int icell = 0; icell < nr_local_cells; icell += 1) { */
-  /*   struct cell *cell = &(s->cells_top[local_cells[icell]]); */
-  /*   accumulate_cell_to_hashmap(N, fac, dim, cell, map); */
-  /* } */
 
   /* Use the threadpool to parallelize over cells */
   struct accumulate_mapper_data data;
@@ -904,64 +669,21 @@ void mpi_mesh_fetch_potential(const int N, const double fac,
 
 
 /**
- * @brief Interpolate values from the local mesh using CIC.
- *
- * @param mesh The mesh to read from.
- * @param mesh_size Dimensions of the mesh
- * @param i The index of the cell along x
- * @param j The index of the cell along y
- * @param k The index of the cell along z
- * @param tx First CIC coefficient along x
- * @param ty First CIC coefficient along y
- * @param tz First CIC coefficient along z
- * @param dx Second CIC coefficient along x
- * @param dy Second CIC coefficient along y
- * @param dz Second CIC coefficient along z
- */
-#if defined(WITH_MPI) && defined(HAVE_MPI_FFTW)
-__attribute__((always_inline, const)) INLINE static double local_mesh_CIC_get(
-    const double *mesh, const int mesh_size[3], const int i, const int j, const int k,
-    const double tx, const double ty, const double tz, const double dx,
-    const double dy, const double dz) {
-  double temp;
-  temp  = mesh[local_mesh_index(mesh_size, i + 0, j + 0, k + 0)] * tx * ty * tz;
-  temp += mesh[local_mesh_index(mesh_size, i + 0, j + 0, k + 1)] * tx * ty * dz;
-  temp += mesh[local_mesh_index(mesh_size, i + 0, j + 1, k + 0)] * tx * dy * tz;
-  temp += mesh[local_mesh_index(mesh_size, i + 0, j + 1, k + 1)] * tx * dy * dz;
-  temp += mesh[local_mesh_index(mesh_size, i + 1, j + 0, k + 0)] * dx * ty * tz;
-  temp += mesh[local_mesh_index(mesh_size, i + 1, j + 0, k + 1)] * dx * ty * dz;
-  temp += mesh[local_mesh_index(mesh_size, i + 1, j + 1, k + 0)] * dx * dy * tz;
-  temp += mesh[local_mesh_index(mesh_size, i + 1, j + 1, k + 1)] * dx * dy * dz;
-  return temp;
-}
-#endif
-
-
-/**
  * @brief Computes the potential on a gpart from a given mesh using the CIC
  * method.
  *
  * @param gp The #gpart.
- * @param mesh The local potential mesh covering the cell
- * @param mesh_size The size of mesh in each dimension
- * @param N the size of the mesh along one axis.
- * @param fac width of a mesh cell.
- * @param dim The dimensions of the simulation box.
- * @param wrap_min Minimum coordinates of range into which
- * particles must be wrapped
- * @param wrap_min Maximum coordinates of range into which
- * particles must be wrapped
+ * @param patch The local mesh patch
  */
 #if defined(WITH_MPI) && defined(HAVE_MPI_FFTW)
-void local_mesh_to_gparts_CIC(struct gpart *gp, const double *mesh,
-                              const int mesh_size[3], const int mesh_min[3],
-                              const int N, const double fac, const double dim[3],
-                              const double wrap_min[3], const double wrap_max[3]) {
+void mesh_patch_to_gparts_CIC(struct gpart *gp, const struct pm_mesh_patch *patch) {
 
-  /* Box wrap the gpart's position */
-  const double pos_x = box_wrap(gp->x[0], wrap_min[0], wrap_max[0]);
-  const double pos_y = box_wrap(gp->x[1], wrap_min[1], wrap_max[1]);
-  const double pos_z = box_wrap(gp->x[2], wrap_min[2], wrap_max[2]);
+  const double fac = patch->fac;
+
+  /* Box wrap the gpart's position to the copy nearest the cell centre */
+  const double pos_x = box_wrap(gp->x[0], patch->wrap_min[0], patch->wrap_max[0]);
+  const double pos_y = box_wrap(gp->x[1], patch->wrap_min[1], patch->wrap_max[1]);
+  const double pos_z = box_wrap(gp->x[2], patch->wrap_min[2], patch->wrap_max[2]);
 
   /* Workout the CIC coefficients */
   int i = (int) floor(fac * pos_x);
@@ -985,29 +707,24 @@ void local_mesh_to_gparts_CIC(struct gpart *gp, const double *mesh,
   double p = 0.;
   double a[3] = {0.};
 
-  /* Indices of (i,j,k) in the local copy of the mesh */
-  const int ii = i - mesh_min[0];
-  const int jj = j - mesh_min[1];
-  const int kk = k - mesh_min[2];
-
   /* Simple CIC for the potential itself */
-  p += local_mesh_CIC_get(mesh, mesh_size, ii, jj, kk, tx, ty, tz, dx, dy, dz);
+  p += pm_mesh_patch_CIC_get(patch, i, j, k, tx, ty, tz, dx, dy, dz);
 
   /* 5-point stencil along each axis for the accelerations */
-  a[0] += (1. / 12.) * local_mesh_CIC_get(mesh, mesh_size, ii + 2, jj, kk, tx, ty, tz, dx, dy, dz);
-  a[0] -= (2. / 3.)  * local_mesh_CIC_get(mesh, mesh_size, ii + 1, jj, kk, tx, ty, tz, dx, dy, dz);
-  a[0] += (2. / 3.)  * local_mesh_CIC_get(mesh, mesh_size, ii - 1, jj, kk, tx, ty, tz, dx, dy, dz);
-  a[0] -= (1. / 12.) * local_mesh_CIC_get(mesh, mesh_size, ii - 2, jj, kk, tx, ty, tz, dx, dy, dz);
+  a[0] += (1. / 12.) * pm_mesh_patch_CIC_get(patch, i + 2, j, k, tx, ty, tz, dx, dy, dz);
+  a[0] -= (2. / 3.)  * pm_mesh_patch_CIC_get(patch, i + 1, j, k, tx, ty, tz, dx, dy, dz);
+  a[0] += (2. / 3.)  * pm_mesh_patch_CIC_get(patch, i - 1, j, k, tx, ty, tz, dx, dy, dz);
+  a[0] -= (1. / 12.) * pm_mesh_patch_CIC_get(patch, i - 2, j, k, tx, ty, tz, dx, dy, dz);
   
-  a[1] += (1. / 12.) * local_mesh_CIC_get(mesh, mesh_size, ii, jj + 2, kk, tx, ty, tz, dx, dy, dz);
-  a[1] -= (2. / 3.)  * local_mesh_CIC_get(mesh, mesh_size, ii, jj + 1, kk, tx, ty, tz, dx, dy, dz);
-  a[1] += (2. / 3.)  * local_mesh_CIC_get(mesh, mesh_size, ii, jj - 1, kk, tx, ty, tz, dx, dy, dz);
-  a[1] -= (1. / 12.) * local_mesh_CIC_get(mesh, mesh_size, ii, jj - 2, kk, tx, ty, tz, dx, dy, dz);
+  a[1] += (1. / 12.) * pm_mesh_patch_CIC_get(patch, i, j + 2, k, tx, ty, tz, dx, dy, dz);
+  a[1] -= (2. / 3.)  * pm_mesh_patch_CIC_get(patch, i, j + 1, k, tx, ty, tz, dx, dy, dz);
+  a[1] += (2. / 3.)  * pm_mesh_patch_CIC_get(patch, i, j - 1, k, tx, ty, tz, dx, dy, dz);
+  a[1] -= (1. / 12.) * pm_mesh_patch_CIC_get(patch, i, j - 2, k, tx, ty, tz, dx, dy, dz);
   
-  a[2] += (1. / 12.) * local_mesh_CIC_get(mesh, mesh_size, ii, jj, kk + 2, tx, ty, tz, dx, dy, dz);
-  a[2] -= (2. / 3.)  * local_mesh_CIC_get(mesh, mesh_size, ii, jj, kk + 1, tx, ty, tz, dx, dy, dz);
-  a[2] += (2. / 3.)  * local_mesh_CIC_get(mesh, mesh_size, ii, jj, kk - 1, tx, ty, tz, dx, dy, dz);
-  a[2] -= (1. / 12.) * local_mesh_CIC_get(mesh, mesh_size, ii, jj, kk - 2, tx, ty, tz, dx, dy, dz);
+  a[2] += (1. / 12.) * pm_mesh_patch_CIC_get(patch, i, j, k + 2, tx, ty, tz, dx, dy, dz);
+  a[2] -= (2. / 3.)  * pm_mesh_patch_CIC_get(patch, i, j, k + 1, tx, ty, tz, dx, dy, dz);
+  a[2] += (2. / 3.)  * pm_mesh_patch_CIC_get(patch, i, j, k - 1, tx, ty, tz, dx, dy, dz);
+  a[2] -= (1. / 12.) * pm_mesh_patch_CIC_get(patch, i, j, k - 2, tx, ty, tz, dx, dy, dz);
 
   /* Store things back */
   accumulate_add_f(&gp->a_grav[0], fac * a[0]);
@@ -1052,34 +769,12 @@ void mpi_mesh_interpolate_forces(hashmap_t *potential, const int N,
   /* Check for empty cell as this would cause problems finding the extent */
   if(gcount==0)return;
 
-  /* Determine the extent of the mesh we need */
-  double wrap_min[3];
-  double wrap_max[3];
-  int mesh_min[3];
-  int mesh_size[3];
-  int num_cells;
-  determine_mesh_size_for_cell(cell, fac, dim, /*boundary_size=*/2, 
-                               wrap_min, wrap_max, 
-                               mesh_min, mesh_size, &num_cells);
+  /* Allocate the local mesh patch */
+  struct pm_mesh_patch patch;
+  pm_mesh_patch_init(&patch, cell, N, fac, dim, /*boundary_size=*/2);
   
-  /* Allocate the local mesh */
-  double *mesh = malloc(num_cells*sizeof(double));
-  
-  /* Look up the potential in each local mesh cell */
-  for(int i=0; i<mesh_size[0];i+=1) {
-    for(int j=0; j<mesh_size[1];j+=1) {
-      for(int k=0; k<mesh_size[2];k+=1) {
-	const int local_index = local_mesh_index(mesh_size, i, j, k);
-	const size_t global_index = row_major_id_periodic_size_t_padded(i+mesh_min[0], j+mesh_min[1], k+mesh_min[2], N);
-        hashmap_value_t *value = hashmap_lookup(potential, global_index);
-        if(!value) {
-          error("Required cell is not present in potential hashmap");
-        } else {
-          mesh[local_index] = value->value_dbl;
-        }
-      }
-    }
-  }
+  /* Populate the mesh patch with values from the potential hashmap */
+  pm_mesh_patch_set_values_from_hashmap(&patch, potential);
 
   /* Get the potential from the mesh to the active gparts using CIC */
   for (int i = 0; i < gcount; ++i) {
@@ -1097,13 +792,13 @@ void mpi_mesh_interpolate_forces(hashmap_t *potential, const int N,
         error("Adding forces to an un-initialised gpart.");
 #endif
       /* Evaluate the potential and acceleration for this gpart */
-      local_mesh_to_gparts_CIC(gp, mesh, mesh_size, mesh_min,
-                               N, fac, dim, wrap_min, wrap_max);
+      mesh_patch_to_gparts_CIC(gp, &patch);
     }
   }
 
-  /* Discard the temporary mesh */
-  free(mesh);
+  /* Discard the temporary mesh patch */
+  pm_mesh_patch_clean(&patch);
+
 #else
   error("FFTW MPI not found - unable to use distributed mesh");
 #endif

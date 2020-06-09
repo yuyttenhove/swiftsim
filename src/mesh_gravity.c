@@ -47,27 +47,10 @@
 #include "threadpool.h"
 
 #include "hashmap.h"
+#include "row_major_id.h"
 #include "mesh_gravity_mpi.h"
 
 #ifdef HAVE_FFTW
-
-/**
- * @brief Returns 1D index of a 3D NxNxN array using row-major style.
- *
- * Wraps around in the corresponding dimension if any of the 3 indices is >= N
- * or < 0.
- *
- * @param i Index along x.
- * @param j Index along y.
- * @param k Index along z.
- * @param N Size of the array along one axis.
- */
-__attribute__((always_inline, const)) INLINE static int row_major_id_periodic(
-    const int i, const int j, const int k, const int N) {
-
-  return (((i + N) % N) * N * N + ((j + N) % N) * N + ((k + N) % N));
-}
-
 /**
  * @brief Interpolate values from a the mesh using CIC.
  *
