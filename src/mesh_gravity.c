@@ -47,7 +47,7 @@
 #include "threadpool.h"
 
 #include "hashmap.h"
-#include "mpi_mesh_gravity.h"
+#include "mesh_gravity_mpi.h"
 
 #ifdef HAVE_FFTW
 

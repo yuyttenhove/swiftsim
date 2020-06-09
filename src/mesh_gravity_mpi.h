@@ -17,8 +17,8 @@
  *
  ******************************************************************************/
 
-#ifndef SWIFT_MPI_MESH_GRAVITY_H
-#define SWIFT_MPI_MESH_GRAVITY_H
+#ifndef SWIFT_MESH_GRAVITY_MPI_H
+#define SWIFT_MESH_GRAVITY_MPI_H
 
 /* Config parameters. */
 #include "../config.h"

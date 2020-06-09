@@ -26,7 +26,7 @@
 #endif
 
 /* This object's header. */
-#include "mpi_mesh_gravity.h"
+#include "mesh_gravity_mpi.h"
 
 /* Local includes. */
 #include "debug.h"
