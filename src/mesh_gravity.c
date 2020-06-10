@@ -538,7 +538,7 @@ void compute_potential_distributed(struct pm_mesh* mesh, const struct space* s,
     fftw_mpi_local_size_3d((ptrdiff_t)N, (ptrdiff_t)N, (ptrdiff_t) (N/2+1),
                            MPI_COMM_WORLD, &local_n0, &local_0_start);
   if(verbose)message("Local density field slice has thickness %d.", (int)local_n0);
-  if(verbose)message("Hashmap size = %d, local cells = %d\n", (int)hashmap_size(&rho_map), (int) (local_n0*N*N));
+  if(verbose)message("Hashmap size = %d, local cells = %d", (int)hashmap_size(&rho_map), (int) (local_n0*N*N));
 
   /* Allocate storage for mesh slices. nalloc is the number of *complex* values. */
   double* rho_slice = (double*)fftw_malloc(2 * nalloc * sizeof(double));
