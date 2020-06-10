@@ -86,18 +86,13 @@ void pm_mesh_patch_clean(struct pm_mesh_patch *patch);
 __attribute__((always_inline)) INLINE static int pm_mesh_patch_index(
       const struct pm_mesh_patch *patch, const int i, const int j, const int k) {
 
-  /* Get coordinates in the mesh patch */
-  const int ilocal = i - patch->mesh_min[0];
-  const int jlocal = j - patch->mesh_min[1];
-  const int klocal = k - patch->mesh_min[2];
-
   /* #ifdef SWIFT_DEBUG_CHECKS */
-  if(ilocal < 0 || ilocal >= patch->mesh_size[0])error("Coordinate in local mesh out of range!");
-  if(jlocal < 0 || jlocal >= patch->mesh_size[1])error("Coordinate in local mesh out of range!");
-  if(klocal < 0 || klocal >= patch->mesh_size[2])error("Coordinate in local mesh out of range!");
+  if(i < 0 || i >= patch->mesh_size[0])error("Coordinate in local mesh out of range!");
+  if(j < 0 || j >= patch->mesh_size[1])error("Coordinate in local mesh out of range!");
+  if(k < 0 || k >= patch->mesh_size[2])error("Coordinate in local mesh out of range!");
   /* #endif */
 
-  return (ilocal*patch->mesh_size[1]*patch->mesh_size[2]) + (jlocal*patch->mesh_size[2]) + klocal;
+  return (i*patch->mesh_size[1]*patch->mesh_size[2]) + (j*patch->mesh_size[2]) + k;
 }
 
 

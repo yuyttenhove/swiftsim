@@ -91,9 +91,14 @@ void accumulate_cell_to_hashmap(const int N, const double fac,
     const double dz = fac * pos_z - k;
     const double tz = 1. - dz;
 
+    /* Get coordinates within the mesh patch */
+    const int ii = i - patch.mesh_min[0];
+    const int jj = j - patch.mesh_min[1];
+    const int kk = k - patch.mesh_min[2];
+
     /* Accumulate contributions to the local mesh patch */
     const double mass = gp->mass;
-    pm_mesh_patch_CIC_set(&patch, i, j, k, tx, ty, tz, dx, dy, dz, mass);   
+    pm_mesh_patch_CIC_set(&patch, ii, jj, kk, tx, ty, tz, dx, dy, dz, mass);   
   }
 
   /* Add contributions from the local mesh patch to the hashmap.
@@ -707,24 +712,29 @@ void mesh_patch_to_gparts_CIC(struct gpart *gp, const struct pm_mesh_patch *patc
   double p = 0.;
   double a[3] = {0.};
 
+  /* Get coordinates within the mesh patch */
+  const int ii = i - patch->mesh_min[0];
+  const int jj = j - patch->mesh_min[1];
+  const int kk = k - patch->mesh_min[2];
+
   /* Simple CIC for the potential itself */
-  p += pm_mesh_patch_CIC_get(patch, i, j, k, tx, ty, tz, dx, dy, dz);
+  p += pm_mesh_patch_CIC_get(patch, ii, jj, kk, tx, ty, tz, dx, dy, dz);
 
   /* 5-point stencil along each axis for the accelerations */
-  a[0] += (1. / 12.) * pm_mesh_patch_CIC_get(patch, i + 2, j, k, tx, ty, tz, dx, dy, dz);
-  a[0] -= (2. / 3.)  * pm_mesh_patch_CIC_get(patch, i + 1, j, k, tx, ty, tz, dx, dy, dz);
-  a[0] += (2. / 3.)  * pm_mesh_patch_CIC_get(patch, i - 1, j, k, tx, ty, tz, dx, dy, dz);
-  a[0] -= (1. / 12.) * pm_mesh_patch_CIC_get(patch, i - 2, j, k, tx, ty, tz, dx, dy, dz);
+  a[0] += (1. / 12.) * pm_mesh_patch_CIC_get(patch, ii + 2, jj, kk, tx, ty, tz, dx, dy, dz);
+  a[0] -= (2. / 3.)  * pm_mesh_patch_CIC_get(patch, ii + 1, jj, kk, tx, ty, tz, dx, dy, dz);
+  a[0] += (2. / 3.)  * pm_mesh_patch_CIC_get(patch, ii - 1, jj, kk, tx, ty, tz, dx, dy, dz);
+  a[0] -= (1. / 12.) * pm_mesh_patch_CIC_get(patch, ii - 2, jj, kk, tx, ty, tz, dx, dy, dz);
   
-  a[1] += (1. / 12.) * pm_mesh_patch_CIC_get(patch, i, j + 2, k, tx, ty, tz, dx, dy, dz);
-  a[1] -= (2. / 3.)  * pm_mesh_patch_CIC_get(patch, i, j + 1, k, tx, ty, tz, dx, dy, dz);
-  a[1] += (2. / 3.)  * pm_mesh_patch_CIC_get(patch, i, j - 1, k, tx, ty, tz, dx, dy, dz);
-  a[1] -= (1. / 12.) * pm_mesh_patch_CIC_get(patch, i, j - 2, k, tx, ty, tz, dx, dy, dz);
+  a[1] += (1. / 12.) * pm_mesh_patch_CIC_get(patch, ii, jj + 2, kk, tx, ty, tz, dx, dy, dz);
+  a[1] -= (2. / 3.)  * pm_mesh_patch_CIC_get(patch, ii, jj + 1, kk, tx, ty, tz, dx, dy, dz);
+  a[1] += (2. / 3.)  * pm_mesh_patch_CIC_get(patch, ii, jj - 1, kk, tx, ty, tz, dx, dy, dz);
+  a[1] -= (1. / 12.) * pm_mesh_patch_CIC_get(patch, ii, jj - 2, kk, tx, ty, tz, dx, dy, dz);
   
-  a[2] += (1. / 12.) * pm_mesh_patch_CIC_get(patch, i, j, k + 2, tx, ty, tz, dx, dy, dz);
-  a[2] -= (2. / 3.)  * pm_mesh_patch_CIC_get(patch, i, j, k + 1, tx, ty, tz, dx, dy, dz);
-  a[2] += (2. / 3.)  * pm_mesh_patch_CIC_get(patch, i, j, k - 1, tx, ty, tz, dx, dy, dz);
-  a[2] -= (1. / 12.) * pm_mesh_patch_CIC_get(patch, i, j, k - 2, tx, ty, tz, dx, dy, dz);
+  a[2] += (1. / 12.) * pm_mesh_patch_CIC_get(patch, ii, jj, kk + 2, tx, ty, tz, dx, dy, dz);
+  a[2] -= (2. / 3.)  * pm_mesh_patch_CIC_get(patch, ii, jj, kk + 1, tx, ty, tz, dx, dy, dz);
+  a[2] += (2. / 3.)  * pm_mesh_patch_CIC_get(patch, ii, jj, kk - 1, tx, ty, tz, dx, dy, dz);
+  a[2] -= (1. / 12.) * pm_mesh_patch_CIC_get(patch, ii, jj, kk - 2, tx, ty, tz, dx, dy, dz);
 
   /* Store things back */
   accumulate_add_f(&gp->a_grav[0], fac * a[0]);
