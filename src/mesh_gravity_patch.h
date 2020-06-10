@@ -116,7 +116,7 @@ __attribute__((always_inline)) INLINE static int pm_mesh_patch_index(
  * @param dz CIC parameter in the z direction
  *
  */
-__attribute__((always_inline, const)) INLINE static double pm_mesh_patch_CIC_get(
+__attribute__((always_inline)) INLINE static double pm_mesh_patch_CIC_get(
     const struct pm_mesh_patch *patch, const int i, const int j, const int k,
     const double tx, const double ty, const double tz, const double dx,
     const double dy, const double dz) {
@@ -148,7 +148,7 @@ __attribute__((always_inline, const)) INLINE static double pm_mesh_patch_CIC_get
  * @param dz CIC parameter in the z direction
  * @param value The value to set
  */
-__attribute__((always_inline, const)) INLINE static void pm_mesh_patch_CIC_set(
+__attribute__((always_inline)) INLINE static void pm_mesh_patch_CIC_set(
     const struct pm_mesh_patch *patch, const int i, const int j, const int k,
     const double tx, const double ty, const double tz, const double dx,
     const double dy, const double dz, const double value) {
