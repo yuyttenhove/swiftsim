@@ -124,6 +124,7 @@ void pm_mesh_patch_set_values_from_hashmap(struct pm_mesh_patch *patch, hashmap_
         /* Look up the value in the hashmap and store it in the mesh patch */
         hashmap_value_t *value = hashmap_lookup(map, global_index);
         if(!value) {
+          /* Possibly mpi_mesh_fetch_potential() didn't import enough cells? */
           error("Required cell is not present in potential hashmap");
         } else {
           patch->mesh[local_index] = value->value_dbl;
