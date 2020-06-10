@@ -86,6 +86,8 @@ __attribute__((always_inline)) INLINE static void black_holes_first_init_bpart(
   bp->swallowed_angular_momentum[0] = 0.f;
   bp->swallowed_angular_momentum[1] = 0.f;
   bp->swallowed_angular_momentum[2] = 0.f;
+  bp->cumulative_target_prob = 0.f;
+  bp->cumulative_actual_prob = 0.f;
 
   black_holes_mark_bpart_as_not_swallowed(&bp->merger_data);
 }
@@ -563,12 +565,13 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
 
     /* Default probability of heating */
     double target_prob = bp->energy_reservoir / (delta_u * bp->ngb_mass);
+    bp->cumulative_target_prob += target_prob;
 
     /* Calculate the change in internal energy of the gas particles that get
      * heated. Adjust the prbability if needed. */
     double gas_delta_u;
     double prob;
-    if (target_prob <= 1.) {
+    if (target_prob <= 0.3) {
 
       /* Normal case */
       prob = target_prob;
@@ -576,19 +579,19 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
 
     } else {
 
-      /* Special case: we need to adjust the energy irrespective of the
-       * desired deltaT to ensure we inject all the available energy. */
-
-      prob = 1.;
-      gas_delta_u = bp->energy_reservoir / bp->ngb_mass;
+      /* Reservoir bug case... */
+      prob = 0.3;
+      gas_delta_u = delta_u;
     }
 
     /* Store all of this in the black hole for delivery onto the gas. */
     bp->to_distribute.AGN_heating_probability = prob;
     bp->to_distribute.AGN_delta_u = gas_delta_u;
-
+    bp->cumulative_actual_prob += prob;
+    bp->target_heating_prob = target_prob;
+    
     /* Decrement the energy in the reservoir by the mean expected energy */
-    const double energy_used = bp->energy_reservoir / max(prob, 1.);
+    const double energy_used = bp->energy_reservoir * (0.3 / target_prob);
     bp->energy_reservoir -= energy_used;
 
   } else {
@@ -596,6 +599,7 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
     /* Flag that we don't want to heat anyone */
     bp->to_distribute.AGN_heating_probability = 0.f;
     bp->to_distribute.AGN_delta_u = 0.f;
+    bp->target_heating_prob = 0.f;
   }
 }
 
@@ -748,13 +752,15 @@ INLINE static void black_holes_create_from_gas(
   /* Initial seed mass */
   bp->subgrid_mass = props->subgrid_seed_mass;
 
-  /* We haven't accreted anything yet */
+  /* We haven't accreted or heated anything yet */
   bp->total_accreted_mass = 0.f;
   bp->cumulative_number_seeds = 1;
   bp->number_of_mergers = 0;
   bp->number_of_gas_swallows = 0;
   bp->number_of_direct_gas_swallows = 0;
   bp->number_of_time_steps = 0;
+  bp->cumulative_target_prob = 0.f;
+  bp->cumulative_actual_prob = 0.f;
 
   /* We haven't repositioned yet, nor attempted it */
   bp->number_of_repositions = 0;

@@ -139,7 +139,7 @@ INLINE static void black_holes_write_particles(const struct bpart* bparts,
                                                int with_cosmology) {
 
   /* Say how much we want to write */
-  *num_fields = 27;
+  *num_fields = 30;
 
   /* List what we want to write */
   list[0] = io_make_output_field_convert_bpart(
@@ -318,6 +318,29 @@ INLINE static void black_holes_write_particles(const struct bpart* bparts,
       "rates have been suppressed by the Rosas-Guevara et al. (2015) "
       "accretion disc model.");
 
+  list[27] = io_make_output_field(
+      "CumulativeHeatingProbabilities", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f,
+      bparts, cumulative_target_prob,
+      "Cumulative (ideal) probability of the black holes heating any one of "
+      "their gas neighbour particles. This can be combined with "
+      "NumberOfTimeSteps to find the average heating probability between two "
+      "outputs.");
+
+  list[28] = io_make_output_field(
+      "CumulativeActualHeatingProbabilities", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f,
+      bparts, cumulative_actual_prob,
+      "Cumulative (actual) probability of the black holes heating any one of "
+      "their gas neighbour particles, accounting for the maximum allowed "
+      "probability. This can be combined with NumberOfTimeSteps to find the "
+      "average heating probability between two outputs.");
+
+  list[29] = io_make_output_field(
+      "HeatingProbabilities", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f,
+      bparts, target_heating_prob,
+      "Instantaneous (ideal) probability of the black holes heating any one of "
+      "their gas neighbour particles. The actual probability might be lower if "
+      "this exceeds the maximum allowed probability.");
+ 
 #ifdef DEBUG_INTERACTIONS_BLACK_HOLES
 
   list += *num_fields;

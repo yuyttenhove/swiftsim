@@ -140,6 +140,15 @@ struct bpart {
   /*! Total (physical) angular momentum accumulated by swallowing particles */
   float swallowed_angular_momentum[3];
 
+  /*! Cumulative target probability of heating any one neighbour particle */
+  float cumulative_target_prob;
+
+  /*! Cumulative actual probability of heating any one neighbour particle */
+  float cumulative_actual_prob;
+
+  /*! Instantaneous target probability of heating any one neighbour particle */
+  float target_heating_prob;
+
   /*! Union for the last high Eddington ratio point in time */
   union {
 
