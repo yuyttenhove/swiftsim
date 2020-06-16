@@ -87,6 +87,10 @@ runner_iact_nonsym_bh_gas_density(
   /* Contribution to the smoothed sound speed */
   bi->sound_speed_gas += mj * cj * wi;
 
+  /* Contribution to the smoothed gas metallicity */
+  bi->gas_metal_mass_fraction += mj * wi * 
+      chemistry_get_metal_mass_fraction_for_black_holes(pj);
+
   /* Neighbour's (drifted) velocity in the frame of the black hole
    * (we don't include a Hubble term since we are interested in the
    * velocity contribution at the location of the black hole) */

@@ -61,13 +61,13 @@ struct black_holes_props {
   /* ----- Properties of the accretion model ------ */
 
   /*! Switch on Booth & Schaye (2009) accretion boost factor? */
-  int with_accretion_boost
+  int with_accretion_boost;
 
   /*! Density normalisation of accretion boost */
-  float accretion_boost_dens_norm
+  float accretion_boost_dens_norm;
 
   /*! Exponent of accretion boost dependence on density */
-  float accretion_boost_exponent 
+  float accretion_boost_exponent;
 
   /*! Calculate Bondi accretion rate for individual neighbours? */
   int multi_phase_bondi;
@@ -166,6 +166,9 @@ struct black_holes_props {
 
   /*! Conversion factor from temperature to internal energy */
   float temp_to_u_factor;
+
+  /*! Conversion factor from physical density to n_H [cgs] */
+  float rho_to_n_cgs;
 };
 
 /**
@@ -237,7 +240,6 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
   /* Accretion parameters ---------------------------------- */
 
   /*! Booth & Schaye (2009) accretion boost model */
-  int with_accretion_boost
   bp->with_accretion_boost =
       parser_get_param_int(params, "EAGLEAGN:with_accretion_boost");
   if (bp->with_accretion_boost) {

@@ -123,6 +123,8 @@ __attribute__((always_inline)) INLINE static void black_holes_init_bpart(
   bp->reposition.potential = FLT_MAX;
   bp->accretion_rate = 0.f; /* Optionally accumulated ngb-by-ngb */
   bp->f_visc = FLT_MAX;
+  bp->gas_metal_mass_fraction = 0.f;
+  bp->accretion_boost_factor = FLT_MAX;
 }
 
 /**
@@ -223,6 +225,7 @@ __attribute__((always_inline)) INLINE static void black_holes_end_density(
   /* For the following, we also have to undo the mass smoothing
    * (N.B.: bp->velocity_gas is in BH frame, in internal units). */
   bp->sound_speed_gas *= h_inv_dim * rho_inv;
+  bp->gas_metal_mass_fraction *= h_inv_dim * rho_inv;
   bp->velocity_gas[0] *= h_inv_dim * rho_inv;
   bp->velocity_gas[1] *= h_inv_dim * rho_inv;
   bp->velocity_gas[2] *= h_inv_dim * rho_inv;
@@ -407,6 +410,78 @@ __attribute__((always_inline)) INLINE static void black_holes_swallow_bpart(
 
   /* We had another merger */
   bpi->number_of_mergers++;
+}
+
+/**
+ * @brief Compute the boost factor for the BH accretion rate.
+ * 
+ * This is computed according to equation (4) of Booth & Schaye (2009).
+ *
+ * @param bp The #bpart.
+ * @param props The properties of the black hole model.
+ * @param cosmo The current cosmological model.
+ */
+__attribute__((always_inline)) INLINE static void
+compute_black_hole_accretion_boost_factor(struct bpart* bp,
+                                          const struct black_holes_props* props,
+                                          const struct cosmology* cosmo) {
+
+  /* Safety check: should only get here if we run with the boost model */
+  if (!props->with_accretion_boost)
+    error("Attempting to compute accretion boost factor without activating "
+          "accretion boost model for black holes. This is not consistent.");
+
+  /* Model parameters */
+  const double n_0 = props->accretion_boost_dens_norm;
+  const double beta = props->accretion_boost_exponent;
+
+  /* Calculate alpha_boost */
+  const double n_gas_phys = bp->rho_gas * cosmo->a3_inv * props->rho_to_n_cgs;
+  const double alpha = pow(n_gas_phys / n_0, beta);
+  bp->accretion_boost_factor = min(alpha, 1.0);
+}
+
+/**
+ * @brief Computes the coupling fraction of black hole feedback energy.
+ * 
+ * This is computed in analogy to the scaling of supernova energy, using
+ * equation 7 of Schaye et al. 2015.
+ *
+ * @param bp The #bpart.
+ * @param props The properties of the black hole model.
+ * @param cosmo The current cosmological model.
+ */
+__attribute__((always_inline)) INLINE static double
+black_hole_feedback_energy_fraction(const struct bpart* bp,
+                                    const struct black_holes_props* props,
+                                    const struct cosmology* cosmo) {
+
+  /* Safety check: should only get here if we run with the boost model */
+  if (!props->use_scaled_coupling_efficiency)
+    error("Attempting to compute variable black hole coupling efficiency "
+          "without activating this model. Cease and desist.");
+
+  /* Model parameters */
+  const double f_min = props->epsilon_f_min;
+  const double f_max = props->epsilon_f_max;
+  const double Z_0 = props->epsilon_f_metallicity_norm;
+  const double n_0 = props->epsilon_f_density_norm;
+  const double n_Z = props->epsilon_f_metallicity_exponent;
+  const double n_n = props->epsilon_f_density_exponent;
+
+  /* Black hole properties */
+
+  /* Metallicity (metal mass fraction) and (physical) density of the
+   * ambient gas around the black hole */
+  const double Z = bp->gas_metal_mass_fraction;
+  const double n_gas_phys = bp->rho_gas * cosmo->a3_inv * props->rho_to_n_cgs;
+
+  /* Calculate epsilon_f */
+  const double Z_term = pow(max(Z, 1e-6) / Z_0, n_Z);
+  const double n_term = pow(n_gas_phys / n_0, n_n);
+  const double denonimator = 1. + Z_term * n_term;
+
+  return f_min + (f_max - f_min) / denonimator;
 }
 
 /**
@@ -797,76 +872,8 @@ INLINE static void black_holes_create_from_gas(
   black_holes_mark_bpart_as_not_swallowed(&bp->merger_data);
 }
 
-/**
- * @brief Computes the coupling fraction of black hole feedback energy.
- * 
- * This is computed in analogy to the scaling of supernova energy, using
- * equation 7 of Schaye et al. 2015.
- *
- * @param bp The #bpart.
- * @param props The properties of the black hole model.
- * @param cosmo The current cosmological model.
- */
-__attribute__((always_inline)) INLINE static double
-black_hole_feedback_energy_fraction(const struct bpart* bp,
-                                    const struct bh_props* props,
-                                    const struct cosmology* cosmo) {
 
-  /* Safety check: should only get here if we run with the boost model */
-  if (!props->use_scaled_coupling_efficiency)
-    error("Attempting to compute variable black hole coupling efficiency "
-          "without activating this model. Cease and desist.");
 
-  /* Model parameters */
-  const double f_min = props->epsilon_f_min;
-  const double f_max = props->epsilon_f_max;
-  const double Z_0 = props->epsilon_f_metallicity_norm;
-  const double n_0 = props->epsilon_f_density_norm;
-  const double n_Z = props->epsilon_f_metallicity_exponent;
-  const double n_n = props->epsilon_f_density_exponent;
 
-  /* Black hole properties */
-
-  /* Metallicity (metal mass fraction) and (physical) density of the
-   * ambient gas around the black hole */
-  const double Z = bp->gas_metal_mass_fraction;
-  const double n_gas_phys = bp->rho_gas * cosmo->a3_inv * props->rho_to_n_cgs;
-
-  /* Calculate epsilon_f */
-  const double Z_term = pow(max(Z, 1e-6) / Z_0, n_Z);
-  const double n_term = pow(n_gas_phys / n_0, n_n);
-  const double denonimator = 1. + Z_term * n_term;
-
-  return f_min + (f_max - f_min) / denonimator;
-}
-
-/**
- * @brief Compute the boost factor for the BH accretion rate.
- * 
- * This is computed according to equation (4) of Booth & Schaye (2009).
- *
- * @param bp The #bpart.
- * @param props The properties of the black hole model.
- * @param cosmo The current cosmological model.
- */
-__attribute__((always_inline)) INLINE static void
-compute_black_hole_accretion_boost_factor(struct bpart* bp,
-                                          const struct bh_props* props,
-                                          const struct cosmology* cosmo) {
-
-  /* Safety check: should only get here if we run with the boost model */
-  if (!props->with_accretion_boost)
-    error("Attempting to compute accretion boost factor without activating "
-          "accretion boost model for black holes. This is not consistent.");
-
-  /* Model parameters */
-  const double n_0 = props->accretion_boost_dens_norm;
-  const double beta = props->accretion_boost_exponent;
-
-  /* Calculate alpha_boost */
-  const double n_gas_phys = bp->rho_gas * cosmo->a3_inv * props->rho_to_n_cgs;
-  const double alpha = (n_gas_phys / n_0, beta);
-  bp->accretion_boost_factor = min(alpha, 1.0);
-}
 
 #endif /* SWIFT_EAGLE_BLACK_HOLES_H */

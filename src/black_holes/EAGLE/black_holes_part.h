@@ -140,6 +140,12 @@ struct bpart {
   /*! Total (physical) angular momentum accumulated by swallowing particles */
   float swallowed_angular_momentum[3];
 
+  /*! Metallicity of ambient gas */
+  float gas_metal_mass_fraction;
+
+  /*! Accretion boost factor */
+  float accretion_boost_factor;
+
   /*! Union for the last high Eddington ratio point in time */
   union {
 
