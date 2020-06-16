@@ -497,27 +497,37 @@ GEARFeedback:
   
 # EAGLE AGN model
 EAGLEAGN:
-  subgrid_seed_mass_Msun:             1.5e5      # Black hole subgrid mass at creation time in solar masses.
-  use_subgrid_mass_from_ics:          1          # (Optional) Use subgrid masses specified in ICs [1, default], or initialise them to particle masses [0]?
-  with_subgrid_mass_check:            1          # (Optional) Verify that initial black hole subgrid masses are positive [1, default]. Only used if use_subgrid_mass_from_ics is 1.
-  multi_phase_bondi:                  0          # Compute Bondi rates per neighbour particle?
-  with_angmom_limiter:                1          # Are we applying the Rosas-Guevara et al. (2015) viscous time-scale reduction term?
-  viscous_alpha:                      1e6        # Normalisation constant of the viscous time-scale in the accretion reduction term
-  radiative_efficiency:               0.1        # Fraction of the accreted mass that gets radiated.
-  max_eddington_fraction:             1.         # Maximal allowed accretion rate in units of the Eddington rate.
-  eddington_fraction_for_recording:   0.1        # Record the last time BHs reached an Eddington ratio above this threshold.
-  coupling_efficiency:                0.15       # Fraction of the radiated energy that couples to the gas in feedback events.
-  AGN_delta_T_K:                      3.16228e8  # Change in temperature to apply to the gas particle in an AGN feedback event in Kelvin.
-  AGN_num_ngb_to_heat:                1.         # Target number of gas neighbours to heat in an AGN feedback event.
-  max_reposition_mass:                2e8        # Maximal BH mass considered for BH repositioning in solar masses.
-  max_reposition_distance_ratio:      3.0        # Maximal distance a BH can be repositioned, in units of the softening length.
-  with_reposition_velocity_threshold: 1          # Should we only reposition to particles that move slowly w.r.t. the black hole?
-  max_reposition_velocity_ratio:      0.5        # Maximal velocity offset of a particle to reposition a BH to, in units of the ambient sound speed of the BH. Only meaningful if with_reposition_velocity_ratio is 1.
-  min_reposition_velocity_threshold: -1.0        # Minimal value of the velocity threshold for repositioning [km/s], set to < 0 for no effect. Only meaningful if with_reposition_velocity_ratio is 1.
-  set_reposition_speed:               0          # Should we reposition black holes with (at most) a prescribed speed towards the potential minimum?
-  reposition_coefficient_upsilon:     0.0001     # Repositioning speed normalisation [km/s/M_sun]. Only meaningful if set_reposition_speed is 1.
-  reposition_exponent_xi:             1.0        # (Optional) Scaling of repositioning velocity with BH subgrid mass (default: 1.0, linear). Only meaningful if set_reposition_speed is 1.
-  threshold_major_merger:             0.333      # Mass ratio threshold to consider a BH merger as 'major'
-  threshold_minor_merger:             0.1        # Mass ratio threshold to consider a BH merger as 'minor'
-  merger_threshold_type:              2          # Type of velocity threshold for BH mergers (0: v_circ at kernel edge, 1: v_esc at actual distance, with softening, 2: v_esc at actual distance, no softening).
-  merger_max_distance_ratio:          3.0        # Maximal distance over which two BHs can merge, in units of the softening length.
+  subgrid_seed_mass_Msun:             1.5e5         # Black hole subgrid mass at creation time in solar masses.
+  use_subgrid_mass_from_ics:          1             # (Optional) Use subgrid masses specified in ICs [1, default], or initialise them to particle masses [0]?
+  with_subgrid_mass_check:            1             # (Optional) Verify that initial black hole subgrid masses are positive [1, default]. Only used if use_subgrid_mass_from_ics is 1.
+  with_accretion_boost:               1             # Are we applying a Booth & Schaye (2009) like boost factor to black hole accretion rates?
+  accretion_boost_dens_norm:          0.1           # Normalisation density for boost factor [n_H / cm^3]; no boost is applied if the ambient density is lower. Only used if with_accretion_boost is 1.
+  accretion_boost_exponent:           2.0           # Exponent beta of boost factor model. Only used if with_accretion_boost is 1.
+  multi_phase_bondi:                  0             # Compute Bondi rates per neighbour particle?
+  with_angmom_limiter:                1             # Are we applying the Rosas-Guevara et al. (2015) viscous time-scale reduction term?
+  viscous_alpha:                      1e6           # Normalisation constant of the viscous time-scale in the accretion reduction term
+  radiative_efficiency:               0.1           # Fraction of the accreted mass that gets radiated.
+  max_eddington_fraction:             1.            # Maximal allowed accretion rate in units of the Eddington rate.
+  eddington_fraction_for_recording:   0.1           # Record the last time BHs reached an Eddington ratio above this threshold.
+  use_scaled_coupling_efficiency:     1             # Switch to enable scaling of BH feedback efficiency with ambient gas density and/or metallicity.
+  coupling_efficiency:                0.15          # (Constant) fraction of the radiated energy that couples to the gas in feedback events. Only used if use_scaled_coupling_efficiency is 0.
+  epsilon_f_min:                      0.01          # Minimal fraction of radiated black hole energy coupled to the gas. Only used if use_scaled_coupling_efficiency is 1.
+  epsilon_f_max:                      0.2           # Maximal fraction of radiated black hole energy coupled to the gas. Only used if use_scaled_coupling_efficiency is 1.
+  epsilon_f_metallicity_norm:         0.0012663729  # Pivot point for the dependence of the black hole energy coupling efficiency on ambient gas metallicity (metal mass fraction). Only used if use_scaled_coupling_efficiency is 1.
+  epsilon_f_metallicity_exponent:     0.8686        # Power law index for the dependence of the black hole energy coupling efficiency on ambient gas metallicity. Only used if use_scaled_coupling_efficiency is 1.
+  epsilon_f_density_norm:             0.67          # Pivot point for the dependence of the black hole energy coupling efficiency on ambient gas density [n_H / cm^3]. Only used if use_scaled_coupling_efficiency is 1.
+  epsilon_f_density_exponent:         0.8686        # Power law index for the dependence of the black hole energy coupling efficiency on ambient gas density. Only used if use_scaled_coupling_efficiency is 1.  
+  AGN_delta_T_K:                      3.16228e8     # Change in temperature to apply to the gas particle in an AGN feedback event in Kelvin.
+  AGN_num_ngb_to_heat:                1.            # Target number of gas neighbours to heat in an AGN feedback event.
+  max_reposition_mass:                2e8           # Maximal BH mass considered for BH repositioning in solar masses.
+  max_reposition_distance_ratio:      3.0           # Maximal distance a BH can be repositioned, in units of the softening length.
+  with_reposition_velocity_threshold: 1             # Should we only reposition to particles that move slowly w.r.t. the black hole?
+  max_reposition_velocity_ratio:      0.5           # Maximal velocity offset of a particle to reposition a BH to, in units of the ambient sound speed of the BH. Only meaningful if with_reposition_velocity_ratio is 1.
+  min_reposition_velocity_threshold: -1.0           # Minimal value of the velocity threshold for repositioning [km/s], set to < 0 for no effect. Only meaningful if with_reposition_velocity_ratio is 1.
+  set_reposition_speed:               0             # Should we reposition black holes with (at most) a prescribed speed towards the potential minimum?
+  reposition_coefficient_upsilon:     0.0001        # Repositioning speed normalisation [km/s/M_sun]. Only meaningful if set_reposition_speed is 1.
+  reposition_exponent_xi:             1.0           # (Optional) Scaling of repositioning velocity with BH subgrid mass (default: 1.0, linear). Only meaningful if set_reposition_speed is 1.
+  threshold_major_merger:             0.333         # Mass ratio threshold to consider a BH merger as 'major'
+  threshold_minor_merger:             0.1           # Mass ratio threshold to consider a BH merger as 'minor'
+  merger_threshold_type:              2             # Type of velocity threshold for BH mergers (0: v_circ at kernel edge, 1: v_esc at actual distance, with softening, 2: v_esc at actual distance, no softening).
+  merger_max_distance_ratio:          3.0           # Maximal distance over which two BHs can merge, in units of the softening length.
