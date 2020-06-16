@@ -527,7 +527,10 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
 
   /* Add boost term from Booth & Schaye (2009) */
   if (props->with_accretion_boost) {
-    alpha_boost = bp-> 
+    compute_black_hole_accretion_boost_factor(bp, props, cosmo);
+    Bondi_rate *= bp->accretion_boost_factor;
+  } else {
+    bp->accretion_boost_factor = 1.0;
   }
 
   /* Compute the Eddington rate (internal units) */
@@ -554,6 +557,12 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
   /* Integrate forward in time */
   bp->subgrid_mass += mass_rate * dt;
   bp->total_accreted_mass += mass_rate * dt;
+
+  /* Calculate energy coupling efficiency to the gas */
+  const double epsilon_f = props->use_scaled_coupling_efficiency ?
+      black_hole_feedback_energy_fraction(bp, props, cosmo) :
+      props->epsilon_f;
+
   bp->energy_reservoir += luminosity * epsilon_f * dt;
 
   /* Energy required to have a feedback event
@@ -803,6 +812,11 @@ black_hole_feedback_energy_fraction(const struct bpart* bp,
                                     const struct bh_props* props,
                                     const struct cosmology* cosmo) {
 
+  /* Safety check: should only get here if we run with the boost model */
+  if (!props->use_scaled_coupling_efficiency)
+    error("Attempting to compute variable black hole coupling efficiency "
+          "without activating this model. Cease and desist.");
+
   /* Model parameters */
   const double f_min = props->epsilon_f_min;
   const double f_max = props->epsilon_f_max;
@@ -826,5 +840,33 @@ black_hole_feedback_energy_fraction(const struct bpart* bp,
   return f_min + (f_max - f_min) / denonimator;
 }
 
+/**
+ * @brief Compute the boost factor for the BH accretion rate.
+ * 
+ * This is computed according to equation (4) of Booth & Schaye (2009).
+ *
+ * @param bp The #bpart.
+ * @param props The properties of the black hole model.
+ * @param cosmo The current cosmological model.
+ */
+__attribute__((always_inline)) INLINE static void
+compute_black_hole_accretion_boost_factor(struct bpart* bp,
+                                          const struct bh_props* props,
+                                          const struct cosmology* cosmo) {
+
+  /* Safety check: should only get here if we run with the boost model */
+  if (!props->with_accretion_boost)
+    error("Attempting to compute accretion boost factor without activating "
+          "accretion boost model for black holes. This is not consistent.");
+
+  /* Model parameters */
+  const double n_0 = props->accretion_boost_dens_norm;
+  const double beta = props->accretion_boost_exponent;
+
+  /* Calculate alpha_boost */
+  const double n_gas_phys = bp->rho_gas * cosmo->a3_inv * props->rho_to_n_cgs;
+  const double alpha = (n_gas_phys / n_0, beta);
+  bp->accretion_boost_factor = min(alpha, 1.0);
+}
 
 #endif /* SWIFT_EAGLE_BLACK_HOLES_H */
