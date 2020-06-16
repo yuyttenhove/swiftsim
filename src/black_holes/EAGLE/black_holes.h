@@ -441,7 +441,6 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
   const double f_Edd = props->f_Edd;
   const double f_Edd_recording = props->f_Edd_recording;
   const double epsilon_r = props->epsilon_r;
-  const double epsilon_f = props->epsilon_f;
   const double num_ngbs_to_heat = props->num_ngbs_to_heat;
   const double delta_T = props->AGN_delta_T_desired;
   const double delta_u = delta_T * props->temp_to_u_factor;
@@ -524,6 +523,11 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
     Bondi_rate *= f_visc;
   } else {
     bp->f_visc = 1.0;
+  }
+
+  /* Add boost term from Booth & Schaye (2009) */
+  if (props->with_accretion_boost) {
+    alpha_boost = bp-> 
   }
 
   /* Compute the Eddington rate (internal units) */
@@ -783,5 +787,44 @@ INLINE static void black_holes_create_from_gas(
 
   black_holes_mark_bpart_as_not_swallowed(&bp->merger_data);
 }
+
+/**
+ * @brief Computes the coupling fraction of black hole feedback energy.
+ * 
+ * This is computed in analogy to the scaling of supernova energy, using
+ * equation 7 of Schaye et al. 2015.
+ *
+ * @param bp The #bpart.
+ * @param props The properties of the black hole model.
+ * @param cosmo The current cosmological model.
+ */
+__attribute__((always_inline)) INLINE static double
+black_hole_feedback_energy_fraction(const struct bpart* bp,
+                                    const struct bh_props* props,
+                                    const struct cosmology* cosmo) {
+
+  /* Model parameters */
+  const double f_min = props->epsilon_f_min;
+  const double f_max = props->epsilon_f_max;
+  const double Z_0 = props->epsilon_f_metallicity_norm;
+  const double n_0 = props->epsilon_f_density_norm;
+  const double n_Z = props->epsilon_f_metallicity_exponent;
+  const double n_n = props->epsilon_f_density_exponent;
+
+  /* Black hole properties */
+
+  /* Metallicity (metal mass fraction) and (physical) density of the
+   * ambient gas around the black hole */
+  const double Z = bp->gas_metal_mass_fraction;
+  const double n_gas_phys = bp->rho_gas * cosmo->a3_inv * props->rho_to_n_cgs;
+
+  /* Calculate epsilon_f */
+  const double Z_term = pow(max(Z, 1e-6) / Z_0, n_Z);
+  const double n_term = pow(n_gas_phys / n_0, n_n);
+  const double denonimator = 1. + Z_term * n_term;
+
+  return f_min + (f_max - f_min) / denonimator;
+}
+
 
 #endif /* SWIFT_EAGLE_BLACK_HOLES_H */

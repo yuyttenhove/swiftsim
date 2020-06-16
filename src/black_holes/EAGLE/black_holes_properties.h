@@ -60,6 +60,15 @@ struct black_holes_props {
 
   /* ----- Properties of the accretion model ------ */
 
+  /*! Switch on Booth & Schaye (2009) accretion boost factor? */
+  int with_accretion_boost
+
+  /*! Density normalisation of accretion boost */
+  float accretion_boost_dens_norm
+
+  /*! Exponent of accretion boost dependence on density */
+  float accretion_boost_exponent 
+
   /*! Calculate Bondi accretion rate for individual neighbours? */
   int multi_phase_bondi;
 
@@ -81,8 +90,29 @@ struct black_holes_props {
 
   /* ---- Properties of the feedback model ------- */
 
-  /*! Feedback coupling efficiency of the black holes. */
+  /*! Switch on density and metallicity dependent feedback scaling */
+  int use_scaled_coupling_efficiency;
+
+  /*! (Constant) feedback coupling efficiency of the black holes. */
   float epsilon_f;
+
+  /*! Minimum value of coupling efficiency */
+  float epsilon_f_min;
+
+  /*! Maximum value of coupling efficiency */
+  float epsilon_f_max;
+
+  /*! Normalisation metallicity of the coupling efficiency scaling */
+  float epsilon_f_metallicity_norm;
+
+  /*! Exponent of the scaling of coupling efficiency with metallicity */
+  float epsilon_f_metallicity_exponent;
+
+  /*! Normalisation density of the coupling efficiency scaling */
+  float epsilon_f_density_norm;
+
+  /*! Exponent of the scaling of coupling efficiency with density */
+  float epsilon_f_density_exponent;
 
   /*! Temperature increase induced by AGN feedback (Kelvin) */
   float AGN_delta_T_desired;
@@ -206,6 +236,17 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
 
   /* Accretion parameters ---------------------------------- */
 
+  /*! Booth & Schaye (2009) accretion boost model */
+  int with_accretion_boost
+  bp->with_accretion_boost =
+      parser_get_param_int(params, "EAGLEAGN:with_accretion_boost");
+  if (bp->with_accretion_boost) {
+    bp->accretion_boost_dens_norm = 
+        parser_get_param_float(params, "EAGLEAGN:accretion_boost_dens_norm");
+    bp->accretion_boost_exponent =
+        parser_get_param_float(params, "EAGLEAGN:accretion_boost_exponent");
+  }
+
   bp->multi_phase_bondi =
       parser_get_param_int(params, "EAGLEAGN:multi_phase_bondi");
 
@@ -224,12 +265,28 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
 
   /* Feedback parameters ---------------------------------- */
 
-  bp->epsilon_f =
-      parser_get_param_float(params, "EAGLEAGN:coupling_efficiency");
+  bp->use_scaled_coupling_efficiency =
+      parser_get_param_int(params, "EAGLEAGN:use_scaled_coupling_efficiency");
+  if (bp->use_scaled_coupling_efficiency) {
+    bp->epsilon_f_min = parser_get_param_float(
+        params, "EAGLEAGN:epsilon_f_min");
+    bp->epsilon_f_max = parser_get_param_float(
+        params, "EAGLEAGN:epsilon_f_max");
+    bp->epsilon_f_metallicity_norm = parser_get_param_float(
+        params, "EAGLEAGN:epsilon_f_metallicity_norm");
+    bp->epsilon_f_metallicity_exponent = parser_get_param_float(
+        params, "EAGLEAGN:epsilon_f_metallicity_exponent");
+    bp->epsilon_f_density_norm = parser_get_param_float(
+        params, "EAGLEAGN:epsilon_f_density_norm");
+    bp->epsilon_f_density_exponent = parser_get_param_float(
+        params, "EAGLEAGN:epsilon_f_density_exponent");
+  } else {
+    bp->epsilon_f =
+        parser_get_param_float(params, "EAGLEAGN:coupling_efficiency");    
+  }
 
   bp->AGN_delta_T_desired =
       parser_get_param_float(params, "EAGLEAGN:AGN_delta_T_K");
-
   bp->num_ngbs_to_heat =
       parser_get_param_float(params, "EAGLEAGN:AGN_num_ngb_to_heat");
 
@@ -305,6 +362,12 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
   const double m_p = phys_const->const_proton_mass;
   const double mu = hydro_props->mu_ionised;
   bp->temp_to_u_factor = k_B / (mu * hydro_gamma_minus_one * m_p);
+
+  /* Calculate conversion factor from rho to n_H.
+   * Note this assumes primoridal abundance */
+  const double X_H = hydro_props->hydrogen_mass_fraction;
+  bp->rho_to_n_cgs =
+    (X_H / m_p) * units_cgs_conversion_factor(us, UNIT_CONV_NUMBER_DENSITY);
 }
 
 /**
