@@ -139,7 +139,7 @@ INLINE static void black_holes_write_particles(const struct bpart* bparts,
                                                int with_cosmology) {
 
   /* Say how much we want to write */
-  *num_fields = 30;
+  *num_fields = 31;
 
   /* List what we want to write */
   list[0] = io_make_output_field_convert_bpart(
@@ -340,6 +340,13 @@ INLINE static void black_holes_write_particles(const struct bpart* bparts,
       "Instantaneous (ideal) probability of the black holes heating any one of "
       "their gas neighbour particles. The actual probability might be lower if "
       "this exceeds the maximum allowed probability.");
+
+  list[30] = io_make_output_field(
+      "NumberOfGasNeighbours", INT, 1, UNIT_CONV_NO_UNITS, 0.f, bparts,
+      num_ngbs,
+      "Integer number of gas neighbour particles within the black hole "
+      "kernels.");
+
  
 #ifdef DEBUG_INTERACTIONS_BLACK_HOLES
 

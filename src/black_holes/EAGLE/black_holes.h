@@ -579,9 +579,11 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
 
     } else {
 
-      /* Reservoir bug case... */
-      prob = 0.3;
-      gas_delta_u = delta_u;
+      /* Special case: we need to adjust the energy irrespective of the
+       * desired deltaT to ensure we inject all the available energy. */
+
+      prob = 1.;
+      gas_delta_u = bp->energy_reservoir / bp->ngb_mass;
     }
 
     /* Store all of this in the black hole for delivery onto the gas. */
@@ -591,7 +593,7 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
     bp->target_heating_prob = target_prob;
     
     /* Decrement the energy in the reservoir by the mean expected energy */
-    const double energy_used = bp->energy_reservoir * (0.3 / target_prob);
+    const double energy_used = bp->energy_reservoir / max(prob, 1.);
     bp->energy_reservoir -= energy_used;
 
   } else {
