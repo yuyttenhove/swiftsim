@@ -347,7 +347,7 @@ INLINE static void black_holes_write_particles(const struct bpart* bparts,
       "Integer number of gas neighbour particles within the black hole "
       "kernels.");
 
- 
+
 #ifdef DEBUG_INTERACTIONS_BLACK_HOLES
 
   list += *num_fields;

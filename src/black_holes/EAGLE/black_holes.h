@@ -571,7 +571,7 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
      * heated. Adjust the prbability if needed. */
     double gas_delta_u;
     double prob;
-    if (target_prob <= 0.3) {
+    if (target_prob <= 1.) {
 
       /* Normal case */
       prob = target_prob;
@@ -591,7 +591,7 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
     bp->to_distribute.AGN_delta_u = gas_delta_u;
     bp->cumulative_actual_prob += prob;
     bp->target_heating_prob = target_prob;
-    
+
     /* Decrement the energy in the reservoir by the mean expected energy */
     const double energy_used = bp->energy_reservoir / max(prob, 1.);
     bp->energy_reservoir -= energy_used;
