@@ -452,7 +452,7 @@ compute_black_hole_accretion_boost_factor(struct bpart* bp,
   /* Calculate alpha_boost */
   const double n_gas_phys = bp->rho_gas * cosmo->a3_inv * props->rho_to_n_cgs;
   const double alpha = pow(n_gas_phys / n_0, beta);
-  bp->accretion_boost_factor = min(alpha, 1.0);
+  bp->accretion_boost_factor = max(alpha, 1.0);
 }
 
 /**
