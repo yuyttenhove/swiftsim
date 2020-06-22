@@ -86,6 +86,11 @@ __attribute__((always_inline)) INLINE static void black_holes_first_init_bpart(
   bp->swallowed_angular_momentum[0] = 0.f;
   bp->swallowed_angular_momentum[1] = 0.f;
   bp->swallowed_angular_momentum[2] = 0.f;
+  bp->accreted_angular_momentum[0] = 0.f;
+  bp->accreted_angular_momentum[1] = 0.f;
+  bp->accreted_angular_momentum[2] = 0.f;
+  bp->cumulative_target_prob = 0.f;
+  bp->cumulative_actual_prob = 0.f;
 
   black_holes_mark_bpart_as_not_swallowed(&bp->merger_data);
 }
@@ -111,9 +116,9 @@ __attribute__((always_inline)) INLINE static void black_holes_init_bpart(
   bp->velocity_gas[0] = 0.f;
   bp->velocity_gas[1] = 0.f;
   bp->velocity_gas[2] = 0.f;
-  bp->circular_velocity_gas[0] = 0.f;
-  bp->circular_velocity_gas[1] = 0.f;
-  bp->circular_velocity_gas[2] = 0.f;
+  bp->spec_angular_momentum_gas[0] = 0.f;
+  bp->spec_angular_momentum_gas[1] = 0.f;
+  bp->spec_angular_momentum_gas[2] = 0.f;
   bp->ngb_mass = 0.f;
   bp->num_ngbs = 0;
   bp->reposition.delta_x[0] = -FLT_MAX;
@@ -125,6 +130,7 @@ __attribute__((always_inline)) INLINE static void black_holes_init_bpart(
   bp->f_visc = FLT_MAX;
   bp->gas_metal_mass_fraction = 0.f;
   bp->accretion_boost_factor = FLT_MAX;
+  bp->mass_at_start_of_step = bp->mass; /* bp->mass may grow in nibbling mode */
 }
 
 /**
@@ -229,12 +235,15 @@ __attribute__((always_inline)) INLINE static void black_holes_end_density(
   bp->velocity_gas[0] *= h_inv_dim * rho_inv;
   bp->velocity_gas[1] *= h_inv_dim * rho_inv;
   bp->velocity_gas[2] *= h_inv_dim * rho_inv;
+  bp->spec_angular_momentum_gas[0] *= h_inv_dim * rho_inv;
+  bp->spec_angular_momentum_gas[1] *= h_inv_dim * rho_inv;
+  bp->spec_angular_momentum_gas[2] *= h_inv_dim * rho_inv;
 
-  /* ... and for the circular velocity, convert from specifc angular
-   *     momentum to circular velocity at the smoothing radius (extra h_inv) */
-  bp->circular_velocity_gas[0] *= h_inv_dim_plus_one * rho_inv;
-  bp->circular_velocity_gas[1] *= h_inv_dim_plus_one * rho_inv;
-  bp->circular_velocity_gas[2] *= h_inv_dim_plus_one * rho_inv;
+  /* Calculate circular velocity at the smoothing radius from specific
+   * angular momentum (extra h_inv) */
+  bp->circular_velocity_gas[0] = bp->spec_angular_momentum_gas[0] * h_inv;
+  bp->circular_velocity_gas[1] = bp->spec_angular_momentum_gas[1] * h_inv;
+  bp->circular_velocity_gas[2] = bp->spec_angular_momentum_gas[2] * h_inv;
 }
 
 /**
@@ -407,6 +416,11 @@ __attribute__((always_inline)) INLINE static void black_holes_swallow_bpart(
 
   /* Add up all the gas particles we swallowed */
   bpi->number_of_gas_swallows += bpj->number_of_gas_swallows;
+
+  /* Add the subgrid angular momentum that we swallowed */
+  bpi->accreted_angular_momentum[0] += bpj->accreted_angular_momentum[0];
+  bpi->accreted_angular_momentum[1] += bpj->accreted_angular_momentum[1];
+  bpi->accreted_angular_momentum[2] += bpj->accreted_angular_momentum[2];
 
   /* We had another merger */
   bpi->number_of_mergers++;
@@ -640,6 +654,24 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
 
   bp->energy_reservoir += luminosity * epsilon_f * dt;
 
+  if (props->use_nibbling && bp->subgrid_mass < bp->mass) {
+    /* In this case, the BH is still accreting from its (assumed) subgrid gas
+     * mass reservoir left over when it was formed. There is some loss in this
+     * due to radiative losses, so we must decrease the particle mass
+     * in proprtion to its current accretion rate. We do not account for this
+     * in the swallowing approach, however. */
+    bp->mass -= epsilon_r * accr_rate * dt;
+  }
+
+  /* Increase the subgrid angular momentum according to what we accreted
+   * (already in physical units, a factors from velocity and radius cancel) */
+  bp->accreted_angular_momentum[0] +=
+      bp->spec_angular_momentum_gas[0] * mass_rate * dt;
+  bp->accreted_angular_momentum[1] +=
+      bp->spec_angular_momentum_gas[1] * mass_rate * dt;
+  bp->accreted_angular_momentum[2] +=
+      bp->spec_angular_momentum_gas[2] * mass_rate * dt;
+
   /* Energy required to have a feedback event
    * Note that we have subtracted the particles we swallowed from the ngb_mass
    * and num_ngbs accumulators. */
@@ -651,6 +683,7 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
 
     /* Default probability of heating */
     double target_prob = bp->energy_reservoir / (delta_u * bp->ngb_mass);
+    bp->cumulative_target_prob += target_prob;
 
     /* Calculate the change in internal energy of the gas particles that get
      * heated. Adjust the prbability if needed. */
@@ -674,6 +707,8 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
     /* Store all of this in the black hole for delivery onto the gas. */
     bp->to_distribute.AGN_heating_probability = prob;
     bp->to_distribute.AGN_delta_u = gas_delta_u;
+    bp->cumulative_actual_prob += prob;
+    bp->target_heating_prob = target_prob;
 
     /* Decrement the energy in the reservoir by the mean expected energy */
     const double energy_used = bp->energy_reservoir / max(prob, 1.);
@@ -684,6 +719,7 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
     /* Flag that we don't want to heat anyone */
     bp->to_distribute.AGN_heating_probability = 0.f;
     bp->to_distribute.AGN_delta_u = 0.f;
+    bp->target_heating_prob = 0.f;
   }
 }
 
@@ -836,13 +872,15 @@ INLINE static void black_holes_create_from_gas(
   /* Initial seed mass */
   bp->subgrid_mass = props->subgrid_seed_mass;
 
-  /* We haven't accreted anything yet */
+  /* We haven't accreted or heated anything yet */
   bp->total_accreted_mass = 0.f;
   bp->cumulative_number_seeds = 1;
   bp->number_of_mergers = 0;
   bp->number_of_gas_swallows = 0;
   bp->number_of_direct_gas_swallows = 0;
   bp->number_of_time_steps = 0;
+  bp->cumulative_target_prob = 0.f;
+  bp->cumulative_actual_prob = 0.f;
 
   /* We haven't repositioned yet, nor attempted it */
   bp->number_of_repositions = 0;

@@ -184,7 +184,8 @@ EAGLEAGN:
   max_eddington_fraction:           1.0        # Maximal allowed accretion rate in units of the Eddington rate.
   eddington_fraction_for_recording: 0.1        # Record the last time BHs reached an Eddington ratio above this threshold.
   with_angmom_limiter:              1          # Are we applying the Rosas-Guevara (2015) viscous time-scale reduction term?
-  viscous_alpha:                    1e6        # Normalisation constant of the Bondi viscuous time-scale accretion reduction term
+  viscous_alpha:                    1e6        # Normalisation constant of the Bondi viscuous time-scale accretion reduction term.
+  use_nibbling:                     0          # Continuously transfer small amounts of mass from all gas neighbours to a black hole [1] or stochastically swallow whole gas particles [0]?
   radiative_efficiency:             0.1        # Fraction of the accreted mass that gets radiated.
   coupling_efficiency:              0.15       # Fraction of the radiated energy that couples to the gas in feedback events.
   AGN_delta_T_K:                    3.16228e8  # Change in temperature to apply to the gas particle in an AGN feedback event in Kelvin.

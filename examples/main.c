@@ -840,6 +840,11 @@ int main(int argc, char *argv[]) {
 
   } else {
 
+    /* Verify that the fields to dump actually exist */
+    if (myrank == 0)
+      io_check_output_fields(output_options, with_cosmology, with_fof,
+                             with_structure_finding);
+
     /* Not restarting so look for the ICs. */
     /* Initialize unit system and constants */
     units_init_from_params(&us, params, "InternalUnitSystem");
@@ -1090,10 +1095,11 @@ int main(int argc, char *argv[]) {
 
     /* Initialize the space with these data. */
     if (myrank == 0) clocks_gettime(&tic);
-    space_init(&s, params, &cosmo, dim, parts, gparts, sparts, bparts, Ngas,
-               Ngpart, Nspart, Nbpart, periodic, replicate, generate_gas_in_ics,
-               with_hydro, with_self_gravity, with_star_formation,
-               with_DM_background_particles, talking, dry_run, nr_nodes);
+    space_init(&s, params, &cosmo, dim, &hydro_properties, parts, gparts,
+               sparts, bparts, Ngas, Ngpart, Nspart, Nbpart, periodic,
+               replicate, generate_gas_in_ics, with_hydro, with_self_gravity,
+               with_star_formation, with_DM_background_particles, talking,
+               dry_run, nr_nodes);
 
     /* Initialise the line of sight properties. */
     if (with_line_of_sight) los_init(s.dim, &los_properties, params);
@@ -1111,7 +1117,7 @@ int main(int argc, char *argv[]) {
       gravity_props_init(&gravity_properties, params, &prog_const, &cosmo,
                          with_cosmology, with_external_gravity,
                          with_baryon_particles, with_DM_particles,
-                         with_DM_background_particles, periodic);
+                         with_DM_background_particles, periodic, s.dim);
 
     /* Initialise the external potential properties */
     bzero(&potential, sizeof(struct external_potential));
@@ -1156,12 +1162,6 @@ int main(int argc, char *argv[]) {
     N_total[swift_type_stars] = s.nr_sparts;
     N_total[swift_type_black_hole] = s.nr_bparts;
 #endif
-
-    /* Verify that the fields to dump actually exist - this must be done after
-     * space_init so we know whether or not we have gas particles. */
-    if (myrank == 0)
-      io_check_output_fields(output_options->select_output, N_total,
-                             with_cosmology);
 
     /* Say a few nice things about the space we just created. */
     if (myrank == 0) {
