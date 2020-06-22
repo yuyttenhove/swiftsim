@@ -139,7 +139,7 @@ INLINE static void black_holes_write_particles(const struct bpart* bparts,
                                                int with_cosmology) {
 
   /* Say how much we want to write */
-  *num_fields = 31;
+  *num_fields = 32;
 
   /* List what we want to write */
   list[0] = io_make_output_field_convert_bpart(
@@ -319,6 +319,12 @@ INLINE static void black_holes_write_particles(const struct bpart* bparts,
       "accretion disc model.");
 
   list[27] = io_make_output_field(
+      "AccretedAngularMomenta", FLOAT, 3, UNIT_CONV_ANGULAR_MOMENTUM, 0.f,
+      bparts, accreted_angular_momentum,
+      "Physical angular momenta that the black holes have accumulated through "
+      "subgrid accretion.");
+
+  list[28] = io_make_output_field(
       "CumulativeHeatingProbabilities", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f,
       bparts, cumulative_target_prob,
       "Cumulative (ideal) probability of the black holes heating any one of "
@@ -326,7 +332,7 @@ INLINE static void black_holes_write_particles(const struct bpart* bparts,
       "NumberOfTimeSteps to find the average heating probability between two "
       "outputs.");
 
-  list[28] = io_make_output_field(
+  list[29] = io_make_output_field(
       "CumulativeActualHeatingProbabilities", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f,
       bparts, cumulative_actual_prob,
       "Cumulative (actual) probability of the black holes heating any one of "
@@ -334,14 +340,14 @@ INLINE static void black_holes_write_particles(const struct bpart* bparts,
       "probability. This can be combined with NumberOfTimeSteps to find the "
       "average heating probability between two outputs.");
 
-  list[29] = io_make_output_field(
+  list[30] = io_make_output_field(
       "HeatingProbabilities", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f,
       bparts, target_heating_prob,
       "Instantaneous (ideal) probability of the black holes heating any one of "
       "their gas neighbour particles. The actual probability might be lower if "
       "this exceeds the maximum allowed probability.");
 
-  list[30] = io_make_output_field(
+  list[31] = io_make_output_field(
       "NumberOfGasNeighbours", INT, 1, UNIT_CONV_NO_UNITS, 0.f, bparts,
       num_ngbs,
       "Integer number of gas neighbour particles within the black hole "
