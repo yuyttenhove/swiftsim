@@ -91,6 +91,7 @@ __attribute__((always_inline)) INLINE static void black_holes_first_init_bpart(
   bp->accreted_angular_momentum[2] = 0.f;
   bp->cumulative_target_prob = 0.f;
   bp->cumulative_actual_prob = 0.f;
+  bp->cumulative_epsilon_f = 0.f;
 
   black_holes_mark_bpart_as_not_swallowed(&bp->merger_data);
 }
@@ -131,6 +132,7 @@ __attribute__((always_inline)) INLINE static void black_holes_init_bpart(
   bp->gas_metal_mass_fraction = 0.f;
   bp->accretion_boost_factor = FLT_MAX;
   bp->mass_at_start_of_step = bp->mass; /* bp->mass may grow in nibbling mode */
+  bp->epsilon_f = -FLT_MAX;
 }
 
 /**
@@ -652,6 +654,8 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
       black_hole_feedback_energy_fraction(bp, props, cosmo) :
       props->epsilon_f;
 
+  bp->epsilon_f = epsilon_f;
+  bp->cumulative_epsilon_f += epsilon_f;
   bp->energy_reservoir += luminosity * epsilon_f * dt;
 
   if (props->use_nibbling && bp->subgrid_mass < bp->mass) {
@@ -881,6 +885,7 @@ INLINE static void black_holes_create_from_gas(
   bp->number_of_time_steps = 0;
   bp->cumulative_target_prob = 0.f;
   bp->cumulative_actual_prob = 0.f;
+  bp->cumulative_epsilon_f = 0.f;
 
   /* We haven't repositioned yet, nor attempted it */
   bp->number_of_repositions = 0;

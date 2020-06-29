@@ -164,6 +164,12 @@ struct bpart {
   /*! Instantaneous target probability of heating any one neighbour particle */
   float target_heating_prob;
 
+  /*! Instantaneous coupling efficiency for feedback energy */
+  float epsilon_f;
+
+  /*! Cumulative coupling efficiency for feedback energy */
+  float cumulative_epsilon_f;
+
   /*! Union for the last high Eddington ratio point in time */
   union {
 

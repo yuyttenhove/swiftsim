@@ -139,7 +139,7 @@ INLINE static void black_holes_write_particles(const struct bpart* bparts,
                                                int with_cosmology) {
 
   /* Say how much we want to write */
-  *num_fields = 34;
+  *num_fields = 36;
 
   /* List what we want to write */
   list[0] = io_make_output_field_convert_bpart(
@@ -366,6 +366,18 @@ INLINE static void black_holes_write_particles(const struct bpart* bparts,
       gas_metal_mass_fraction,
       "Metal mass fraction of the gas around the black holes.");
 
+  list[34] = io_make_output_field(
+      "FeedbackCouplingEfficiencies", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, bparts,
+      epsilon_f,
+      "Fraction of available feedback energy that is coupled to the ambient "
+      "gas.");
+
+  list[35] = io_make_output_field(
+      "CumulativeFeedbackCouplingEfficiencies", FLOAT, 1, UNIT_CONV_NO_UNITS,
+      0.f, bparts, cumulative_epsilon_f,
+      "Cumulative fraction of available feedback energy that is coupled to "
+      "the ambient gas. This can be combined with NumberOfTimeSteps to find "
+      "the average coupling efficiency between two outputs.");
 
 
 #ifdef DEBUG_INTERACTIONS_BLACK_HOLES
