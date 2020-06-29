@@ -321,7 +321,7 @@ void space_init(struct space *s, struct swift_params *params,
                 struct gpart *gparts, struct spart *sparts,
                 struct bpart *bparts, size_t Npart, size_t Ngpart,
                 size_t Nspart, size_t Nbpart, int periodic, int replicate,
-                int generate_gas_in_ics, int hydro, int gravity,
+                int remap_ids, int generate_gas_in_ics, int hydro, int gravity,
                 int star_formation, int DM_background, int verbose, int dry_run,
                 int nr_nodes);
 void space_sanitize(struct space *s);
@@ -376,6 +376,7 @@ void space_check_timesteps(const struct space *s);
 void space_check_limiter(struct space *s);
 void space_check_swallow(struct space *s);
 void space_check_sort_flags(struct space *s);
+void space_remap_ids(struct space *s, int nr_nodes, int verbose);
 void space_replicate(struct space *s, int replicate, int verbose);
 void space_generate_gas(struct space *s, const struct cosmology *cosmo,
                         const struct hydro_props *hydro_properties,
