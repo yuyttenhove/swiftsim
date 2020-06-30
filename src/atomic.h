@@ -189,7 +189,6 @@ __attribute__((always_inline)) INLINE static void atomic_max_ll(
   } while (test_val != old_val);
 }
 
-
 /**
  * @brief Atomic max operation on floats.
  *
