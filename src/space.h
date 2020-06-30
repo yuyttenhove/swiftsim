@@ -377,6 +377,7 @@ void space_check_limiter(struct space *s);
 void space_check_swallow(struct space *s);
 void space_check_sort_flags(struct space *s);
 void space_remap_ids(struct space *s, int nr_nodes, int verbose);
+long long space_get_max_parts_id(struct space *s);
 void space_replicate(struct space *s, int replicate, int verbose);
 void space_generate_gas(struct space *s, const struct cosmology *cosmo,
                         const struct hydro_props *hydro_properties,

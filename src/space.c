@@ -5613,6 +5613,20 @@ void space_check_cosmology(struct space *s, const struct cosmology *cosmo,
 }
 
 /**
+ * @brief Compute the max id of any #part in this space.
+ *
+ * This function is inefficient. Don't call often.
+ *
+ * @param s The #space.
+ */
+long long space_get_max_parts_id(struct space *s) {
+
+  long long max_id = -1;
+  for (size_t i = 0; i < s->nr_parts; ++i) max_id = max(max_id, s->parts[i].id);
+  return max_id;
+}
+
+/**
  * @brief Cleans-up all the cell links in the space
  *
  * Expensive funtion. Should only be used for debugging purposes.

@@ -179,8 +179,6 @@ void engine_split_gas_particle_split_mapper(void *restrict map_data, int count,
         global_parts[k_parts].id = offset_id + 2 * atomic_inc(count_id);
       }
 
-      message("new ID == %lld", global_parts[k_parts].id);
-
       /* Re-link everything */
       if (with_gravity) {
         global_parts[k_parts].gpart = &global_gparts[k_gparts];
@@ -273,8 +271,6 @@ void engine_split_gas_particles(struct engine *e) {
   if (!e->hydro_properties->particle_splitting) return;
   if (e->s->nr_parts == 0) return;
 
-  e->max_parts_id = 100000000LL;
-
   /* Time this */
   const ticks tic = getticks();
 
@@ -320,6 +316,13 @@ void engine_split_gas_particles(struct engine *e) {
              MPI_COMM_WORLD);
 #endif
   offset_id += e->max_parts_id + 1;
+
+  /* Store the new maximal id */
+  e->max_parts_id = offset_id + expected_count_id;
+#ifdef WITH_MPI
+  MPI_Bcast(&e->max_parts_id, 1, MPI_LONG_LONG_INT, e->nr_nodes - 1,
+            MPI_COMM_WORLD);
+#endif
 
   /* Each node now has a unique range of IDs [offset_id, offset_id + count_id]
    */
