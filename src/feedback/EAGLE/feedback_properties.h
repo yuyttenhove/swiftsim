@@ -226,9 +226,6 @@ struct feedback_props {
    * masses) */
   double log10_SNII_max_mass_msun;
 
-  /*! Time interval over which SNII explode, in internal units */
-  double SNII_delta_age;
-
   /*! Number of type II supernovae per solar mass */
   float num_SNII_per_msun;
 

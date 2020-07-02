@@ -60,7 +60,7 @@ double eagle_feedback_temperature_change(const struct spart* sp,
 double eagle_variable_feedback_temperature_change(
   const struct spart* sp, const double ngb_gas_mass, const int num_gas_ngbs,
   const double SNe_energy, const struct feedback_props* props,
-  const double frac_time) {
+  const double frac_SNII) {
 
   /* Safety check: should only get here if we run with the varying-dT model */
   if (!props->SNII_use_variable_delta_T)
@@ -69,7 +69,7 @@ double eagle_variable_feedback_temperature_change(
 
   /* Model parameters */
   const double f_crit = props->SNII_T_crit_factor;
-  const double num_to_heat = props->SNII_delta_T_num_ngb_to_heat * frac_time;
+  const double num_to_heat = props->SNII_delta_T_num_ngb_to_heat * frac_SNII;
   const double delta_T_max = props->SNII_delta_T_max;
 
   /* Physical density of the gas at the star's birth time */
@@ -86,11 +86,12 @@ double eagle_variable_feedback_temperature_change(
           "temp_to_u_factor=%g",
           sp->id, SNe_energy, num_to_heat, mean_ngb_mass, props->temp_to_u_factor);
 
-  const double min_a = min(T_crit * f_crit, delta_T_num);
+  double min_a = min(T_crit * f_crit, delta_T_num);
   message("ID %lld: mean_ngb_mass=%g, T_crit=%g, delta_T_num=%g, min_a=%g, "
           "delta_T_max=%g",
     sp->id, mean_ngb_mass, T_crit, delta_T_num, min_a, delta_T_max);
-  return min(min_a, delta_T_max);
+  min_a = min(min_a, delta_T_max);
+  return max(min_a, 0.0);
 }
 
 /**
@@ -360,18 +361,19 @@ INLINE static void compute_SNII_feedback(
 
     /* Number of SNe at this time-step */
     double N_SNe;
-    double frac_time;
+    double frac_SNII;
     if (SNII_sampled_delay) {
       N_SNe = eagle_feedback_number_of_sampled_SNII(
           sp, feedback_props, min_dying_mass_Msun, max_dying_mass_Msun);
-      frac_time = max(dt / props->SNII_delta_age, 1.0);  /* Somewhat crude */
+
+      frac_SNII = N_SNe / eagle_feedback_number_of_SNII(sp, feedback_props);
     } else {
       N_SNe = eagle_feedback_number_of_SNII(sp, feedback_props);
-      frac_time = 1.0;
+      frac_SNII = 1.0;
     }
 
     /* Abort if there are no SNe exploding this step */
-    if (N_SNe == 0.) return;
+    if (N_SNe <= 0.) return;
 
     /* Conversion factor from T to internal energy */
     const double conv_factor = feedback_props->temp_to_u_factor;
@@ -383,11 +385,12 @@ INLINE static void compute_SNII_feedback(
     const double delta_T = feedback_props->SNII_use_variable_delta_T ? 
         eagle_variable_feedback_temperature_change(
             sp, ngb_gas_mass, num_gas_ngbs, SNe_energy, feedback_props,
-            frac_time) :
+            frac_SNII) :
         eagle_feedback_temperature_change(sp, feedback_props);
 
     /* Calculate the default heating probability */
     double prob = SNe_energy / (conv_factor * delta_T * ngb_gas_mass);
+    prob = max(prob, 0.0);
 
     /* Calculate the change in internal energy of the gas particles that get
      * heated */
@@ -1135,9 +1138,6 @@ void feedback_props_init(struct feedback_props* fp,
     fp->SNII_delta_T_max =
         parser_get_param_double(params, "EAGLEFeedback:SNII_delta_T_max") /
         units_cgs_conversion_factor(us, UNIT_CONV_TEMPERATURE);
-    fp->SNII_delta_age =
-        parser_get_param_double(params, "EAGLEFeedback:SNII_delta_age") /
-        units_cgs_conversion_factor(us, UNIT_CONV_TIME);
   } else {
     fp->SNe_deltaT_desired =
         parser_get_param_float(params, "EAGLEFeedback:SNII_delta_T_K") /
