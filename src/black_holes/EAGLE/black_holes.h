@@ -538,13 +538,12 @@ black_hole_feedback_delta_T(const struct bpart* bp,
 
   /* Black hole properties */
   const double n_gas_phys = bp->rho_gas * cosmo->a3_inv * props->rho_to_n_cgs;
-  const double mean_ngb_mass = bp->ngb_mass / ((double)bp->num_ngbs) *
-      props->mass_to_solar_mass;
+  const double mean_ngb_mass = bp->ngb_mass / ((double)bp->num_ngbs);
   const double T_gas = bp->u_gas / props->temp_to_u_factor;
 
   /* Calculate delta T */
   const double T_crit = 3.162e7 * pow(n_gas_phys * 0.1, 0.6666667) *
-      pow(mean_ngb_mass, 0.33333333);
+      pow(mean_ngb_mass * props->mass_to_solar_mass * 1e-6, 0.33333333);
   const double delta_T_num = bp->energy_reservoir /
       (num_to_heat * mean_ngb_mass * props->temp_to_u_factor);
 
