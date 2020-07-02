@@ -1058,7 +1058,7 @@ void feedback_props_init(struct feedback_props* fp,
                          const struct hydro_props* hydro_props,
                          const struct cosmology* cosmo) {
 
-  const double Gyr_in_cgs = 1.0e9 * 365.25 * 24. * 3600.;
+  const double Gyr_in_cgs = 1.0e9 * 365.2422 * 24. * 3600.;
 
   /* Main operation modes ------------------------------------------------- */
 
