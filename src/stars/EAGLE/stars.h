@@ -70,6 +70,7 @@ __attribute__((always_inline)) INLINE static void stars_first_init_spart(
   sp->time_bin = 0;
   sp->sf_data.birth_density = 0.f;
   sp->f_E = -1.f;
+  sp->delta_T = -1.f;
   sp->count_since_last_enrichment = -1;
 
   if (stars_properties->overwrite_birth_time)

@@ -89,6 +89,9 @@ struct spart {
   /*! Feedback energy fraction */
   float f_E;
 
+  /*! Feedback temperature increase */
+  float delta_T;
+
   /*! Star formation struct */
   struct star_formation_spart_data sf_data;
 

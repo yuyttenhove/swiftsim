@@ -319,6 +319,9 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
         parser_get_param_float(params, "EAGLEAGN:coupling_efficiency");    
   }
 
+  const double T_K_to_int = 1. / 
+      units_cgs_conversion_factor(us, UNIT_CONV_TEMPERATURE);
+
   bp->use_variable_delta_T =
       parser_get_param_int(params, "EAGLEAGN:use_variable_delta_T");
   if (bp->use_variable_delta_T) {
@@ -329,10 +332,10 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
     bp->AGN_delta_T_num_ngb_to_heat =
         parser_get_param_float(params, "EAGLEAGN:AGN_delta_T_num_ngb_to_heat");
     bp->AGN_delta_T_max =
-        parser_get_param_float(params, "EAGLEAGN:AGN_delta_T_max");
+        parser_get_param_float(params, "EAGLEAGN:AGN_delta_T_max") * T_K_to_int;
   } else {
     bp->AGN_delta_T_desired =
-        parser_get_param_float(params, "EAGLEAGN:AGN_delta_T_K");    
+        parser_get_param_float(params, "EAGLEAGN:AGN_delta_T_K") * T_K_to_int;
   }
 
   bp->num_ngbs_to_heat =

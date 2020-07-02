@@ -226,6 +226,9 @@ struct feedback_props {
    * masses) */
   double log10_SNII_max_mass_msun;
 
+  /*! Time interval over which SNII explode, in internal units */
+  double SNII_delta_age;
+
   /*! Number of type II supernovae per solar mass */
   float num_SNII_per_msun;
 
@@ -235,8 +238,20 @@ struct feedback_props {
   /*! Wind delay time for SNII when using a fixed delay */
   double SNII_wind_delay;
 
-  /*! Temperature increase induced by SNe feedback */
-  float SNe_deltaT_desired;
+  /*! Use variable temperature increase? */
+  int SNII_use_variable_delta_T;
+
+  /*! Buffer factor for numerical efficiency temperature */
+  double SNII_T_crit_factor;
+
+  /*! Number of neighbours that must be heatable by SNII */
+  double SNII_delta_T_num_ngb_to_heat;
+
+  /*! Maximum temperature increase induced by SNII feedback [Kelvin] */
+  double SNII_delta_T_max;
+
+  /*! (Constant) temperature increase induced by SNe feedback */
+  double SNe_deltaT_desired;
 
   /*! Energy released by one supernova type II in cgs units */
   double E_SNII_cgs;
