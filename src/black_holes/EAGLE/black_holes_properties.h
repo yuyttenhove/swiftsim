@@ -120,8 +120,23 @@ struct black_holes_props {
   /*! Exponent of the scaling of coupling efficiency with density */
   float epsilon_f_density_exponent;
 
-  /*! Temperature increase induced by AGN feedback (Kelvin) */
+  /*! Switch on variable heating temperature scheme? */
+  int use_variable_delta_T;
+
+  /*! (Fixed) temperature increase induced by AGN feedback (Kelvin) */
   float AGN_delta_T_desired;
+
+  /*! Buffer factor for numerical efficiency temperature */
+  float AGN_T_crit_factor;
+
+  /*! Buffer factor for background temperature */
+  float AGN_T_background_factor;
+
+  /*! Number of neighbours that must be heatable by AGN */
+  float AGN_delta_T_num_ngb_to_heat;
+
+  /*! Maximum temperature increase induced by AGN feedback [Kelvin] */
+  float AGN_delta_T_max;
 
   /*! Number of gas neighbours to heat in a feedback event */
   float num_ngbs_to_heat;
@@ -175,6 +190,10 @@ struct black_holes_props {
 
   /*! Conversion factor from physical density to n_H [cgs] */
   float rho_to_n_cgs;
+
+  /*! Conversion factor from internal mass to solar masses */
+  float mass_to_solar_mass;
+
 };
 
 /**
@@ -300,8 +319,22 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
         parser_get_param_float(params, "EAGLEAGN:coupling_efficiency");    
   }
 
-  bp->AGN_delta_T_desired =
-      parser_get_param_float(params, "EAGLEAGN:AGN_delta_T_K");
+  bp->use_variable_delta_T =
+      parser_get_param_int(params, "EAGLEAGN:use_variable_delta_T");
+  if (bp->use_variable_delta_T) {
+    bp->AGN_T_crit_factor =
+        parser_get_param_float(params, "EAGLEAGN:AGN_T_crit_factor");
+    bp->AGN_T_background_factor =
+        parser_get_param_float(params, "EAGLEAGN:AGN_T_background_factor");
+    bp->AGN_delta_T_num_ngb_to_heat =
+        parser_get_param_float(params, "EAGLEAGN:AGN_delta_T_num_ngb_to_heat");
+    bp->AGN_delta_T_max =
+        parser_get_param_float(params, "EAGLEAGN:AGN_delta_T_max");
+  } else {
+    bp->AGN_delta_T_desired =
+        parser_get_param_float(params, "EAGLEAGN:AGN_delta_T_K");    
+  }
+
   bp->num_ngbs_to_heat =
       parser_get_param_float(params, "EAGLEAGN:AGN_num_ngb_to_heat");
 
@@ -383,6 +416,9 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
   const double X_H = hydro_props->hydrogen_mass_fraction;
   bp->rho_to_n_cgs =
     (X_H / m_p) * units_cgs_conversion_factor(us, UNIT_CONV_NUMBER_DENSITY);
+
+  /* Conversion factor for internal mass to M_solar */
+  bp->mass_to_solar_mass = phys_const->const_solar_mass;
 }
 
 /**

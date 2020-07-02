@@ -93,6 +93,9 @@ struct bpart {
   /*! Density of the gas surrounding the black hole. */
   float rho_gas;
 
+  /*! Specific internal energy of the gas surrounding the black hole. */
+  float u_gas;
+
   /*! Smoothed sound speed of the gas surrounding the black hole. */
   float sound_speed_gas;
 
@@ -169,6 +172,9 @@ struct bpart {
 
   /*! Cumulative coupling efficiency for feedback energy */
   float cumulative_epsilon_f;
+
+  /*! Instantaneous heating temperature increase for feedback */
+  float AGN_delta_T;
 
   /*! Union for the last high Eddington ratio point in time */
   union {

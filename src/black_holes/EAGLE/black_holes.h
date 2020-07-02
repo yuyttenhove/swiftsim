@@ -113,6 +113,7 @@ __attribute__((always_inline)) INLINE static void black_holes_init_bpart(
   bp->density.wcount = 0.f;
   bp->density.wcount_dh = 0.f;
   bp->rho_gas = 0.f;
+  bp->u_gas = 0.f;
   bp->sound_speed_gas = 0.f;
   bp->velocity_gas[0] = 0.f;
   bp->velocity_gas[1] = 0.f;
@@ -233,6 +234,7 @@ __attribute__((always_inline)) INLINE static void black_holes_end_density(
   /* For the following, we also have to undo the mass smoothing
    * (N.B.: bp->velocity_gas is in BH frame, in internal units). */
   bp->sound_speed_gas *= h_inv_dim * rho_inv;
+  bp->u_gas *= h_inv_dim * rho_inv * cosmo->a_factor_internal_energy;
   bp->gas_metal_mass_fraction *= h_inv_dim * rho_inv;
   bp->velocity_gas[0] *= h_inv_dim * rho_inv;
   bp->velocity_gas[1] *= h_inv_dim * rho_inv;
@@ -271,6 +273,8 @@ black_holes_bpart_has_no_neighbours(struct bpart* bp,
   bp->velocity_gas[0] = FLT_MAX;
   bp->velocity_gas[1] = FLT_MAX;
   bp->velocity_gas[2] = FLT_MAX;
+
+  bp->u_gas = -FLT_MAX;
 }
 
 /**
@@ -501,6 +505,56 @@ black_hole_feedback_energy_fraction(const struct bpart* bp,
 }
 
 /**
+ * @brief Computes the temperature increase delta_T for black hole feedback.
+ * 
+ * This is calculated as delta_T = min(max(dT_crit, T_gas), dT_num, dT_max):
+ * dT_crit = f_crit * critical temperature for suppressing numerical losses
+ * T_gas = f_gas * temperature of ambient gas
+ * dT_num = temperature increase affordable if N particles should be heated
+ * dT_max = maximum allowed energy increase.
+ *
+ * @param bp The #bpart.
+ * @param props The properties of the black hole model.
+ * @param cosmo The current cosmological model.
+ */
+__attribute__((always_inline)) INLINE static double
+black_hole_feedback_delta_T(const struct bpart* bp,
+                            const struct black_holes_props* props,
+                            const struct cosmology* cosmo) {
+
+  /* Safety check: should only get here if we run with the varying-dT model */
+  if (!props->use_variable_delta_T)
+    error("Attempting to compute variable black hole heating temperature "
+          "without activating this model. Cease and desist.");
+
+  if (bp->u_gas < 0)
+    error("Attempting to compute feedback energy for BH without neighbours.");
+
+  /* Model parameters */
+  const double f_crit = props->AGN_T_crit_factor;
+  const double f_gas = props->AGN_T_background_factor;
+  const double num_to_heat = props->AGN_delta_T_num_ngb_to_heat;
+  const double delta_T_max = props->AGN_delta_T_max;
+
+  /* Black hole properties */
+  const double n_gas_phys = bp->rho_gas * cosmo->a3_inv * props->rho_to_n_cgs;
+  const double mean_ngb_mass = bp->ngb_mass / ((double)bp->num_ngbs) *
+      props->mass_to_solar_mass;
+  const double T_gas = bp->u_gas / props->temp_to_u_factor;
+
+  /* Calculate delta T */
+  const double T_crit = 3.162e7 * pow(n_gas_phys * 0.1, 0.6666667) *
+      pow(mean_ngb_mass, 0.33333333);
+  const double delta_T_num = bp->energy_reservoir /
+      (num_to_heat * mean_ngb_mass * props->temp_to_u_factor);
+
+  const double max_des_dT = max(T_crit * f_crit, T_gas * f_gas);
+
+  const double min_a = min(max_des_dT, delta_T_num);
+  return min(min_a, delta_T_max);
+}
+
+/**
  * @brief Compute the accretion rate of the black hole and all the quantites
  * required for the feedback loop.
  *
@@ -533,8 +587,6 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
   const double f_Edd_recording = props->f_Edd_recording;
   const double epsilon_r = props->epsilon_r;
   const double num_ngbs_to_heat = props->num_ngbs_to_heat;
-  const double delta_T = props->AGN_delta_T_desired;
-  const double delta_u = delta_T * props->temp_to_u_factor;
   const double alpha_visc = props->alpha_visc;
   const int with_angmom_limiter = props->with_angmom_limiter;
 
@@ -675,6 +727,13 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
       bp->spec_angular_momentum_gas[1] * mass_rate * dt;
   bp->accreted_angular_momentum[2] +=
       bp->spec_angular_momentum_gas[2] * mass_rate * dt;
+
+  /* Now find the temperature increase for a possible feedback event */
+  const double delta_T = props->use_variable_delta_T ?
+      black_hole_feedback_delta_T(bp, props, cosmo) :
+      props->AGN_delta_T_desired;
+  bp->AGN_delta_T = delta_T;
+  const double delta_u = delta_T * props->temp_to_u_factor;
 
   /* Energy required to have a feedback event
    * Note that we have subtracted the particles we swallowed from the ngb_mass
