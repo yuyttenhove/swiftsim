@@ -5623,6 +5623,14 @@ long long space_get_max_parts_id(struct space *s) {
 
   long long max_id = -1;
   for (size_t i = 0; i < s->nr_parts; ++i) max_id = max(max_id, s->parts[i].id);
+  for (size_t i = 0; i < s->nr_sparts; ++i)
+    max_id = max(max_id, s->sparts[i].id);
+  for (size_t i = 0; i < s->nr_bparts; ++i)
+    max_id = max(max_id, s->bparts[i].id);
+  for (size_t i = 0; i < s->nr_gparts; ++i)
+    if (s->gparts[i].type == swift_type_dark_matter ||
+        s->gparts[i].type == swift_type_dark_matter_background)
+      max_id = max(max_id, s->gparts[i].id_or_neg_offset);
   return max_id;
 }
 
