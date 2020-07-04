@@ -142,9 +142,6 @@ double eagle_feedback_number_of_sampled_SNII(const struct spart* sp,
                                              const double min_dying_mass_Msun,
                                              const double max_dying_mass_Msun) {
 
-  message("ID %lld: min/max dying mass = %g/%g M_sun.",
-      sp->id, min_dying_mass_Msun, max_dying_mass_Msun);
-
   /* The max dying star mass is below the SNII mass window
    * --> No SNII */
   if (max_dying_mass_Msun < props->SNII_min_mass_msun) return 0.;
@@ -225,9 +222,6 @@ double eagle_feedback_number_of_sampled_SNII(const struct spart* sp,
   const double num_SNII_per_msun =
       integrate_imf(log10_min_mass_Msun, log10_max_mass_Msun,
                     eagle_imf_integration_no_weight, NULL, props);
-
-  message("ID %lld: log_10_min/max_Msun=%g/%g, num_SNII_per_msun=%g.",
-      sp->id, log10_min_mass_Msun, log10_max_mass_Msun, num_SNII_per_msun);
 
   return num_SNII_per_msun * sp->mass_init * props->mass_to_solar_mass;
 }
@@ -397,8 +391,6 @@ INLINE static void compute_SNII_feedback(
     const double SNe_energy = f_E * E_SNe * N_SNe;
     double critical_fraction = -FLT_MAX;
     double sampling_fraction = -FLT_MAX;
-    message("ID %lld: f_E=%g, E_SNe=%g, N_SNe=%g ==> SNe_energy=%g.",
-        sp->id, f_E, E_SNe, N_SNe, SNe_energy);
     const double delta_T = feedback_props->SNII_use_variable_delta_T ? 
         eagle_variable_feedback_temperature_change(
             sp, ngb_gas_mass, num_gas_ngbs, SNe_energy, feedback_props,
@@ -997,8 +989,6 @@ void compute_stellar_evolution(const struct feedback_props* feedback_props,
       dying_mass_msun(star_age_Gyr, Z, feedback_props);
   const double min_dying_mass_Msun =
       dying_mass_msun(star_age_Gyr + dt_Gyr, Z, feedback_props);
-  message("ID %lld: star_age_Gyr=%g, Z=%g, dt_Gyr=%g, min/max dying mass=%g / %g.",
-      sp->id, star_age_Gyr, Z, dt_Gyr, min_dying_mass_Msun, max_dying_mass_Msun);
 
 #ifdef SWIFT_DEBUG_CHECKS
   /* Sanity check. Worth investigating if necessary as functions for evaluating
