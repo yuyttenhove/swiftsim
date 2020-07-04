@@ -241,8 +241,11 @@ struct feedback_props {
   /*! Buffer factor for numerical efficiency temperature */
   double SNII_T_crit_factor;
 
-  /*! Number of neighbours that must be heatable by SNII */
+  /*! Number of neighbours that should be heatable by SNII */
   double SNII_delta_T_num_ngb_to_heat;
+
+  /*! Limiting number of neighbours that must be heatable by SNII */
+  double SNII_delta_T_num_ngb_to_heat_limit;
 
   /*! Maximum temperature increase induced by SNII feedback [Kelvin] */
   double SNII_delta_T_max;

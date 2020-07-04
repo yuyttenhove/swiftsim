@@ -60,7 +60,8 @@ double eagle_feedback_temperature_change(const struct spart* sp,
 double eagle_variable_feedback_temperature_change(
   const struct spart* sp, const double ngb_gas_mass, const int num_gas_ngbs,
   const double SNe_energy, const struct feedback_props* props,
-  const double frac_SNII) {
+  const double frac_SNII, double* critical_fraction,
+  double* sampling_fraction) {
 
   /* Safety check: should only get here if we run with the varying-dT model */
   if (!props->SNII_use_variable_delta_T)
@@ -69,7 +70,8 @@ double eagle_variable_feedback_temperature_change(
 
   /* Model parameters */
   const double f_crit = props->SNII_T_crit_factor;
-  const double num_to_heat = props->SNII_delta_T_num_ngb_to_heat * frac_SNII;
+  const double num_to_heat = props->SNII_delta_T_num_ngb_to_heat;
+  const double num_to_heat_limit = props->SNII_delta_T_num_ngb_to_heat_limit;
   const double delta_T_max = props->SNII_delta_T_max;
 
   /* Physical density of the gas at the star's birth time */
@@ -80,18 +82,31 @@ double eagle_variable_feedback_temperature_change(
   const double T_crit = 3.162e7 * pow(n_birth_phys * 0.1, 0.6666667) *
       pow(mean_ngb_mass * props->mass_to_solar_mass * 1e-6, 0.33333333);
 
-  const double delta_T_num = SNe_energy /
-      (num_to_heat * mean_ngb_mass * props->temp_to_u_factor);
-  message("ID %lld: SNe_energy=%g, num_to_heat=%g, mean_ngb_mass=%g, "
-          "temp_to_u_factor=%g",
-          sp->id, SNe_energy, num_to_heat, mean_ngb_mass, props->temp_to_u_factor);
+  const double delta_T_one_particle = SNe_energy /
+      (mean_ngb_mass * props->temp_to_u_factor * frac_SNII);
+  const double delta_T_num = delta_T_one_particle / num_to_heat;
+  const double delta_T_num_limit = delta_T_one_particle / num_to_heat_limit;
 
-  double min_a = min(T_crit * f_crit, delta_T_num);
-  message("ID %lld: mean_ngb_mass=%g, T_crit=%g, delta_T_num=%g, min_a=%g, "
-          "delta_T_max=%g",
-    sp->id, mean_ngb_mass, T_crit, delta_T_num, min_a, delta_T_max);
-  min_a = min(min_a, delta_T_max);
-  return max(min_a, 0.0);
+  /* Alright... let's aim for the numerically-required T_crit */
+  double delta_T = T_crit * f_crit;
+
+  /* Scale temperature down if above soft sampling limit */
+  if (delta_T > delta_T_num) {
+    const double coeff_b = 1. / (delta_T_num_limit - delta_T_num);
+    const double coeff_a = exp(coeff_b * delta_T_num) / coeff_b;
+    delta_T = delta_T_num_limit - coeff_a * exp(-coeff_b * delta_T);
+  }
+
+  delta_T = min(delta_T, delta_T_max);
+  if (delta_T < 0)
+    error("Ahm... I'm not going to set a negative heating temperature "
+          "(star ID=%lld, T=%g).",
+          sp->id, delta_T);
+
+  /* Record how delta_T compares to targets */
+  *critical_fraction = delta_T / T_crit;
+  *sampling_fraction = delta_T_one_particle / delta_T;
+  return delta_T;
 }
 
 /**
@@ -380,12 +395,14 @@ INLINE static void compute_SNII_feedback(
 
     /* Heating temperature increase */
     const double SNe_energy = f_E * E_SNe * N_SNe;
+    double critical_fraction = -FLT_MAX;
+    double sampling_fraction = -FLT_MAX;
     message("ID %lld: f_E=%g, E_SNe=%g, N_SNe=%g ==> SNe_energy=%g.",
         sp->id, f_E, E_SNe, N_SNe, SNe_energy);
     const double delta_T = feedback_props->SNII_use_variable_delta_T ? 
         eagle_variable_feedback_temperature_change(
             sp, ngb_gas_mass, num_gas_ngbs, SNe_energy, feedback_props,
-            frac_SNII) :
+            frac_SNII, &critical_fraction, &sampling_fraction) :
         eagle_feedback_temperature_change(sp, feedback_props);
 
     /* Calculate the default heating probability */
@@ -417,6 +434,8 @@ INLINE static void compute_SNII_feedback(
     /* Store all of this in the star for delivery onto the gas */
     sp->f_E = f_E;
     sp->delta_T = delta_T;
+    sp->T_critical_fraction = critical_fraction;
+    sp->T_sampling_fraction = sampling_fraction;      
     sp->feedback_data.to_distribute.SNII_heating_probability = prob;
     sp->feedback_data.to_distribute.SNII_delta_u = delta_u;
   }
@@ -1135,6 +1154,10 @@ void feedback_props_init(struct feedback_props* fp,
     fp->SNII_delta_T_num_ngb_to_heat =
         parser_get_param_double(params,
                                 "EAGLEFeedback:SNII_delta_T_num_ngb_to_heat");
+    fp->SNII_delta_T_num_ngb_to_heat_limit =
+        parser_get_param_double(
+            params, "EAGLEFeedback:SNII_delta_T_num_ngb_to_heat_limit");
+
     fp->SNII_delta_T_max =
         parser_get_param_double(params, "EAGLEFeedback:SNII_delta_T_max") /
         units_cgs_conversion_factor(us, UNIT_CONV_TEMPERATURE);
