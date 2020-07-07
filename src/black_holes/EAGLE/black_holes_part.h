@@ -93,6 +93,9 @@ struct bpart {
   /*! Density of the gas surrounding the black hole. */
   float rho_gas;
 
+  /*! Specific internal energy of the gas surrounding the black hole. */
+  float u_gas;
+
   /*! Smoothed sound speed of the gas surrounding the black hole. */
   float sound_speed_gas;
 
@@ -146,6 +149,12 @@ struct bpart {
   /*! Total (physical) angular momentum accumulated by swallowing particles */
   float swallowed_angular_momentum[3];
 
+  /*! Metallicity of ambient gas */
+  float gas_metal_mass_fraction;
+
+  /*! Accretion boost factor */
+  float accretion_boost_factor;
+
   /*! Total (physical) angular momentum accumulated from subgrid accretion */
   float accreted_angular_momentum[3];
 
@@ -157,6 +166,15 @@ struct bpart {
 
   /*! Instantaneous target probability of heating any one neighbour particle */
   float target_heating_prob;
+
+  /*! Instantaneous coupling efficiency for feedback energy */
+  float epsilon_f;
+
+  /*! Cumulative coupling efficiency for feedback energy */
+  float cumulative_epsilon_f;
+
+  /*! Instantaneous heating temperature increase for feedback */
+  float AGN_delta_T;
 
   /*! Union for the last high Eddington ratio point in time */
   union {

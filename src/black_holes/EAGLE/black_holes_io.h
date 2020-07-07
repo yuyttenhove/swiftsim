@@ -21,6 +21,7 @@
 
 #include "adiabatic_index.h"
 #include "black_holes_part.h"
+#include "black_holes_properties.h"
 #include "io_properties.h"
 
 /**
@@ -125,6 +126,16 @@ INLINE static void convert_bpart_gas_circular_vel(const struct engine* e,
   ret[2] = bp->circular_velocity_gas[2] * cosmo->a_inv;
 }
 
+INLINE static void convert_bpart_gas_temperatures(const struct engine* e,
+                                                  const struct bpart* bp,
+                                                  float* ret) {
+
+  const struct black_holes_props* props = e->black_holes_properties;
+
+  /* Conversion from specific internal energy to temperature */
+  ret[0] = bp->u_gas / props->temp_to_u_factor;
+}
+
 /**
  * @brief Specifies which b-particle fields to write to a dataset
  *
@@ -139,7 +150,7 @@ INLINE static void black_holes_write_particles(const struct bpart* bparts,
                                                int with_cosmology) {
 
   /* Say how much we want to write */
-  *num_fields = 32;
+  *num_fields = 38;
 
   /* List what we want to write */
   list[0] = io_make_output_field_convert_bpart(
@@ -352,6 +363,43 @@ INLINE static void black_holes_write_particles(const struct bpart* bparts,
       num_ngbs,
       "Integer number of gas neighbour particles within the black hole "
       "kernels.");
+
+
+  list[32] = io_make_output_field(
+      "AccretionBoostFactors", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, bparts,
+      accretion_boost_factor,
+      "Multiplicative factors by which the Bondi-Hoyle-Lyttleton accretion "
+      "rates have been increased by the density-dependent Booth & Schaye "
+      "(2009) accretion model.");
+
+  list[33] = io_make_output_field(
+      "GasMetallicities", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, bparts,
+      gas_metal_mass_fraction,
+      "Metal mass fraction of the gas around the black holes.");
+
+  list[34] = io_make_output_field(
+      "FeedbackCouplingEfficiencies", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, bparts,
+      epsilon_f,
+      "Fraction of available feedback energy that is coupled to the ambient "
+      "gas.");
+
+  list[35] = io_make_output_field(
+      "CumulativeFeedbackCouplingEfficiencies", FLOAT, 1, UNIT_CONV_NO_UNITS,
+      0.f, bparts, cumulative_epsilon_f,
+      "Cumulative fraction of available feedback energy that is coupled to "
+      "the ambient gas. This can be combined with NumberOfTimeSteps to find "
+      "the average coupling efficiency between two outputs.");
+
+  list[36] = io_make_output_field(
+      "FeedbackDeltaT", FLOAT, 1, UNIT_CONV_TEMPERATURE, 0.f, bparts,
+      AGN_delta_T,
+      "Temperature by which gas particles are heated by the black hole "
+      "particles in case of feedback.");
+
+  list[37] = io_make_output_field_convert_bpart(
+      "GasTemperatures", FLOAT, 1, UNIT_CONV_TEMPERATURE, 0.f, bparts,
+      convert_bpart_gas_temperatures,
+      "Temperature of the gas surrounding the black holes.");
 
 
 #ifdef DEBUG_INTERACTIONS_BLACK_HOLES

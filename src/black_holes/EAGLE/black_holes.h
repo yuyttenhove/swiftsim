@@ -91,6 +91,7 @@ __attribute__((always_inline)) INLINE static void black_holes_first_init_bpart(
   bp->accreted_angular_momentum[2] = 0.f;
   bp->cumulative_target_prob = 0.f;
   bp->cumulative_actual_prob = 0.f;
+  bp->cumulative_epsilon_f = 0.f;
 
   black_holes_mark_bpart_as_not_swallowed(&bp->merger_data);
 }
@@ -112,6 +113,7 @@ __attribute__((always_inline)) INLINE static void black_holes_init_bpart(
   bp->density.wcount = 0.f;
   bp->density.wcount_dh = 0.f;
   bp->rho_gas = 0.f;
+  bp->u_gas = 0.f;
   bp->sound_speed_gas = 0.f;
   bp->velocity_gas[0] = 0.f;
   bp->velocity_gas[1] = 0.f;
@@ -128,7 +130,10 @@ __attribute__((always_inline)) INLINE static void black_holes_init_bpart(
   bp->reposition.potential = FLT_MAX;
   bp->accretion_rate = 0.f; /* Optionally accumulated ngb-by-ngb */
   bp->f_visc = FLT_MAX;
+  bp->gas_metal_mass_fraction = 0.f;
+  bp->accretion_boost_factor = FLT_MAX;
   bp->mass_at_start_of_step = bp->mass; /* bp->mass may grow in nibbling mode */
+  bp->epsilon_f = -FLT_MAX;
 }
 
 /**
@@ -229,6 +234,8 @@ __attribute__((always_inline)) INLINE static void black_holes_end_density(
   /* For the following, we also have to undo the mass smoothing
    * (N.B.: bp->velocity_gas is in BH frame, in internal units). */
   bp->sound_speed_gas *= h_inv_dim * rho_inv;
+  bp->u_gas *= h_inv_dim * rho_inv * cosmo->a_factor_internal_energy;
+  bp->gas_metal_mass_fraction *= h_inv_dim * rho_inv;
   bp->velocity_gas[0] *= h_inv_dim * rho_inv;
   bp->velocity_gas[1] *= h_inv_dim * rho_inv;
   bp->velocity_gas[2] *= h_inv_dim * rho_inv;
@@ -266,6 +273,8 @@ black_holes_bpart_has_no_neighbours(struct bpart* bp,
   bp->velocity_gas[0] = FLT_MAX;
   bp->velocity_gas[1] = FLT_MAX;
   bp->velocity_gas[2] = FLT_MAX;
+
+  bp->u_gas = -FLT_MAX;
 }
 
 /**
@@ -424,6 +433,128 @@ __attribute__((always_inline)) INLINE static void black_holes_swallow_bpart(
 }
 
 /**
+ * @brief Compute the boost factor for the BH accretion rate.
+ * 
+ * This is computed according to equation (4) of Booth & Schaye (2009).
+ *
+ * @param bp The #bpart.
+ * @param props The properties of the black hole model.
+ * @param cosmo The current cosmological model.
+ */
+__attribute__((always_inline)) INLINE static void
+compute_black_hole_accretion_boost_factor(struct bpart* bp,
+                                          const struct black_holes_props* props,
+                                          const struct cosmology* cosmo) {
+
+  /* Safety check: should only get here if we run with the boost model */
+  if (!props->with_accretion_boost)
+    error("Attempting to compute accretion boost factor without activating "
+          "accretion boost model for black holes. This is not consistent.");
+
+  /* Model parameters */
+  const double n_0 = props->accretion_boost_dens_norm;
+  const double beta = props->accretion_boost_exponent;
+
+  /* Calculate alpha_boost */
+  const double n_gas_phys = bp->rho_gas * cosmo->a3_inv * props->rho_to_n_cgs;
+  const double alpha = pow(n_gas_phys / n_0, beta);
+  bp->accretion_boost_factor = max(alpha, 1.0);
+}
+
+/**
+ * @brief Computes the coupling fraction of black hole feedback energy.
+ * 
+ * This is computed in analogy to the scaling of supernova energy, using
+ * equation 7 of Schaye et al. 2015.
+ *
+ * @param bp The #bpart.
+ * @param props The properties of the black hole model.
+ * @param cosmo The current cosmological model.
+ */
+__attribute__((always_inline)) INLINE static double
+black_hole_feedback_energy_fraction(const struct bpart* bp,
+                                    const struct black_holes_props* props,
+                                    const struct cosmology* cosmo) {
+
+  /* Safety check: should only get here if we run with the boost model */
+  if (!props->use_scaled_coupling_efficiency)
+    error("Attempting to compute variable black hole coupling efficiency "
+          "without activating this model. Cease and desist.");
+
+  /* Model parameters */
+  const double f_min = props->epsilon_f_min;
+  const double f_max = props->epsilon_f_max;
+  const double Z_0 = props->epsilon_f_metallicity_norm;
+  const double n_0 = props->epsilon_f_density_norm;
+  const double n_Z = props->epsilon_f_metallicity_exponent;
+  const double n_n = props->epsilon_f_density_exponent;
+
+  /* Black hole properties */
+
+  /* Metallicity (metal mass fraction) and (physical) density of the
+   * ambient gas around the black hole */
+  const double Z = bp->gas_metal_mass_fraction;
+  const double n_gas_phys = bp->rho_gas * cosmo->a3_inv * props->rho_to_n_cgs;
+
+  /* Calculate epsilon_f */
+  const double Z_term = pow(max(Z, 1e-6) / Z_0, n_Z);
+  const double n_term = pow(n_gas_phys / n_0, n_n);
+  const double denonimator = 1. + Z_term * n_term;
+
+  return f_min + (f_max - f_min) / denonimator;
+}
+
+/**
+ * @brief Computes the temperature increase delta_T for black hole feedback.
+ * 
+ * This is calculated as delta_T = min(max(dT_crit, T_gas), dT_num, dT_max):
+ * dT_crit = f_crit * critical temperature for suppressing numerical losses
+ * T_gas = f_gas * temperature of ambient gas
+ * dT_num = temperature increase affordable if N particles should be heated
+ * dT_max = maximum allowed energy increase.
+ *
+ * @param bp The #bpart.
+ * @param props The properties of the black hole model.
+ * @param cosmo The current cosmological model.
+ */
+__attribute__((always_inline)) INLINE static double
+black_hole_feedback_delta_T(const struct bpart* bp,
+                            const struct black_holes_props* props,
+                            const struct cosmology* cosmo) {
+
+  /* Safety check: should only get here if we run with the varying-dT model */
+  if (!props->use_variable_delta_T)
+    error("Attempting to compute variable black hole heating temperature "
+          "without activating this model. Cease and desist.");
+
+  if (bp->u_gas < 0)
+    error("Attempting to compute feedback energy for BH without neighbours.");
+
+  /* Model parameters */
+  const double f_crit = props->AGN_T_crit_factor;
+  const double f_gas = props->AGN_T_background_factor;
+  const double num_to_heat = props->AGN_delta_T_num_ngb_to_heat;
+  const double delta_T_max = props->AGN_delta_T_max;
+
+  /* Black hole properties */
+  const double n_gas_phys = bp->rho_gas * cosmo->a3_inv * props->rho_to_n_cgs;
+  const double mean_ngb_mass = bp->ngb_mass / ((double)bp->num_ngbs);
+  const double T_gas = bp->u_gas / props->temp_to_u_factor;
+
+  /* Calculate delta T */
+  const double T_crit = 3.162e7 * pow(n_gas_phys * 0.1, 0.6666667) *
+      pow(mean_ngb_mass * props->mass_to_solar_mass * 1e-6, 0.33333333);
+
+  const double delta_T_num = bp->energy_reservoir /
+      (num_to_heat * mean_ngb_mass * props->temp_to_u_factor);
+
+  const double max_des_dT = max(T_crit * f_crit, T_gas * f_gas);
+
+  const double min_a = min(max_des_dT, delta_T_num);
+  return min(min_a, delta_T_max);
+}
+
+/**
  * @brief Compute the accretion rate of the black hole and all the quantites
  * required for the feedback loop.
  *
@@ -455,10 +586,7 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
   const double f_Edd = props->f_Edd;
   const double f_Edd_recording = props->f_Edd_recording;
   const double epsilon_r = props->epsilon_r;
-  const double epsilon_f = props->epsilon_f;
   const double num_ngbs_to_heat = props->num_ngbs_to_heat;
-  const double delta_T = props->AGN_delta_T_desired;
-  const double delta_u = delta_T * props->temp_to_u_factor;
   const double alpha_visc = props->alpha_visc;
   const int with_angmom_limiter = props->with_angmom_limiter;
 
@@ -540,6 +668,14 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
     bp->f_visc = 1.0;
   }
 
+  /* Add boost term from Booth & Schaye (2009) */
+  if (props->with_accretion_boost) {
+    compute_black_hole_accretion_boost_factor(bp, props, cosmo);
+    Bondi_rate *= bp->accretion_boost_factor;
+  } else {
+    bp->accretion_boost_factor = 1.0;
+  }
+
   /* Compute the Eddington rate (internal units) */
   const double Eddington_rate =
       4. * M_PI * G * BH_mass * proton_mass / (epsilon_r * c * sigma_Thomson);
@@ -564,6 +700,14 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
   /* Integrate forward in time */
   bp->subgrid_mass += mass_rate * dt;
   bp->total_accreted_mass += mass_rate * dt;
+
+  /* Calculate energy coupling efficiency to the gas */
+  const double epsilon_f = props->use_scaled_coupling_efficiency ?
+      black_hole_feedback_energy_fraction(bp, props, cosmo) :
+      props->epsilon_f;
+
+  bp->epsilon_f = epsilon_f;
+  bp->cumulative_epsilon_f += epsilon_f;
   bp->energy_reservoir += luminosity * epsilon_f * dt;
 
   if (props->use_nibbling && bp->subgrid_mass < bp->mass) {
@@ -583,6 +727,13 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
       bp->spec_angular_momentum_gas[1] * mass_rate * dt;
   bp->accreted_angular_momentum[2] +=
       bp->spec_angular_momentum_gas[2] * mass_rate * dt;
+
+  /* Now find the temperature increase for a possible feedback event */
+  const double delta_T = props->use_variable_delta_T ?
+      black_hole_feedback_delta_T(bp, props, cosmo) :
+      props->AGN_delta_T_desired;
+  bp->AGN_delta_T = delta_T;
+  const double delta_u = delta_T * props->temp_to_u_factor;
 
   /* Energy required to have a feedback event
    * Note that we have subtracted the particles we swallowed from the ngb_mass
@@ -793,6 +944,7 @@ INLINE static void black_holes_create_from_gas(
   bp->number_of_time_steps = 0;
   bp->cumulative_target_prob = 0.f;
   bp->cumulative_actual_prob = 0.f;
+  bp->cumulative_epsilon_f = 0.f;
 
   /* We haven't repositioned yet, nor attempted it */
   bp->number_of_repositions = 0;
@@ -821,5 +973,9 @@ INLINE static void black_holes_create_from_gas(
 
   black_holes_mark_bpart_as_not_swallowed(&bp->merger_data);
 }
+
+
+
+
 
 #endif /* SWIFT_EAGLE_BLACK_HOLES_H */

@@ -89,6 +89,15 @@ struct spart {
   /*! Feedback energy fraction */
   float f_E;
 
+  /*! Feedback temperature increase */
+  float delta_T;
+
+  /*! Heating temperature in units of critical temperature */
+  float T_critical_fraction;
+
+  /*! Heating temperature in units of T to heat one particle */
+  float T_sampling_fraction;
+
   /*! Star formation struct */
   struct star_formation_spart_data sf_data;
 

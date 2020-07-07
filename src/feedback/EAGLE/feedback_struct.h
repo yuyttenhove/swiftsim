@@ -44,6 +44,9 @@ struct feedback_spart_data {
       /*! Total mass (unweighted) of neighbouring gas particles */
       float ngb_mass;
 
+      /*! Integer number of neighbouring gas particles */
+      int num_ngbs;
+
     } to_collect;
 
     /**

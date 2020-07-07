@@ -235,8 +235,23 @@ struct feedback_props {
   /*! Wind delay time for SNII when using a fixed delay */
   double SNII_wind_delay;
 
-  /*! Temperature increase induced by SNe feedback */
-  float SNe_deltaT_desired;
+  /*! Use variable temperature increase? */
+  int SNII_use_variable_delta_T;
+
+  /*! Buffer factor for numerical efficiency temperature */
+  double SNII_T_crit_factor;
+
+  /*! Number of neighbours that should be heatable by SNII */
+  double SNII_delta_T_num_ngb_to_heat;
+
+  /*! Limiting number of neighbours that must be heatable by SNII */
+  double SNII_delta_T_num_ngb_to_heat_limit;
+
+  /*! Maximum temperature increase induced by SNII feedback [Kelvin] */
+  double SNII_delta_T_max;
+
+  /*! (Constant) temperature increase induced by SNe feedback */
+  double SNe_deltaT_desired;
 
   /*! Energy released by one supernova type II in cgs units */
   double E_SNII_cgs;

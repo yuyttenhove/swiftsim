@@ -115,7 +115,7 @@ INLINE static void stars_write_particles(const struct spart *sparts,
                                          const int with_cosmology) {
 
   /* Say how much we want to write */
-  *num_fields = 8;
+  *num_fields = 11;
 
   /* List what we want to write */
   list[0] = io_make_output_field_convert_spart(
@@ -158,6 +158,22 @@ INLINE static void stars_write_particles(const struct spart *sparts,
       "FeedbackEnergyFractions", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, sparts, f_E,
       "Fractions of the canonical feedback energy that was used for the stars' "
       "SNII feedback events");
+
+  list[8] = io_make_output_field(
+      "FeedbackDeltaT", FLOAT, 1, UNIT_CONV_TEMPERATURE, 0.f, sparts, delta_T,
+      "Temperature increase induced by SNII feedback from the stars.");
+
+  list[9] = io_make_output_field(
+      "FeedbackCriticalFractions", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, sparts,
+      T_critical_fraction,
+      "Temperature increase induced by SNII feedback from the stars in units "
+      "of the critical temperature for numerical efficiency.");
+
+  list[10] = io_make_output_field(
+      "FeedbackSamplingFractions", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, sparts,
+      T_sampling_fraction,
+      "Number of particles expected to be heated by each star particle.");
+
 }
 
 /**

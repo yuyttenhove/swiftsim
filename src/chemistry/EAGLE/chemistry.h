@@ -553,4 +553,22 @@ chemistry_get_metal_mass_fraction_for_star_formation(
   return p->chemistry_data.smoothed_metal_mass_fraction;
 }
 
+/**
+ * @brief Returns the total metallicity (metal mass fraction) of the
+ * gas particle to be used for computing black hole ambient metallicities.
+ *
+ * Note that this is not smoothed, because we are already smoothing the
+ * individual particle metallicities within the BH kernel.
+ *
+ * @param p Pointer to the particle data.
+ */
+__attribute__((always_inline)) INLINE static float
+chemistry_get_metal_mass_fraction_for_black_holes(
+    const struct part* restrict p) {
+
+  return p->chemistry_data.metal_mass_fraction_total;
+}
+
+
+
 #endif /* SWIFT_CHEMISTRY_EAGLE_H */
