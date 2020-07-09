@@ -118,8 +118,9 @@ Scheduler:
   tasks_per_cell:            0.0       # (Optional) The average number of tasks per cell. If not large enough the simulation will fail (means guess...).
   links_per_tasks:           25        # (Optional) The average number of links per tasks (before adding the communication tasks). If not large enough the simulation will fail (means guess...). Defaults to 10.
   mpi_message_limit:         4096      # (Optional) Maximum MPI task message size to send non-buffered, KB.
-  engine_max_parts_per_ghost:   1000   # (Optional) Maximum number of parts per ghost.
-  engine_max_sparts_per_ghost:  1000   # (Optional) Maximum number of sparts per ghost.
+  engine_max_parts_per_ghost:    1000  # (Optional) Maximum number of parts per ghost.
+  engine_max_sparts_per_ghost:   1000  # (Optional) Maximum number of sparts per ghost.
+  engine_max_parts_per_cooling: 10000  # (Optional) Maximum number of parts per cooling task.
 
 # Parameters governing the time integration (Set dt_min and dt_max to the same value for a fixed time-step run.)
 TimeIntegration:
@@ -513,6 +514,7 @@ EAGLEAGN:
   accretion_boost_dens_norm:          0.1           # Normalisation density for boost factor [n_H / cm^3]; no boost is applied if the ambient density is lower. Only used if with_accretion_boost is 1.
   accretion_boost_exponent:           2.0           # Exponent beta of boost factor model. Only used if with_accretion_boost is 1.
   multi_phase_bondi:                  0             # Compute Bondi rates per neighbour particle?
+  subgrid_bondi:                      0             # Compute Bondi rates using the subgrid extrapolation of the gas properties around the BH?
   with_angmom_limiter:                1             # Are we applying the Rosas-Guevara et al. (2015) viscous time-scale reduction term?
   viscous_alpha:                      1e6           # Normalisation constant of the viscous time-scale in the accretion reduction term
   radiative_efficiency:               0.1           # Fraction of the accreted mass that gets radiated.
