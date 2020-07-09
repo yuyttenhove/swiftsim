@@ -85,12 +85,15 @@ runner_iact_nonsym_bh_gas_density(
   const double cj = hydro_get_comoving_soundspeed(pj);
   bi->sound_speed_gas += mj * wi * cj;
 
-  /* Contribution to the smoothed gas internal energy */
-  bi->u_gas += mj * wi * hydro_get_drifted_comoving_internal_energy(pj);
-
   /* Contribution to the smoothed gas metallicity */
   bi->gas_metal_mass_fraction += mj * wi * 
       chemistry_get_metal_mass_fraction_for_black_holes(pj);
+
+  /* Neighbour internal energy */
+  const float uj = hydro_get_drifted_comoving_internal_energy(pj);
+
+  /* Contribution to the smoothed internal energy */
+  bi->internal_energy_gas += mj * uj * wi;
 
   /* Neighbour's (drifted) velocity in the frame of the black hole
    * (we don't include a Hubble term since we are interested in the

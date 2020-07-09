@@ -131,9 +131,11 @@ INLINE static void convert_bpart_gas_temperatures(const struct engine* e,
                                                   float* ret) {
 
   const struct black_holes_props* props = e->black_holes_properties;
+  const struct cosmology* cosmo = e->cosmology;
 
   /* Conversion from specific internal energy to temperature */
-  ret[0] = bp->u_gas / props->temp_to_u_factor;
+  ret[0] = bp->internal_energy_gas * cosmo->a_factor_internal_energy /
+      props->temp_to_u_factor;
 }
 
 /**
@@ -150,7 +152,7 @@ INLINE static void black_holes_write_particles(const struct bpart* bparts,
                                                int with_cosmology) {
 
   /* Say how much we want to write */
-  *num_fields = 38;
+  *num_fields = 40;
 
   /* List what we want to write */
   list[0] = io_make_output_field_convert_bpart(
@@ -189,7 +191,7 @@ INLINE static void black_holes_write_particles(const struct bpart* bparts,
   }
 
   list[7] = io_make_output_field(
-      "GasDensities", FLOAT, 1, UNIT_CONV_DENSITY, 0.f, bparts, rho_gas,
+      "GasDensities", FLOAT, 1, UNIT_CONV_DENSITY, -3.f, bparts, rho_gas,
       "Co-moving densities of the gas around the particles");
 
   list[8] = io_make_output_field(
@@ -401,6 +403,15 @@ INLINE static void black_holes_write_particles(const struct bpart* bparts,
       convert_bpart_gas_temperatures,
       "Temperature of the gas surrounding the black holes.");
 
+  list[38] = io_make_output_field(
+      "SubgridDensities", FLOAT, 1, UNIT_CONV_DENSITY, 0.f, bparts,
+      rho_subgrid_gas,
+      "Physical subgrid densities used in the subgrid-Bondi model.");
+
+  list[39] = io_make_output_field(
+      "SubgridSoundSpeeds", FLOAT, 1, UNIT_CONV_SPEED, 0.f, bparts,
+      sound_speed_subgrid_gas,
+      "Physical subgrid sound-speeds used in the subgrid-Bondi model.");
 
 #ifdef DEBUG_INTERACTIONS_BLACK_HOLES
 
