@@ -114,7 +114,6 @@ __attribute__((always_inline)) INLINE static void black_holes_init_bpart(
   bp->density.wcount = 0.f;
   bp->density.wcount_dh = 0.f;
   bp->rho_gas = 0.f;
-  bp->u_gas = 0.f;
   bp->sound_speed_gas = 0.f;
   bp->internal_energy_gas = 0.f;
   bp->rho_subgrid_gas = -1.f;
@@ -278,7 +277,7 @@ black_holes_bpart_has_no_neighbours(struct bpart* bp,
   bp->velocity_gas[1] = FLT_MAX;
   bp->velocity_gas[2] = FLT_MAX;
 
-  bp->u_gas = -FLT_MAX;
+  bp->internal_energy_gas = -FLT_MAX;
 }
 
 /**
@@ -531,7 +530,7 @@ black_hole_feedback_delta_T(const struct bpart* bp,
     error("Attempting to compute variable black hole heating temperature "
           "without activating this model. Cease and desist.");
 
-  if (bp->u_gas < 0)
+  if (bp->internal_energy_gas < 0)
     error("Attempting to compute feedback energy for BH without neighbours.");
 
   /* Model parameters */
@@ -543,7 +542,8 @@ black_hole_feedback_delta_T(const struct bpart* bp,
   /* Black hole properties */
   const double n_gas_phys = bp->rho_gas * cosmo->a3_inv * props->rho_to_n_cgs;
   const double mean_ngb_mass = bp->ngb_mass / ((double)bp->num_ngbs);
-  const double T_gas = bp->u_gas / props->temp_to_u_factor;
+  const double T_gas = bp->internal_energy_gas *
+      cosmo->a_factor_internal_energy / props->temp_to_u_factor;
 
   /* Calculate delta T */
   const double T_crit = 3.162e7 * pow(n_gas_phys * 0.1, 0.6666667) *

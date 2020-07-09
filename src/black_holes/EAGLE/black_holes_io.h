@@ -131,7 +131,7 @@ INLINE static void convert_bpart_gas_temperatures(const struct engine* e,
                                                   float* ret) {
 
   const struct black_holes_props* props = e->black_holes_properties;
-  const struct cosmolgy* cosmo = e->cosmology;
+  const struct cosmology* cosmo = e->cosmology;
 
   /* Conversion from specific internal energy to temperature */
   ret[0] = bp->internal_energy_gas * cosmo->a_factor_internal_energy /
