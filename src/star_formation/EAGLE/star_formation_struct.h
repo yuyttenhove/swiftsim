@@ -45,6 +45,10 @@ struct star_formation_spart_data {
 
   /*! The birth temperature */
   float birth_temperature;
+
+  /*! Velocity divergence of gas at birth */
+  float birth_div_v;
+  
 };
 
 #endif /* SWIFT_EAGLE_STAR_FORMATION_STRUCT_H */

@@ -464,6 +464,8 @@ INLINE static void star_formation_copy_properties(
   sp->sf_data.birth_temperature = cooling_get_temperature(
       phys_const, hydro_props, us, cosmo, cooling, p, xp);
 
+  sp->sf_data.birth_div_v = hydro_get_velocity_divergence(p);
+
   /* Flag that this particle has not done feedback yet */
   sp->f_E = -1.f;
   sp->last_enrichment_time = sp->birth_time;

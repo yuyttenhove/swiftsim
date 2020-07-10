@@ -432,6 +432,17 @@ __attribute__((always_inline)) INLINE static void hydro_set_viscosity_alpha(
 }
 
 /**
+ * @brief Get the value of the velocity divergence.
+ *
+ * @param p the particle of interest
+ * @param cosmo The cosmology model.
+ */
+__attribute__((always_inline)) INLINE static float
+hydro_get_velocity_divergence(const struct part *restrict p) {
+  return p->viscosity.div_v;
+}
+
+/**
  * @brief Update the value of the diffusive coefficients to the
  *        feedback reset value for the scheme.
  *
