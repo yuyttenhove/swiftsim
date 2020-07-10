@@ -152,7 +152,7 @@ INLINE static void black_holes_write_particles(const struct bpart* bparts,
                                                int with_cosmology) {
 
   /* Say how much we want to write */
-  *num_fields = 40;
+  *num_fields = 41;
 
   /* List what we want to write */
   list[0] = io_make_output_field_convert_bpart(
@@ -412,6 +412,13 @@ INLINE static void black_holes_write_particles(const struct bpart* bparts,
       "SubgridSoundSpeeds", FLOAT, 1, UNIT_CONV_SPEED, 0.f, bparts,
       sound_speed_subgrid_gas,
       "Physical subgrid sound-speeds used in the subgrid-Bondi model.");
+
+  list[40] = io_make_output_field(
+      "LastRepositionVelocities", FLOAT, 1, UNIT_CONV_SPEED, 0.f, bparts,
+      last_repos_vel,
+      "Physical speeds at which the black holes repositioned most recently. "
+      "This is 0 for black holes that have never repositioned, or if the "
+      "simulation has been run without prescribed repositioning speed.");
 
 #ifdef DEBUG_INTERACTIONS_BLACK_HOLES
 
