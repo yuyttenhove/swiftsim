@@ -238,6 +238,9 @@ struct feedback_props {
   /*! Use variable temperature increase? */
   int SNII_use_variable_delta_T;
 
+  /*! Use instantaneous density instead of birth density? */
+  int SNII_use_instantaneous_density;
+
   /*! Buffer factor for numerical efficiency temperature */
   double SNII_T_crit_factor;
 

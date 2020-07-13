@@ -73,6 +73,7 @@ __attribute__((always_inline)) INLINE static void feedback_init_spart(
   sp->feedback_data.to_collect.enrichment_weight_inv = 0.f;
   sp->feedback_data.to_collect.ngb_mass = 0.f;
   sp->feedback_data.to_collect.num_ngbs = 0;
+  sp->feedback_data.to_collect.gas_density = 0.f;
 }
 
 /**

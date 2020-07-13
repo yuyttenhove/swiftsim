@@ -59,9 +59,9 @@ double eagle_feedback_temperature_change(const struct spart* sp,
  */
 double eagle_variable_feedback_temperature_change(
   const struct spart* sp, const double ngb_gas_mass, const int num_gas_ngbs,
-  const double SNe_energy, const struct feedback_props* props,
-  const double frac_SNII, double* critical_fraction,
-  double* sampling_fraction) {
+  const double gas_density, const double SNe_energy,
+  const struct feedback_props* props, const double frac_SNII,
+  double* critical_fraction, double* sampling_fraction) {
 
   /* Safety check: should only get here if we run with the varying-dT model */
   if (!props->SNII_use_variable_delta_T)
@@ -75,7 +75,9 @@ double eagle_variable_feedback_temperature_change(
   const double delta_T_max = props->SNII_delta_T_max;
 
   /* Physical density of the gas at the star's birth time */
-  const double n_birth_phys = sp->sf_data.birth_density * props->rho_to_n_cgs;
+  const double n_birth_phys = props->SNII_use_instantaneous_density ?
+      gas_density * props->rho_to_n_cgs :
+      sp->sf_data.birth_density * props->rho_to_n_cgs;
   const double mean_ngb_mass = ngb_gas_mass / ((double)num_gas_ngbs);
 
   /* Calculate delta T */
@@ -337,7 +339,7 @@ double eagle_feedback_energy_fraction(const struct spart* sp,
  */
 INLINE static void compute_SNII_feedback(
     struct spart* sp, const double star_age, const double dt,
-    const float ngb_gas_mass, const int num_gas_ngbs,
+    const float ngb_gas_mass, const int num_gas_ngbs, const double gas_density,
     const struct feedback_props* feedback_props,
     const double min_dying_mass_Msun, const double max_dying_mass_Msun) {
 
@@ -393,8 +395,8 @@ INLINE static void compute_SNII_feedback(
     double sampling_fraction = -FLT_MAX;
     const double delta_T = feedback_props->SNII_use_variable_delta_T ? 
         eagle_variable_feedback_temperature_change(
-            sp, ngb_gas_mass, num_gas_ngbs, SNe_energy, feedback_props,
-            frac_SNII, &critical_fraction, &sampling_fraction) :
+            sp, ngb_gas_mass, num_gas_ngbs, gas_density, SNe_energy,
+            feedback_props, frac_SNII, &critical_fraction, &sampling_fraction) :
         eagle_feedback_temperature_change(sp, feedback_props);
 
     /* Calculate the default heating probability */
@@ -425,9 +427,17 @@ INLINE static void compute_SNII_feedback(
 
     /* Store all of this in the star for delivery onto the gas */
     sp->f_E = f_E;
-    sp->delta_T = delta_T;
-    sp->T_critical_fraction = critical_fraction;
-    sp->T_sampling_fraction = sampling_fraction;      
+    sp->delta_T_min = min(sp->delta_T_min, delta_T);
+    sp->delta_T_max = max(sp->delta_T_max, delta_T);
+    sp->T_critical_fraction_min = min(sp->T_critical_fraction_min,
+        critical_fraction);
+    sp->T_critical_fraction_max = max(sp->T_critical_fraction_max,
+        critical_fraction);
+    sp->T_sampling_fraction_min = min(sp->T_sampling_fraction_min,
+        sampling_fraction);      
+    sp->T_sampling_fraction_max = max(sp->T_sampling_fraction_max,
+        sampling_fraction);      
+
     sp->feedback_data.to_distribute.SNII_heating_probability = prob;
     sp->feedback_data.to_distribute.SNII_delta_u = delta_u;
   }
@@ -952,6 +962,12 @@ void compute_stellar_evolution(const struct feedback_props* feedback_props,
   const float ngb_gas_mass = sp->feedback_data.to_collect.ngb_mass;
   const int num_gas_ngbs = sp->feedback_data.to_collect.num_ngbs;
 
+  const float h = sp->h;
+  const float h_inv = 1.0f / h;                       /* 1/h */
+  const float h_inv_dim = pow_dimension(h_inv);       /* 1/h^d */
+  const double gas_density = sp->feedback_data.to_collect.gas_density *
+      h_inv_dim * cosmo->a3_inv;
+
   /* Check if there are neighbours, otherwise exit */
   if (ngb_gas_mass == 0.f || sp->density.wcount * pow_dimension(sp->h) < 1e-4) {
     feedback_reset_feedback(sp, feedback_props);
@@ -1000,7 +1016,7 @@ void compute_stellar_evolution(const struct feedback_props* feedback_props,
   /* Compute properties of the stochastic SNII feedback model. */
   if (feedback_props->with_SNII_feedback) {
     compute_SNII_feedback(sp, age, dt, ngb_gas_mass, num_gas_ngbs,
-                          feedback_props,
+                          gas_density, feedback_props,
                           min_dying_mass_Msun, max_dying_mass_Msun);
   }
 
@@ -1139,6 +1155,9 @@ void feedback_props_init(struct feedback_props* fp,
   fp->SNII_use_variable_delta_T =
       parser_get_param_int(params, "EAGLEFeedback:SNII_use_variable_delta_T");
   if (fp->SNII_use_variable_delta_T) {
+    fp->SNII_use_instantaneous_density =
+        parser_get_param_int(
+            params, "EAGLEFeedback:SNII_use_instantaneous_density");
     fp->SNII_T_crit_factor =
         parser_get_param_double(params, "EAGLEFeedback:SNII_T_crit_factor");
     fp->SNII_delta_T_num_ngb_to_heat =

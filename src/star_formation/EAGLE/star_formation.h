@@ -470,9 +470,12 @@ INLINE static void star_formation_copy_properties(
   sp->f_E = -1.f;
   sp->last_enrichment_time = sp->birth_time;
   sp->count_since_last_enrichment = -1;
-  sp->delta_T = -1.f;
-  sp->T_critical_fraction = -1.f;
-  sp->T_sampling_fraction = -1.f;
+  sp->delta_T_min = FLT_MAX;
+  sp->delta_T_max = -FLT_MAX;
+  sp->T_critical_fraction_min = FLT_MAX;
+  sp->T_critical_fraction_max = -FLT_MAX;
+  sp->T_sampling_fraction_min = FLT_MAX;
+  sp->T_sampling_fraction_max = -FLT_MAX;
 }
 
 /**

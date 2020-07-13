@@ -47,6 +47,9 @@ struct feedback_spart_data {
       /*! Integer number of neighbouring gas particles */
       int num_ngbs;
 
+      /*! Density of gas around the star particles */
+      float gas_density;
+
     } to_collect;
 
     /**
