@@ -60,6 +60,7 @@ runner_iact_nonsym_feedback_density(const float r2, const float *dx,
   /* Add mass of pj to neighbour mass of si  */
   si->feedback_data.to_collect.ngb_mass += mj;
   si->feedback_data.to_collect.num_ngbs++;
+  si->feedback_data.to_collect.gas_density += mj * wi;
 
   /* Add contribution of pj to normalisation of density weighted fraction
    * which determines how much mass to distribute to neighbouring
