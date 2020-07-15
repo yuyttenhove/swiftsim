@@ -63,6 +63,9 @@ struct black_holes_props {
   /*! Switch on Booth & Schaye (2009) accretion boost factor? */
   int with_accretion_boost;
 
+  /*! Constant pre-factor for accretion rate */
+  float accretion_boost_alpha;
+
   /*! Density normalisation of accretion boost */
   float accretion_boost_dens_norm;
 
@@ -280,6 +283,8 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
   bp->with_accretion_boost =
       parser_get_param_int(params, "EAGLEAGN:with_accretion_boost");
   if (bp->with_accretion_boost) {
+    bp->accretion_boost_alpha = 
+        parser_get_param_float(params, "EAGLEAGN:accretion_boost_alpha");
     bp->accretion_boost_dens_norm = 
         parser_get_param_float(params, "EAGLEAGN:accretion_boost_dens_norm");
     bp->accretion_boost_exponent =

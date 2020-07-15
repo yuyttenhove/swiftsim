@@ -511,6 +511,7 @@ EAGLEAGN:
   use_subgrid_mass_from_ics:          1             # (Optional) Use subgrid masses specified in ICs [1, default], or initialise them to particle masses [0]?
   with_subgrid_mass_check:            1             # (Optional) Verify that initial black hole subgrid masses are positive [1, default]. Only used if use_subgrid_mass_from_ics is 1.
   with_accretion_boost:               1             # Are we applying a Booth & Schaye (2009) like boost factor to black hole accretion rates?
+  accretion_boost_alpha:              1.0           # Constant pre-factor for BH accretion rates
   accretion_boost_dens_norm:          0.1           # Normalisation density for boost factor [n_H / cm^3]; no boost is applied if the ambient density is lower. Only used if with_accretion_boost is 1.
   accretion_boost_exponent:           2.0           # Exponent beta of boost factor model. Only used if with_accretion_boost is 1.
   multi_phase_bondi:                  0             # Compute Bondi rates per neighbour particle?
