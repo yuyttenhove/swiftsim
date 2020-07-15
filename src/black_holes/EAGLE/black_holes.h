@@ -552,7 +552,7 @@ black_hole_feedback_delta_T(const struct bpart* bp,
       pow(mean_ngb_mass * props->mass_to_solar_mass * 1e-6, 0.33333333);
 
   const double delta_T_num = (num_to_heat > 0) ? bp->energy_reservoir /
-      (num_to_heat * mean_ngb_mass * props->temp_to_u_factor) : 0.0;
+      (num_to_heat * mean_ngb_mass * props->temp_to_u_factor) : FLT_MAX;
 
   const double max_des_dT = max(T_crit * f_crit, T_gas * f_gas);
 
