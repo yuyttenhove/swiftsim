@@ -465,17 +465,16 @@ INLINE static void star_formation_copy_properties(
       phys_const, hydro_props, us, cosmo, cooling, p, xp);
 
   sp->sf_data.birth_div_v = hydro_get_velocity_divergence(p);
+  sp->sf_data.birth_star_formation_rate = xp->sf_data.SFR;
+
 
   /* Flag that this particle has not done feedback yet */
   sp->f_E = -1.f;
   sp->last_enrichment_time = sp->birth_time;
   sp->count_since_last_enrichment = -1;
-  sp->delta_T_min = FLT_MAX;
-  sp->delta_T_max = -FLT_MAX;
-  sp->T_critical_fraction_min = FLT_MAX;
-  sp->T_critical_fraction_max = -FLT_MAX;
-  sp->T_sampling_fraction_min = FLT_MAX;
-  sp->T_sampling_fraction_max = -FLT_MAX;
+  sp->delta_T = -FLT_MAX;
+  sp->T_critical_fraction = -FLT_MAX;
+  sp->T_sampling_fraction = -FLT_MAX;
 }
 
 /**

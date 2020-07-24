@@ -48,6 +48,9 @@ struct star_formation_spart_data {
 
   /*! Velocity divergence of gas at birth */
   float birth_div_v;
+
+  /*! Star formation rate of the parent gas particle */
+  float birth_star_formation_rate;
   
 };
 

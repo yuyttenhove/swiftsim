@@ -55,10 +55,9 @@ double eagle_feedback_temperature_change(const struct spart* sp,
  *  gas temperature here).
  *
  * @param sp The #spart.
- * @param props The properties of the feedback model.
  */
 double eagle_variable_feedback_temperature_change(
-  const struct spart* sp, const double ngb_gas_mass, const int num_gas_ngbs,
+  struct spart* sp, const double ngb_gas_mass, const int num_gas_ngbs,
   const double gas_density, const double SNe_energy,
   const struct feedback_props* props, const double frac_SNII,
   double* critical_fraction, double* sampling_fraction) {
@@ -67,6 +66,10 @@ double eagle_variable_feedback_temperature_change(
   if (!props->SNII_use_variable_delta_T)
     error("Attempting to compute variable SNII heating temperature "
           "without activating this model. Cease and desist.");
+
+  /* Only calculate the temperature if it has not been set already */
+  if (sp->delta_T >= 0)
+    return sp->delta_T;
 
   /* Model parameters */
   const double f_crit = props->SNII_T_crit_factor;
@@ -108,6 +111,11 @@ double eagle_variable_feedback_temperature_change(
   /* Record how delta_T compares to targets */
   *critical_fraction = delta_T / T_crit;
   *sampling_fraction = delta_T_one_particle / delta_T;
+
+  sp->delta_T = delta_T;
+  sp->T_critical_fraction = *critical_fraction;
+  sp->T_sampling_fraction = *sampling_fraction;
+
   return delta_T;
 }
 
@@ -427,17 +435,6 @@ INLINE static void compute_SNII_feedback(
 
     /* Store all of this in the star for delivery onto the gas */
     sp->f_E = f_E;
-    sp->delta_T_min = min(sp->delta_T_min, delta_T);
-    sp->delta_T_max = max(sp->delta_T_max, delta_T);
-    sp->T_critical_fraction_min = min(sp->T_critical_fraction_min,
-        critical_fraction);
-    sp->T_critical_fraction_max = max(sp->T_critical_fraction_max,
-        critical_fraction);
-    sp->T_sampling_fraction_min = min(sp->T_sampling_fraction_min,
-        sampling_fraction);      
-    sp->T_sampling_fraction_max = max(sp->T_sampling_fraction_max,
-        sampling_fraction);      
-
     sp->feedback_data.to_distribute.SNII_heating_probability = prob;
     sp->feedback_data.to_distribute.SNII_delta_u = delta_u;
   }
