@@ -538,8 +538,8 @@ black_hole_feedback_delta_T(const struct bpart* bp,
   /* Model parameters */
   const double f_crit = props->AGN_T_crit_factor;
   const double f_gas = props->AGN_T_background_factor;
-  const double num_to_heat = props->AGN_delta_T_num_ngb_to_heat;
   const double delta_T_max = props->AGN_delta_T_max;
+  const double delta_T_min = props->AGN_delta_T_min;
 
   /* Black hole properties */
   const double n_gas_phys = bp->rho_gas * cosmo->a3_inv * props->rho_to_n_cgs;
@@ -551,13 +551,20 @@ black_hole_feedback_delta_T(const struct bpart* bp,
   const double T_crit = 3.162e7 * pow(n_gas_phys * 0.1, 0.6666667) *
       pow(mean_ngb_mass * props->mass_to_solar_mass * 1e-6, 0.33333333);
 
-  const double delta_T_num = (num_to_heat > 0) ? bp->energy_reservoir /
-      (num_to_heat * mean_ngb_mass * props->temp_to_u_factor) : FLT_MAX;
+  /* Baseline delta T varies depending on whether we scale by mass or
+   * numerical requirements */
+  double delta_T;
+  if (props->scale_delta_T_with_mass) {
+    delta_T = props->AGN_delta_T_mass_alpha *
+        pow((bp->subgrid_mass / props->AGN_delta_T_mass_norm),
+            props->AGN_delta_T_mass_exponent);
 
-  const double max_des_dT = max(T_crit * f_crit, T_gas * f_gas);
+  } else {
+    delta_T = max(T_crit * f_crit, T_gas * f_gas);
+  }
 
-  const double min_a = min(max_des_dT, delta_T_num);
-  return min(min_a, delta_T_max);
+  delta_T = max(T_crit * f_crit, delta_T_min);
+  return min(delta_T, delta_T_max);
 }
 
 /**
