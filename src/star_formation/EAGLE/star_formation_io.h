@@ -80,6 +80,13 @@ star_formation_write_sparticles(const struct spart* sparts,
                            "Velocity divergences at the time of birth of the "
                            "gas particles that turned into stars");
 
-  return 3;
+  list[3] =
+      io_make_output_field(
+        "StarFormationRates", FLOAT, 1, UNIT_CONV_SFR, 0.f, sparts,
+        sf_data.birth_star_formation_rate,
+        "Star formation rates of the parent gas particle at the point where "
+        "they were converted to stars.");
+
+  return 4;
 }
 #endif /* SWIFT_STAR_FORMATION_EAGLE_IO_H */
