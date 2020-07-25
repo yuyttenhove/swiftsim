@@ -93,7 +93,7 @@ double eagle_variable_feedback_temperature_change(
   const double delta_T_num_limit = delta_T_one_particle / num_to_heat_limit;
 
   /* Alright... let's aim for the numerically-required T_crit */
-  double delta_T = T_crit * f_crit;
+  double delta_T = max(T_crit * f_crit, props->SNII_delta_T_min);
 
   /* Scale temperature down if above soft sampling limit */
   if (delta_T > delta_T_num) {
@@ -1167,6 +1167,10 @@ void feedback_props_init(struct feedback_props* fp,
     fp->SNII_delta_T_max =
         parser_get_param_double(params, "EAGLEFeedback:SNII_delta_T_max") /
         units_cgs_conversion_factor(us, UNIT_CONV_TEMPERATURE);
+    fp->SNII_delta_T_min =
+        parser_get_param_double(params, "EAGLEFeedback:SNII_delta_T_min") /
+        units_cgs_conversion_factor(us, UNIT_CONV_TEMPERATURE);
+
   } else {
     fp->SNe_deltaT_desired =
         parser_get_param_float(params, "EAGLEFeedback:SNII_delta_T_K") /

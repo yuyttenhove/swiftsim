@@ -252,6 +252,7 @@ struct feedback_props {
 
   /*! Maximum temperature increase induced by SNII feedback [Kelvin] */
   double SNII_delta_T_max;
+  double SNII_delta_T_min;
 
   /*! (Constant) temperature increase induced by SNe feedback */
   double SNe_deltaT_desired;
