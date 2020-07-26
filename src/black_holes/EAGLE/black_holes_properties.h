@@ -150,9 +150,6 @@ struct black_holes_props {
   /*! Buffer factor for background temperature */
   float AGN_T_background_factor;
 
-  /*! Number of neighbours that must be heatable by AGN */
-  float AGN_delta_T_num_ngb_to_heat;
-
   /*! Maximum temperature increase induced by AGN feedback [Kelvin] */
   float AGN_delta_T_max;
   float AGN_delta_T_min;
@@ -383,9 +380,6 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
           parser_get_param_float(params, "EAGLEAGN:AGN_T_crit_factor");
       bp->AGN_T_background_factor =
           parser_get_param_float(params, "EAGLEAGN:AGN_T_background_factor");
-      bp->AGN_delta_T_num_ngb_to_heat =
-          parser_get_param_float(params,
-              "EAGLEAGN:AGN_delta_T_num_ngb_to_heat");
     }
 
     bp->AGN_delta_T_max =
