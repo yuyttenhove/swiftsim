@@ -568,6 +568,31 @@ black_hole_feedback_delta_T(const struct bpart* bp,
 }
 
 /**
+ * @brief Computes the energy reservoir threshold for AGN feedback.
+ * 
+ * @param bp The #bpart.
+ * @param props The properties of the black hole model.
+ */
+__attribute__((always_inline)) INLINE static double
+black_hole_energy_reservoir_threshold(struct bpart* bp,
+                                      const struct black_holes_props* props,
+                                      const double Eddington_max) {
+
+  const double f_Edd = min(bp->eddington_fraction, Eddington_max);
+  double num_to_heat = props->nheat_alpha * (f_Edd / props->nheat_fEdd_normalisation);
+
+  /* Impose smooth truncation of num_to_heat towards props->nheat_limit */
+  if (num_to_heat > props->nheat_alpha) {
+    const double coeff_b = 1. / (props->nheat_limit - props->nheat_alpha);
+    const double coeff_a = exp(coeff_b * props->nheat_alpha) / coeff_b;
+    num_to_heat = props->nheat_limit - coeff_a * exp(-coeff_b * num_to_heat);
+  }
+
+  bp->num_ngbs_to_heat = num_to_heat;
+  return num_to_heat;
+}
+
+/**
  * @brief Compute the accretion rate of the black hole and all the quantites
  * required for the feedback loop.
  *
@@ -603,7 +628,6 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
   const double f_Edd = props->f_Edd;
   const double f_Edd_recording = props->f_Edd_recording;
   const double epsilon_r = props->epsilon_r;
-  const double num_ngbs_to_heat = props->num_ngbs_to_heat;
   const double alpha_visc = props->alpha_visc;
   const int with_angmom_limiter = props->with_angmom_limiter;
 
@@ -779,7 +803,8 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
   /* Limit the accretion rate to a fraction of the Eddington rate */
   const double accr_rate = min(Bondi_rate, f_Edd * Eddington_rate);
   bp->accretion_rate = accr_rate;
-
+  bp->eddington_fraction = Bondi_rate / Eddington_rate;
+ 
   /* Factor in the radiative efficiency */
   const double mass_rate = (1. - epsilon_r) * accr_rate;
   const double luminosity = epsilon_r * accr_rate * c * c;
@@ -824,12 +849,25 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
       props->AGN_delta_T_desired;
   bp->AGN_delta_T = delta_T;
   const double delta_u = delta_T * props->temp_to_u_factor;
+  const double delta_u_const = props->AGN_delta_T_desired *
+      props->temp_to_u_factor;
 
   /* Energy required to have a feedback event
    * Note that we have subtracted the particles we swallowed from the ngb_mass
    * and num_ngbs accumulators. */
+
+  const double num_ngbs_to_heat =
+      props->use_adaptive_energy_reservoir_threshold ?
+      black_hole_energy_reservoir_threshold(bp, props, f_Edd * Eddington_rate) :
+      props->num_ngbs_to_heat;
+
   const double mean_ngb_mass = bp->ngb_mass / ((double)bp->num_ngbs);
-  const double E_feedback_event = num_ngbs_to_heat * delta_u * mean_ngb_mass;
+  
+  /* For clarity, impose energy reservoir threshold in terms of constant dT, 
+   * even if we are using a variable dT. Effectively, the threshold is in the
+   * injected energy, not number of particles heated, which is more physical. */
+  const double E_feedback_event = num_ngbs_to_heat * delta_u_const * 
+      mean_ngb_mass;
 
   /* Are we doing some feedback? */
   if (bp->energy_reservoir > E_feedback_event) {

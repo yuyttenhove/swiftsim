@@ -154,6 +154,18 @@ struct black_holes_props {
   float AGN_delta_T_max;
   float AGN_delta_T_min;
 
+  /*! Vary the energy reservoir to the Eddington ratio? */
+  int use_adaptive_energy_reservoir_threshold;
+
+  /*! Normalisation for energy reservoir threshold, at upper end */
+  float nheat_alpha;
+
+  /*! Reference max Eddington ratio for energy reservoir variation */
+  float nheat_fEdd_normalisation;
+
+  /*! Hard limit to the energy reservoir threshold */
+  float nheat_limit;
+
   /*! Number of gas neighbours to heat in a feedback event */
   float num_ngbs_to_heat;
 
@@ -386,14 +398,25 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
         parser_get_param_float(params, "EAGLEAGN:AGN_delta_T_max") * T_K_to_int;
     bp->AGN_delta_T_min =
         parser_get_param_float(params, "EAGLEAGN:AGN_delta_T_min") * T_K_to_int;
+  }
+  bp->AGN_delta_T_desired =
+      parser_get_param_float(params, "EAGLEAGN:AGN_delta_T_K") * T_K_to_int;
+  
+  bp->use_adaptive_energy_reservoir_threshold =
+      parser_get_param_int(
+        params, "EAGLEAGN:AGN_use_adaptive_energy_reservoir_threshold");
+  if (bp->use_adaptive_energy_reservoir_threshold) {
+    bp->nheat_alpha =
+        parser_get_param_float(params, "EAGLEAGN:AGN_nheat_alpha");
+    bp->nheat_fEdd_normalisation =
+        parser_get_param_float(params, "EAGLEAGN:AGN_nheat_fEdd_normalisation");
+    bp->nheat_limit =
+        parser_get_param_float(params, "EAGLEAGN:AGN_nheat_limit");
 
   } else {
-    bp->AGN_delta_T_desired =
-        parser_get_param_float(params, "EAGLEAGN:AGN_delta_T_K") * T_K_to_int;
+    bp->num_ngbs_to_heat =
+        parser_get_param_float(params, "EAGLEAGN:AGN_num_ngb_to_heat");    
   }
-
-  bp->num_ngbs_to_heat =
-      parser_get_param_float(params, "EAGLEAGN:AGN_num_ngb_to_heat");
 
   /* Reposition parameters --------------------------------- */
 
