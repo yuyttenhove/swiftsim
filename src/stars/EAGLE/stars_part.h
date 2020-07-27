@@ -89,6 +89,9 @@ struct spart {
   /*! Feedback energy fraction */
   float f_E;
 
+  /*! Value of divergence boost factor (within f_E) */
+  float f_E_divergence_boost;
+
   /*! Feedback temperature increase */
   float delta_T;
 

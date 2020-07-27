@@ -300,7 +300,7 @@ double eagle_feedback_number_of_SNIa(const double M_init, const double t0,
  * @param sp The #spart.
  * @param props The properties of the feedback model.
  */
-double eagle_feedback_energy_fraction(const struct spart* sp,
+double eagle_feedback_energy_fraction(struct spart* sp,
                                       const struct feedback_props* props) {
 
   /* Model parameters */
@@ -325,7 +325,17 @@ double eagle_feedback_energy_fraction(const struct spart* sp,
   const double n_term = pow(n_birth / n_0, -n_n);
   const double denonimator = 1. + Z_term * n_term;
 
-  return f_E_min + (f_E_max - f_E_min) / denonimator;
+  double divergence_boost = 1.0;
+  if (props->with_SNII_divergence_boost && sp->sf_data.birth_div_v < 0)
+    divergence_boost =
+        pow(1.0 - sp->sf_data.birth_div_v / props->SNII_divergence_norm,
+            props->SNII_divergence_exponent);
+    message("SP %lld: birth_div_v=%g, SNII_div_norm=%g, div_boost=%g.",
+      sp->id, sp->sf_data.birth_div_v, props->SNII_divergence_norm,
+      divergence_boost);
+
+  sp->f_E_divergence_boost = divergence_boost;
+  return (f_E_min + (f_E_max - f_E_min) / denonimator) * divergence_boost;
 }
 
 /**
@@ -1204,6 +1214,20 @@ void feedback_props_init(struct feedback_props* fp,
   /* Check that it makes sense. */
   if (fp->f_E_max < fp->f_E_min) {
     error("Can't have the maximal energy fraction smaller than the minimal!");
+  }
+
+  fp->with_SNII_divergence_boost =
+      parser_get_param_int(params, "EAGLEFeedback:with_SNII_divergence_boost");
+  if (fp->with_SNII_divergence_boost) {
+    fp->SNII_divergence_norm =
+        parser_get_param_double(params, "EAGLEFeedback:SNII_divergence_norm");
+
+        /* Convert from km/s/Mpc to internal equivalent */
+        fp->SNII_divergence_norm *= phys_const->const_reduced_hubble / 100.0;
+
+    fp->SNII_divergence_exponent =
+        parser_get_param_double(
+            params, "EAGLEFeedback:SNII_divergence_exponent");
   }
 
   /* Properties of the SNII enrichment model -------------------------------- */

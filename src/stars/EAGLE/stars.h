@@ -75,6 +75,7 @@ __attribute__((always_inline)) INLINE static void stars_first_init_spart(
   sp->delta_T = -FLT_MAX;
   sp->T_critical_fraction = -FLT_MAX;
   sp->T_sampling_fraction = -FLT_MAX;
+  sp->f_E_divergence_boost = -FLT_MAX;
   sp->count_since_last_enrichment = -1;
 
   if (stars_properties->overwrite_birth_time)
