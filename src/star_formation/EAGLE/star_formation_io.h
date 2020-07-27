@@ -75,7 +75,7 @@ star_formation_write_sparticles(const struct spart* sparts,
 
   list[2] =
       io_make_output_field("BirthVelocityDivergences", FLOAT, 1,
-                           UNIT_CONV_SPEED,
+                           UNIT_CONV_FREQUENCY,
                            0.f, sparts, sf_data.birth_div_v,
                            "Velocity divergences at the time of birth of the "
                            "gas particles that turned into stars");

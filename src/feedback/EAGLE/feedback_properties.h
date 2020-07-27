@@ -238,9 +238,6 @@ struct feedback_props {
   /*! Use variable temperature increase? */
   int SNII_use_variable_delta_T;
 
-  /*! Use instantaneous density instead of birth density? */
-  int SNII_use_instantaneous_density;
-
   /*! Buffer factor for numerical efficiency temperature */
   double SNII_T_crit_factor;
 
@@ -268,6 +265,15 @@ struct feedback_props {
 
   /*! Maximal energy fraction for supernova type II feedback */
   double f_E_max;
+
+  /*! Activate divergence-dependent SNII energy boost? */
+  int with_SNII_divergence_boost;
+
+  /*! Normalisation divergence for SNII energy boost */
+  double SNII_divergence_norm;
+
+  /*! Exponent for SNII energy dependence on divergence */
+  double SNII_divergence_exponent;
 
   /*! Pivot point for the metallicity dependance of the feedback energy fraction
    * model */

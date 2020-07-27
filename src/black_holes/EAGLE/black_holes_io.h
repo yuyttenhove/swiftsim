@@ -152,7 +152,7 @@ INLINE static void black_holes_write_particles(const struct bpart* bparts,
                                                int with_cosmology) {
 
   /* Say how much we want to write */
-  *num_fields = 41;
+  *num_fields = 43;
 
   /* List what we want to write */
   list[0] = io_make_output_field_convert_bpart(
@@ -419,6 +419,21 @@ INLINE static void black_holes_write_particles(const struct bpart* bparts,
       "Physical speeds at which the black holes repositioned most recently. "
       "This is 0 for black holes that have never repositioned, or if the "
       "simulation has been run without prescribed repositioning speed.");
+
+  list[41] = io_make_output_field(
+      "EddingtonFractions", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, bparts,
+      eddington_fraction,
+      "Accretion rates of black holes in units of their Eddington rates. "
+      "This is based on the unlimited accretion rates, so these fractions "
+      "can be above unity.");
+
+  list[42] = io_make_output_field(
+      "EnergyReservoirThresholds", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, bparts,
+      num_ngbs_to_heat,
+      "Minimum energy reservoir required for the black holes to do feedback, "
+      "expressed in units of the (constant) target heating temperature "
+      "increase.");
+
 
 #ifdef DEBUG_INTERACTIONS_BLACK_HOLES
 

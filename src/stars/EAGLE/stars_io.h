@@ -115,7 +115,7 @@ INLINE static void stars_write_particles(const struct spart *sparts,
                                          const int with_cosmology) {
 
   /* Say how much we want to write */
-  *num_fields = 11;
+  *num_fields = 12;
 
   /* List what we want to write */
   list[0] = io_make_output_field_convert_spart(
@@ -175,6 +175,12 @@ INLINE static void stars_write_particles(const struct spart *sparts,
       T_sampling_fraction,
       "Number of particles expected to be heated by each star particle.");
 
+  list[11] = io_make_output_field(
+      "FeedbackEnergyDivergenceBoosts", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f,
+      sparts, f_E_divergence_boost,
+      "Boost factor applied to energy feedback fractions because of negative "
+      "velocity divergence at birth of the star particles. This is already "
+      "incorporated in the value of FeedbackEnergyFractions.");
 }
 
 /**
