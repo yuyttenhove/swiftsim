@@ -78,9 +78,7 @@ double eagle_variable_feedback_temperature_change(
   const double delta_T_max = props->SNII_delta_T_max;
 
   /* Physical density of the gas at the star's birth time */
-  const double n_birth_phys = props->SNII_use_instantaneous_density ?
-      gas_density * props->rho_to_n_cgs :
-      sp->sf_data.birth_density * props->rho_to_n_cgs;
+  const double n_birth_phys = sp->sf_data.birth_density * props->rho_to_n_cgs;
   const double mean_ngb_mass = ngb_gas_mass / ((double)num_gas_ngbs);
 
   /* Calculate delta T */
@@ -1162,9 +1160,6 @@ void feedback_props_init(struct feedback_props* fp,
   fp->SNII_use_variable_delta_T =
       parser_get_param_int(params, "EAGLEFeedback:SNII_use_variable_delta_T");
   if (fp->SNII_use_variable_delta_T) {
-    fp->SNII_use_instantaneous_density =
-        parser_get_param_int(
-            params, "EAGLEFeedback:SNII_use_instantaneous_density");
     fp->SNII_T_crit_factor =
         parser_get_param_double(params, "EAGLEFeedback:SNII_T_crit_factor");
     fp->SNII_delta_T_num_ngb_to_heat =
