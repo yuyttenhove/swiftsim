@@ -326,7 +326,7 @@ double eagle_feedback_energy_fraction(struct spart* sp,
   double divergence_boost = 1.0;
   if (props->with_SNII_divergence_boost && sp->sf_data.birth_div_v < 0)
     divergence_boost =
-        pow(1.0 - sp->sf_data.birth_div_v / props->SNII_divergence_norm,
+        1.0 + pow(-sp->sf_data.birth_div_v / props->SNII_divergence_norm,
             props->SNII_divergence_exponent);
     message("SP %lld: birth_div_v=%g, SNII_div_norm=%g, div_boost=%g.",
       sp->id, sp->sf_data.birth_div_v, props->SNII_divergence_norm,
