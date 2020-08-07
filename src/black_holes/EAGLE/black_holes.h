@@ -574,11 +574,10 @@ black_hole_feedback_delta_T(const struct bpart* bp,
  */
 __attribute__((always_inline)) INLINE static double
 black_hole_energy_reservoir_threshold(struct bpart* bp,
-                                      const struct black_holes_props* props,
-                                      const double Eddington_max) {
+                                      const struct black_holes_props* props) {
 
-  const double f_Edd = min(bp->eddington_fraction, Eddington_max);
-  double num_to_heat = props->nheat_alpha * (f_Edd / props->nheat_fEdd_normalisation);
+  double num_to_heat = props->nheat_alpha *
+      (bp->accretion_rate / props->nheat_maccr_normalisation);
 
   /* Impose smooth truncation of num_to_heat towards props->nheat_limit */
   if (num_to_heat > props->nheat_alpha) {
@@ -857,7 +856,7 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
 
   const double num_ngbs_to_heat =
       props->use_adaptive_energy_reservoir_threshold ?
-      black_hole_energy_reservoir_threshold(bp, props, f_Edd * Eddington_rate) :
+      black_hole_energy_reservoir_threshold(bp, props) :
       props->num_ngbs_to_heat;
 
   const double mean_ngb_mass = bp->ngb_mass / ((double)bp->num_ngbs);
