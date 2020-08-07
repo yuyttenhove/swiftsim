@@ -553,17 +553,16 @@ black_hole_feedback_delta_T(const struct bpart* bp,
 
   /* Baseline delta T varies depending on whether we scale by mass or
    * numerical requirements */
-  double delta_T;
-  if (props->scale_delta_T_with_mass) {
-    delta_T = props->AGN_delta_T_mass_alpha *
-        pow((bp->subgrid_mass / props->AGN_delta_T_mass_norm),
-            props->AGN_delta_T_mass_exponent);
+  double delta_T = props->AGN_delta_T_mass_alpha *
+      pow((bp->subgrid_mass / props->AGN_delta_T_mass_norm),
+          props->AGN_delta_T_mass_exponent);
 
-  } else {
-    delta_T = max(T_crit * f_crit, T_gas * f_gas);
+  if (!props->scale_delta_T_with_mass_only) {
+    delta_T = max(delta_T, T_crit * f_crit);
+    delta_T = max(delta_T, T_gas * f_gas);
   }
 
-  delta_T = max(T_crit * f_crit, delta_T_min);
+  delta_T = max(delta_T, delta_T_min);
   return min(delta_T, delta_T_max);
 }
 

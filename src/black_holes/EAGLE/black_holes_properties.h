@@ -130,7 +130,7 @@ struct black_holes_props {
   int use_variable_delta_T;
 
   /*! If we use variable delta_T, should we scale with BH mass? */
-  int scale_delta_T_with_mass;
+  int scale_delta_T_with_mass_only;
 
   /*! Normalisation dT if scaling with BH mass*/
   float AGN_delta_T_mass_alpha;
@@ -375,24 +375,20 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
       parser_get_param_int(params, "EAGLEAGN:use_variable_delta_T");
   if (bp->use_variable_delta_T) {
 
-    bp->scale_delta_T_with_mass =
-        parser_get_param_int(params, "EAGLEAGN:scale_delta_T_with_mass");
-    if (bp->scale_delta_T_with_mass) {
-      bp->AGN_delta_T_mass_alpha =
-          parser_get_param_float(params, "EAGLEAGN:AGN_delta_T_mass_alpha")
-          * T_K_to_int;
-      bp->AGN_delta_T_mass_norm =
-          parser_get_param_float(params, "EAGLEAGN:AGN_delta_T_mass_norm")
-          * phys_const->const_solar_mass;   
-      bp->AGN_delta_T_mass_exponent =
-          parser_get_param_float(params, "EAGLEAGN:AGN_delta_T_mass_exponent");
-    
-    } else {
-      bp->AGN_T_crit_factor =
-          parser_get_param_float(params, "EAGLEAGN:AGN_T_crit_factor");
-      bp->AGN_T_background_factor =
-          parser_get_param_float(params, "EAGLEAGN:AGN_T_background_factor");
-    }
+    bp->scale_delta_T_with_mass_only =
+        parser_get_param_int(params, "EAGLEAGN:scale_delta_T_with_mass_only");
+    bp->AGN_delta_T_mass_alpha =
+        parser_get_param_float(params, "EAGLEAGN:AGN_delta_T_mass_alpha")
+        * T_K_to_int;
+    bp->AGN_delta_T_mass_norm =
+        parser_get_param_float(params, "EAGLEAGN:AGN_delta_T_mass_norm")
+        * phys_const->const_solar_mass;   
+    bp->AGN_delta_T_mass_exponent =
+        parser_get_param_float(params, "EAGLEAGN:AGN_delta_T_mass_exponent");   
+    bp->AGN_T_crit_factor =
+        parser_get_param_float(params, "EAGLEAGN:AGN_T_crit_factor");
+    bp->AGN_T_background_factor =
+        parser_get_param_float(params, "EAGLEAGN:AGN_T_background_factor");
 
     bp->AGN_delta_T_max =
         parser_get_param_float(params, "EAGLEAGN:AGN_delta_T_max") * T_K_to_int;
@@ -422,7 +418,7 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
 
   bp->max_reposition_mass =
       parser_get_param_float(params, "EAGLEAGN:max_reposition_mass")
-      * phys_const->const_solar_mass;
+          * phys_const->const_solar_mass;
   bp->max_reposition_distance_ratio =
       parser_get_param_float(params, "EAGLEAGN:max_reposition_distance_ratio");
   bp->with_reposition_velocity_threshold = parser_get_param_int(
