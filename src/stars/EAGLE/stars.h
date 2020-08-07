@@ -72,9 +72,12 @@ __attribute__((always_inline)) INLINE static void stars_first_init_spart(
   sp->sf_data.birth_temperature = -1.f;
   sp->sf_data.birth_div_v = FLT_MAX;
   sp->f_E = -1.f;
-  sp->delta_T = -FLT_MAX;
-  sp->T_critical_fraction = -FLT_MAX;
-  sp->T_sampling_fraction = -FLT_MAX;
+  sp->delta_T_min = FLT_MAX;
+  sp->delta_T_max = -FLT_MAX;
+  sp->T_critical_fraction_min = FLT_MAX;
+  sp->T_critical_fraction_max = -FLT_MAX;
+  sp->T_sampling_fraction_min = FLT_MAX;
+  sp->T_sampling_fraction_max = -FLT_MAX;
   sp->f_E_divergence_boost = -FLT_MAX;
   sp->count_since_last_enrichment = -1;
 

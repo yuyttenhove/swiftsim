@@ -27,6 +27,7 @@
 #include "interpolate.h"
 #include "timers.h"
 #include "yield_tables.h"
+#include "star_formation.h"
 
 /**
  * @brief Return the change in temperature (in internal units) to apply to a
@@ -60,29 +61,36 @@ double eagle_variable_feedback_temperature_change(
   struct spart* sp, const double ngb_gas_mass, const int num_gas_ngbs,
   const double gas_density, const double SNe_energy,
   const struct feedback_props* props, const double frac_SNII,
-  double* critical_fraction, double* sampling_fraction) {
+  double* critical_fraction, double* sampling_fraction,
+  const double birth_sf_threshold) {
 
   /* Safety check: should only get here if we run with the varying-dT model */
   if (!props->SNII_use_variable_delta_T)
     error("Attempting to compute variable SNII heating temperature "
           "without activating this model. Cease and desist.");
 
-  /* Only calculate the temperature if it has not been set already */
-  if (sp->delta_T >= 0)
-    return sp->delta_T;
-
   /* Model parameters */
   const double f_crit = props->SNII_T_crit_factor;
-  const double num_to_heat = props->SNII_delta_T_num_ngb_to_heat;
-  const double num_to_heat_limit = props->SNII_delta_T_num_ngb_to_heat_limit;
+  double num_to_heat = props->SNII_delta_T_num_ngb_to_heat;
+  double num_to_heat_limit = props->SNII_delta_T_num_ngb_to_heat_limit;
   const double delta_T_max = props->SNII_delta_T_max;
 
-  /* Physical density of the gas at the star's birth time */
-  const double n_birth_phys = sp->sf_data.birth_density * props->rho_to_n_cgs;
+  /* Star properties: neighbour mass and density */
   const double mean_ngb_mass = ngb_gas_mass / ((double)num_gas_ngbs);
+  const double n_birth_phys = sp->sf_data.birth_density;
+  const double n_phys = (props->SNII_use_instantaneous_density_for_dT ?
+      gas_density : n_birth_phys) * props->rho_to_n_cgs;
+
+  /* If desired, reduce sampling limits according to birth density */
+  if (props->SNII_sampling_nH_reduction_factor > 0) {
+    const double f_reduction = (1. + props->SNII_sampling_nH_reduction_factor *
+                                     n_birth_phys / birth_sf_threshold);
+    num_to_heat /= f_reduction;
+    num_to_heat_limit /= f_reduction;
+  }
 
   /* Calculate delta T */
-  const double T_crit = 3.162e7 * pow(n_birth_phys * 0.1, 0.6666667) *
+  const double T_crit = 3.162e7 * pow(n_phys * 0.1, 0.6666667) *
       pow(mean_ngb_mass * props->mass_to_solar_mass * 1e-6, 0.33333333);
 
   const double delta_T_one_particle = SNe_energy /
@@ -110,9 +118,16 @@ double eagle_variable_feedback_temperature_change(
   *critical_fraction = delta_T / T_crit;
   *sampling_fraction = delta_T_one_particle / delta_T;
 
-  sp->delta_T = delta_T;
-  sp->T_critical_fraction = *critical_fraction;
-  sp->T_sampling_fraction = *sampling_fraction;
+  sp->delta_T_min = min(sp->delta_T_min, delta_T);
+  sp->delta_T_max = max(sp->delta_T_max, delta_T);
+  sp->T_critical_fraction_min = min(sp->T_critical_fraction_min,
+                                    *critical_fraction);
+  sp->T_critical_fraction_max = max(sp->T_critical_fraction_max,
+                                    *critical_fraction);
+  sp->T_sampling_fraction_min = min(sp->T_sampling_fraction_min,
+                                    *sampling_fraction);
+  sp->T_sampling_fraction_max = max(sp->T_sampling_fraction_max,
+                                    *sampling_fraction);
 
   return delta_T;
 }
@@ -328,9 +343,6 @@ double eagle_feedback_energy_fraction(struct spart* sp,
     divergence_boost =
         1.0 + pow(-sp->sf_data.birth_div_v / props->SNII_divergence_norm,
             props->SNII_divergence_exponent);
-    message("SP %lld: birth_div_v=%g, SNII_div_norm=%g, div_boost=%g.",
-      sp->id, sp->sf_data.birth_div_v, props->SNII_divergence_norm,
-      divergence_boost);
 
   sp->f_E_divergence_boost = divergence_boost;
   return (f_E_min + (f_E_max - f_E_min) / denonimator) * divergence_boost;
@@ -352,12 +364,15 @@ double eagle_feedback_energy_fraction(struct spart* sp,
  * masses).
  * @param max_dying_mass_Msun Maximal star mass dying this step (in solar
  * masses).
+ * @param birth_sf_threshold The SF density threshold at the star's birth
+ * (in internal units, already corrected for hydrogen fraction).
  */
 INLINE static void compute_SNII_feedback(
     struct spart* sp, const double star_age, const double dt,
     const float ngb_gas_mass, const int num_gas_ngbs, const double gas_density,
     const struct feedback_props* feedback_props,
-    const double min_dying_mass_Msun, const double max_dying_mass_Msun) {
+    const double min_dying_mass_Msun, const double max_dying_mass_Msun,
+    const double birth_sf_threshold) {
 
   /* Are we sampling the delay function or using a fixed delay? */
   const int SNII_sampled_delay = feedback_props->SNII_sampled_delay;
@@ -412,7 +427,8 @@ INLINE static void compute_SNII_feedback(
     const double delta_T = feedback_props->SNII_use_variable_delta_T ? 
         eagle_variable_feedback_temperature_change(
             sp, ngb_gas_mass, num_gas_ngbs, gas_density, SNe_energy,
-            feedback_props, frac_SNII, &critical_fraction, &sampling_fraction) :
+            feedback_props, frac_SNII, &critical_fraction, &sampling_fraction,
+            birth_sf_threshold) :
         eagle_feedback_temperature_change(sp, feedback_props);
 
     /* Calculate the default heating probability */
@@ -931,6 +947,9 @@ INLINE static void evolve_AGB(const double log10_min_mass,
  * @param dt length of current timestep
  */
 void compute_stellar_evolution(const struct feedback_props* feedback_props,
+                               const struct star_formation* starform_props,
+                               const struct hydro_props* hydro_props,
+                               const struct phys_const* phys_const,
                                const struct cosmology* cosmo, struct spart* sp,
                                const struct unit_system* us, const double age,
                                const double dt) {
@@ -1020,9 +1039,12 @@ void compute_stellar_evolution(const struct feedback_props* feedback_props,
 
   /* Compute properties of the stochastic SNII feedback model. */
   if (feedback_props->with_SNII_feedback) {
+    const double birth_sf_threshold = star_formation_threshold(
+        Z, starform_props, phys_const) / hydro_props->hydrogen_mass_fraction;
     compute_SNII_feedback(sp, age, dt, ngb_gas_mass, num_gas_ngbs,
                           gas_density, feedback_props,
-                          min_dying_mass_Msun, max_dying_mass_Msun);
+                          min_dying_mass_Msun, max_dying_mass_Msun,
+                          birth_sf_threshold);
   }
 
   /* Integration interval is zero - this can happen if minimum and maximum
@@ -1162,6 +1184,12 @@ void feedback_props_init(struct feedback_props* fp,
   if (fp->SNII_use_variable_delta_T) {
     fp->SNII_T_crit_factor =
         parser_get_param_double(params, "EAGLEFeedback:SNII_T_crit_factor");
+    fp->SNII_use_instantaneous_density_for_dT =
+        parser_get_param_int(
+            params, "EAGLEFeedback:SNII_use_instantaneous_density_for_dT");
+    fp->SNII_sampling_nH_reduction_factor =
+        parser_get_param_double(
+            params, "EAGLEFeedback:SNII_sampling_nH_reduction_factor");
     fp->SNII_delta_T_num_ngb_to_heat =
         parser_get_param_double(params,
                                 "EAGLEFeedback:SNII_delta_T_num_ngb_to_heat");

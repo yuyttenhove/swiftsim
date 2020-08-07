@@ -241,6 +241,12 @@ struct feedback_props {
   /*! Buffer factor for numerical efficiency temperature */
   double SNII_T_crit_factor;
 
+  /*! Should we use the instantaneous or birth density for determining dT? */
+  int SNII_use_instantaneous_density_for_dT;
+
+  /*! Factor to reduce sampling requirement if n_birth > n_birth_limit */
+  double SNII_sampling_nH_reduction_factor;
+
   /*! Number of neighbours that should be heatable by SNII */
   double SNII_delta_T_num_ngb_to_heat;
 

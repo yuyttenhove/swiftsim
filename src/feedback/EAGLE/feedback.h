@@ -23,12 +23,16 @@
 #include "error.h"
 #include "feedback_properties.h"
 #include "hydro_properties.h"
+#include "star_formation.h"
 #include "part.h"
 #include "units.h"
 
 #include <strings.h>
 
 void compute_stellar_evolution(const struct feedback_props* feedback_props,
+                               const struct star_formation* starform_props,
+                               const struct hydro_props* hydro_props,
+                               const struct phys_const* phys_const,
                                const struct cosmology* cosmo, struct spart* sp,
                                const struct unit_system* us, const double age,
                                const double dt);
@@ -186,7 +190,8 @@ __attribute__((always_inline)) INLINE static void feedback_evolve_spart(
     const struct cosmology* cosmo, const struct unit_system* us,
     const struct phys_const* phys_const, const double star_age_beg_step,
     const double dt, const double time, const integertime_t ti_begin,
-    const int with_cosmology) {
+    const int with_cosmology, const struct star_formation* starform_props,
+    const struct hydro_props* hydro_props) {
 
 #ifdef SWIFT_DEBUG_CHECKS
   if (sp->birth_time == -1.) error("Evolving a star particle that should not!");
@@ -194,8 +199,9 @@ __attribute__((always_inline)) INLINE static void feedback_evolve_spart(
 
   /* Compute amount of enrichment and feedback that needs to be done in this
    * step */
-  compute_stellar_evolution(feedback_props, cosmo, sp, us, star_age_beg_step,
-                            dt);
+  compute_stellar_evolution(feedback_props, starform_props, hydro_props,
+                            phys_const, cosmo,
+                            sp, us, star_age_beg_step, dt);
 
   /* Decrease star mass by amount of mass distributed to gas neighbours */
   sp->mass -= sp->feedback_data.to_distribute.mass;

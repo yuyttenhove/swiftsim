@@ -115,7 +115,7 @@ INLINE static void stars_write_particles(const struct spart *sparts,
                                          const int with_cosmology) {
 
   /* Say how much we want to write */
-  *num_fields = 12;
+  *num_fields = 15;
 
   /* List what we want to write */
   list[0] = io_make_output_field_convert_spart(
@@ -160,22 +160,40 @@ INLINE static void stars_write_particles(const struct spart *sparts,
       "SNII feedback events");
 
   list[8] = io_make_output_field(
-      "FeedbackDeltaT", FLOAT, 1, UNIT_CONV_TEMPERATURE, 0.f, sparts,
-      delta_T,
-      "Temperature increase induced by SNII feedback from the stars.");
+      "FeedbackMinimumDeltaT", FLOAT, 1, UNIT_CONV_TEMPERATURE, 0.f, sparts,
+      delta_T_min,
+      "Minimum temperature increase induced by SNII feedback from the stars.");
 
   list[9] = io_make_output_field(
-      "FeedbackCriticalFractions", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, sparts,
-      T_critical_fraction,
-      "Temperature increase induced by SNII feedback from the stars in "
-      "units of the critical temperature for numerical efficiency.");
+      "FeedbackMaximumDeltaT", FLOAT, 1, UNIT_CONV_TEMPERATURE, 0.f, sparts,
+      delta_T_max,
+      "Maximum temperature increase induced by SNII feedback from the stars.");
 
   list[10] = io_make_output_field(
-      "FeedbackSamplingFractions", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, sparts,
-      T_sampling_fraction,
-      "Number of particles expected to be heated by each star particle.");
+      "FeedbackMinimumCriticalFractions", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f,
+      sparts, T_critical_fraction_min,
+      "Minimum temperature increase induced by SNII feedback from the stars in "
+      "units of the critical temperature for numerical efficiency.");
 
   list[11] = io_make_output_field(
+      "FeedbackMaximumCriticalFractions", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f,
+      sparts, T_critical_fraction_max,
+      "Maximum temperature increase induced by SNII feedback from the stars in "
+      "units of the critical temperature for numerical efficiency.");
+
+  list[12] = io_make_output_field(
+      "FeedbackMinimumSamplingFractions", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f,
+      sparts, T_sampling_fraction_min,
+      "Minimum number of particles expected to be heated by each star "
+      "particle.");
+
+  list[13] = io_make_output_field(
+      "FeedbackMaximumSamplingFractions", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f,
+      sparts, T_sampling_fraction_max,
+      "Maximum number of particles expected to be heated by each star "
+      "particle.");
+
+  list[14] = io_make_output_field(
       "FeedbackEnergyDivergenceBoosts", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f,
       sparts, f_E_divergence_boost,
       "Boost factor applied to energy feedback fractions because of negative "
