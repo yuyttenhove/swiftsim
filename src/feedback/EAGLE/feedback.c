@@ -81,14 +81,6 @@ double eagle_variable_feedback_temperature_change(
   const double n_phys = (props->SNII_use_instantaneous_density_for_dT ?
       gas_density : n_birth_phys) * props->rho_to_n_cgs;
 
-  /* If desired, reduce sampling limits according to birth density */
-  if (props->SNII_sampling_nH_reduction_factor > 0) {
-    const double f_reduction = (1. + props->SNII_sampling_nH_reduction_factor *
-                                     n_birth_phys / birth_sf_threshold);
-    num_to_heat /= f_reduction;
-    num_to_heat_limit /= f_reduction;
-  }
-
   /* Calculate delta T */
   const double T_crit = 3.162e7 * pow(n_phys * 0.1, 0.6666667) *
       pow(mean_ngb_mass * props->mass_to_solar_mass * 1e-6, 0.33333333);
@@ -1371,21 +1363,21 @@ void feedback_props_init(struct feedback_props* fp,
   /* Heating temperature parameters */
   fp->SNII_use_variable_delta_T =
       parser_get_param_int(params, "EAGLEFeedback:SNII_use_variable_delta_T");
-  if (fp->SNII_use_variable_delta_T) {
+  if (fp->SNII_use_variable_delta_T > 0) {
     fp->SNII_T_crit_factor =
         parser_get_param_double(params, "EAGLEFeedback:SNII_T_crit_factor");
     fp->SNII_use_instantaneous_density_for_dT =
         parser_get_param_int(
             params, "EAGLEFeedback:SNII_use_instantaneous_density_for_dT");
-    fp->SNII_sampling_nH_reduction_factor =
-        parser_get_param_double(
-            params, "EAGLEFeedback:SNII_sampling_nH_reduction_factor");
     fp->SNII_delta_T_num_ngb_to_heat =
         parser_get_param_double(params,
                                 "EAGLEFeedback:SNII_delta_T_num_ngb_to_heat");
-    fp->SNII_delta_T_num_ngb_to_heat_limit =
-        parser_get_param_double(
+    
+    if (fp->SNII_use_variable_delta_T == 1) {
+      fp->SNII_delta_T_num_ngb_to_heat_limit =
+          parser_get_param_double(
             params, "EAGLEFeedback:SNII_delta_T_num_ngb_to_heat_limit");
+    }
 
     fp->SNII_delta_T_max =
         parser_get_param_double(params, "EAGLEFeedback:SNII_delta_T_max") /
