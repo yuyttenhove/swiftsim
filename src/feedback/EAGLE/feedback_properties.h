@@ -257,6 +257,15 @@ struct feedback_props {
   double SNII_delta_T_max;
   double SNII_delta_T_min;
 
+  /*! Parameters for sub-critical SNII efficiency scaling */
+  double SNII_efficiency_zeta;
+  double SNII_efficiency_theta_min;
+
+  /*! Parameters for sampling requirement reduction */
+  double SNII_gamma_norm;
+  double SNII_gamma_const_interval_factor;
+  double SNII_gamma_drop_interval_factor;
+
   /*! (Constant) temperature increase induced by SNe feedback */
   double SNe_deltaT_desired;
 

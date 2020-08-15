@@ -132,6 +132,186 @@ double eagle_variable_feedback_temperature_change(
   return delta_T;
 }
 
+INLINE static double sn_phi(
+  const double theta, const double theta_min, const double zeta) {
+  return theta * pow((theta - theta_min) / (1.0 - theta_min), zeta); 
+}
+
+INLINE static double sn_dphi_dtheta(
+  const double theta, const double theta_min, const double zeta) {
+  const double term1 = (theta - theta_min) / (1.0 - theta_min);
+  return zeta * pow(term1, zeta - 1.0) / (1.0 - theta_min) * theta
+      + pow(term1, zeta);
+}
+
+/**
+ * @brief Compute the "compromise" temperature increase that results in the 
+ *        right amount of energy received by the gas if dT must be < dT_crit.
+ *
+ * @param dT_sample The ideal dT for satisfying the sampling criterion.
+ * @param dT_crit The temperature at which feedback would be numerically fully
+ *                efficient.
+ * @param props The feedback model properties.
+ */
+double compute_compromise_dT(
+  const double dT_sample, const double dT_crit,
+  const struct feedback_props* props) {
+
+  /* Extract required props */
+  const double zeta = props->SNII_efficiency_zeta;
+  const double theta_min = props->SNII_efficiency_theta_min;
+
+  /* Required physical energy (in units of E_crit) */
+  const double phi = dT_sample / dT_crit;
+
+  /* Initial guess for compromise dT */
+  double theta = dT_sample + (dT_crit - dT_sample) / 2.0;
+
+  for (int ii = 0; ii < 1000; ii++) {
+    theta = theta - (sn_phi(theta, theta_min, zeta) - phi) /
+        sn_dphi_dtheta(theta, theta_min, zeta);
+    const double phi_result = sn_phi(theta, theta_min, zeta);
+    if ((fabs(phi_result - phi) / phi) < 0.001) {
+      break;
+    }
+  }
+
+  /* Convert back to temperature */
+  return theta * dT_crit;
+}
+
+/**
+ * @brief Return the variable change in temperature (in internal units) to 
+ * apply to a gas particle affected by SNe feedback (new version 11-Aug-20)
+ *
+ * @param sp The #spart.
+ */
+double eagle_variable_feedback_temperature_change_v2(
+  struct spart* sp, const double ngb_gas_mass, const int num_gas_ngbs,
+  const double gas_density, double* p_SNe_energy,
+  const struct feedback_props* props, const double frac_SNII,
+  const double birth_sf_threshold) {
+
+  /* Safety check: should only get here if we run with the adaptive-dT model,
+   * version 2 */
+  if (props->SNII_use_variable_delta_T != 2)
+    error("Attempting to compute variable SNII heating temperature "
+          "without activating this model, v2. Cease and desist.");
+
+  /* Model parameters */
+  const double f_crit = props->SNII_T_crit_factor;
+  const double num_to_heat = props->SNII_delta_T_num_ngb_to_heat;
+  const double dT_max = props->SNII_delta_T_max;
+  const double dT_min = props->SNII_delta_T_min;
+  const double gamma_norm = props->SNII_gamma_norm;
+  const double gamma_shelf_factor = props->SNII_gamma_const_interval_factor;
+  const double gamma_drop_factor = props->SNII_gamma_drop_interval_factor;
+  const double theta_min = props->SNII_efficiency_theta_min;
+  const double zeta = props->SNII_efficiency_zeta;
+
+  /* Relevant star properties */
+  const double mean_ngb_mass = ngb_gas_mass / ((double)num_gas_ngbs);
+  const double rho_birth_phys = sp->sf_data.birth_density;
+  const double sfr_birth_phys = sp->sf_data.birth_star_formation_rate;
+  const double m_initial = sp->mass_init;
+  const double n_phys = (props->SNII_use_instantaneous_density_for_dT ?
+      gas_density : rho_birth_phys) * props->rho_to_n_cgs;
+
+  double SNe_energy = *p_SNe_energy;
+
+  /* Calculate critical temperature */
+  const double dT_crit = 3.162e7 * pow(n_phys * 0.1, 0.6666667) *
+      pow(mean_ngb_mass * props->mass_to_solar_mass * 1e-6, 0.33333333) *
+      f_crit;
+ 
+  /* Calculate sampling reduction factor gamma */
+  double gamma = rho_birth_phys * sfr_birth_phys / (m_initial * m_initial)
+                 / gamma_norm;
+  gamma = max(gamma, 1.0);
+  /*message("sp %lld: raw gamma=%g", sp->id, gamma); */
+
+  if (rho_birth_phys < birth_sf_threshold * gamma_shelf_factor) {
+    gamma = 1.0;
+  } else if (rho_birth_phys < birth_sf_threshold * gamma_shelf_factor *
+            gamma_drop_factor) {
+
+    /* Digamma is a factor that varies linearly from 0 at the shelf edge, to 
+     * 1 at the end of the drop. */
+    const double digamma =
+        (rho_birth_phys / birth_sf_threshold - gamma_shelf_factor) /
+        (gamma_shelf_factor * (gamma_drop_factor - 1.0));
+
+    /* The next line makes gamma vary smoothly from 1 at the shelf edge to
+     * the (original) gamma at the drop edge. */
+    gamma = 1.0 - digamma + gamma * digamma;
+    /*message("sp %lld: drop reduction of gamma to %g (digamma=%g)",
+        sp->id, gamma, digamma); */
+  }
+  
+  const double dT_sample = SNe_energy /
+      (mean_ngb_mass * props->temp_to_u_factor * frac_SNII *
+      num_to_heat / gamma);
+
+  /* Begin decision logic... */
+  double dT = -1;
+  double omega = 1.0;
+  if (dT_crit < dT_min) {
+    /* In this case, just use dT_min and live with the undersampling... */
+    dT = dT_min;
+    /*message("sp %lld: dT=dT_min=%g, fs=%g.",
+        sp->id, dT, dT_sample / dT); */
+  } else {
+    if (dT_crit < dT_sample) {
+      dT = dT_crit;
+    } else {
+      const double dT_comp = compute_compromise_dT(dT_sample, dT_crit, props);
+      if (dT_comp > dT_min) {
+        /*message("sp %lld: dT_crit=%g > dT_sample=%g, dT_comp=%g",
+            sp->id, dT_crit, dT_sample, dT_comp); */
+        dT = dT_comp;
+        omega = dT_comp / dT_sample;
+      } else {
+        dT = dT_min;
+        /* Choose omega to compensate the expected numerical cooling loss at
+         * dT_min */
+        omega = 1. /
+            (pow((dT_min / dT_crit - theta_min) / (1.0 - theta_min), zeta));
+        /*message("sp %lld: dT=%g, omega=%g.", sp->id, dT, omega); */
+      }
+    }
+  }
+
+  /* Apply (potential) SNe energy increase and max value of dT */
+  SNe_energy *= omega;
+  dT = min(dT, dT_max);
+
+  if (dT < 0)
+    error("Ahm... I'm not going to set a negative heating temperature "
+          "(star ID=%lld, dT=%g).",
+          sp->id, dT);
+
+  /* Record how delta_T compares to targets */
+  const double critical_fraction = dT / dT_crit;
+  const double sampling_fraction = dT_sample / dT * omega;
+
+  sp->delta_T_min = min(sp->delta_T_min, dT);
+  sp->delta_T_max = max(sp->delta_T_max, dT);
+  sp->T_critical_fraction_min = min(sp->T_critical_fraction_min,
+                                    critical_fraction);
+  sp->T_critical_fraction_max = max(sp->T_critical_fraction_max,
+                                    critical_fraction);
+  sp->T_sampling_fraction_min = min(sp->T_sampling_fraction_min,
+                                    sampling_fraction);
+  sp->T_sampling_fraction_max = max(sp->T_sampling_fraction_max,
+                                    sampling_fraction);
+
+  sp->gamma = gamma;
+  sp->omega_min = min(sp->omega_min, omega);
+  sp->omega_max = max(sp->omega_max, omega);
+
+  return dT;
+}
+
 /**
  * @brief Computes the number of supernovae of type II exploding for a given
  * star particle assuming that all the SNII stars go off at once.
@@ -421,15 +601,25 @@ INLINE static void compute_SNII_feedback(
     const double conv_factor = feedback_props->temp_to_u_factor;
 
     /* Heating temperature increase */
-    const double SNe_energy = f_E * E_SNe * N_SNe;
+    double SNe_energy = f_E * E_SNe * N_SNe;
     double critical_fraction = -FLT_MAX;
     double sampling_fraction = -FLT_MAX;
-    const double delta_T = feedback_props->SNII_use_variable_delta_T ? 
-        eagle_variable_feedback_temperature_change(
-            sp, ngb_gas_mass, num_gas_ngbs, gas_density, SNe_energy,
-            feedback_props, frac_SNII, &critical_fraction, &sampling_fraction,
-            birth_sf_threshold) :
-        eagle_feedback_temperature_change(sp, feedback_props);
+    double delta_T = -1;
+
+    if (feedback_props->SNII_use_variable_delta_T == 0)
+      delta_T = eagle_feedback_temperature_change(sp, feedback_props);
+    else if (feedback_props->SNII_use_variable_delta_T == 1)
+      delta_T = eagle_variable_feedback_temperature_change(
+          sp, ngb_gas_mass, num_gas_ngbs, gas_density, SNe_energy,
+          feedback_props, frac_SNII, &critical_fraction, &sampling_fraction,
+          birth_sf_threshold);
+    else if (feedback_props->SNII_use_variable_delta_T == 2)
+      delta_T = eagle_variable_feedback_temperature_change_v2(
+          sp, ngb_gas_mass, num_gas_ngbs, gas_density, &SNe_energy,
+          feedback_props, frac_SNII, birth_sf_threshold);
+    else
+      error("Invalid choice of SNII_use_variable_delta_T (=%d).",
+        feedback_props->SNII_use_variable_delta_T);
 
     /* Calculate the default heating probability */
     double prob = SNe_energy / (conv_factor * delta_T * ngb_gas_mass);
@@ -1203,6 +1393,28 @@ void feedback_props_init(struct feedback_props* fp,
     fp->SNII_delta_T_min =
         parser_get_param_double(params, "EAGLEFeedback:SNII_delta_T_min") /
         units_cgs_conversion_factor(us, UNIT_CONV_TEMPERATURE);
+
+    if (fp->SNII_use_variable_delta_T == 2) {
+
+      /* Extra parameters for "version 2" adaptive-dT scheme */
+      fp->SNII_efficiency_zeta =
+          parser_get_param_double(params, "EAGLEFeedback:SNII_efficiency_zeta");
+      fp->SNII_efficiency_theta_min =
+          parser_get_param_double(
+              params, "EAGLEFeedback:SNII_efficiency_theta_min");
+
+      fp->SNII_gamma_norm =
+          parser_get_param_double(params, "EAGLEFeedback:SNII_gamma_norm") /
+              (phys_const->const_year * 1e7 * 4.0 / 3.0 * M_PI *
+              phys_const->const_parsec * phys_const->const_parsec *
+              phys_const->const_parsec * 1e9); 
+      fp->SNII_gamma_const_interval_factor =
+          exp10(parser_get_param_double(
+                params, "EAGLEFeedback:SNII_gamma_const_interval_dex"));
+      fp->SNII_gamma_drop_interval_factor =
+          exp10(parser_get_param_double(
+                params, "EAGLEFeedback:SNII_gamma_drop_interval_dex"));
+    }
 
   } else {
     fp->SNe_deltaT_desired =

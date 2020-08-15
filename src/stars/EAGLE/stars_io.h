@@ -115,7 +115,7 @@ INLINE static void stars_write_particles(const struct spart *sparts,
                                          const int with_cosmology) {
 
   /* Say how much we want to write */
-  *num_fields = 15;
+  *num_fields = 18;
 
   /* List what we want to write */
   list[0] = io_make_output_field_convert_spart(
@@ -199,6 +199,27 @@ INLINE static void stars_write_particles(const struct spart *sparts,
       "Boost factor applied to energy feedback fractions because of negative "
       "velocity divergence at birth of the star particles. This is already "
       "incorporated in the value of FeedbackEnergyFractions.");
+
+  list[15] = io_make_output_field(
+      "SamplingReductionFactors", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f,
+      sparts, gamma,
+      "Reduction factors for the sampling requirement in setting the feedback "
+      "temperature increase of star particles.");
+
+  list[16] = io_make_output_field(
+      "FeedbackMinimumBoostFactors", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f,
+      sparts, omega_min,
+      "Minimum factors by which energy feedback was increased to compensate "
+      "for numerical losses at sub-critical heating temperature increase.");
+
+  list[17] = io_make_output_field(
+      "FeedbackMaximumBoostFactors", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f,
+      sparts, omega_max,
+      "Maximum factors by which energy feedback was increased to compensate "
+      "for numerical losses at sub-critical heating temperature increase.");
+
+
+
 }
 
 /**

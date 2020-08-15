@@ -104,6 +104,13 @@ struct spart {
   float T_sampling_fraction_min;
   float T_sampling_fraction_max;
 
+  /*! Sampling reduction factor gamma */
+  float gamma;
+
+  /*! On-demand feedback efficiency boost factors against numerical losses */
+  float omega_min;
+  float omega_max;
+
   /*! Star formation struct */
   struct star_formation_spart_data sf_data;
 
