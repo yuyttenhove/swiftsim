@@ -258,6 +258,7 @@ struct feedback_props {
   double SNII_delta_T_min;
 
   /*! Parameters for sub-critical SNII efficiency scaling */
+  int SNII_with_energy_compensation;
   double SNII_efficiency_zeta;
   double SNII_efficiency_theta_min;
 
