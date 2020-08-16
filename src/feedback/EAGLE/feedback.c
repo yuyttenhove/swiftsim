@@ -149,6 +149,9 @@ double compute_compromise_dT(
   const double dT_sample, const double dT_crit,
   const struct feedback_props* props) {
 
+  if (props->SNII_with_energy_compensation == 0)
+    return dT_sample;
+
   /* Extract required props */
   const double zeta = props->SNII_efficiency_zeta;
   const double theta_min = props->SNII_efficiency_theta_min;
@@ -198,8 +201,6 @@ double eagle_variable_feedback_temperature_change_v2(
   const double gamma_norm = props->SNII_gamma_norm;
   const double gamma_shelf_factor = props->SNII_gamma_const_interval_factor;
   const double gamma_drop_factor = props->SNII_gamma_drop_interval_factor;
-  const double theta_min = props->SNII_efficiency_theta_min;
-  const double zeta = props->SNII_efficiency_zeta;
 
   /* Relevant star properties */
   const double mean_ngb_mass = ngb_gas_mass / ((double)num_gas_ngbs);
@@ -266,8 +267,12 @@ double eagle_variable_feedback_temperature_change_v2(
         dT = dT_min;
         /* Choose omega to compensate the expected numerical cooling loss at
          * dT_min */
-        omega = 1. /
-            (pow((dT_min / dT_crit - theta_min) / (1.0 - theta_min), zeta));
+        if (props->SNII_with_energy_compensation) {
+          const double theta_min = props->SNII_efficiency_theta_min;
+          const double zeta = props->SNII_efficiency_zeta;
+          omega = 1. /
+              (pow((dT_min / dT_crit - theta_min) / (1.0 - theta_min), zeta));
+        }
         /*message("sp %lld: dT=%g, omega=%g.", sp->id, dT, omega); */
       }
     }
@@ -1389,11 +1394,16 @@ void feedback_props_init(struct feedback_props* fp,
     if (fp->SNII_use_variable_delta_T == 2) {
 
       /* Extra parameters for "version 2" adaptive-dT scheme */
-      fp->SNII_efficiency_zeta =
-          parser_get_param_double(params, "EAGLEFeedback:SNII_efficiency_zeta");
-      fp->SNII_efficiency_theta_min =
-          parser_get_param_double(
-              params, "EAGLEFeedback:SNII_efficiency_theta_min");
+      fp->SNII_with_energy_compensation =
+          parser_get_param_int(
+              params, "EAGLEFeedback:SNII_with_energy_compensation");
+      if (fp->SNII_with_energy_compensation) {
+        fp->SNII_efficiency_zeta =
+            parser_get_param_double(params, "EAGLEFeedback:SNII_efficiency_zeta");
+        fp->SNII_efficiency_theta_min =
+            parser_get_param_double(
+                params, "EAGLEFeedback:SNII_efficiency_theta_min");
+      }
 
       fp->SNII_gamma_norm =
           parser_get_param_double(params, "EAGLEFeedback:SNII_gamma_norm") /
