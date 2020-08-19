@@ -847,8 +847,8 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
       props->AGN_delta_T_desired;
   bp->AGN_delta_T = delta_T;
   const double delta_u = delta_T * props->temp_to_u_factor;
-  const double delta_u_const = props->AGN_delta_T_desired *
-      props->temp_to_u_factor;
+  const double delta_u_ref = props->AGN_use_nheat_with_fixed_dT ?
+      props->AGN_delta_T_desired * props->temp_to_u_factor : delta_u;
 
   /* Energy required to have a feedback event
    * Note that we have subtracted the particles we swallowed from the ngb_mass
@@ -861,10 +861,8 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
 
   const double mean_ngb_mass = bp->ngb_mass / ((double)bp->num_ngbs);
   
-  /* For clarity, impose energy reservoir threshold in terms of constant dT, 
-   * even if we are using a variable dT. Effectively, the threshold is in the
-   * injected energy, not number of particles heated, which is more physical. */
-  const double E_feedback_event = num_ngbs_to_heat * delta_u_const * 
+  /* Energy reservoir threshold to do feedback */
+  const double E_feedback_event = num_ngbs_to_heat * delta_u_ref * 
       mean_ngb_mass;
 
   /* Are we doing some feedback? */
