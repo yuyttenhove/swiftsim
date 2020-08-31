@@ -185,11 +185,14 @@ void hydro_exact_density_compute_mapper(void *map_data, int nr_parts,
           const float uj = r * hj_inv;
           kernel_deval(uj, &wj, &wj_dx);
 
-          /* Force count */
-          n_force_exact += wi + wj;
 
 	  /* Flag that we found an inhibited neighbour */
-	  if (part_is_inhibited(pj, e)) pi->inhibited_exact = 1;
+	  if (part_is_inhibited(pj, e)) {
+	    pi->inhibited_exact = 1;
+	  } else {
+	    /* Force count */
+	    n_force_exact += wi + wj;
+	  }
         }
       }
 
