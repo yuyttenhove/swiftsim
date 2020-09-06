@@ -2354,7 +2354,7 @@ void engine_step(struct engine *e) {
 
 #ifdef SWIFT_HYDRO_DENSITY_CHECKS
   /* Run the brute-force hydro calculation for some parts */
-  if (e->policy & engine_policy_hydro) hydro_exact_density_compute(e->s, e);
+  if (e->policy & engine_policy_hydro) hydro_exact_density_compute(e->s, e, 1);
 #endif
 
 #ifdef SWIFT_HYDRO_DENSITY_CHECKS

@@ -173,7 +173,7 @@ void hydro_exact_density_compute_mapper(void *map_data, int nr_parts,
         }
 
         /* Interact loop of type 2? */
-        if ((pi != pj) && (r2 < hig2 || r2 < hjg2)) {
+        if (check_force && (pi != pj) && (r2 < hig2 || r2 < hjg2)) {
 
           float wi, wi_dx;
           float wj, wj_dx;
