@@ -192,6 +192,9 @@ void hydro_exact_density_compute_mapper(void *map_data, int nr_parts,
             /* Force count */
             n_force_exact += wi + wj;
           }
+
+	  /* Number of neighbours */
+            N_force_exact++;	    
         }
       }
 
