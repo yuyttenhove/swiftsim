@@ -199,7 +199,7 @@ INLINE static void stars_write_particles(const struct spart *sparts,
       "Maximum temperature increase induced by SNII feedback from the stars in "
       "units of the critical temperature for numerical efficiency.");
 
-  list[14] = io_make_8utput_field(
+  list[14] = io_make_output_field(
       "FeedbackMinimumSamplingFractions", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f,
       sparts, T_sampling_fraction_min,
       "Minimum number of particles expected to be heated by each star "

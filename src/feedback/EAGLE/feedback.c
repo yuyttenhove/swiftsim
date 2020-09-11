@@ -77,7 +77,7 @@ double eagle_variable_feedback_temperature_change(
 
   /* Star properties: neighbour mass and density */
   const double mean_ngb_mass = ngb_gas_mass / ((double)num_gas_ngbs);
-  const double n_birth_phys = sp->sf_data.birth_density;
+  const double n_birth_phys = sp->birth_density;
   const double n_phys = (props->SNII_use_instantaneous_density_for_dT ?
       gas_density : n_birth_phys) * props->rho_to_n_cgs;
 
@@ -204,7 +204,7 @@ double eagle_variable_feedback_temperature_change_v2(
 
   /* Relevant star properties */
   const double mean_ngb_mass = ngb_gas_mass / ((double)num_gas_ngbs);
-  const double rho_birth_phys = sp->sf_data.birth_density;
+  const double rho_birth_phys = sp->birth_density;
   const double sfr_birth_phys = sp->sf_data.birth_star_formation_rate;
   const double m_initial = sp->mass_init;
   const double n_phys = (props->SNII_use_instantaneous_density_for_dT ?
