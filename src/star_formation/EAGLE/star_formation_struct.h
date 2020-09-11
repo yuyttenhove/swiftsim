@@ -40,12 +40,6 @@ struct star_formation_xpart_data {
  */
 struct star_formation_spart_data {
 
-  /*! The physical birth density */
-  float birth_density;
-
-  /*! The birth temperature */
-  float birth_temperature;
-
   /*! Velocity divergence of gas at birth */
   float birth_div_v;
 

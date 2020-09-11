@@ -26,6 +26,19 @@
 #include "io_properties.h"
 
 /**
+ * @brief Specifies which s-particle fields to read from a dataset
+ *
+ * @param sparts The s-particle array.
+ * @param list The list of i/o properties to read.
+ *
+ * @return num_fields The number of i/o fields to read.
+ */
+INLINE static int star_formation_read_particles(struct spart* sparts,
+                                                struct io_props* list) {
+  return 0;
+}
+
+/**
  * @brief Specifies which particle fields to write to a dataset
  *
  * @param parts The particle array.
@@ -59,34 +72,20 @@ __attribute__((always_inline)) INLINE static int
 star_formation_write_sparticles(const struct spart* sparts,
                                 struct io_props* list) {
 
-  list[0] = io_make_output_field(
-      "BirthDensities", FLOAT, 1, UNIT_CONV_DENSITY, 0.f, sparts,
-      sf_data.birth_density,
-      "Physical densities at the time of birth of the gas particles that "
-      "turned into stars (note that "
-      "we store the physical density at the birth redshift, no conversion is "
-      "needed)");
-
-  list[1] =
-      io_make_output_field("BirthTemperatures", FLOAT, 1, UNIT_CONV_TEMPERATURE,
-                           0.f, sparts, sf_data.birth_temperature,
-                           "Temperatures at the time of birth of the gas "
-                           "particles that turned into stars");
-
-  list[2] =
+  list[0] =
       io_make_output_field("BirthVelocityDivergences", FLOAT, 1,
                            UNIT_CONV_FREQUENCY,
                            0.f, sparts, sf_data.birth_div_v,
                            "Velocity divergences at the time of birth of the "
                            "gas particles that turned into stars");
 
-  list[3] =
+  list[1] =
       io_make_output_field(
         "StarFormationRates", FLOAT, 1, UNIT_CONV_SFR, 0.f, sparts,
         sf_data.birth_star_formation_rate,
         "Star formation rates of the parent gas particle at the point where "
         "they were converted to stars.");
 
-  return 4;
+  return 2;
 }
 #endif /* SWIFT_STAR_FORMATION_EAGLE_IO_H */

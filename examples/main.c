@@ -177,6 +177,7 @@ int main(int argc, char *argv[]) {
   int with_eagle = 0;
   int with_gear = 0;
   int with_line_of_sight = 0;
+  int with_rt = 0;
   int verbose = 0;
   int nr_threads = 1;
   int with_verbose_timers = 0;
@@ -240,6 +241,10 @@ int main(int argc, char *argv[]) {
                   "feedback events.",
                   NULL, 0, 0),
       OPT_BOOLEAN(0, "logger", &with_logger, "Run with the particle logger.",
+                  NULL, 0, 0),
+      OPT_BOOLEAN('R', "radiation", &with_rt,
+                  "Run with radiative transfer. Work in progress, currently "
+                  "has no effect.",
                   NULL, 0, 0),
 
       OPT_GROUP("  Simulation meta-options:\n"),
@@ -557,6 +562,23 @@ int main(int argc, char *argv[]) {
     }
     return 1;
   }
+
+#ifdef RT_NONE
+  if (with_rt) {
+    error("Running with radiative transfer but compiled without it!");
+  }
+#else
+  if (with_rt && !with_hydro) {
+    error(
+        "Error: Cannot use radiative transfer without gas, --hydro must be "
+        "chosen\n");
+  }
+  if (with_rt && !with_stars) {
+    error(
+        "Error: Cannot use radiative transfer without stars, --stars must be "
+        "chosen\n");
+  }
+#endif
 
 /* Let's pin the main thread, now we know if affinity will be used. */
 #if defined(HAVE_SETAFFINITY) && defined(HAVE_LIBNUMA) && defined(_GNU_SOURCE)
@@ -1087,7 +1109,7 @@ int main(int argc, char *argv[]) {
     /* Check that the other links are correctly set */
     if (!dry_run)
       part_verify_links(parts, gparts, sinks, sparts, bparts, Ngas, Ngpart,
-                        Nsink, Nspart, Nbpart, 1);
+                        Nsink, Nspart, Nbpart, /*verbose=*/1);
 #endif
 
     /* Get the total number of particles across all nodes. */
@@ -1276,7 +1298,8 @@ int main(int argc, char *argv[]) {
     if (with_fof) engine_policies |= engine_policy_fof;
     if (with_logger) engine_policies |= engine_policy_logger;
     if (with_line_of_sight) engine_policies |= engine_policy_line_of_sight;
-    if (with_sink) engine_policies |= engine_policy_sink;
+    if (with_sink) engine_policies |= engine_policy_sinks;
+    if (with_rt) engine_policies |= engine_policy_rt;
 
     /* Initialize the engine with the space and policies. */
     if (myrank == 0) clocks_gettime(&tic);
@@ -1378,10 +1401,12 @@ int main(int argc, char *argv[]) {
 
   /* Legend */
   if (myrank == 0) {
-    printf("# %6s %14s %12s %12s %14s %9s %12s %12s %12s %12s %16s [%s] %6s\n",
-           "Step", "Time", "Scale-factor", "Redshift", "Time-step", "Time-bins",
-           "Updates", "g-Updates", "s-Updates", "b-Updates", "Wall-clock time",
-           clocks_getunit(), "Props");
+    printf(
+        "# %6s %14s %12s %12s %14s %9s %12s %12s %12s %12s %12s %16s [%s] "
+        "%6s\n",
+        "Step", "Time", "Scale-factor", "Redshift", "Time-step", "Time-bins",
+        "Updates", "g-Updates", "s-Updates", "sink-Updates", "b-Updates",
+        "Wall-clock time", clocks_getunit(), "Props");
     fflush(stdout);
   }
 
@@ -1402,7 +1427,7 @@ int main(int argc, char *argv[]) {
     parser_write_params_to_file(params, "unused_parameters.yml", /*used=*/0);
   }
 
-    /* Dump memory use report if collected for the 0 step. */
+  /* Dump memory use report if collected for the 0 step. */
 #ifdef SWIFT_MEMUSE_REPORTS
   {
     char dumpfile[40];
@@ -1415,7 +1440,7 @@ int main(int argc, char *argv[]) {
   }
 #endif
 
-    /* Dump MPI requests if collected. */
+  /* Dump MPI requests if collected. */
 #if defined(SWIFT_MPIUSE_REPORTS) && defined(WITH_MPI)
   {
     char dumpfile[40];
@@ -1479,7 +1504,7 @@ int main(int argc, char *argv[]) {
     }
 #endif
 
-      /* Dump memory use report if collected. */
+    /* Dump memory use report if collected. */
 #ifdef SWIFT_MEMUSE_REPORTS
     {
       char dumpfile[40];
@@ -1493,7 +1518,7 @@ int main(int argc, char *argv[]) {
     }
 #endif
 
-      /* Dump MPI requests if collected. */
+    /* Dump MPI requests if collected. */
 #if defined(SWIFT_MPIUSE_REPORTS) && defined(WITH_MPI)
     {
       char dumpfile[40];
@@ -1525,19 +1550,21 @@ int main(int argc, char *argv[]) {
 
     /* Print some information to the screen */
     printf(
-        "  %6d %14e %12.7f %12.7f %14e %4d %4d %12lld %12lld %12lld %12lld"
+        "  %6d %14e %12.7f %12.7f %14e %4d %4d %12lld %12lld %12lld %12lld "
+        "%12lld"
         " %21.3f %6d\n",
         e.step, e.time, e.cosmology->a, e.cosmology->z, e.time_step,
         e.min_active_bin, e.max_active_bin, e.updates, e.g_updates, e.s_updates,
-        e.b_updates, e.wallclock_time, e.step_props);
+        e.sink_updates, e.b_updates, e.wallclock_time, e.step_props);
     fflush(stdout);
 
     fprintf(e.file_timesteps,
             "  %6d %14e %12.7f %12.7f %14e %4d %4d %12lld %12lld %12lld %12lld"
-            " %21.3f %6d\n",
+            " %12lld %21.3f %6d\n",
             e.step, e.time, e.cosmology->a, e.cosmology->z, e.time_step,
             e.min_active_bin, e.max_active_bin, e.updates, e.g_updates,
-            e.s_updates, e.b_updates, e.wallclock_time, e.step_props);
+            e.s_updates, e.sink_updates, e.b_updates, e.wallclock_time,
+            e.step_props);
     fflush(e.file_timesteps);
 
     /* Print information to the SFH logger */
@@ -1595,7 +1622,7 @@ int main(int argc, char *argv[]) {
 #endif
     }
 
-      /* Write final stf? */
+    /* Write final stf? */
 #ifdef HAVE_VELOCIRAPTOR
     if (with_structure_finding && e.output_list_stf) {
       if (e.output_list_stf->final_step_dump && !e.stf_this_timestep)
