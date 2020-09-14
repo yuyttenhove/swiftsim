@@ -88,6 +88,7 @@
 #include "sort_part.h"
 #include "star_formation.h"
 #include "star_formation_logger.h"
+#include "stars.h"
 #include "stars_io.h"
 #include "statistics.h"
 #include "timers.h"
@@ -1783,6 +1784,15 @@ void engine_init_particles(struct engine *e, int flag_entropy_ICs,
     hydro_exact_density_check(e->s, e, /*rel_tol=*/1e-3, /*check_force=*/0);
 #endif
 
+#ifdef SWIFT_STARS_DENSITY_CHECKS
+  /* Run the brute-force stars calculation for some parts */
+  if (e->policy & engine_policy_stars) stars_exact_density_compute(e->s, e, 0);
+
+  /* Check the accuracy of the stars calculation */
+  if (e->policy & engine_policy_stars)
+    stars_exact_density_check(e->s, e, 1e-3, 0);
+#endif
+
   /* Apply some conversions (e.g. internal energy -> entropy) */
   if (!flag_entropy_ICs) {
 
@@ -1885,6 +1895,15 @@ void engine_init_particles(struct engine *e, int flag_entropy_ICs,
   /* Check the accuracy of the stars calculation */
   if (e->policy & engine_policy_stars)
     stars_exact_density_check(e->s, e, /*rel_tol=*/1e-3);
+#endif
+
+#ifdef SWIFT_STARS_DENSITY_CHECKS
+  /* Run the brute-force stars calculation for some parts */
+  if (e->policy & engine_policy_stars) stars_exact_density_compute(e->s, e, 1);
+
+  /* Check the accuracy of the stars calculation */
+  if (e->policy & engine_policy_stars)
+    stars_exact_density_check(e->s, e, 1e-3, 1);
 #endif
 
 #ifdef SWIFT_GRAVITY_FORCE_CHECKS
