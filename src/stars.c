@@ -82,6 +82,8 @@ void stars_exact_density_compute_mapper(void *map_data, int nr_sparts,
       /* Interact it with all other particles in the space.*/
       for (int j = 0; j < (int)s->nr_parts; ++j) {
 
+        const struct part *pj = &s->parts[j];
+
         /* Compute the pairwise distance. */
         double dx = pj->x[0] - pix[0];
         double dy = pj->x[1] - pix[1];
