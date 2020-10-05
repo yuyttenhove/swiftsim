@@ -263,9 +263,10 @@ struct feedback_props {
   double SNII_efficiency_theta_min;
 
   /*! Parameters for sampling requirement reduction */
-  double SNII_gamma_norm;
-  double SNII_gamma_const_interval_factor;
-  double SNII_gamma_drop_interval_factor;
+  double SNII_gamma_star;
+  int SNII_sampling_reduction_within_smoothing_length;
+  double SNII_nu_const_interval_factor;
+  double SNII_nu_drop_interval_factor;
 
   /*! (Constant) temperature increase induced by SNe feedback */
   double SNe_deltaT_desired;

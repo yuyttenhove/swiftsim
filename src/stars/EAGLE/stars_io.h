@@ -220,7 +220,7 @@ INLINE static void stars_write_particles(const struct spart *sparts,
 
   list[17] = io_make_output_field(
       "SamplingReductionFactors", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f,
-      sparts, gamma,
+      sparts, nu,
       "Reduction factors for the sampling requirement in setting the feedback "
       "temperature increase of star particles.");
 

@@ -78,7 +78,7 @@ __attribute__((always_inline)) INLINE static void stars_first_init_spart(
   sp->T_sampling_fraction_max = -FLT_MAX;
   sp->f_E_divergence_boost = -FLT_MAX;
   sp->count_since_last_enrichment = -1;
-  sp->gamma = -FLT_MAX;
+  sp->nu = -FLT_MAX;
   sp->omega_min = FLT_MAX;
   sp->omega_max = -FLT_MAX;
 

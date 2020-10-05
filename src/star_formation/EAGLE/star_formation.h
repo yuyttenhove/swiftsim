@@ -478,7 +478,7 @@ INLINE static void star_formation_copy_properties(
   sp->T_critical_fraction_max = -FLT_MAX;
   sp->T_sampling_fraction_min = FLT_MAX;
   sp->T_sampling_fraction_max = -FLT_MAX;
-  sp->gamma = -FLT_MAX;
+  sp->nu = -FLT_MAX;
   sp->omega_min = FLT_MAX;
   sp->omega_max = -FLT_MAX;
 }

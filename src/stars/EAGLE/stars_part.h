@@ -104,8 +104,8 @@ struct spart {
   float T_sampling_fraction_min;
   float T_sampling_fraction_max;
 
-  /*! Sampling reduction factor gamma */
-  float gamma;
+  /*! Sampling reduction factor nu */
+  float nu;
 
   /*! On-demand feedback efficiency boost factors against numerical losses */
   float omega_min;
