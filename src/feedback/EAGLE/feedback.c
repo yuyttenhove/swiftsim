@@ -201,6 +201,8 @@ double eagle_variable_feedback_temperature_change_v2(
   double gamma_star = props->SNII_gamma_star;
   const double nu_shelf_factor = props->SNII_nu_const_interval_factor;
   const double nu_drop_factor = props->SNII_nu_drop_interval_factor;
+  const double theta_min = props->SNII_efficiency_theta_min;
+  const double zeta = props->SNII_efficiency_zeta;
 
   /* Relevant star properties */
   const double mean_ngb_mass = ngb_gas_mass / ((double)num_gas_ngbs);
@@ -266,20 +268,28 @@ double eagle_variable_feedback_temperature_change_v2(
         dT = dT_min;
         /* Choose omega to compensate the expected numerical cooling loss at
          * dT_min */
-        if (props->SNII_with_energy_compensation) {
-          const double theta_min = props->SNII_efficiency_theta_min;
-          const double zeta = props->SNII_efficiency_zeta;
+        if (props->SNII_with_energy_compensation)
           omega = 1. /
               (pow((dT_min / dT_crit - theta_min) / (1.0 - theta_min), zeta));
-        }
         /*message("sp %lld: dT=%g, omega=%g.", sp->id, dT, omega); */
       }
     }
   }
 
-  /* Apply (potential) SNe energy increase and max value of dT */
+  /* Apply maximum dT ceiling, correcting for expected cooling losses */
+  if (dT > dT_max) {
+    dT = dT_max;
+    if (dT > dT_crit)
+      error("Internal logic error: forced to heat at dT_max=%g, "
+            "but dT_crit=%g", dT_max, dT_crit);
+    if (props->SNII_with_energy_compensation)
+      omega = 1. / (pow((dT_max / dT_crit - theta_min)/(1.0 - theta_min), zeta));
+    SNe_energy *= omega;
+  }
+
+  /* Apply (potential) SNe energy increase to guarantee desire sampling */
   SNe_energy *= omega;
-  dT = min(dT, dT_max);
+
 
   if (dT < 0)
     error("Ahm... I'm not going to set a negative heating temperature "
