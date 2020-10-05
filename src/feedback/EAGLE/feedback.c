@@ -263,7 +263,8 @@ double eagle_variable_feedback_temperature_change_v2(
         /*message("sp %lld: dT_crit=%g > dT_sample=%g, dT_comp=%g",
             sp->id, dT_crit, dT_sample, dT_comp); */
         dT = dT_comp;
-        omega = dT_comp / dT_sample;
+        if (props->with_energy_compensation)
+          omega = dT_comp / dT_sample;
       } else {
         dT = dT_min;
         /* Choose omega to compensate the expected numerical cooling loss at
