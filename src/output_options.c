@@ -35,10 +35,6 @@
 #include "error.h"
 #include "parser.h"
 
-/* Compression level names. */
-const char* compression_level_names[compression_level_count] = {
-    "off", "on", "low", "med", "high"};
-
 /**
  * @brief Initialise the output options struct with the information read
  *        from file. Only rank 0 reads from file; this data is then broadcast
@@ -51,6 +47,7 @@ const char* compression_level_names[compression_level_count] = {
 void output_options_init(struct swift_params* parameter_file, int mpi_rank,
                          struct output_options* output_options) {
 
+  /* Start by zero-ing everything */
   bzero(output_options, sizeof(struct output_options));
 
   /* Load select_output */
@@ -82,7 +79,7 @@ void output_options_init(struct swift_params* parameter_file, int mpi_rank,
 }
 
 /**
- * @breif Destroys an output_options instance.
+ * @brief Destroys an output_options instance.
  *
  * @param output_options the output_options struct to free the contents of.
  **/
@@ -144,10 +141,10 @@ void output_options_struct_restore(struct output_options* output_options,
  * @return should_write integer determining whether this field should be
  *         written
  **/
-int output_options_should_write_field(
+enum lossy_compression_schemes output_options_get_field_compression(
     const struct output_options* output_options, const char* snapshot_type,
     const char* field_name, const enum part_type part_type,
-    const enum compression_levels compression_level_current_default) {
+    const enum lossy_compression_schemes compression_level_current_default) {
 
   /* Full name for the field path */
   char field[PARSER_MAX_LINE_SIZE];
@@ -157,19 +154,20 @@ int output_options_should_write_field(
   char compression_level[FIELD_BUFFER_SIZE];
   parser_get_opt_param_string(
       output_options->select_output, field, compression_level,
-      compression_level_names[compression_level_current_default]);
-
-  int should_write = strcmp(compression_level_names[compression_do_not_write],
-                            compression_level);
+      lossy_compression_schemes_names[compression_level_current_default]);
 
 #ifdef SWIFT_DEBUG_CHECKS
+
+  int should_write =
+      strcmp(lossy_compression_schemes_names[compression_do_not_write],
+             compression_level);
   message(
       "Check for whether %s should be written returned %s from a provided "
       "value of \"%s\"",
       field, should_write ? "True" : "False", compression_level);
 #endif
 
-  return should_write;
+  return compression_scheme_from_name(compression_level);
 }
 
 /**
@@ -182,7 +180,7 @@ int output_options_should_write_field(
  * @param snapshot_type The type of snapshot we are writing
  * @param part_type The #part_type we are considering.
  */
-enum compression_levels output_options_get_ptype_default(
+enum lossy_compression_schemes output_options_get_ptype_default_compression(
     struct swift_params* output_params, const char* snapshot_type,
     const enum part_type part_type) {
 
@@ -194,12 +192,14 @@ enum compression_levels output_options_get_ptype_default(
   char compression_level[FIELD_BUFFER_SIZE];
   parser_get_opt_param_string(
       output_params, field, compression_level,
-      compression_level_names[compression_level_default]);
+      lossy_compression_schemes_names[compression_level_default]);
 
   /* Need to find out which of the entries this corresponds to... */
   int level_index;
   for (level_index = 0; level_index < compression_level_count; level_index++) {
-    if (!strcmp(compression_level_names[level_index], compression_level)) break;
+    if (!strcmp(lossy_compression_schemes_names[level_index],
+                compression_level))
+      break;
   }
 
   /* Make sure that the supplied default option is either on or off, not a
@@ -227,7 +227,7 @@ enum compression_levels output_options_get_ptype_default(
       level_index);
 #endif
 
-  return (enum compression_levels)level_index;
+  return (enum lossy_compression_schemes)level_index;
 }
 
 /**

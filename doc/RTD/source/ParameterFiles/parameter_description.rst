@@ -389,7 +389,13 @@ with a mass above a fixed threshold into two copies that are slightly shifted
 (by a randomly orientated vector of norm :math:`0.2h`). Their masses and other
 relevant particle-carried quantities are then halved. The mass threshold for
 splitting is set by the parameter ``particle_splitting_mass_threshold`` which is
-specified using the internal unit system.
+specified using the internal unit system. The IDs of the newly created particles
+can be either drawn randomly by setting the parameter ``generate_random_ids``
+(Default: 0) to :math:`1`. When this is activated, there is no check that the
+newly generated IDs do not clash with any other pre-existing particle. If this
+option is set to :math:`0` (the default setting) then the new IDs are created in
+increasing order from the maximal pre-existing value in the simulation, hence
+preventing any clash.
 
 The final set of parameters in this section determine the initial and minimum
 temperatures of the particles.
@@ -454,20 +460,50 @@ These four parameters are optional and will default to their SPH equivalent
 if left unspecified. That is the value specified by the user in that
 section or the default SPH value if left unspecified there as well.
 
-The two remaining parameters can be used to overwrite the birth time (or
-scale-factor) of the stars that were read from the ICs. This can be useful
-to start a simulation with stars already of a given age. The parameters
+The next four parameters govern the time-step size choices for star
+particles. By default star particles get their time-step sizes set
+solely by the condition based on gravity. Additional criteria can be
+applied by setting some of the following parameters (the actual
+time-step size is then the minimum of this criterion and of the gravity
+criterion):
+
+* Time-step size for young stars in Mega-years:
+  ``max_timestep_young_Myr`` (Default: FLT_MAX)
+* Time-step size for old stars in Mega-years: ``max_timestep_old_Myr``
+  (Default: FLT_MAX)
+* Age transition from young to old in Mega-years:
+  ``timestep_age_threshold_Myr`` (Default: FLT_MAX)
+* Age above which no time-step limit is applied in Mega-years:
+  ``timestep_age_threshold_unlimited_Myr`` (Default: 0)
+
+Star particles with ages above the unlimited threshold only use the
+gravity condition. Star particles with ages below that limit use
+either the young or old time-step sizes based on their ages. These
+parameters effectively allow for three different age brackets with the
+last age bracket imposing no time-step length.
+
+The remaining parameters can be used to overwrite the birth time (or
+scale-factor), birth density and birth temperatures (if these
+quantities exist) of the stars that were read from the ICs. This can
+be useful to start a simulation with stars already of a given age or
+with specific (uniform and non-0) properties at birth. The parameters
 are:
 
-* Whether or not to overwrite anything: ``overwrite_birth_time``
+* Whether or not to overwrite *all* the birth times: ``overwrite_birth_time``
   (Default: 0)
 * The value to use: ``birth_time``
+* Whether or not to overwrite *all* the birth densities: ``overwrite_birth_density``
+  (Default: 0)
+* The value to use: ``birth_density``
+* Whether or not to overwrite *all* the birth temperatures: ``overwrite_birth_temperature``
+  (Default: 0)
+* The value to use: ``birth_temperature``
 
-If the birth time is set to ``-1`` then the stars will never enter any
-feedback or enrichment loop. When these values are not specified, SWIFT
-will start and use the birth times specified in the ICs. If no values are
-given in the ICs, the stars' birth times will be zeroed, which can cause
-issues depending on the type of run performed.
+Note that if the birth time is set to ``-1`` then the stars will never
+enter any feedback or enrichment loop. When these values are not
+specified, SWIFT will start and use the birth times specified in the
+ICs. If no values are given in the ICs, the stars' birth times will be
+zeroed, which can cause issues depending on the type of run performed.
 
 .. _Parameters_time_integration:
 
@@ -578,12 +614,20 @@ Finally, SWIFT also offers these options:
 * A factor to re-scale all the smoothing-lengths by a fixed amount: ``smoothing_length_scaling`` (default: ``1.``),
 * A shift to apply to all the particles: ``shift`` (default: ``[0.0,0.0,0.0]``),
 * Whether to replicate the box along each axis: ``replicate`` (default: ``1``).
-
+* Whether to re-map the IDs to the range ``[0, N]`` and hence discard
+  the original IDs from the IC file: ``remap_ids`` (default: ``0``).
+  
 The shift is expressed in internal units. The option to replicate the
 box is especially useful for weak-scaling tests. When set to an
 integer >1, the box size is multiplied by this integer along each axis
 and the particles are duplicated and shifted such as to create exact
 copies of the simulation volume.
+
+The remapping of IDs is especially useful in combination with the option to
+generate increasing IDs when splitting gas particles as it allows for the
+creation of a compact range of IDs beyond which the new IDs generated by
+splitting can be safely drawn from. Note that, when ``remap_ids`` is
+switched on the ICs do not need to contain a ``ParticleIDs`` field.
 
 The full section to start a DM+hydro run from Gadget DM-only ICs would
 be:
@@ -798,6 +842,49 @@ be processed by the ``SpecWizard`` tool
      range_when_shooting_down_y: 100. # Range along the y-axis of LoS along y
      range_when_shooting_down_z: 100. # Range along the z-axis of LoS along z
 
+.. _Parameters_eos:
+
+Equation of State (EoS)
+-----------------------
+
+The ``EoS`` section contains options for the equations of state.
+Multiple EoS can be used for :ref:`planetary`,
+see :ref:`planetary_eos` for more information. 
+
+To enable one or multiple of these EoS, the corresponding ``planetary_use_*:``
+flag(s) must be set to ``1`` in the parameter file for a simulation,
+along with the path to any table files, which are provided with the 
+``planetary_*_table_file:`` parameters.
+This currently means that all EoS within each base type are prepared at once, 
+which we intend to simplify in the future.
+
+The data files for the tabulated EoS can be downloaded using 
+the ``examples/EoSTables/get_eos_tables.sh`` script.
+
+For the (non-planetary) isothermal EoS, the ``isothermal_internal_energy:``
+parameter sets the thermal energy per unit mass.
+
+.. code:: YAML
+
+   EoS:
+     isothermal_internal_energy: 20.26784  # Thermal energy per unit mass for the case of isothermal equation of state (in internal units).
+
+     planetary_use_Til:    1   # (Optional) Whether to prepare the Tillotson EoS
+     planetary_use_HM80:   0   # (Optional) Whether to prepare the Hubbard & MacFarlane (1980) EoS
+     planetary_use_SESAME: 0   # (Optional) Whether to prepare the SESAME EoS
+     planetary_use_ANEOS:  0   # (Optional) Whether to prepare the ANEOS EoS
+                               # (Optional) Table file paths
+     planetary_HM80_HHe_table_file:            ./EoSTables/HM80_HHe.txt
+     planetary_HM80_ice_table_file:            ./EoSTables/HM80_ice.txt
+     planetary_HM80_rock_table_file:           ./EoSTables/HM80_rock.txt
+     planetary_SESAME_iron_table_file:         ./EoSTables/SESAME_iron_2140.txt
+     planetary_SESAME_basalt_table_file:       ./EoSTables/SESAME_basalt_7530.txt
+     planetary_SESAME_water_table_file:        ./EoSTables/SESAME_water_7154.txt
+     planetary_SS08_water_table_file:          ./EoSTables/SS08_water.txt
+     planetary_ANEOS_forsterite_table_file:    ./EoSTables/ANEOS_forsterite_S19.txt
+     planetary_ANEOS_iron_table_file:          ./EoSTables/ANEOS_iron_S20.txt
+     planetary_ANEOS_Fe85Si15_table_file:      ./EoSTables/ANEOS_Fe85Si15_S20.txt
+
 .. _Parameters_fof:
 
 Friends-Of-Friends (FOF)
@@ -946,15 +1033,18 @@ which stops these from being done at the scale of the leaf cells, of which
 there can be a large number. In this case cells with gravity tasks must be at
 least 4 levels above the leaf cells (when possible).
 
-To control the depth at which the ghost tasks are placed, there are
-two parameters (one for the gas, one for the stars). These specify the
-maximum number of particles allowed in such a task before splitting
-into finer ones. These parameters are:
+To control the depth at which the ghost tasks are placed, there are two
+parameters (one for the gas, one for the stars). These specify the maximum
+number of particles allowed in such a task before splitting into finer ones. A
+similar parameter exists for the cooling tasks, which can be useful to tweak for
+models in which the cooling operations are expensive. These three parameters
+are:
 
 .. code:: YAML
 
-  engine_max_parts_per_ghost:   1000
-  engine_max_sparts_per_ghost:  1000
+  engine_max_parts_per_ghost:    1000
+  engine_max_sparts_per_ghost:   1000
+  engine_max_parts_per_cooling: 10000
 
 
 Extra space is required when particles are created in the system (to the time
@@ -1310,21 +1400,6 @@ Showing all the parameters for a basic cosmologica test-case, one would have:
     delta_time:           1.1                            # Delta log-a between outputs
 
 
-------------------------
-
-    
-.. [#f1] The thorough reader (or overly keen SWIFT tester) would find  that the speed of light is :math:`c=1.8026\times10^{12}\,\rm{fur}\,\rm{ftn}^{-1}`, Newton's constant becomes :math:`G_N=4.896735\times10^{-4}~\rm{fur}^3\,\rm{fir}^{-1}\,\rm{ftn}^{-2}` and Planck's constant turns into :math:`h=4.851453\times 10^{-34}~\rm{fur}^2\,\rm{fir}\,\rm{ftn}^{-1}`.
-
-
-.. [#f2] which would translate into a constant :math:`G_N=1.5517771\times10^{-9}~cm^{3}\,g^{-1}\,s^{-2}` if expressed in the CGS system.
-
-.. [#f3] This feature only makes sense for non-cosmological runs for which the
-         internal time unit is such that when rounded to the nearest integer a
-	 sensible number is obtained. A use-case for this feature would be to
-	 compare runs over the same physical time but with different numbers of
-	 snapshots. Snapshots at a given time would always have the same set of
-	 digits irrespective of the number of snapshots produced before.
-
 Gravity Force Checks
 --------------------
 
@@ -1345,3 +1420,18 @@ If ``only_when_all_active:1`` and ``only_at_snapshots:1`` are enabled together,
 and all the gparts are not active during the timestep of the snapshot dump, the
 exact forces computation is performed on the first timestep at which all the
 gparts are active after that snapshot output timestep.
+
+
+------------------------
+
+.. [#f1] The thorough reader (or overly keen SWIFT tester) would find  that the speed of light is :math:`c=1.8026\times10^{12}\,\rm{fur}\,\rm{ftn}^{-1}`, Newton's constant becomes :math:`G_N=4.896735\times10^{-4}~\rm{fur}^3\,\rm{fir}^{-1}\,\rm{ftn}^{-2}` and Planck's constant turns into :math:`h=4.851453\times 10^{-34}~\rm{fur}^2\,\rm{fir}\,\rm{ftn}^{-1}`.
+
+
+.. [#f2] which would translate into a constant :math:`G_N=1.5517771\times10^{-9}~cm^{3}\,g^{-1}\,s^{-2}` if expressed in the CGS system.
+
+.. [#f3] This feature only makes sense for non-cosmological runs for which the
+         internal time unit is such that when rounded to the nearest integer a
+	 sensible number is obtained. A use-case for this feature would be to
+	 compare runs over the same physical time but with different numbers of
+	 snapshots. Snapshots at a given time would always have the same set of
+	 digits irrespective of the number of snapshots produced before.

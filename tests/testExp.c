@@ -18,7 +18,6 @@
  ******************************************************************************/
 
 #include "../config.h"
-
 #include "swift.h"
 
 /* Standard includes */
@@ -30,7 +29,8 @@
  *
  * @param a First value
  * @param b Second value
- * @param s String used to identify this check in messages
+ * @param tol Relative tolerance
+ * @param x Value for which we tested the function (for error messages)
  */
 void check_value(double a, double b, const double tol, const double x) {
   if (fabs(a - b) / fabs(a + b) > tol)

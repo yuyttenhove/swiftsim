@@ -21,7 +21,7 @@
 
 /**
  * @file src/cooling/grackle/cooling.h
- * @brief Cooling using the GRACKLE 3.0 library.
+ * @brief Cooling using the GRACKLE 3.1.1 library.
  */
 
 /* Some standard headers. */
@@ -35,6 +35,7 @@
 /* Local includes. */
 #include "chemistry.h"
 #include "cooling_io.h"
+#include "cooling_properties.h"
 #include "entropy_floor.h"
 #include "error.h"
 #include "hydro.h"

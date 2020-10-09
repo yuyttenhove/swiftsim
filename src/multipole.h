@@ -526,9 +526,9 @@ __attribute__((nonnull)) INLINE static int gravity_multipole_equal(
     return 0;
   }
 #if SELF_GRAVITY_MULTIPOLE_ORDER > 0
-    /* Manhattan Norm of 1st order terms */
-    /* Nothing to do here all the 1st order terms are 0 since we expand around
-     * CoM */
+  /* Manhattan Norm of 1st order terms */
+  /* Nothing to do here all the 1st order terms are 0 since we expand around
+   * CoM */
 #endif
 #if SELF_GRAVITY_MULTIPOLE_ORDER > 1
   /* Manhattan Norm of 2nd order terms */
@@ -2091,7 +2091,7 @@ __attribute__((nonnull)) INLINE static void gravity_M2L_symmetric(
  * equivalent.
  *
  * @param l_b The field tensor to compute.
- * @param ga The @gpart sourcing the field.
+ * @param ga The #gpart sourcing the field.
  * @param pos_b The position of field tensor b.
  * @param props The #gravity_props of this calculation.
  * @param periodic Is the calculation periodic ?

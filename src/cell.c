@@ -63,12 +63,12 @@
 #include "minmax.h"
 #include "multipole.h"
 #include "pressure_floor.h"
+#include "rt.h"
 #include "scheduler.h"
 #include "space.h"
 #include "space_getsid.h"
 #include "star_formation.h"
 #include "stars.h"
-#include "task_order.h"
 #include "timers.h"
 #include "tools.h"
 #include "tracers.h"
@@ -391,6 +391,9 @@ int cell_link_foreign_gparts(struct cell *c, struct gpart *gparts) {
       error("Something is wrong with the foreign counts");
 #endif
     return counts;
+  } else {
+    c->grav.parts = gparts;
+    c->grav.parts_rebuild = gparts;
   }
 
   /* Go deeper to find the level where the tasks are */
@@ -1484,6 +1487,66 @@ int cell_slocktree(struct cell *c) {
 }
 
 /**
+ * @brief Lock a cell for access to its array of #sink and hold its parents.
+ *
+ * @param c The #cell.
+ * @return 0 on success, 1 on failure
+ */
+int cell_sink_locktree(struct cell *c) {
+  TIMER_TIC;
+
+  /* First of all, try to lock this cell. */
+  if (c->sinks.hold || lock_trylock(&c->sinks.lock) != 0) {
+    TIMER_TOC(timer_locktree);
+    return 1;
+  }
+
+  /* Did somebody hold this cell in the meantime? */
+  if (c->sinks.hold) {
+    /* Unlock this cell. */
+    if (lock_unlock(&c->sinks.lock) != 0) error("Failed to unlock cell.");
+
+    /* Admit defeat. */
+    TIMER_TOC(timer_locktree);
+    return 1;
+  }
+
+  /* Climb up the tree and lock/hold/unlock. */
+  struct cell *finger;
+  for (finger = c->parent; finger != NULL; finger = finger->parent) {
+    /* Lock this cell. */
+    if (lock_trylock(&finger->sinks.lock) != 0) break;
+
+    /* Increment the hold. */
+    atomic_inc(&finger->sinks.hold);
+
+    /* Unlock the cell. */
+    if (lock_unlock(&finger->sinks.lock) != 0) error("Failed to unlock cell.");
+  }
+
+  /* If we reached the top of the tree, we're done. */
+  if (finger == NULL) {
+    TIMER_TOC(timer_locktree);
+    return 0;
+  }
+
+  /* Otherwise, we hit a snag. */
+  else {
+    /* Undo the holds up to finger. */
+    for (struct cell *finger2 = c->parent; finger2 != finger;
+         finger2 = finger2->parent)
+      atomic_dec(&finger2->sinks.hold);
+
+    /* Unlock this cell. */
+    if (lock_unlock(&c->sinks.lock) != 0) error("Failed to unlock cell.");
+
+    /* Admit defeat. */
+    TIMER_TOC(timer_locktree);
+    return 1;
+  }
+}
+
+/**
  * @brief Lock a cell for access to its array of #bpart and hold its parents.
  *
  * @param c The #cell.
@@ -1617,6 +1680,24 @@ void cell_sunlocktree(struct cell *c) {
 }
 
 /**
+ * @brief Unlock a cell's parents for access to #sink array.
+ *
+ * @param c The #cell.
+ */
+void cell_sink_unlocktree(struct cell *c) {
+  TIMER_TIC;
+
+  /* First of all, try to unlock this cell. */
+  if (lock_unlock(&c->sinks.lock) != 0) error("Failed to unlock cell.");
+
+  /* Climb up the tree and unhold the parents. */
+  for (struct cell *finger = c->parent; finger != NULL; finger = finger->parent)
+    atomic_dec(&finger->sinks.hold);
+
+  TIMER_TOC(timer_locktree);
+}
+
+/**
  * @brief Unlock a cell's parents for access to #bpart array.
  *
  * @param c The #cell.
@@ -1645,6 +1726,8 @@ void cell_bunlocktree(struct cell *c) {
  * @param bparts_offset Offset of the cell bparts array relative to the
  *        space's bparts array, i.e. c->black_holes.parts -
  * s->black_holes.parts.
+ * @param sinks_offset Offset of the cell sink array relative to the
+ *        space's sink array, i.e. c->sinks.parts - s->sinks.parts.
  * @param buff A buffer with at least max(c->hydro.count, c->grav.count)
  * entries, used for sorting indices.
  * @param sbuff A buffer with at least max(c->stars.count, c->grav.count)
@@ -1653,18 +1736,23 @@ void cell_bunlocktree(struct cell *c) {
  * entries, used for sorting indices for the sparts.
  * @param gbuff A buffer with at least max(c->hydro.count, c->grav.count)
  * entries, used for sorting indices for the gparts.
+ * @param sinkbuff A buffer with at least max(c->sinks.count, c->grav.count)
+ * entries, used for sorting indices for the sinks.
  */
 void cell_split(struct cell *c, ptrdiff_t parts_offset, ptrdiff_t sparts_offset,
-                ptrdiff_t bparts_offset, struct cell_buff *buff,
-                struct cell_buff *sbuff, struct cell_buff *bbuff,
-                struct cell_buff *gbuff) {
+                ptrdiff_t bparts_offset, ptrdiff_t sinks_offset,
+                struct cell_buff *buff, struct cell_buff *sbuff,
+                struct cell_buff *bbuff, struct cell_buff *gbuff,
+                struct cell_buff *sinkbuff) {
   const int count = c->hydro.count, gcount = c->grav.count,
-            scount = c->stars.count, bcount = c->black_holes.count;
+            scount = c->stars.count, bcount = c->black_holes.count,
+            sink_count = c->sinks.count;
   struct part *parts = c->hydro.parts;
   struct xpart *xparts = c->hydro.xparts;
   struct gpart *gparts = c->grav.parts;
   struct spart *sparts = c->stars.parts;
   struct bpart *bparts = c->black_holes.parts;
+  struct sink *sinks = c->sinks.parts;
   const double pivot[3] = {c->loc[0] + c->width[0] / 2,
                            c->loc[1] + c->width[1] / 2,
                            c->loc[2] + c->width[2] / 2};
@@ -1692,6 +1780,11 @@ void cell_split(struct cell *c, ptrdiff_t parts_offset, ptrdiff_t sparts_offset,
     if (bbuff[k].x[0] != bparts[k].x[0] || bbuff[k].x[1] != bparts[k].x[1] ||
         bbuff[k].x[2] != bparts[k].x[2])
       error("Inconsistent bbuff contents.");
+  }
+  for (int k = 0; k < sink_count; k++) {
+    if (sinkbuff[k].x[0] != sinks[k].x[0] ||
+        sinkbuff[k].x[1] != sinks[k].x[1] || sinkbuff[k].x[2] != sinks[k].x[2])
+      error("Inconsistent sinkbuff contents.");
   }
 #endif /* SWIFT_DEBUG_CHECKS */
 
@@ -1922,6 +2015,61 @@ void cell_split(struct cell *c, ptrdiff_t parts_offset, ptrdiff_t sparts_offset,
     c->progeny[k]->black_holes.parts = &c->black_holes.parts[bucket_offset[k]];
   }
 
+  /* Now do the same song and dance for the sinks. */
+  for (int k = 0; k < 8; k++) bucket_count[k] = 0;
+
+  /* Fill the buffer with the indices. */
+  for (int k = 0; k < sink_count; k++) {
+    const int bid = (sinkbuff[k].x[0] > pivot[0]) * 4 +
+                    (sinkbuff[k].x[1] > pivot[1]) * 2 +
+                    (sinkbuff[k].x[2] > pivot[2]);
+    bucket_count[bid]++;
+    sinkbuff[k].ind = bid;
+  }
+
+  /* Set the buffer offsets. */
+  bucket_offset[0] = 0;
+  for (int k = 1; k <= 8; k++) {
+    bucket_offset[k] = bucket_offset[k - 1] + bucket_count[k - 1];
+    bucket_count[k - 1] = 0;
+  }
+
+  /* Run through the buckets, and swap particles to their correct spot. */
+  for (int bucket = 0; bucket < 8; bucket++) {
+    for (int k = bucket_offset[bucket] + bucket_count[bucket];
+         k < bucket_offset[bucket + 1]; k++) {
+      int bid = sinkbuff[k].ind;
+      if (bid != bucket) {
+        struct sink sink = sinks[k];
+        struct cell_buff temp_buff = sinkbuff[k];
+        while (bid != bucket) {
+          int j = bucket_offset[bid] + bucket_count[bid]++;
+          while (sinkbuff[j].ind == bid) {
+            j++;
+            bucket_count[bid]++;
+          }
+          memswap(&sinks[j], &sink, sizeof(struct sink));
+          memswap(&sinkbuff[j], &temp_buff, sizeof(struct cell_buff));
+          if (sinks[j].gpart)
+            sinks[j].gpart->id_or_neg_offset = -(j + sinks_offset);
+          bid = temp_buff.ind;
+        }
+        sinks[k] = sink;
+        sinkbuff[k] = temp_buff;
+        if (sinks[k].gpart)
+          sinks[k].gpart->id_or_neg_offset = -(k + sinks_offset);
+      }
+      bucket_count[bid]++;
+    }
+  }
+
+  /* Store the counts and offsets. */
+  for (int k = 0; k < 8; k++) {
+    c->progeny[k]->sinks.count = bucket_count[k];
+    c->progeny[k]->sinks.count_total = c->progeny[k]->sinks.count;
+    c->progeny[k]->sinks.parts = &c->sinks.parts[bucket_offset[k]];
+  }
+
   /* Finally, do the same song and dance for the gparts. */
   for (int k = 0; k < 8; k++) bucket_count[k] = 0;
 
@@ -1962,6 +2110,9 @@ void cell_split(struct cell *c, ptrdiff_t parts_offset, ptrdiff_t sparts_offset,
           } else if (gparts[j].type == swift_type_stars) {
             sparts[-gparts[j].id_or_neg_offset - sparts_offset].gpart =
                 &gparts[j];
+          } else if (gparts[j].type == swift_type_sink) {
+            sinks[-gparts[j].id_or_neg_offset - sinks_offset].gpart =
+                &gparts[j];
           } else if (gparts[j].type == swift_type_black_hole) {
             bparts[-gparts[j].id_or_neg_offset - bparts_offset].gpart =
                 &gparts[j];
@@ -1975,6 +2126,8 @@ void cell_split(struct cell *c, ptrdiff_t parts_offset, ptrdiff_t sparts_offset,
         } else if (gparts[k].type == swift_type_stars) {
           sparts[-gparts[k].id_or_neg_offset - sparts_offset].gpart =
               &gparts[k];
+        } else if (gparts[k].type == swift_type_sink) {
+          sinks[-gparts[k].id_or_neg_offset - sinks_offset].gpart = &gparts[k];
         } else if (gparts[k].type == swift_type_black_hole) {
           bparts[-gparts[k].id_or_neg_offset - bparts_offset].gpart =
               &gparts[k];
@@ -2062,6 +2215,7 @@ void cell_clean_links(struct cell *c, void *data) {
   c->hydro.gradient = NULL;
   c->hydro.force = NULL;
   c->hydro.limiter = NULL;
+  c->hydro.rt_inject = NULL;
   c->grav.grav = NULL;
   c->grav.mm = NULL;
   c->stars.density = NULL;
@@ -2138,6 +2292,44 @@ void cell_check_gpart_drift_point(struct cell *c, void *data) {
         c->grav.parts[i].time_bin != time_bin_inhibited)
       error("g-part in an incorrect time-zone! gp->ti_drift=%lld ti_drift=%lld",
             c->grav.parts[i].ti_drift, ti_drift);
+#else
+  error("Calling debugging code without debugging flag activated.");
+#endif
+}
+
+/**
+ * @brief Checks that the #sink in a cell are at the
+ * current point in time
+ *
+ * Calls error() if the cell is not at the current time.
+ *
+ * @param c Cell to act upon
+ * @param data The current time on the integer time-line
+ */
+void cell_check_sink_drift_point(struct cell *c, void *data) {
+#ifdef SWIFT_DEBUG_CHECKS
+
+  const integertime_t ti_drift = *(integertime_t *)data;
+
+  /* Only check local cells */
+  if (c->nodeID != engine_rank) return;
+
+  /* Only check cells with content */
+  if (c->sinks.count == 0) return;
+
+  if (c->sinks.ti_old_part != ti_drift)
+    error(
+        "Cell in an incorrect time-zone! c->sinks.ti_old_part=%lld "
+        "ti_drift=%lld",
+        c->sinks.ti_old_part, ti_drift);
+
+  for (int i = 0; i < c->sinks.count; ++i)
+    if (c->sinks.parts[i].ti_drift != ti_drift &&
+        c->sinks.parts[i].time_bin != time_bin_inhibited)
+      error(
+          "sink-part in an incorrect time-zone! sink->ti_drift=%lld "
+          "ti_drift=%lld",
+          c->sinks.parts[i].ti_drift, ti_drift);
 #else
   error("Calling debugging code without debugging flag activated.");
 #endif
@@ -2251,22 +2443,51 @@ void cell_make_multipoles(struct cell *c, integertime_t ti_current,
 
     /* Compute CoM of all progenies */
     double CoM[3] = {0., 0., 0.};
+    double vel[3] = {0., 0., 0.};
+    float max_delta_vel[3] = {0.f, 0.f, 0.f};
+    float min_delta_vel[3] = {0.f, 0.f, 0.f};
     double mass = 0.;
 
     for (int k = 0; k < 8; ++k) {
       if (c->progeny[k] != NULL) {
         const struct gravity_tensors *m = c->progeny[k]->grav.multipole;
+
+        mass += m->m_pole.M_000;
+
         CoM[0] += m->CoM[0] * m->m_pole.M_000;
         CoM[1] += m->CoM[1] * m->m_pole.M_000;
         CoM[2] += m->CoM[2] * m->m_pole.M_000;
-        mass += m->m_pole.M_000;
+
+        vel[0] += m->m_pole.vel[0] * m->m_pole.M_000;
+        vel[1] += m->m_pole.vel[1] * m->m_pole.M_000;
+        vel[2] += m->m_pole.vel[2] * m->m_pole.M_000;
+
+        max_delta_vel[0] = max(m->m_pole.max_delta_vel[0], max_delta_vel[0]);
+        max_delta_vel[1] = max(m->m_pole.max_delta_vel[1], max_delta_vel[1]);
+        max_delta_vel[2] = max(m->m_pole.max_delta_vel[2], max_delta_vel[2]);
+
+        min_delta_vel[0] = min(m->m_pole.min_delta_vel[0], min_delta_vel[0]);
+        min_delta_vel[1] = min(m->m_pole.min_delta_vel[1], min_delta_vel[1]);
+        min_delta_vel[2] = min(m->m_pole.min_delta_vel[2], min_delta_vel[2]);
       }
     }
 
+    /* Final operation on the CoM and bulk velocity */
     const double mass_inv = 1. / mass;
     c->grav.multipole->CoM[0] = CoM[0] * mass_inv;
     c->grav.multipole->CoM[1] = CoM[1] * mass_inv;
     c->grav.multipole->CoM[2] = CoM[2] * mass_inv;
+    c->grav.multipole->m_pole.vel[0] = vel[0] * mass_inv;
+    c->grav.multipole->m_pole.vel[1] = vel[1] * mass_inv;
+    c->grav.multipole->m_pole.vel[2] = vel[2] * mass_inv;
+
+    /* Min max velocity along each axis */
+    c->grav.multipole->m_pole.max_delta_vel[0] = max_delta_vel[0];
+    c->grav.multipole->m_pole.max_delta_vel[1] = max_delta_vel[1];
+    c->grav.multipole->m_pole.max_delta_vel[2] = max_delta_vel[2];
+    c->grav.multipole->m_pole.min_delta_vel[0] = min_delta_vel[0];
+    c->grav.multipole->m_pole.min_delta_vel[1] = min_delta_vel[1];
+    c->grav.multipole->m_pole.min_delta_vel[2] = min_delta_vel[2];
 
     /* Now shift progeny multipoles and add them up */
     struct multipole temp;
@@ -2310,22 +2531,17 @@ void cell_make_multipoles(struct cell *c, integertime_t ti_current,
 
   } else {
     if (c->grav.count > 0) {
+
       gravity_P2M(c->grav.multipole, c->grav.parts, c->grav.count, grav_props);
+
+      /* Compute the multipole power */
       gravity_multipole_compute_power(&c->grav.multipole->m_pole);
-      const double dx =
-          c->grav.multipole->CoM[0] > c->loc[0] + c->width[0] * 0.5
-              ? c->grav.multipole->CoM[0] - c->loc[0]
-              : c->loc[0] + c->width[0] - c->grav.multipole->CoM[0];
-      const double dy =
-          c->grav.multipole->CoM[1] > c->loc[1] + c->width[1] * 0.5
-              ? c->grav.multipole->CoM[1] - c->loc[1]
-              : c->loc[1] + c->width[1] - c->grav.multipole->CoM[1];
-      const double dz =
-          c->grav.multipole->CoM[2] > c->loc[2] + c->width[2] * 0.5
-              ? c->grav.multipole->CoM[2] - c->loc[2]
-              : c->loc[2] + c->width[2] - c->grav.multipole->CoM[2];
-      c->grav.multipole->r_max = sqrt(dx * dx + dy * dy + dz * dz);
+
     } else {
+
+      /* No gparts in that leaf cell */
+
+      /* Set the values to something sensible */
       gravity_multipole_init(&c->grav.multipole->m_pole);
       c->grav.multipole->CoM[0] = c->loc[0] + c->width[0] * 0.5;
       c->grav.multipole->CoM[1] = c->loc[1] + c->width[1] * 0.5;
@@ -2458,7 +2674,8 @@ void cell_clear_drift_flags(struct cell *c, void *data) {
                          cell_flag_do_grav_drift | cell_flag_do_grav_sub_drift |
                          cell_flag_do_bh_drift | cell_flag_do_bh_sub_drift |
                          cell_flag_do_stars_drift |
-                         cell_flag_do_stars_sub_drift);
+                         cell_flag_do_stars_sub_drift |
+                         cell_flag_do_sink_drift | cell_flag_do_sink_sub_drift);
 }
 
 /**
@@ -2540,9 +2757,30 @@ void cell_activate_star_formation_tasks(struct cell *c, struct scheduler *s,
   scheduler_activate(s, c->hydro.star_formation);
 
   /* Activate the star resort tasks at whatever level they are */
-  if (task_order_star_formation_before_feedback && with_feedback) {
+  if (with_feedback) {
     cell_activate_star_resort_tasks(c, s);
   }
+}
+
+/**
+ * @brief Activate the sink formation task.
+ *
+ * Must be called at the top-level in the tree (where the SF task is...)
+ *
+ * @param c The (top-level) #cell.
+ * @param s The #scheduler.
+ */
+void cell_activate_sink_formation_tasks(struct cell *c, struct scheduler *s) {
+
+#ifdef SWIFT_DEBUG_CHECKS
+  if (c->depth != 0) error("Function should be called at the top-level only");
+#endif
+
+  /* Have we already unskipped that task? */
+  if (c->hydro.sink_formation->skip == 0) return;
+
+  /* Activate the star formation task */
+  scheduler_activate(s, c->hydro.sink_formation);
 }
 
 /**
@@ -2590,6 +2828,50 @@ void cell_activate_hydro_ghosts(struct cell *c, struct scheduler *s,
 }
 
 /**
+ * @brief Recursively activate the cooling (and implicit links) in a cell
+ * hierarchy.
+ *
+ * @param c The #cell.
+ * @param s The #scheduler.
+ * @param e The #engine.
+ */
+void cell_recursively_activate_cooling(struct cell *c, struct scheduler *s,
+                                       const struct engine *e) {
+  /* Early abort? */
+  if ((c->hydro.count == 0) || !cell_is_active_hydro(c, e)) return;
+
+  /* Is the ghost at this level? */
+  if (c->hydro.cooling != NULL) {
+    scheduler_activate(s, c->hydro.cooling);
+  } else {
+
+#ifdef SWIFT_DEBUG_CHECKS
+    if (!c->split)
+      error("Reached the leaf level without finding a cooling task!");
+#endif
+
+    /* Keep recursing */
+    for (int k = 0; k < 8; k++)
+      if (c->progeny[k] != NULL)
+        cell_recursively_activate_cooling(c->progeny[k], s, e);
+  }
+}
+
+/**
+ * @brief Activate the cooling tasks (and implicit links) in a cell hierarchy.
+ *
+ * @param c The #cell.
+ * @param s The #scheduler.
+ * @param e The #engine.
+ */
+void cell_activate_cooling(struct cell *c, struct scheduler *s,
+                           const struct engine *e) {
+  scheduler_activate(s, c->hydro.cooling_in);
+  scheduler_activate(s, c->hydro.cooling_out);
+  cell_recursively_activate_cooling(c, s, e);
+}
+
+/**
  * @brief Recurse down in a cell hierarchy until the hydro.super level is
  * reached and activate the spart drift at that level.
  *
@@ -2608,6 +2890,35 @@ void cell_activate_super_spart_drifts(struct cell *c, struct scheduler *s) {
       for (int k = 0; k < 8; ++k) {
         if (c->progeny[k] != NULL) {
           cell_activate_super_spart_drifts(c->progeny[k], s);
+        }
+      }
+    } else {
+#ifdef SWIFT_DEBUG_CHECKS
+      error("Reached a leaf cell without finding a hydro.super!!");
+#endif
+    }
+  }
+}
+
+/**
+ * @brief Recurse down in a cell hierarchy until the hydro.super level is
+ * reached and activate the sink drift at that level.
+ *
+ * @param c The #cell to recurse into.
+ * @param s The #scheduler.
+ */
+void cell_activate_super_sink_drifts(struct cell *c, struct scheduler *s) {
+
+  /* Early abort? */
+  if (c->hydro.count == 0) return;
+
+  if (c == c->hydro.super) {
+    cell_activate_drift_sink(c, s);
+  } else {
+    if (c->split) {
+      for (int k = 0; k < 8; ++k) {
+        if (c->progeny[k] != NULL) {
+          cell_activate_super_sink_drifts(c->progeny[k], s);
         }
       }
     } else {
@@ -2802,6 +3113,44 @@ void cell_activate_drift_bpart(struct cell *c, struct scheduler *s) {
           error("Trying to activate un-existing parent->black_holes.drift");
 #endif
         scheduler_activate(s, parent->black_holes.drift);
+        break;
+      }
+    }
+  }
+}
+
+/**
+ * @brief Activate the #sink drifts on the given cell.
+ */
+void cell_activate_drift_sink(struct cell *c, struct scheduler *s) {
+
+  /* If this cell is already marked for drift, quit early. */
+  if (cell_get_flag(c, cell_flag_do_sink_drift)) return;
+
+  /* Mark this cell for drifting. */
+  cell_set_flag(c, cell_flag_do_sink_drift);
+
+  /* Set the do_sink_sub_drifts all the way up and activate the super
+     drift if this has not yet been done. */
+  if (c == c->hydro.super) {
+#ifdef SWIFT_DEBUG_CHECKS
+    if (c->sinks.drift == NULL)
+      error("Trying to activate un-existing c->sinks.drift");
+#endif
+    scheduler_activate(s, c->sinks.drift);
+  } else {
+    for (struct cell *parent = c->parent;
+         parent != NULL && !cell_get_flag(parent, cell_flag_do_sink_sub_drift);
+         parent = parent->parent) {
+      /* Mark this cell for drifting */
+      cell_set_flag(parent, cell_flag_do_sink_sub_drift);
+
+      if (parent == c->hydro.super) {
+#ifdef SWIFT_DEBUG_CHECKS
+        if (parent->sinks.drift == NULL)
+          error("Trying to activate un-existing parent->sinks.drift");
+#endif
+        scheduler_activate(s, parent->sinks.drift);
         break;
       }
     }
@@ -3296,6 +3645,107 @@ void cell_activate_subcell_black_holes_tasks(struct cell *ci, struct cell *cj,
 }
 
 /**
+ * @brief Traverse a sub-cell task and activate the sinks drift tasks that
+ * are required by a sinks task
+ *
+ * @param ci The first #cell we recurse in.
+ * @param cj The second #cell we recurse in.
+ * @param s The task #scheduler.
+ * @param with_timestep_sync Are we running with time-step synchronization on?
+ */
+void cell_activate_subcell_sinks_tasks(struct cell *ci, struct cell *cj,
+                                       struct scheduler *s,
+                                       const int with_timestep_sync) {
+  const struct engine *e = s->space->e;
+
+  /* Store the current dx_max and h_max values. */
+  ci->sinks.dx_max_part_old = ci->sinks.dx_max_part;
+  ci->sinks.r_cut_max_old = ci->sinks.r_cut_max;
+  ci->hydro.dx_max_part_old = ci->hydro.dx_max_part;
+  ci->hydro.h_max_old = ci->hydro.h_max;
+
+  if (cj != NULL) {
+    cj->sinks.dx_max_part_old = cj->sinks.dx_max_part;
+    cj->sinks.r_cut_max_old = cj->sinks.r_cut_max;
+    cj->hydro.dx_max_part_old = cj->hydro.dx_max_part;
+    cj->hydro.h_max_old = cj->hydro.h_max;
+  }
+
+  /* Self interaction? */
+  if (cj == NULL) {
+
+    const int ci_active =
+        cell_is_active_sinks(ci, e) || cell_is_active_hydro(ci, e);
+
+    /* Do anything? */
+    if (!ci_active || ci->hydro.count == 0 || ci->sinks.count == 0) return;
+
+    /* Recurse? */
+    if (cell_can_recurse_in_self_sinks_task(ci)) {
+      /* Loop over all progenies and pairs of progenies */
+      for (int j = 0; j < 8; j++) {
+        if (ci->progeny[j] != NULL) {
+          cell_activate_subcell_sinks_tasks(ci->progeny[j], NULL, s,
+                                            with_timestep_sync);
+          for (int k = j + 1; k < 8; k++)
+            if (ci->progeny[k] != NULL)
+              cell_activate_subcell_sinks_tasks(ci->progeny[j], ci->progeny[k],
+                                                s, with_timestep_sync);
+        }
+      }
+    } else {
+      /* We have reached the bottom of the tree: activate drift */
+      cell_activate_drift_sink(ci, s);
+      cell_activate_drift_part(ci, s);
+      if (with_timestep_sync) cell_activate_sync_part(ci, s);
+    }
+  }
+
+  /* Otherwise, pair interation */
+  else {
+    error("Not implemented yet.");
+    /* /\* Should we even bother? *\/ */
+    /* if (!cell_is_active_sinks(ci, e) && */
+    /*     !cell_is_active_sinks(cj, e)) */
+    /*   return; */
+
+    /* /\* Get the orientation of the pair. *\/ */
+    /* double shift[3]; */
+    /* const int sid = space_getsid(s->space, &ci, &cj, shift); */
+
+    /* /\* recurse? *\/ */
+    /* if (cell_can_recurse_in_pair_sinks_task(ci, cj) && */
+    /*     cell_can_recurse_in_pair_sinks_task(cj, ci)) { */
+    /*   const struct cell_split_pair *csp = &cell_split_pairs[sid]; */
+    /*   for (int k = 0; k < csp->count; k++) { */
+    /*     const int pid = csp->pairs[k].pid; */
+    /*     const int pjd = csp->pairs[k].pjd; */
+    /*     if (ci->progeny[pid] != NULL && cj->progeny[pjd] != NULL) */
+    /*       cell_activate_subcell_sinks_tasks( */
+    /*           ci->progeny[pid], cj->progeny[pjd], s, with_timestep_sync); */
+    /*   } */
+    /* } */
+
+    /* /\* Otherwise, activate the drifts. *\/ */
+    /* else if (cell_is_active_sinks(ci, e) || */
+    /*          cell_is_active_sinks(cj, e)) { */
+
+    /*   /\* Activate the drifts if the cells are local. *\/ */
+    /*   if (ci->nodeID == engine_rank) cell_activate_drift_sinks(ci, s); */
+    /*   if (cj->nodeID == engine_rank) cell_activate_drift_part(cj, s); */
+    /*   if (cj->nodeID == engine_rank && with_timestep_sync) */
+    /*     cell_activate_sync_part(cj, s); */
+
+    /*   /\* Activate the drifts if the cells are local. *\/ */
+    /*   if (ci->nodeID == engine_rank) cell_activate_drift_part(ci, s); */
+    /*   if (cj->nodeID == engine_rank) cell_activate_drift_sinks(cj, s); */
+    /*   if (ci->nodeID == engine_rank && with_timestep_sync) */
+    /*     cell_activate_sync_part(ci, s); */
+    /* } */
+  } /* Otherwise, pair interation */
+}
+
+/**
  * @brief Traverse a sub-cell task and activate the gravity drift tasks that
  * are required by a self gravity task.
  *
@@ -3440,6 +3890,99 @@ void cell_activate_subcell_external_grav_tasks(struct cell *ci,
   } else {
     /* We have reached the bottom of the tree: activate gpart drift */
     cell_activate_drift_gpart(ci, s);
+  }
+}
+
+/**
+ * @brief Traverse a sub-cell task and activate the radiative transfer tasks
+ *
+ * @param ci The first #cell we recurse in.
+ * @param cj The second #cell we recurse in.
+ * @param s The task #scheduler.
+ */
+void cell_activate_subcell_rt_tasks(struct cell *ci, struct cell *cj,
+                                    struct scheduler *s) {
+  const struct engine *e = s->space->e;
+
+  /* Self interaction? */
+  if (cj == NULL) {
+    /* Do anything? */
+    if (ci->hydro.count == 0 || !cell_is_active_hydro(ci, e)) return;
+
+    /* Recurse? */
+    if (cell_can_recurse_in_self_hydro_task(ci)) {
+      /* Loop over all progenies and pairs of progenies */
+      for (int j = 0; j < 8; j++) {
+        if (ci->progeny[j] != NULL) {
+          cell_activate_subcell_rt_tasks(ci->progeny[j], NULL, s);
+          for (int k = j + 1; k < 8; k++)
+            if (ci->progeny[k] != NULL)
+              cell_activate_subcell_rt_tasks(ci->progeny[j], ci->progeny[k], s);
+        }
+      }
+    } else {
+      /* We have reached the bottom of the tree: activate tasks */
+      for (struct link *l = ci->hydro.rt_inject; l != NULL; l = l->next) {
+        struct task *t = l->t;
+        const int ci_active = cell_is_active_hydro(ci, e);
+#ifdef WITH_MPI
+        const int ci_nodeID = ci->nodeID;
+#else
+        const int ci_nodeID = e->nodeID;
+#endif
+        /* Only activate tasks that involve a local active cell. */
+        if (ci_active && ci_nodeID == e->nodeID) {
+          scheduler_activate(s, t);
+        }
+      }
+    }
+  }
+
+  /* Otherwise, pair interaction */
+  else {
+    /* Should we even bother? */
+    if (!cell_is_active_hydro(ci, e) && !cell_is_active_hydro(cj, e)) return;
+    if (ci->hydro.count == 0 || cj->hydro.count == 0) return;
+
+    /* Get the orientation of the pair. */
+    double shift[3];
+    const int sid = space_getsid(s->space, &ci, &cj, shift);
+
+    /* recurse? */
+    if (cell_can_recurse_in_pair_hydro_task(ci) &&
+        cell_can_recurse_in_pair_hydro_task(cj)) {
+      const struct cell_split_pair *csp = &cell_split_pairs[sid];
+      for (int k = 0; k < csp->count; k++) {
+        const int pid = csp->pairs[k].pid;
+        const int pjd = csp->pairs[k].pjd;
+        if (ci->progeny[pid] != NULL && cj->progeny[pjd] != NULL)
+          cell_activate_subcell_rt_tasks(ci->progeny[pid], cj->progeny[pjd], s);
+      }
+    }
+
+    /* Otherwise, activate the RT tasks. */
+    else if (cell_is_active_hydro(ci, e) || cell_is_active_hydro(cj, e)) {
+
+      /* Activate the drifts if the cells are local. */
+      for (struct link *l = ci->hydro.rt_inject; l != NULL; l = l->next) {
+        struct task *t = l->t;
+        const int ci_active = cell_is_active_hydro(ci, e);
+        const int cj_active = (cj != NULL) ? cell_is_active_hydro(cj, e) : 0;
+#ifdef WITH_MPI
+        const int ci_nodeID = ci->nodeID;
+        const int cj_nodeID = (cj != NULL) ? cj->nodeID : -1;
+#else
+        const int ci_nodeID = e->nodeID;
+        const int cj_nodeID = e->nodeID;
+#endif
+
+        /* Only activate tasks that involve a local active cell. */
+        if ((ci_active && ci_nodeID == e->nodeID) ||
+            (cj_active && cj_nodeID == e->nodeID)) {
+          scheduler_activate(s, t);
+        }
+      }
+    }
   }
 }
 
@@ -3590,16 +4133,12 @@ int cell_unskip_hydro_tasks(struct cell *c, struct scheduler *s) {
         /* Propagating new star counts? */
         if (with_star_formation && with_feedback) {
           if (ci_active && ci->hydro.count > 0) {
-            if (task_order_star_formation_before_feedback) {
-              scheduler_activate_recv(s, ci->mpi.recv, task_subtype_sf_counts);
-            }
+            scheduler_activate_recv(s, ci->mpi.recv, task_subtype_sf_counts);
             scheduler_activate_recv(s, ci->mpi.recv, task_subtype_tend_spart);
           }
           if (cj_active && cj->hydro.count > 0) {
-            if (task_order_star_formation_before_feedback) {
-              scheduler_activate_send(s, cj->mpi.send, task_subtype_sf_counts,
-                                      ci_nodeID);
-            }
+            scheduler_activate_send(s, cj->mpi.send, task_subtype_sf_counts,
+                                    ci_nodeID);
             scheduler_activate_send(s, cj->mpi.send, task_subtype_tend_spart,
                                     ci_nodeID);
           }
@@ -3663,16 +4202,12 @@ int cell_unskip_hydro_tasks(struct cell *c, struct scheduler *s) {
         /* Propagating new star counts? */
         if (with_star_formation && with_feedback) {
           if (cj_active && cj->hydro.count > 0) {
-            if (task_order_star_formation_before_feedback) {
-              scheduler_activate_recv(s, cj->mpi.recv, task_subtype_sf_counts);
-            }
+            scheduler_activate_recv(s, cj->mpi.recv, task_subtype_sf_counts);
             scheduler_activate_recv(s, cj->mpi.recv, task_subtype_tend_spart);
           }
           if (ci_active && ci->hydro.count > 0) {
-            if (task_order_star_formation_before_feedback) {
-              scheduler_activate_send(s, ci->mpi.send, task_subtype_sf_counts,
-                                      cj_nodeID);
-            }
+            scheduler_activate_send(s, ci->mpi.send, task_subtype_sf_counts,
+                                    cj_nodeID);
             scheduler_activate_send(s, ci->mpi.send, task_subtype_tend_spart,
                                     cj_nodeID);
           }
@@ -3698,13 +4233,16 @@ int cell_unskip_hydro_tasks(struct cell *c, struct scheduler *s) {
     if (c->kick2 != NULL) scheduler_activate(s, c->kick2);
     if (c->timestep != NULL) scheduler_activate(s, c->timestep);
     if (c->hydro.end_force != NULL) scheduler_activate(s, c->hydro.end_force);
-    if (c->hydro.cooling != NULL) scheduler_activate(s, c->hydro.cooling);
+    if (c->hydro.cooling_in != NULL) cell_activate_cooling(c, s, e);
 #ifdef WITH_LOGGER
     if (c->logger != NULL) scheduler_activate(s, c->logger);
 #endif
 
     if (c->top->hydro.star_formation != NULL) {
       cell_activate_star_formation_tasks(c->top, s, with_feedback);
+    }
+    if (c->top->hydro.sink_formation != NULL) {
+      cell_activate_sink_formation_tasks(c->top, s);
     }
   }
 
@@ -4399,6 +4937,92 @@ int cell_unskip_black_holes_tasks(struct cell *c, struct scheduler *s) {
 }
 
 /**
+ * @brief Un-skips all the sinks tasks associated with a given cell and
+ * checks if the space needs to be rebuilt.
+ *
+ * @param c the #cell.
+ * @param s the #scheduler.
+ *
+ * @return 1 If the space needs rebuilding. 0 otherwise.
+ */
+int cell_unskip_sinks_tasks(struct cell *c, struct scheduler *s) {
+
+  struct engine *e = s->space->e;
+  const int nodeID = e->nodeID;
+  int rebuild = 0;
+
+  if (c->sinks.drift != NULL)
+    if (cell_is_active_sinks(c, e) || cell_is_active_hydro(c, e)) {
+      cell_activate_drift_sink(c, s);
+    }
+
+  /* Unskip all the other task types. */
+  if (c->nodeID == nodeID)
+    if (cell_is_active_sinks(c, e) || cell_is_active_hydro(c, e)) {
+      if (c->sinks.sink_in != NULL) scheduler_activate(s, c->sinks.sink_in);
+      if (c->sinks.sink_out != NULL) scheduler_activate(s, c->sinks.sink_out);
+      if (c->kick1 != NULL) scheduler_activate(s, c->kick1);
+      if (c->kick2 != NULL) scheduler_activate(s, c->kick2);
+      if (c->timestep != NULL) scheduler_activate(s, c->timestep);
+#ifdef WITH_LOGGER
+      if (c->logger != NULL) scheduler_activate(s, c->logger);
+#endif
+    }
+
+  return rebuild;
+}
+
+/**
+ * @brief Un-skips all the RT tasks associated with a given cell and checks
+ * if the space needs to be rebuilt.
+ *
+ * @param c the #cell.
+ * @param s the #scheduler.
+ *
+ * @return 1 If the space needs rebuilding. 0 otherwise.
+ */
+int cell_unskip_rt_tasks(struct cell *c, struct scheduler *s) {
+  struct engine *e = s->space->e;
+  const int nodeID = e->nodeID;
+
+  int rebuild = 0;
+  int counter = 0;
+
+  for (struct link *l = c->hydro.rt_inject; l != NULL; l = l->next) {
+    counter++;
+    struct task *t = l->t;
+    struct cell *ci = t->ci;
+    struct cell *cj = t->cj;
+    const int ci_active = cell_is_active_hydro(ci, e);
+    const int cj_active = (cj != NULL) ? cell_is_active_hydro(cj, e) : 0;
+#ifdef WITH_MPI
+    const int ci_nodeID = ci->nodeID;
+    const int cj_nodeID = (cj != NULL) ? cj->nodeID : -1;
+#else
+    const int ci_nodeID = nodeID;
+    const int cj_nodeID = nodeID;
+#endif
+
+    /* Only activate tasks that involve a local active cell. */
+    if ((ci_active && ci_nodeID == nodeID) ||
+        (cj_active && cj_nodeID == nodeID)) {
+
+      scheduler_activate(s, t);
+
+      if (t->type == task_type_sub_self) {
+        cell_activate_subcell_rt_tasks(ci, NULL, s);
+      }
+
+      else if (t->type == task_type_sub_pair) {
+        cell_activate_subcell_rt_tasks(ci, cj, s);
+      }
+    }
+  }
+
+  return rebuild;
+}
+
+/**
  * @brief Set the super-cell pointers for all cells in a hierarchy.
  *
  * @param c The top-level #cell to play with.
@@ -4626,6 +5250,11 @@ void cell_drift_part(struct cell *c, const struct engine *e, int force) {
       /* Ignore inhibited particles */
       if (part_is_inhibited(p, e)) continue;
 
+      /* Apply the effects of feedback on this particle
+       * (Note: Only used in schemes that have a delayed feedback mechanism
+       * otherwise just an empty function) */
+      feedback_update_part(p, xp, e);
+
       /* Drift... */
       drift_part(p, xp, dt_drift, dt_kick_hydro, dt_kick_grav, dt_therm,
                  ti_old_part, ti_current, e->cosmology, e->hydro_properties,
@@ -4662,6 +5291,15 @@ void cell_drift_part(struct cell *c, const struct engine *e, int force) {
           /* Re-check that the particle has not been removed
            * by another thread before we do the deed. */
           if (!part_is_inhibited(p, e)) {
+
+#ifdef WITH_LOGGER
+            if (e->policy & engine_policy_logger) {
+              /* Log the particle one last time. */
+              logger_log_part(
+                  e->logger, p, xp, e, /* log_all */ 1,
+                  logger_pack_flags_and_data(logger_flag_delete, 0));
+            }
+#endif
 
             /* One last action before death? */
             hydro_remove_part(p, xp);
@@ -4707,6 +5345,7 @@ void cell_drift_part(struct cell *c, const struct engine *e, int force) {
         tracers_after_init(p, xp, e->internal_units, e->physical_constants,
                            with_cosmology, e->cosmology, e->hydro_properties,
                            e->cooling_func, e->time);
+        rt_init_part(p);
       }
     }
 
@@ -4803,7 +5442,7 @@ void cell_drift_gpart(struct cell *c, const struct engine *e, int force) {
       if (gpart_is_inhibited(gp, e)) continue;
 
       /* Drift... */
-      drift_gpart(gp, dt_drift, ti_old_gpart, ti_current, grav_props);
+      drift_gpart(gp, dt_drift, ti_old_gpart, ti_current, grav_props, e);
 
 #ifdef SWIFT_DEBUG_CHECKS
       /* Make sure the particle does not drift by more than a box length. */
@@ -4833,6 +5472,17 @@ void cell_drift_gpart(struct cell *c, const struct engine *e, int force) {
 
             /* Remove the particle entirely */
             if (gp->type == swift_type_dark_matter) {
+
+#ifdef WITH_LOGGER
+              if (e->policy & engine_policy_logger) {
+                /* Log the particle one last time. */
+                logger_log_gpart(
+                    e->logger, gp, e, /* log_all */ 1,
+                    logger_pack_flags_and_data(logger_flag_delete, 0));
+              }
+#endif
+
+              /* Remove the particle */
               cell_remove_gpart(e, c, gp);
             }
           }
@@ -4974,6 +5624,15 @@ void cell_drift_spart(struct cell *c, const struct engine *e, int force) {
            * by another thread before we do the deed. */
           if (!spart_is_inhibited(sp, e)) {
 
+#ifdef WITH_LOGGER
+            if (e->policy & engine_policy_logger) {
+              /* Log the particle one last time. */
+              logger_log_spart(
+                  e->logger, sp, e, /* log_all */ 1,
+                  logger_pack_flags_and_data(logger_flag_delete, 0));
+            }
+#endif
+
             /* Remove the particle entirely */
             cell_remove_spart(e, c, sp);
           }
@@ -5008,6 +5667,7 @@ void cell_drift_spart(struct cell *c, const struct engine *e, int force) {
       if (spart_is_active(sp, e)) {
         stars_init_spart(sp);
         feedback_init_spart(sp);
+        rt_init_spart(sp);
       }
     }
 
@@ -5145,6 +5805,12 @@ void cell_drift_bpart(struct cell *c, const struct engine *e, int force) {
            * by another thread before we do the deed. */
           if (!bpart_is_inhibited(bp, e)) {
 
+#ifdef WITH_LOGGER
+            if (e->policy & engine_policy_logger) {
+              error("Logging of black hole particles is not yet implemented.");
+            }
+#endif
+
             /* Remove the particle entirely */
             cell_remove_bpart(e, c, bp);
           }
@@ -5191,6 +5857,171 @@ void cell_drift_bpart(struct cell *c, const struct engine *e, int force) {
 
   /* Clear the drift flags. */
   cell_clear_flag(c, cell_flag_do_bh_drift | cell_flag_do_bh_sub_drift);
+}
+
+/**
+ * @brief Recursively drifts the #sink's in a cell hierarchy.
+ *
+ * @param c The #cell.
+ * @param e The #engine (to get ti_current).
+ * @param force Drift the particles irrespective of the #cell flags.
+ */
+void cell_drift_sink(struct cell *c, const struct engine *e, int force) {
+
+  const int periodic = e->s->periodic;
+  const double dim[3] = {e->s->dim[0], e->s->dim[1], e->s->dim[2]};
+  const int with_cosmology = (e->policy & engine_policy_cosmology);
+  const integertime_t ti_old_sink = c->sinks.ti_old_part;
+  const integertime_t ti_current = e->ti_current;
+  struct sink *const sinks = c->sinks.parts;
+
+  float dx_max = 0.f, dx2_max = 0.f;
+  float cell_r_max = 0.f;
+
+  /* Drift irrespective of cell flags? */
+  force = (force || cell_get_flag(c, cell_flag_do_sink_drift));
+
+#ifdef SWIFT_DEBUG_CHECKS
+  /* Check that we only drift local cells. */
+  if (c->nodeID != engine_rank) error("Drifting a foreign cell is nope.");
+
+  /* Check that we are actually going to move forward. */
+  if (ti_current < ti_old_sink) error("Attempt to drift to the past");
+#endif
+
+  /* Early abort? */
+  if (c->sinks.count == 0) {
+
+    /* Clear the drift flags. */
+    cell_clear_flag(c, cell_flag_do_sink_drift | cell_flag_do_sink_sub_drift);
+
+    /* Update the time of the last drift */
+    c->sinks.ti_old_part = ti_current;
+
+    return;
+  }
+
+  /* Ok, we have some particles somewhere in the hierarchy to drift */
+
+  /* Are we not in a leaf ? */
+  if (c->split && (force || cell_get_flag(c, cell_flag_do_sink_sub_drift))) {
+
+    /* Loop over the progeny and collect their data. */
+    for (int k = 0; k < 8; k++) {
+      if (c->progeny[k] != NULL) {
+        struct cell *cp = c->progeny[k];
+
+        /* Recurse */
+        cell_drift_sink(cp, e, force);
+
+        /* Update */
+        dx_max = max(dx_max, cp->sinks.dx_max_part);
+        cell_r_max = max(cell_r_max, cp->sinks.r_cut_max);
+      }
+    }
+
+    /* Store the values */
+    c->sinks.r_cut_max = cell_r_max;
+    c->sinks.dx_max_part = dx_max;
+
+    /* Update the time of the last drift */
+    c->sinks.ti_old_part = ti_current;
+
+  } else if (!c->split && force && ti_current > ti_old_sink) {
+
+    /* Drift from the last time the cell was drifted to the current time */
+    double dt_drift;
+    if (with_cosmology) {
+      dt_drift =
+          cosmology_get_drift_factor(e->cosmology, ti_old_sink, ti_current);
+    } else {
+      dt_drift = (ti_current - ti_old_sink) * e->time_base;
+    }
+
+    /* Loop over all the star particles in the cell */
+    const size_t nr_sinks = c->sinks.count;
+    for (size_t k = 0; k < nr_sinks; k++) {
+
+      /* Get a handle on the sink. */
+      struct sink *const sink = &sinks[k];
+
+      /* Ignore inhibited particles */
+      if (sink_is_inhibited(sink, e)) continue;
+
+      /* Drift... */
+      drift_sink(sink, dt_drift, ti_old_sink, ti_current);
+
+#ifdef SWIFT_DEBUG_CHECKS
+      /* Make sure the particle does not drift by more than a box length. */
+      if (fabs(sink->v[0] * dt_drift) > e->s->dim[0] ||
+          fabs(sink->v[1] * dt_drift) > e->s->dim[1] ||
+          fabs(sink->v[2] * dt_drift) > e->s->dim[2]) {
+        error("Particle drifts by more than a box length!");
+      }
+#endif
+
+      /* In non-periodic BC runs, remove particles that crossed the border */
+      if (!periodic) {
+
+        /* Did the particle leave the box?  */
+        if ((sink->x[0] > dim[0]) || (sink->x[0] < 0.) ||  // x
+            (sink->x[1] > dim[1]) || (sink->x[1] < 0.) ||  // y
+            (sink->x[2] > dim[2]) || (sink->x[2] < 0.)) {  // z
+
+          lock_lock(&e->s->lock);
+
+          /* Re-check that the particle has not been removed
+           * by another thread before we do the deed. */
+          if (!sink_is_inhibited(sink, e)) {
+
+#ifdef WITH_LOGGER
+            if (e->policy & engine_policy_logger) {
+              error("Logging of sink particles is not yet implemented.");
+            }
+#endif
+
+            /* Remove the particle entirely */
+            // cell_remove_sink(e, c, bp);
+            error("TODO: loic implement cell_remove_sink");
+          }
+
+          if (lock_unlock(&e->s->lock) != 0)
+            error("Failed to unlock the space!");
+
+          continue;
+        }
+      }
+
+      /* sp->h does not need to be limited. */
+
+      /* Compute (square of) motion since last cell construction */
+      const float dx2 = sink->x_diff[0] * sink->x_diff[0] +
+                        sink->x_diff[1] * sink->x_diff[1] +
+                        sink->x_diff[2] * sink->x_diff[2];
+      dx2_max = max(dx2_max, dx2);
+
+      /* Maximal smoothing length */
+      cell_r_max = max(cell_r_max, sink->r_cut);
+
+      /* Get ready for a density calculation */
+      if (sink_is_active(sink, e)) {
+        sink_init_sink(sink);
+      }
+    }
+
+    /* Now, get the maximal particle motion from its square */
+    dx_max = sqrtf(dx2_max);
+
+    /* Store the values */
+    c->sinks.r_cut_max = cell_r_max;
+    c->sinks.dx_max_part = dx_max;
+
+    /* Update the time of the last drift */
+    c->sinks.ti_old_part = ti_current;
+  }
+
+  /* Clear the drift flags. */
+  cell_clear_flag(c, cell_flag_do_sink_drift | cell_flag_do_sink_sub_drift);
 }
 
 /**
@@ -5341,7 +6172,7 @@ void cell_check_timesteps(const struct cell *c, const integertime_t ti_current,
 
   if (c->hydro.ti_end_min == 0 && c->grav.ti_end_min == 0 &&
       c->stars.ti_end_min == 0 && c->black_holes.ti_end_min == 0 &&
-      c->nr_tasks > 0)
+      c->sinks.ti_end_min == 0 && c->nr_tasks > 0)
     error("Cell without assigned time-step");
 
   if (c->split) {
@@ -5538,6 +6369,40 @@ void cell_recursively_shift_sparts(struct cell *c,
 }
 
 /**
+ * @brief Recursively update the pointer and counter for #sink after the
+ * addition of a new particle.
+ *
+ * @param c The cell we are working on.
+ * @param progeny_list The list of the progeny index at each level for the
+ * leaf-cell where the particle was added.
+ * @param main_branch Are we in a cell directly above the leaf where the new
+ * particle was added?
+ */
+void cell_recursively_shift_sinks(struct cell *c,
+                                  const int progeny_list[space_cell_maxdepth],
+                                  const int main_branch) {
+  if (c->split) {
+    /* No need to recurse in progenies located before the insestion point */
+    const int first_progeny = main_branch ? progeny_list[(int)c->depth] : 0;
+
+    for (int k = first_progeny; k < 8; ++k) {
+      if (c->progeny[k] != NULL)
+        cell_recursively_shift_sinks(c->progeny[k], progeny_list,
+                                     main_branch && (k == first_progeny));
+    }
+  }
+
+  /* When directly above the leaf with the new particle: increase the particle
+   * count */
+  /* When after the leaf with the new particle: shift by one position */
+  if (main_branch) {
+    c->sinks.count++;
+  } else {
+    c->sinks.parts++;
+  }
+}
+
+/**
  * @brief Recursively update the pointer and counter for #gpart after the
  * addition of a new particle.
  *
@@ -5608,8 +6473,8 @@ struct spart *cell_add_spart(struct engine *e, struct cell *const c) {
       }
     }
 
-      /* Check that the cell was indeed drifted to this point to avoid future
-       * issues */
+    /* Check that the cell was indeed drifted to this point to avoid future
+     * issues */
 #ifdef SWIFT_DEBUG_CHECKS
     if (top->hydro.super != NULL && top->stars.count > 0 &&
         top->stars.ti_old_part != e->ti_current) {
@@ -5705,6 +6570,139 @@ struct spart *cell_add_spart(struct engine *e, struct cell *const c) {
 }
 
 /**
+ * @brief "Add" a #sink in a given #cell.
+ *
+ * This function will add a #sink at the start of the current cell's array by
+ * shifting all the #sink in the top-level cell by one position. All the
+ * pointers and cell counts are updated accordingly.
+ *
+ * @param e The #engine.
+ * @param c The leaf-cell in which to add the #sink.
+ *
+ * @return A pointer to the newly added #sink. The sink has a been zeroed
+ * and given a position within the cell as well as set to the minimal active
+ * time bin.
+ */
+struct sink *cell_add_sink(struct engine *e, struct cell *const c) {
+  /* Perform some basic consitency checks */
+  if (c->nodeID != engine_rank) error("Adding sink on a foreign node");
+  if (c->grav.ti_old_part != e->ti_current) error("Undrifted cell!");
+  if (c->split) error("Addition of sink performed above the leaf level");
+
+  /* Progeny number at each level */
+  int progeny[space_cell_maxdepth];
+#ifdef SWIFT_DEBUG_CHECKS
+  for (int i = 0; i < space_cell_maxdepth; ++i) progeny[i] = -1;
+#endif
+
+  /* Get the top-level this leaf cell is in and compute the progeny indices at
+     each level */
+  struct cell *top = c;
+  while (top->parent != NULL) {
+    /* What is the progeny index of the cell? */
+    for (int k = 0; k < 8; ++k) {
+      if (top->parent->progeny[k] == top) {
+        progeny[(int)top->parent->depth] = k;
+      }
+    }
+
+    /* Check that the cell was indeed drifted to this point to avoid future
+     * issues */
+#ifdef SWIFT_DEBUG_CHECKS
+    if (top->hydro.super != NULL && top->sinks.count > 0 &&
+        top->sinks.ti_old_part != e->ti_current) {
+      error("Cell had not been correctly drifted before sink formation");
+    }
+#endif
+
+    /* Climb up */
+    top = top->parent;
+  }
+
+  /* Lock the top-level cell as we are going to operate on it */
+  lock_lock(&top->sinks.sink_formation_lock);
+
+  /* Are there any extra particles left? */
+  if (top->sinks.count == top->sinks.count_total) {
+
+    error("We ran out of free sink particles!");
+
+    /* Release the local lock before exiting. */
+    if (lock_unlock(&top->sinks.sink_formation_lock) != 0)
+      error("Failed to unlock the top-level cell.");
+
+    atomic_inc(&e->forcerebuild);
+    return NULL;
+  }
+
+  /* Number of particles to shift in order to get a free space. */
+  const size_t n_copy = &top->sinks.parts[top->sinks.count] - c->sinks.parts;
+
+#ifdef SWIFT_DEBUG_CHECKS
+  if (c->sinks.parts + n_copy > top->sinks.parts + top->sinks.count)
+    error("Copying beyond the allowed range");
+#endif
+
+  if (n_copy > 0) {
+    // MATTHIEU: This can be improved. We don't need to copy everything, just
+    // need to swap a few particles.
+    memmove(&c->sinks.parts[1], &c->sinks.parts[0],
+            n_copy * sizeof(struct sink));
+
+    /* Update the sink->gpart links (shift by 1) */
+    for (size_t i = 0; i < n_copy; ++i) {
+#ifdef SWIFT_DEBUG_CHECKS
+      if (c->sinks.parts[i + 1].gpart == NULL) {
+        error("Incorrectly linked sink!");
+      }
+#endif
+      c->sinks.parts[i + 1].gpart->id_or_neg_offset--;
+    }
+  }
+
+  /* Recursively shift all the sinks to get a free spot at the start of the
+   * current cell*/
+  cell_recursively_shift_sinks(top, progeny, /* main_branch=*/1);
+
+  /* Make sure the gravity will be recomputed for this particle in the next
+   * step
+   */
+  struct cell *top2 = c;
+  while (top2->parent != NULL) {
+    top2->sinks.ti_old_part = e->ti_current;
+    top2 = top2->parent;
+  }
+  top2->sinks.ti_old_part = e->ti_current;
+
+  /* Release the lock */
+  if (lock_unlock(&top->sinks.sink_formation_lock) != 0)
+    error("Failed to unlock the top-level cell.");
+
+  /* We now have an empty spart as the first particle in that cell */
+  struct sink *sp = &c->sinks.parts[0];
+  bzero(sp, sizeof(struct sink));
+
+  /* Give it a decent position */
+  sp->x[0] = c->loc[0] + 0.5 * c->width[0];
+  sp->x[1] = c->loc[1] + 0.5 * c->width[1];
+  sp->x[2] = c->loc[2] + 0.5 * c->width[2];
+
+  /* Set it to the current time-bin */
+  sp->time_bin = e->min_active_bin;
+
+#ifdef SWIFT_DEBUG_CHECKS
+  /* Specify it was drifted to this point */
+  sp->ti_drift = e->ti_current;
+#endif
+
+  /* Register that we used one of the free slots. */
+  const size_t one = 1;
+  atomic_sub(&e->s->nr_extra_sinks, one);
+
+  return sp;
+}
+
+/**
  * @brief "Add" a #gpart in a given #cell.
  *
  * This function will add a #gpart at the start of the current cell's array by
@@ -5743,8 +6741,8 @@ struct gpart *cell_add_gpart(struct engine *e, struct cell *c) {
       }
     }
 
-      /* Check that the cell was indeed drifted to this point to avoid future
-       * issues */
+    /* Check that the cell was indeed drifted to this point to avoid future
+     * issues */
 #ifdef SWIFT_DEBUG_CHECKS
     if (top->grav.super != NULL && top->grav.count > 0 &&
         top->grav.ti_old_part != e->ti_current) {
@@ -6245,6 +7243,79 @@ struct spart *cell_spawn_new_spart_from_part(struct engine *e, struct cell *c,
 }
 
 /**
+ * @brief "Remove" a #part from a #cell and replace it with a #sink
+ * connected to the same #gpart.
+ *
+ * Note that the #part is not destroyed. The pointer is still valid
+ * after this call and the properties of the #part are not altered
+ * apart from the time-bin and #gpart pointer.
+ * The particle is inhibited and will officially be removed at the next
+ * rebuild.
+ *
+ * @param e The #engine.
+ * @param c The #cell from which to remove the #part.
+ * @param p The #part to remove (must be inside c).
+ * @param xp The extended data of the #part.
+ *
+ * @return A fresh #sink with the same ID, position, velocity and
+ * time-bin as the original #part.
+ */
+struct sink *cell_convert_part_to_sink(struct engine *e, struct cell *c,
+                                       struct part *p, struct xpart *xp) {
+  /* Quick cross-check */
+  if (c->nodeID != e->nodeID)
+    error("Can't remove a particle in a foreign cell.");
+
+  if (p->gpart == NULL)
+    error("Trying to convert part without gpart friend to sink!");
+
+  /* Create a fresh (empty) sink */
+  struct sink *sp = cell_add_sink(e, c);
+
+  /* Did we run out of free sink slots? */
+  if (sp == NULL) return NULL;
+
+  /* Copy over the distance since rebuild */
+  sp->x_diff[0] = xp->x_diff[0];
+  sp->x_diff[1] = xp->x_diff[1];
+  sp->x_diff[2] = xp->x_diff[2];
+
+  /* Destroy the gas particle and get it's gpart friend */
+  struct gpart *gp = cell_convert_part_to_gpart(e, c, p, xp);
+
+  /* Assign the ID back */
+  sp->id = gp->id_or_neg_offset;
+  gp->type = swift_type_sink;
+
+  /* Re-link things */
+  sp->gpart = gp;
+  gp->id_or_neg_offset = -(sp - e->s->sinks);
+
+  /* Synchronize clocks */
+  gp->time_bin = sp->time_bin;
+
+  /* Synchronize masses, positions and velocities */
+  sp->mass = gp->mass;
+  sp->x[0] = gp->x[0];
+  sp->x[1] = gp->x[1];
+  sp->x[2] = gp->x[2];
+  sp->v[0] = gp->v_full[0];
+  sp->v[1] = gp->v_full[1];
+  sp->v[2] = gp->v_full[2];
+
+#ifdef SWIFT_DEBUG_CHECKS
+  sp->ti_kick = gp->ti_kick;
+  gp->ti_drift = sp->ti_drift;
+#endif
+
+  /* Set a smoothing length */
+  sp->r_cut = e->sink_properties->cut_off_radius;
+
+  /* Here comes the Sink! */
+  return sp;
+}
+
+/**
  * @brief Re-arrange the #part in a top-level cell such that all the extra
  * ones for on-the-fly creation are located at the end of the array.
  *
@@ -6346,6 +7417,62 @@ void cell_reorder_extra_sparts(struct cell *c, const ptrdiff_t sparts_offset) {
       error("Extra particle before the end of the regular array");
     }
     if (sparts[i].time_bin != time_bin_not_created && i >= c->stars.count) {
+      error("Regular particle after the end of the regular array");
+    }
+  }
+#endif
+}
+
+/**
+ * @brief Re-arrange the #sink in a top-level cell such that all the extra
+ * ones for on-the-fly creation are located at the end of the array.
+ *
+ * @param c The #cell to sort.
+ * @param sinks_offset The offset between the first #sink in the array and
+ * the first #sink in the global array in the space structure (for
+ * re-linking).
+ */
+void cell_reorder_extra_sinks(struct cell *c, const ptrdiff_t sinks_offset) {
+  struct sink *sinks = c->sinks.parts;
+  const int count_real = c->sinks.count;
+
+  if (c->depth != 0 || c->nodeID != engine_rank)
+    error("This function should only be called on local top-level cells!");
+
+  int first_not_extra = count_real;
+
+  /* Find extra particles */
+  for (int i = 0; i < count_real; ++i) {
+    if (sinks[i].time_bin == time_bin_not_created) {
+      /* Find the first non-extra particle after the end of the
+         real particles */
+      while (sinks[first_not_extra].time_bin == time_bin_not_created) {
+        ++first_not_extra;
+      }
+
+#ifdef SWIFT_DEBUG_CHECKS
+      if (first_not_extra >= count_real + space_extra_sinks)
+        error("Looking for extra particles beyond this cell's range!");
+#endif
+
+      /* Swap everything, including g-part pointer */
+      memswap(&sinks[i], &sinks[first_not_extra], sizeof(struct sink));
+      if (sinks[i].gpart)
+        sinks[i].gpart->id_or_neg_offset = -(i + sinks_offset);
+      sinks[first_not_extra].gpart = NULL;
+#ifdef SWIFT_DEBUG_CHECKS
+      if (sinks[first_not_extra].time_bin != time_bin_not_created)
+        error("Incorrect swap occured!");
+#endif
+    }
+  }
+
+#ifdef SWIFT_DEBUG_CHECKS
+  for (int i = 0; i < c->sinks.count_total; ++i) {
+    if (sinks[i].time_bin == time_bin_not_created && i < c->sinks.count) {
+      error("Extra particle before the end of the regular array");
+    }
+    if (sinks[i].time_bin != time_bin_not_created && i >= c->sinks.count) {
       error("Regular particle after the end of the regular array");
     }
   }

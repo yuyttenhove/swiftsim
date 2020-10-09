@@ -66,7 +66,8 @@ void feedback_update_part(struct part* restrict p, struct xpart* restrict xp,
   p->rho *= new_mass / old_mass;
 
   /* Update internal energy */
-  const float u = hydro_get_physical_internal_energy(p, xp, cosmo);
+  const float u =
+      hydro_get_physical_internal_energy(p, xp, cosmo) * old_mass / new_mass;
   const float u_new = u + xp->feedback_data.delta_u;
 
   hydro_set_physical_internal_energy(p, xp, cosmo, u_new);
@@ -224,7 +225,13 @@ void feedback_evolve_spart(struct spart* restrict sp,
 
 #ifdef SWIFT_DEBUG_CHECKS
   if (sp->birth_time == -1.) error("Evolving a star particle that should not!");
+
+  if (star_age_beg_step < -1e-6) {
+    error("Negative age for a star");
+  }
 #endif
+  const double star_age_beg_step_safe =
+      star_age_beg_step < 0 ? 0 : star_age_beg_step;
 
   /* Reset the feedback */
   feedback_reset_feedback(sp, feedback_props);
@@ -235,9 +242,18 @@ void feedback_evolve_spart(struct spart* restrict sp,
 
   sp->feedback_data.enrichment_weight *= hi_inv_dim;
 
+  /* Pick the correct table. (if only one table, threshold is < 0) */
+  const float metal =
+      chemistry_get_star_total_metal_mass_fraction_for_feedback(sp);
+  const float threshold = feedback_props->metallicity_max_first_stars;
+
+  const struct stellar_model* model =
+      metal < threshold ? &feedback_props->stellar_model_first_stars
+                        : &feedback_props->stellar_model;
+
   /* Compute the stellar evolution */
-  stellar_evolution_evolve_spart(sp, &feedback_props->stellar_model, cosmo, us,
-                                 phys_const, ti_begin, star_age_beg_step, dt);
+  stellar_evolution_evolve_spart(sp, model, cosmo, us, phys_const, ti_begin,
+                                 star_age_beg_step_safe, dt);
 
   /* Transform the number of SN to the energy */
   sp->feedback_data.energy_ejected =
@@ -256,6 +272,9 @@ void feedback_struct_dump(const struct feedback_props* feedback, FILE* stream) {
                        stream, "feedback", "feedback function");
 
   stellar_evolution_dump(&feedback->stellar_model, stream);
+  if (feedback->metallicity_max_first_stars != -1) {
+    stellar_evolution_dump(&feedback->stellar_model_first_stars, stream);
+  }
 }
 
 /**
@@ -271,6 +290,10 @@ void feedback_struct_restore(struct feedback_props* feedback, FILE* stream) {
                       NULL, "feedback function");
 
   stellar_evolution_restore(&feedback->stellar_model, stream);
+
+  if (feedback->metallicity_max_first_stars != -1) {
+    stellar_evolution_restore(&feedback->stellar_model_first_stars, stream);
+  }
 }
 
 /**
@@ -281,4 +304,7 @@ void feedback_struct_restore(struct feedback_props* feedback, FILE* stream) {
 void feedback_clean(struct feedback_props* feedback) {
 
   stellar_evolution_clean(&feedback->stellar_model);
+  if (feedback->metallicity_max_first_stars != -1) {
+    stellar_evolution_clean(&feedback->stellar_model_first_stars);
+  }
 }

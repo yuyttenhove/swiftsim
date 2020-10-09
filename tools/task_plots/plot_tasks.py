@@ -162,6 +162,7 @@ TASKTYPES = [
     "extra_ghost",
     "drift_part",
     "drift_spart",
+    "drift_sink",
     "drift_bpart",
     "drift_gpart",
     "drift_gpart_out",
@@ -180,6 +181,8 @@ TASKTYPES = [
     "grav_mesh",
     "grav_end_force",
     "cooling",
+    "cooling_in",
+    "cooling_out",
     "star_formation",
     "star_formation_in",
     "star_formation_out",
@@ -199,6 +202,8 @@ TASKTYPES = [
     "bh_swallow_ghost3",
     "fof_self",
     "fof_pair",
+    "rt_in",
+    "rt_out",
     "count",
 ]
 
@@ -213,6 +218,7 @@ SUBTYPES = [
     "tend_part",
     "tend_gpart",
     "tend_spart",
+    "tend_sink",
     "tend_bpart",
     "xv",
     "rho",
@@ -232,6 +238,8 @@ SUBTYPES = [
     "do_gas_swallow",
     "do_bh_swallow",
     "bh_feedback",
+    "sink",
+    "rt_inject",
     "count",
 ]
 
@@ -410,6 +418,9 @@ print(("# Number of threads:", nthread))
 sdata = data[data[:, ticcol] != 0]
 sdata = sdata[sdata[:, toccol] != 0]
 
+if delta_t < 0.:
+    print("The time-range must be >=0!")
+    sys.exit(1)
 # Each rank can have different clocks (compute node), but we want to use the
 # same delta times range for comparisons, so we suck it up and take the hit of
 # precalculating this, unless the user knows better.
@@ -579,7 +590,7 @@ for rank in ranks:
     ax.yaxis.set_major_locator(loc)
     ax.grid(True, which="major", axis="y", linestyle="-")
 
-    pl.show()
+    # pl.show()
     if mpimode:
         outpng = outbase + str(rank) + ".png"
     else:

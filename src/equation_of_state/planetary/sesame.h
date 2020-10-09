@@ -23,14 +23,13 @@
 /**
  * @file equation_of_state/planetary/sesame.h
  *
- * Contains the SESAME EOS functions for
+ * Contains the SESAME and ANEOS-in-SESAME-style EOS functions for
  * equation_of_state/planetary/equation_of_state.h
- *
- *              WORK IN PROGRESS!
  *
  */
 
 /* Some standard headers. */
+#include <float.h>
 #include <math.h>
 
 /* Local headers. */
@@ -49,7 +48,7 @@ struct SESAME_params {
   float *table_P_rho_T;
   float *table_c_rho_T;
   float *table_s_rho_T;
-  int num_rho, num_T;
+  int date, num_rho, num_T;
   float P_tiny, c_tiny;
   enum eos_planetary_material_id mat_id;
 };
@@ -59,21 +58,43 @@ INLINE static void set_SESAME_iron(struct SESAME_params *mat,
                                    enum eos_planetary_material_id mat_id) {
   // SESAME 2140
   mat->mat_id = mat_id;
+  mat->date = 20201003;
 }
 INLINE static void set_SESAME_basalt(struct SESAME_params *mat,
                                      enum eos_planetary_material_id mat_id) {
   // SESAME 7530
   mat->mat_id = mat_id;
+  mat->date = 20201003;
 }
 INLINE static void set_SESAME_water(struct SESAME_params *mat,
                                     enum eos_planetary_material_id mat_id) {
   // SESAME 7154
   mat->mat_id = mat_id;
+  mat->date = 20201003;
 }
 INLINE static void set_SS08_water(struct SESAME_params *mat,
                                   enum eos_planetary_material_id mat_id) {
   // Senft & Stewart (2008)
   mat->mat_id = mat_id;
+  mat->date = 20201003;
+}
+INLINE static void set_ANEOS_forsterite(struct SESAME_params *mat,
+                                        enum eos_planetary_material_id mat_id) {
+  // Stewart et al. (2019)
+  mat->mat_id = mat_id;
+  mat->date = 20201003;
+}
+INLINE static void set_ANEOS_iron(struct SESAME_params *mat,
+                                  enum eos_planetary_material_id mat_id) {
+  // Stewart (2020)
+  mat->mat_id = mat_id;
+  mat->date = 20201003;
+}
+INLINE static void set_ANEOS_Fe85Si15(struct SESAME_params *mat,
+                                      enum eos_planetary_material_id mat_id) {
+  // Stewart (2020)
+  mat->mat_id = mat_id;
+  mat->date = 20201003;
 }
 
 // Read the tables from file
@@ -86,14 +107,23 @@ INLINE static void load_table_SESAME(struct SESAME_params *mat,
 
   // Ignore header lines
   char buffer[100];
-  for (int i = 0; i < 5; i++) {
+  for (int i = 0; i < 6; i++) {
     if (fgets(buffer, 100, f) == NULL)
       error("Failed to read the SESAME EoS file header %s", table_file);
   }
   float ignore;
 
   // Table properties
-  int c = fscanf(f, "%d %d", &mat->num_rho, &mat->num_T);
+  int date;
+  int c = fscanf(f, "%d", &date);
+  if (c != 1) error("Failed to read the SESAME EoS table %s", table_file);
+  if (date != mat->date)
+    error(
+        "EoS file %s date %d does not match expected %d"
+        "\nPlease download the file using "
+        "examples/Planetary/EoSTables/get_eos_tables.sh",
+        table_file, date, mat->date);
+  c = fscanf(f, "%d %d", &mat->num_rho, &mat->num_T);
   if (c != 2) error("Failed to read the SESAME EoS table %s", table_file);
 
   // Ignore the first elements of rho = 0, T = 0
@@ -171,11 +201,9 @@ INLINE static void prepare_table_SESAME(struct SESAME_params *mat) {
     }
   }
 
-  // Tiny pressure and soundspeed, initialise in the middle
-  mat->P_tiny =
-      mat->table_P_rho_T[mat->num_rho / 2 * mat->num_T + mat->num_T / 2];
-  mat->c_tiny =
-      mat->table_c_rho_T[mat->num_rho / 2 * mat->num_T + mat->num_T / 2];
+  // Initialise tiny pressure and soundspeed
+  mat->P_tiny = FLT_MAX;
+  mat->c_tiny = FLT_MAX;
 
   // Enforce that the 1D arrays of u (at each rho) are monotonic
   // This is necessary because, for some high-density u slices at very low T,
@@ -219,7 +247,7 @@ INLINE static void convert_units_SESAME(struct SESAME_params *mat,
   struct unit_system si;
   units_init_si(&si);
 
-  // All table values in SI
+  // All table values in SI, apart from sound speeds in km/s
   // Densities (log)
   for (int i_rho = 0; i_rho < mat->num_rho; i_rho++) {
     mat->table_log_rho[i_rho] +=
@@ -237,7 +265,7 @@ INLINE static void convert_units_SESAME(struct SESAME_params *mat,
           units_cgs_conversion_factor(&si, UNIT_CONV_PRESSURE) /
           units_cgs_conversion_factor(us, UNIT_CONV_PRESSURE);
       mat->table_c_rho_T[i_rho * mat->num_T + i_T] *=
-          units_cgs_conversion_factor(&si, UNIT_CONV_SPEED) /
+          1e3f * units_cgs_conversion_factor(&si, UNIT_CONV_SPEED) /
           units_cgs_conversion_factor(us, UNIT_CONV_SPEED);
       mat->table_s_rho_T[i_rho * mat->num_T + i_T] *=
           units_cgs_conversion_factor(&si, UNIT_CONV_ENERGY_PER_UNIT_MASS) /
@@ -248,7 +276,7 @@ INLINE static void convert_units_SESAME(struct SESAME_params *mat,
   // Tiny pressure and sound speed
   mat->P_tiny *= units_cgs_conversion_factor(&si, UNIT_CONV_PRESSURE) /
                  units_cgs_conversion_factor(us, UNIT_CONV_PRESSURE);
-  mat->c_tiny *= units_cgs_conversion_factor(&si, UNIT_CONV_SPEED) /
+  mat->c_tiny *= 1e3f * units_cgs_conversion_factor(&si, UNIT_CONV_SPEED) /
                  units_cgs_conversion_factor(us, UNIT_CONV_SPEED);
 }
 
@@ -343,10 +371,8 @@ INLINE static float SESAME_pressure_from_internal_energy(
     intp_rho = (log_rho - mat->table_log_rho[idx_rho]) /
                (mat->table_log_rho[idx_rho + 1] - mat->table_log_rho[idx_rho]);
   } else {
-    intp_rho = 1.;
+    intp_rho = 1.f;
   }
-
-  // Check for duplicates in SESAME tables before interpolation
   if (mat->table_log_u_rho_T[idx_rho * mat->num_T + (idx_u_1 + 1)] !=
       mat->table_log_u_rho_T[idx_rho * mat->num_T + idx_u_1]) {
     intp_u_1 =
@@ -354,10 +380,8 @@ INLINE static float SESAME_pressure_from_internal_energy(
         (mat->table_log_u_rho_T[idx_rho * mat->num_T + (idx_u_1 + 1)] -
          mat->table_log_u_rho_T[idx_rho * mat->num_T + idx_u_1]);
   } else {
-    intp_u_1 = 1.;
+    intp_u_1 = 1.f;
   }
-
-  // Check for duplicates in SESAME tables before interpolation
   if (mat->table_log_u_rho_T[(idx_rho + 1) * mat->num_T + (idx_u_2 + 1)] !=
       mat->table_log_u_rho_T[(idx_rho + 1) * mat->num_T + idx_u_2]) {
     intp_u_2 =
@@ -365,7 +389,7 @@ INLINE static float SESAME_pressure_from_internal_energy(
         (mat->table_log_u_rho_T[(idx_rho + 1) * mat->num_T + (idx_u_2 + 1)] -
          mat->table_log_u_rho_T[(idx_rho + 1) * mat->num_T + idx_u_2]);
   } else {
-    intp_u_2 = 1.;
+    intp_u_2 = 1.f;
   }
 
   // Table values
@@ -374,19 +398,24 @@ INLINE static float SESAME_pressure_from_internal_energy(
   P_3 = mat->table_P_rho_T[(idx_rho + 1) * mat->num_T + idx_u_2];
   P_4 = mat->table_P_rho_T[(idx_rho + 1) * mat->num_T + idx_u_2 + 1];
 
+  // If below the minimum u at this rho then just use the lowest table values
+  if ((idx_rho > 0.f) &&
+      ((intp_u_1 < 0.f) || (intp_u_2 < 0.f) || (P_1 > P_2) || (P_3 > P_4))) {
+    intp_u_1 = 0;
+    intp_u_2 = 0;
+  }
+
   // If more than two table values are non-positive then return zero
   int num_non_pos = 0;
   if (P_1 <= 0.f) num_non_pos++;
   if (P_2 <= 0.f) num_non_pos++;
   if (P_3 <= 0.f) num_non_pos++;
   if (P_4 <= 0.f) num_non_pos++;
-  if (num_non_pos > 2) {
-    return 0.f;
-  }
-  // If just one or two are non-positive then replace them with a tiny value
-  else if (num_non_pos > 0) {
+  if (num_non_pos > 0) {
+    // If just one or two are non-positive then replace them with a tiny value
     // Unless already trying to extrapolate in which case return zero
-    if ((intp_rho < 0.f) || (intp_u_1 < 0.f) || (intp_u_2 < 0.f)) {
+    if ((num_non_pos > 2) || (mat->P_tiny == 0.f) || (intp_rho < 0.f) ||
+        (intp_u_1 < 0.f) || (intp_u_2 < 0.f)) {
       return 0.f;
     }
     if (P_1 <= 0.f) P_1 = mat->P_tiny;
@@ -467,10 +496,8 @@ INLINE static float SESAME_soundspeed_from_internal_energy(
     intp_rho = (log_rho - mat->table_log_rho[idx_rho]) /
                (mat->table_log_rho[idx_rho + 1] - mat->table_log_rho[idx_rho]);
   } else {
-    intp_rho = 1.;
+    intp_rho = 1.f;
   }
-
-  // Check for duplicates in SESAME tables before interpolation
   if (mat->table_log_u_rho_T[idx_rho * mat->num_T + (idx_u_1 + 1)] !=
       mat->table_log_u_rho_T[idx_rho * mat->num_T + idx_u_1]) {
     intp_u_1 =
@@ -478,10 +505,8 @@ INLINE static float SESAME_soundspeed_from_internal_energy(
         (mat->table_log_u_rho_T[idx_rho * mat->num_T + (idx_u_1 + 1)] -
          mat->table_log_u_rho_T[idx_rho * mat->num_T + idx_u_1]);
   } else {
-    intp_u_1 = 1.;
+    intp_u_1 = 1.f;
   }
-
-  // Check for duplicates in SESAME tables before interpolation
   if (mat->table_log_u_rho_T[(idx_rho + 1) * mat->num_T + (idx_u_2 + 1)] !=
       mat->table_log_u_rho_T[(idx_rho + 1) * mat->num_T + idx_u_2]) {
     intp_u_2 =
@@ -489,7 +514,7 @@ INLINE static float SESAME_soundspeed_from_internal_energy(
         (mat->table_log_u_rho_T[(idx_rho + 1) * mat->num_T + (idx_u_2 + 1)] -
          mat->table_log_u_rho_T[(idx_rho + 1) * mat->num_T + idx_u_2]);
   } else {
-    intp_u_2 = 1.;
+    intp_u_2 = 1.f;
   }
 
   // Table values
@@ -524,6 +549,13 @@ INLINE static float SESAME_soundspeed_from_internal_energy(
   c_2 = logf(c_2);
   c_3 = logf(c_3);
   c_4 = logf(c_4);
+
+  // If below the minimum u at this rho then just use the lowest table values
+  if ((idx_rho > 0.f) &&
+      ((intp_u_1 < 0.f) || (intp_u_2 < 0.f) || (c_1 > c_2) || (c_3 > c_4))) {
+    intp_u_1 = 0;
+    intp_u_2 = 0;
+  }
 
   c = (1.f - intp_rho) * ((1.f - intp_u_1) * c_1 + intp_u_1 * c_2) +
       intp_rho * ((1.f - intp_u_2) * c_3 + intp_u_2 * c_4);

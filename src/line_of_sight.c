@@ -26,9 +26,6 @@
 #include <mpi.h>
 #endif
 
-#include <stdio.h>
-#include <stdlib.h>
-
 #include "atomic.h"
 #include "chemistry_io.h"
 #include "cooling_io.h"
@@ -39,9 +36,13 @@
 #include "kernel_hydro.h"
 #include "line_of_sight.h"
 #include "periodic.h"
+#include "rt_io.h"
 #include "star_formation_io.h"
 #include "tracers_io.h"
 #include "velociraptor_io.h"
+
+#include <stdio.h>
+#include <stdlib.h>
 
 /**
  * @brief Will the line of sight intersect a given cell?
@@ -186,8 +187,10 @@ void create_sightline(const double Xpos, const double Ypos,
  *
  * Independent sightlines are made for the XY, YZ and XZ planes.
  *
- * @param LOS Structure to store sightlines.
+ * @param Los Structure to store sightlines.
  * @param params Sightline parameters.
+ * @param periodic Is this calculation using periodic BCs.
+ * @param dim The dimension of the volume along the three axis.
  */
 void generate_sightlines(struct line_of_sight *Los,
                          const struct los_props *params, const int periodic,
@@ -253,9 +256,10 @@ void generate_sightlines(struct line_of_sight *Los,
 }
 
 /**
- * @brief Print line_of_sight information.
+ * @brief Print #line_of_sight information.
  *
  * @param Los Structure to print.
+ * @param i The index of the #line_of_sight to dump.
  */
 void print_los_info(const struct line_of_sight *Los, const int i) {
 
@@ -269,7 +273,7 @@ void print_los_info(const struct line_of_sight *Los, const int i) {
 /**
  * @brief Writes dataset for a given part attribute.
  *
- * @param p io_props dataset for this attribute.
+ * @param props dataset for this attribute.
  * @param N number of parts in this line of sight.
  * @param j Line of sight ID.
  * @param e The engine.
@@ -283,6 +287,9 @@ void write_los_hdf5_dataset(const struct io_props props, const size_t N,
   if (h_space < 0)
     error("Error while creating data space for field '%s'.", props.name);
 
+  /* Decide what chunk size to use based on compression */
+  int log2_chunk_size = e->snapshot_compression > 0 ? 12 : 18;
+
   int rank = 0;
   hsize_t shape[2];
   hsize_t chunk_shape[2];
@@ -290,13 +297,13 @@ void write_los_hdf5_dataset(const struct io_props props, const size_t N,
     rank = 2;
     shape[0] = N;
     shape[1] = props.dimension;
-    chunk_shape[0] = 1 << 20; /* Just a guess...*/
+    chunk_shape[0] = 1 << log2_chunk_size;
     chunk_shape[1] = props.dimension;
   } else {
     rank = 1;
     shape[0] = N;
     shape[1] = 0;
-    chunk_shape[0] = 1 << 20; /* Just a guess...*/
+    chunk_shape[0] = 1 << log2_chunk_size;
     chunk_shape[1] = 0;
   }
 
@@ -426,13 +433,15 @@ void write_los_hdf5_datasets(hid_t grp, const int j, const size_t N,
 #else
   const int with_stf = 0;
 #endif
+  const int with_rt = e->policy & engine_policy_rt;
 
   int num_fields = 0;
   struct io_props list[100];
 
   /* Find all the gas output fields */
   hydro_write_particles(parts, xparts, list, &num_fields);
-  num_fields += chemistry_write_particles(parts, list + num_fields);
+  num_fields += chemistry_write_particles(parts, xparts, list + num_fields,
+                                          with_cosmology);
   if (with_cooling || with_temperature) {
     num_fields += cooling_write_particles(parts, xparts, list + num_fields,
                                           e->cooling_func);
@@ -447,6 +456,9 @@ void write_los_hdf5_datasets(hid_t grp, const int j, const size_t N,
       tracers_write_particles(parts, xparts, list + num_fields, with_cosmology);
   num_fields +=
       star_formation_write_particles(parts, xparts, list + num_fields);
+  if (with_rt) {
+    num_fields += rt_write_particles(parts, list + num_fields);
+  }
 
   /* Loop over each output field */
   for (int i = 0; i < num_fields; i++) {
@@ -467,6 +479,7 @@ void write_los_hdf5_datasets(hid_t grp, const int j, const size_t N,
  * @param h_file HDF5 file reference.
  * @param e The engine.
  * @param LOS_params The line of sight params.
+ * @param total_num_parts_in_los The total number of particles in all the LoS.
  */
 void write_hdf5_header(hid_t h_file, const struct engine *e,
                        const struct los_props *LOS_params,
@@ -625,10 +638,18 @@ void los_first_loop_mapper(void *restrict map_data, int count,
  *
  * @param e The engine.
  * @param los The line_of_sight structure.
+ * @param los_cells_top (return) Array indicating whether this cell is
+ * intersected.
+ * @param cells The array of top-level cells.
+ * @param local_cells_with_particles The list of local non-empty top-level
+ * cells.
+ * @param nr_local_cells_with_particles The number of local non-empty top-level
+ * cells.
  */
 void find_intersecting_top_level_cells(
-    const struct engine *e, struct line_of_sight *los, int *los_cells_top,
-    const struct cell *cells, const int *local_cells_with_particles,
+    const struct engine *e, struct line_of_sight *los,
+    int *restrict los_cells_top, const struct cell *cells,
+    const int *restrict local_cells_with_particles,
     const int nr_local_cells_with_particles) {
 
   /* Keep track of how many top level cells we intersect. */
@@ -662,11 +683,11 @@ void find_intersecting_top_level_cells(
  * 1) Construct N random line of sight positions.
  * 2) Loop over each line of sight.
  *  - 2.1) Find which top level cells sightline intersects.
- * -  2.2) Loop over each part in these top level cells to see which intersect
+ *  - 2.2) Loop over each part in these top level cells to see which intersect
  * sightline.
- * -  2.3) Use this count to construct a LOS parts/xparts array.
- * -  2.4) Loop over each part and extract those in sightline to new array.
- * -  2.5) Save sightline parts to HDF5 file.
+ *  - 2.3) Use this count to construct a LOS parts/xparts array.
+ *  - 2.4) Loop over each part and extract those in sightline to new array.
+ *  - 2.5) Save sightline parts to HDF5 file.
  *
  * @param e The engine.
  */
@@ -954,7 +975,7 @@ void do_line_of_sight(struct engine *e) {
       H5Gclose(h_grp);
     }
 
-      /* Free up some memory */
+    /* Free up some memory */
 #ifdef WITH_MPI
     free(counts);
     free(offsets);

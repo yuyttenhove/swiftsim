@@ -51,7 +51,6 @@
 #include "debug.h"
 #include "error.h"
 #include "proxy.h"
-#include "task_order.h"
 #include "timers.h"
 
 /**
@@ -259,6 +258,13 @@ void engine_marktasks_mapper(void *map_data, int num_elements,
         if (ci_active_gravity) {
           scheduler_activate(s, t);
           cell_activate_drift_gpart(t->ci, s);
+        }
+      }
+
+      /* Activate RT injection */
+      else if (t_subtype == task_subtype_rt_inject) {
+        if (ci_active_hydro) {
+          scheduler_activate(s, t);
         }
       }
 
@@ -472,6 +478,24 @@ void engine_marktasks_mapper(void *map_data, int num_elements,
 #endif
       }
 
+      /* RT injection tasks */
+      else if (t_subtype == task_subtype_rt_inject) {
+        /* We only want to activate the task if the cell is active and is
+           going to update some gas on the *local* node */
+        if ((ci_nodeID == nodeID && cj_nodeID == nodeID) &&
+            (ci_active_hydro || cj_active_hydro)) {
+          scheduler_activate(s, t);
+
+        } else if ((ci_nodeID == nodeID && cj_nodeID != nodeID) &&
+                   (cj_active_hydro)) {
+          scheduler_activate(s, t);
+
+        } else if ((ci_nodeID != nodeID && cj_nodeID == nodeID) &&
+                   (ci_active_hydro)) {
+          scheduler_activate(s, t);
+        }
+      }
+
       /* Only interested in density tasks as of here. */
       if (t_subtype == task_subtype_density) {
 
@@ -538,17 +562,12 @@ void engine_marktasks_mapper(void *map_data, int num_elements,
           /* Propagating new star counts? */
           if (with_star_formation && with_feedback) {
             if (ci_active_hydro && ci->hydro.count > 0) {
-              if (task_order_star_formation_before_feedback) {
-                scheduler_activate_recv(s, ci->mpi.recv,
-                                        task_subtype_sf_counts);
-              }
+              scheduler_activate_recv(s, ci->mpi.recv, task_subtype_sf_counts);
               scheduler_activate_recv(s, ci->mpi.recv, task_subtype_tend_spart);
             }
             if (cj_active_hydro && cj->hydro.count > 0) {
-              if (task_order_star_formation_before_feedback) {
-                scheduler_activate_send(s, cj->mpi.send, task_subtype_sf_counts,
-                                        ci_nodeID);
-              }
+              scheduler_activate_send(s, cj->mpi.send, task_subtype_sf_counts,
+                                      ci_nodeID);
               scheduler_activate_send(s, cj->mpi.send, task_subtype_tend_spart,
                                       ci_nodeID);
             }
@@ -615,17 +634,12 @@ void engine_marktasks_mapper(void *map_data, int num_elements,
           /* Propagating new star counts? */
           if (with_star_formation && with_feedback) {
             if (cj_active_hydro && cj->hydro.count > 0) {
-              if (task_order_star_formation_before_feedback) {
-                scheduler_activate_recv(s, cj->mpi.recv,
-                                        task_subtype_sf_counts);
-              }
+              scheduler_activate_recv(s, cj->mpi.recv, task_subtype_sf_counts);
               scheduler_activate_recv(s, cj->mpi.recv, task_subtype_tend_spart);
             }
             if (ci_active_hydro && ci->hydro.count > 0) {
-              if (task_order_star_formation_before_feedback) {
-                scheduler_activate_send(s, ci->mpi.send, task_subtype_sf_counts,
-                                        cj_nodeID);
-              }
+              scheduler_activate_send(s, ci->mpi.send, task_subtype_sf_counts,
+                                      cj_nodeID);
               scheduler_activate_send(s, ci->mpi.send, task_subtype_tend_spart,
                                       cj_nodeID);
             }
@@ -870,6 +884,11 @@ void engine_marktasks_mapper(void *map_data, int num_elements,
                                     cj_nodeID);
         }
 #endif
+      } /* Only interested in RT tasks as of here. */
+      else if (t_subtype == task_subtype_rt_inject) {
+#ifdef WITH_MPI
+        error("RT doesn't work with MPI yet.");
+#endif
       }
     }
 
@@ -889,9 +908,15 @@ void engine_marktasks_mapper(void *map_data, int num_elements,
     else if (t_type == task_type_kick1 || t_type == task_type_kick2) {
 
       if (cell_is_active_hydro(t->ci, e) || cell_is_active_gravity(t->ci, e) ||
-          cell_is_active_stars(t->ci, e) ||
+          cell_is_active_stars(t->ci, e) || cell_is_active_sinks(t->ci, e) ||
           cell_is_active_black_holes(t->ci, e))
         scheduler_activate(s, t);
+    }
+
+    /* Sink drift ? */
+    else if (t_type == task_type_drift_sink) {
+
+      if (cell_is_active_sinks(t->ci, e)) cell_activate_drift_sink(t->ci, s);
     }
 
     /* Hydro ghost tasks ? */
@@ -952,6 +977,12 @@ void engine_marktasks_mapper(void *map_data, int num_elements,
         scheduler_activate(s, t);
     }
 
+    /* Feedback implicit tasks? */
+    else if (t_type == task_type_sink_in || t_type == task_type_sink_out) {
+      if (cell_is_active_sinks(t->ci, e) || cell_is_active_hydro(t->ci, e))
+        scheduler_activate(s, t);
+    }
+
     /* Black hole ghost tasks ? */
     else if (t_type == task_type_bh_density_ghost ||
              t_type == task_type_bh_swallow_ghost1 ||
@@ -970,15 +1001,17 @@ void engine_marktasks_mapper(void *map_data, int num_elements,
       t->ci->hydro.updated = 0;
       t->ci->grav.updated = 0;
       t->ci->stars.updated = 0;
+      t->ci->sinks.updated = 0;
       t->ci->black_holes.updated = 0;
       if (cell_is_active_hydro(t->ci, e) || cell_is_active_gravity(t->ci, e) ||
-          cell_is_active_stars(t->ci, e) ||
+          cell_is_active_stars(t->ci, e) || cell_is_active_sinks(t->ci, e) ||
           cell_is_active_black_holes(t->ci, e))
         scheduler_activate(s, t);
     }
 
     /* Subgrid tasks: cooling */
-    else if (t_type == task_type_cooling) {
+    else if (t_type == task_type_cooling || t_type == task_type_cooling_in ||
+             t_type == task_type_cooling_out) {
       if (cell_is_active_hydro(t->ci, e)) scheduler_activate(s, t);
     }
 
@@ -987,6 +1020,26 @@ void engine_marktasks_mapper(void *map_data, int num_elements,
       if (cell_is_active_hydro(t->ci, e)) {
         cell_activate_star_formation_tasks(t->ci, s, with_feedback);
         cell_activate_super_spart_drifts(t->ci, s);
+      }
+    }
+
+    /* Radiative transfer ghost in */
+    else if (t->type == task_type_rt_in && with_feedback) {
+      if (cell_is_active_hydro(t->ci, e) || cell_is_active_stars(t->ci, e))
+        scheduler_activate(s, t);
+    }
+
+    /* Radiative transfer ghost out */
+    else if (t->type == task_type_rt_out) {
+      if (cell_is_active_hydro(t->ci, e) || cell_is_active_stars(t->ci, e))
+        scheduler_activate(s, t);
+    }
+
+    /* Subgrid tasks: sink formation */
+    else if (t_type == task_type_sink_formation) {
+      if (cell_is_active_hydro(t->ci, e)) {
+        cell_activate_sink_formation_tasks(t->ci, s);
+        cell_activate_super_sink_drifts(t->ci, s);
       }
     }
   }

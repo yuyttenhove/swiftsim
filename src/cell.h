@@ -304,10 +304,12 @@ enum cell_flags {
   cell_flag_do_stars_sub_drift = (1UL << 10),
   cell_flag_do_bh_drift = (1UL << 11),
   cell_flag_do_bh_sub_drift = (1UL << 12),
-  cell_flag_do_stars_resort = (1UL << 13),
-  cell_flag_has_tasks = (1UL << 14),
-  cell_flag_do_hydro_sync = (1UL << 15),
-  cell_flag_do_hydro_sub_sync = (1UL << 16)
+  cell_flag_do_sink_drift = (1UL << 13),
+  cell_flag_do_sink_sub_drift = (1UL << 14),
+  cell_flag_do_stars_resort = (1UL << 15),
+  cell_flag_has_tasks = (1UL << 16),
+  cell_flag_do_hydro_sync = (1UL << 17),
+  cell_flag_do_hydro_sub_sync = (1UL << 18)
 };
 
 /**
@@ -317,7 +319,7 @@ enum cell_flags {
  */
 struct cell {
 
-  /*! The cell location on the grid. */
+  /*! The cell location on the grid (corner nearest to the origin). */
   double loc[3];
 
   /*! The cell dimensions. */
@@ -390,14 +392,32 @@ struct cell {
     /*! The task to end the force calculation */
     struct task *end_force;
 
+    /*! Dependency implicit task for cooling (in->cooling->out) */
+    struct task *cooling_in;
+
+    /*! Dependency implicit task for cooling (in->cooling->out) */
+    struct task *cooling_out;
+
     /*! Task for cooling */
     struct task *cooling;
 
     /*! Task for star formation */
     struct task *star_formation;
 
+    /*! Task for sink formation */
+    struct task *sink_formation;
+
     /*! Task for sorting the stars again after a SF event */
     struct task *stars_resort;
+
+    /*! Radiative transfer ghost in task */
+    struct task *rt_in;
+
+    /*! Radiative transfer ghost out task */
+    struct task *rt_out;
+
+    /*! Task for self/pair injection step of radiative transfer */
+    struct link *rt_inject;
 
     /*! Last (integer) time the cell's part were drifted forward in time. */
     integertime_t ti_old_part;
@@ -746,6 +766,68 @@ struct cell {
 
   } black_holes;
 
+  /*! Sink particles variables */
+  struct {
+
+    /*! Pointer to the #sink data. */
+    struct sink *parts;
+
+    /*! Nr of #sink in this cell. */
+    int count;
+
+    /*! Nr of #sink this cell can hold after addition of new one. */
+    int count_total;
+
+    /*! Max cut off radius in this cell. */
+    float r_cut_max;
+
+    /*! Values of r_cut_max before the drifts, used for sub-cell tasks. */
+    float r_cut_max_old;
+
+    /*! Number of #sink updated in this cell. */
+    int updated;
+
+    /*! Is the #sink data of this cell being used in a sub-cell? */
+    int hold;
+
+    /*! Spin lock for various uses (#sink case). */
+    swift_lock_type lock;
+
+    /*! Spin lock for sink formation use. */
+    swift_lock_type sink_formation_lock;
+
+    /*! Maximum part movement in this cell since last construction. */
+    float dx_max_part;
+
+    /*! Values of dx_max before the drifts, used for sub-cell tasks. */
+    float dx_max_part_old;
+
+    /*! Last (integer) time the cell's sink were drifted forward in time. */
+    integertime_t ti_old_part;
+
+    /*! Minimum end of (integer) time step in this cell for sink tasks. */
+    integertime_t ti_end_min;
+
+    /*! Maximum end of (integer) time step in this cell for sink tasks. */
+    integertime_t ti_end_max;
+
+    /*! Maximum beginning of (integer) time step in this cell for sink
+     * tasks.
+     */
+    integertime_t ti_beg_max;
+
+    /*! The drift task for sinks */
+    struct task *drift;
+
+    /*! Implicit tasks marking the entry of the sink block of tasks
+     */
+    struct task *sink_in;
+
+    /*! Implicit tasks marking the exit of the sink block of tasks */
+    struct task *sink_out;
+
+  } sinks;
+
 #ifdef WITH_MPI
   /*! MPI variables */
   struct {
@@ -837,9 +919,10 @@ struct cell {
 
 /* Function prototypes. */
 void cell_split(struct cell *c, ptrdiff_t parts_offset, ptrdiff_t sparts_offset,
-                ptrdiff_t bparts_offset, struct cell_buff *buff,
-                struct cell_buff *sbuff, struct cell_buff *bbuff,
-                struct cell_buff *gbuff);
+                ptrdiff_t bparts_offset, ptrdiff_t sinks_offset,
+                struct cell_buff *buff, struct cell_buff *sbuff,
+                struct cell_buff *bbuff, struct cell_buff *gbuff,
+                struct cell_buff *sinkbuff);
 void cell_sanitize(struct cell *c, int treated);
 int cell_locktree(struct cell *c);
 void cell_unlocktree(struct cell *c);
@@ -849,6 +932,8 @@ int cell_mlocktree(struct cell *c);
 void cell_munlocktree(struct cell *c);
 int cell_slocktree(struct cell *c);
 void cell_sunlocktree(struct cell *c);
+int cell_sink_locktree(struct cell *c);
+void cell_sink_unlocktree(struct cell *c);
 int cell_blocktree(struct cell *c);
 void cell_bunlocktree(struct cell *c);
 int cell_pack(struct cell *c, struct pcell *pc, const int with_gravity);
@@ -898,16 +983,20 @@ void cell_clean(struct cell *c);
 void cell_check_part_drift_point(struct cell *c, void *data);
 void cell_check_gpart_drift_point(struct cell *c, void *data);
 void cell_check_spart_drift_point(struct cell *c, void *data);
+void cell_check_sink_drift_point(struct cell *c, void *data);
 void cell_check_multipole_drift_point(struct cell *c, void *data);
 void cell_reset_task_counters(struct cell *c);
 int cell_unskip_hydro_tasks(struct cell *c, struct scheduler *s);
 int cell_unskip_stars_tasks(struct cell *c, struct scheduler *s,
                             const int with_star_formation);
+int cell_unskip_sinks_tasks(struct cell *c, struct scheduler *s);
+int cell_unskip_rt_tasks(struct cell *c, struct scheduler *s);
 int cell_unskip_black_holes_tasks(struct cell *c, struct scheduler *s);
 int cell_unskip_gravity_tasks(struct cell *c, struct scheduler *s);
 void cell_drift_part(struct cell *c, const struct engine *e, int force);
 void cell_drift_gpart(struct cell *c, const struct engine *e, int force);
 void cell_drift_spart(struct cell *c, const struct engine *e, int force);
+void cell_drift_sink(struct cell *c, const struct engine *e, int force);
 void cell_drift_bpart(struct cell *c, const struct engine *e, int force);
 void cell_drift_multipole(struct cell *c, const struct engine *e);
 void cell_drift_all_multipoles(struct cell *c, const struct engine *e);
@@ -917,6 +1006,7 @@ void cell_store_pre_drift_values(struct cell *c);
 void cell_set_star_resort_flag(struct cell *c);
 void cell_activate_star_formation_tasks(struct cell *c, struct scheduler *s,
                                         const int with_feedback);
+void cell_activate_sink_formation_tasks(struct cell *c, struct scheduler *s);
 void cell_activate_subcell_hydro_tasks(struct cell *ci, struct cell *cj,
                                        struct scheduler *s,
                                        const int with_timestep_limiter);
@@ -931,10 +1021,14 @@ void cell_activate_subcell_black_holes_tasks(struct cell *ci, struct cell *cj,
                                              const int with_timestep_sync);
 void cell_activate_subcell_external_grav_tasks(struct cell *ci,
                                                struct scheduler *s);
+void cell_activate_subcell_rt_tasks(struct cell *ci, struct cell *cj,
+                                    struct scheduler *s);
 void cell_activate_super_spart_drifts(struct cell *c, struct scheduler *s);
+void cell_activate_super_sink_drifts(struct cell *c, struct scheduler *s);
 void cell_activate_drift_part(struct cell *c, struct scheduler *s);
 void cell_activate_drift_gpart(struct cell *c, struct scheduler *s);
 void cell_activate_drift_spart(struct cell *c, struct scheduler *s);
+void cell_activate_drift_sink(struct cell *c, struct scheduler *s);
 void cell_activate_drift_bpart(struct cell *c, struct scheduler *s);
 void cell_activate_sync_part(struct cell *c, struct scheduler *s);
 void cell_activate_hydro_sorts(struct cell *c, int sid, struct scheduler *s);
@@ -968,10 +1062,13 @@ struct gpart *cell_convert_spart_to_gpart(const struct engine *e,
                                           struct cell *c, struct spart *sp);
 struct spart *cell_convert_part_to_spart(struct engine *e, struct cell *c,
                                          struct part *p, struct xpart *xp);
+struct sink *cell_convert_part_to_sink(struct engine *e, struct cell *c,
+                                       struct part *p, struct xpart *xp);
 void cell_reorder_extra_parts(struct cell *c, const ptrdiff_t parts_offset);
 void cell_reorder_extra_gparts(struct cell *c, struct part *parts,
                                struct spart *sparts);
 void cell_reorder_extra_sparts(struct cell *c, const ptrdiff_t sparts_offset);
+void cell_reorder_extra_sinks(struct cell *c, const ptrdiff_t sinks_offset);
 int cell_can_use_pair_mm(const struct cell *ci, const struct cell *cj,
                          const struct engine *e, const struct space *s,
                          const int use_rebuild_data, const int is_tree_walk);
@@ -1140,6 +1237,20 @@ cell_can_recurse_in_self_black_holes_task(const struct cell *c) {
   /* Is the cell split and not smaller than the smoothing length? */
   return c->split &&
          (kernel_gamma * c->black_holes.h_max_old < 0.5f * c->dmin) &&
+         (kernel_gamma * c->hydro.h_max_old < 0.5f * c->dmin);
+}
+
+/**
+ * @brief Can a sub-self sinks task recurse to a lower level based
+ * on the status of the particles in the cell.
+ *
+ * @param c The #cell.
+ */
+__attribute__((always_inline)) INLINE static int
+cell_can_recurse_in_self_sinks_task(const struct cell *c) {
+
+  /* Is the cell split and not smaller than the smoothing length? */
+  return c->split && (c->sinks.r_cut_max_old < 0.5f * c->dmin) &&
          (kernel_gamma * c->hydro.h_max_old < 0.5f * c->dmin);
 }
 

@@ -81,6 +81,23 @@ INLINE static void set_Til_granite(struct Til_params *mat,
   mat->eta_zero = 0.0f;
   mat->P_min = 0.0f;
 }
+INLINE static void set_Til_basalt(struct Til_params *mat,
+                                  enum eos_planetary_material_id mat_id) {
+  mat->mat_id = mat_id;
+  mat->rho_0 = 2700.0f;
+  mat->a = 0.5f;
+  mat->b = 1.5f;
+  mat->A = 2.67e10f;
+  mat->B = 2.67e10f;
+  mat->u_0 = 4.87e8f;
+  mat->u_iv = 4.72e6f;
+  mat->u_cv = 1.82e7f;
+  mat->alpha = 5.0f;
+  mat->beta = 5.0f;
+  mat->eta_min = 0.0f;
+  mat->eta_zero = 0.0f;
+  mat->P_min = 0.0f;
+}
 INLINE static void set_Til_water(struct Til_params *mat,
                                  enum eos_planetary_material_id mat_id) {
   mat->mat_id = mat_id;
@@ -253,8 +270,6 @@ INLINE static float Til_soundspeed_from_internal_energy(
            mat->b * (w - 1.f) * w_inv_sq * (2.f * u - P_c * rho_inv) +
            rho_inv * (mat->A + mat->B * (eta_sq - 1.f));
 
-  c_sq_c = fmax(c_sq_c, mat->A * rho_0_inv);
-
   // Expanded and hot
   P_e = mat->a * density * u +
         (mat->b * density * u * w_inv + mat->A * mu * exp_beta) * exp_alpha;
@@ -281,9 +296,9 @@ INLINE static float Til_soundspeed_from_internal_energy(
   else {
     c_sq = ((u - mat->u_iv) * c_sq_e + (mat->u_cv - u) * c_sq_c) /
            (mat->u_cv - mat->u_iv);
-
-    c_sq = fmax(c_sq_c, mat->A * rho_0_inv);
   }
+
+  c_sq = fmaxf(c_sq, mat->A * rho_0_inv);
 
   return sqrtf(c_sq);
 }

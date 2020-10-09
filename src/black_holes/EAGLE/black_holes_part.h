@@ -48,6 +48,9 @@ struct bpart {
   /*! Black hole mass */
   float mass;
 
+  /*! Black hole mass at the start of each step, prior to any nibbling */
+  float mass_at_start_of_step;
+
   /* Particle cutoff radius. */
   float h;
 
@@ -74,6 +77,9 @@ struct bpart {
     float formation_scale_factor;
   };
 
+  /*! Physical density of the converted part (internal units) */
+  float formation_gas_density;
+
   /*! Subgrid mass of the black hole */
   float subgrid_mass;
 
@@ -90,8 +96,19 @@ struct bpart {
   /*! Density of the gas surrounding the black hole. */
   float rho_gas;
 
+  /*! Internal energy of the gas surrounding the black hole. */
+  float internal_energy_gas;
+
   /*! Smoothed sound speed of the gas surrounding the black hole. */
   float sound_speed_gas;
+
+  /*! Subgrid physical density of the gas (updated when using the subgrid Bondi
+   * model) */
+  float rho_subgrid_gas;
+
+  /*! Subgrid physical sound speed of the gas (updated when using the subgrid
+   * Bondi model) */
+  float sound_speed_subgrid_gas;
 
   /*! Smoothed velocity of the gas surrounding the black hole,
    * in the frame of the black hole (internal units) */
@@ -139,6 +156,12 @@ struct bpart {
 
   /*! Total (physical) angular momentum accumulated by swallowing particles */
   float swallowed_angular_momentum[3];
+
+  /*! Total (physical) angular momentum accumulated from subgrid accretion */
+  float accreted_angular_momentum[3];
+
+  /*! Instantaneous temperature increase for feedback */
+  float AGN_delta_T;
 
   /*! Union for the last high Eddington ratio point in time */
   union {

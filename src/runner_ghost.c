@@ -33,6 +33,7 @@
 #include "feedback.h"
 #include "pressure_floor.h"
 #include "pressure_floor_iact.h"
+#include "rt.h"
 #include "space_getsid.h"
 #include "star_formation.h"
 #include "stars.h"
@@ -315,6 +316,7 @@ void runner_do_stars_ghost(struct runner *r, struct cell *c, int timer) {
             /* Re-initialise everything */
             stars_init_spart(sp);
             feedback_init_spart(sp);
+            rt_init_spart(sp);
 
             /* Off we go ! */
             continue;
@@ -845,9 +847,9 @@ void runner_do_black_holes_swallow_ghost(struct runner *r, struct cell *c,
                                    e->physical_constants, e->cosmology, dt);
 
         /* Compute variables required for the feedback loop */
-        black_holes_prepare_feedback(bp, e->black_holes_properties,
-                                     e->physical_constants, e->cosmology,
-                                     e->time, with_cosmology, dt);
+        black_holes_prepare_feedback(
+            bp, e->black_holes_properties, e->physical_constants, e->cosmology,
+            e->cooling_func, e->entropy_floor, e->time, with_cosmology, dt);
       }
     }
   }
@@ -1096,10 +1098,10 @@ void runner_do_ghost(struct runner *r, struct cell *c, int timer) {
           if (((p->h >= hydro_h_max) && (f < 0.f)) ||
               ((p->h <= hydro_h_min) && (f > 0.f))) {
 
-          /* We have a particle whose smoothing length is already set (wants
-           * to be larger but has already hit the maximum OR wants to be
-           * smaller but has already reached the minimum). So, just tidy up
-           * as if the smoothing length had converged correctly  */
+            /* We have a particle whose smoothing length is already set (wants
+             * to be larger but has already hit the maximum OR wants to be
+             * smaller but has already reached the minimum). So, just tidy up
+             * as if the smoothing length had converged correctly  */
 
 #ifdef EXTRA_HYDRO_LOOP
 

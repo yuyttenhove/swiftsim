@@ -139,7 +139,7 @@ INLINE static void black_holes_write_particles(const struct bpart* bparts,
                                                int with_cosmology) {
 
   /* Say how much we want to write */
-  *num_fields = 27;
+  *num_fields = 33;
 
   /* List what we want to write */
   list[0] = io_make_output_field_convert_bpart(
@@ -178,7 +178,7 @@ INLINE static void black_holes_write_particles(const struct bpart* bparts,
   }
 
   list[7] = io_make_output_field(
-      "GasDensities", FLOAT, 1, UNIT_CONV_DENSITY, 0.f, bparts, rho_gas,
+      "GasDensities", FLOAT, 1, UNIT_CONV_DENSITY, -3.f, bparts, rho_gas,
       "Co-moving densities of the gas around the particles");
 
   list[8] = io_make_output_field(
@@ -317,6 +317,41 @@ INLINE static void black_holes_write_particles(const struct bpart* bparts,
       "Multiplicative factors by which the Bondi-Hoyle-Lyttleton accretion "
       "rates have been suppressed by the Rosas-Guevara et al. (2015) "
       "accretion disc model.");
+
+  list[27] = io_make_output_field(
+      "SubgridDensities", FLOAT, 1, UNIT_CONV_DENSITY, 0.f, bparts,
+      rho_subgrid_gas,
+      "Physical subgrid densities used in the subgrid-Bondi model.");
+
+  list[28] = io_make_output_field(
+      "SubgridSoundSpeeds", FLOAT, 1, UNIT_CONV_SPEED, 0.f, bparts,
+      sound_speed_subgrid_gas,
+      "Physical subgrid sound-speeds used in the subgrid-Bondi model.");
+
+  list[29] = io_make_output_field(
+      "BirthGasDensities", FLOAT, 1, UNIT_CONV_DENSITY, 0.f, bparts,
+      formation_gas_density,
+      "Physical densities of the converted part at the time of birth. "
+      "We store the physical density at the birth redshift, no conversion is "
+      "needed.");
+
+  list[30] = io_make_output_field(
+      "AccretedAngularMomenta", FLOAT, 3, UNIT_CONV_ANGULAR_MOMENTUM, 0.f,
+      bparts, accreted_angular_momentum,
+      "Physical angular momenta that the black holes have accumulated through "
+      "subgrid accretion.");
+
+  list[31] = io_make_output_field(
+      "NumberOfGasNeighbours", INT, 1, UNIT_CONV_NO_UNITS, 0.f, bparts,
+      num_ngbs,
+      "Integer number of gas neighbour particles within the black hole "
+      "kernels.");
+
+  list[32] = io_make_output_field(
+      "FeedbackDeltaT", FLOAT, 1, UNIT_CONV_TEMPERATURE, 0.f, bparts,
+      AGN_delta_T,
+      "Temperature by which gas particles have been heated by the black hole "
+      "particles in the most recent feedback event.");
 
 #ifdef DEBUG_INTERACTIONS_BLACK_HOLES
 

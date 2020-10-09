@@ -158,7 +158,7 @@ void runner_do_grav_down(struct runner *r, struct cell *c, int timer) {
  * @param gcount_i The number of particles receiving forces.
  * @param gparts_j The particles giving forces (at any level).
  * @param gcount_j The number of particles giving forces.
- * @param e The @engine structure.
+ * @param e The #engine structure.
  * @param grav_props The properties of the gravity scheme.
  * @param cache_i The gravity cache to use to store the results in i.
  * @param ci The (leaf-)cell containing the particles i.
@@ -320,7 +320,7 @@ static INLINE void runner_dopair_grav_pp_full_no_cache(
     cache_i->pot[i] += pot;
   }
 
-    /* Write back to the particle data */
+  /* Write back to the particle data */
 #ifndef SWIFT_TASKS_WITHOUT_ATOMICS
   lock_lock(&ci->grav.plock);
 #endif
@@ -341,7 +341,7 @@ static INLINE void runner_dopair_grav_pp_full_no_cache(
  * @param gparts_j The particles giving forces (at any level).
  * @param gcount_j The number of particles giving forces.
  * @param dim The size of the computational domain.
- * @param e The @engine structure.
+ * @param e The #engine structure.
  * @param grav_props The properties of the gravity scheme.
  * @param cache_i The gravity cache to use to store the results in i.
  * @param ci The (leaf-)cell containing the particles i.
@@ -519,7 +519,7 @@ static INLINE void runner_dopair_grav_pp_truncated_no_cache(
     cache_i->pot[i] += pot;
   }
 
-    /* Write back to the particle data */
+  /* Write back to the particle data */
 #ifndef SWIFT_TASKS_WITHOUT_ATOMICS
   lock_lock(&ci->grav.plock);
 #endif
@@ -882,7 +882,7 @@ static INLINE void runner_dopair_grav_pm_full(
   const float multi_epsilon = multi_j->max_softening;
 
   /* Loop over all particles in ci... */
-#ifndef SWIFT_DEBUG_CHECKS
+#if !defined(SWIFT_DEBUG_CHECKS) && _OPENMP >= 201307
 #pragma omp simd
 #endif
   for (int pid = 0; pid < gcount_padded_i; pid++) {
@@ -1025,7 +1025,7 @@ static INLINE void runner_dopair_grav_pm_truncated(
   const float multi_epsilon = multi_j->max_softening;
 
   /* Loop over all particles in ci... */
-#ifndef SWIFT_DEBUG_CHECKS
+#if !defined(SWIFT_DEBUG_CHECKS) && _OPENMP >= 201307
 #pragma omp simd
 #endif
   for (int pid = 0; pid < gcount_padded_i; pid++) {
@@ -1768,7 +1768,7 @@ void runner_doself_grav_pp(struct runner *r, struct cell *c) {
     }
   }
 
-    /* Write back to the particles */
+  /* Write back to the particles */
 #ifndef SWIFT_TASKS_WITHOUT_ATOMICS
   lock_lock(&c->grav.plock);
 #endif
@@ -2078,7 +2078,7 @@ void runner_dopair_recursive_grav_pm(struct runner *r, struct cell *ci,
                                       cj);
     }
 
-      /* Write back to the particles */
+    /* Write back to the particles */
 #ifndef SWIFT_TASKS_WITHOUT_ATOMICS
     lock_lock(&ci->grav.plock);
 #endif

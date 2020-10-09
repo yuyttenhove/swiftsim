@@ -85,6 +85,7 @@ TASKTYPES = [
     "extra_ghost",
     "drift_part",
     "drift_spart",
+    "drift_sink",
     "drift_bpart",
     "drift_gpart",
     "drift_gpart_out",
@@ -103,6 +104,8 @@ TASKTYPES = [
     "grav_mesh",
     "grav_end_force",
     "cooling",
+    "cooling_in",
+    "cooling_out",
     "star_formation",
     "star_formation_in",
     "star_formation_out",
@@ -122,6 +125,8 @@ TASKTYPES = [
     "bh_swallow_ghost3",
     "fof_self",
     "fof_pair",
+    "rt_in",
+    "rt_out",
     "count",
 ]
 
@@ -136,6 +141,7 @@ SUBTYPES = [
     "tend_part",
     "tend_gpart",
     "tend_spart",
+    "tend_sink",
     "tend_bpart",
     "xv",
     "rho",
@@ -155,6 +161,8 @@ SUBTYPES = [
     "do_gas_swallow",
     "do_bh_swallow",
     "bh_feedback",
+    "sink",
+    "rt_inject",
     "count",
 ]
 
