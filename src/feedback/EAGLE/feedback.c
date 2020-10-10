@@ -660,6 +660,7 @@ INLINE static void compute_SNII_feedback(
     sp->f_E = f_E;
     sp->feedback_data.to_distribute.SNII_heating_probability = prob;
     sp->feedback_data.to_distribute.SNII_delta_u = delta_u;
+    sp->number_of_heating_events += (prob * num_gas_ngbs);
   }
 }
 
