@@ -822,6 +822,7 @@ void engine_addtasks_recv_gravity(struct engine *e, struct cell *c,
 void engine_make_hierarchical_tasks_common(struct engine *e, struct cell *c) {
 
   struct scheduler *s = &e->sched;
+  const int with_sinks = (e->policy & engine_policy_sinks);
   const int with_star_formation = (e->policy & engine_policy_star_formation);
   const int with_timestep_limiter =
       (e->policy & engine_policy_timestep_limiter);
@@ -836,6 +837,11 @@ void engine_make_hierarchical_tasks_common(struct engine *e, struct cell *c) {
     if (with_star_formation && c->hydro.count > 0) {
       c->hydro.star_formation = scheduler_addtask(
           s, task_type_star_formation, task_subtype_none, 0, 0, c, NULL);
+    }
+
+    if (with_sinks && c->hydro.count > 0) {
+      c->hydro.sink_formation = scheduler_addtask(
+          s, task_type_sink_formation, task_subtype_none, 0, 0, c, NULL);
     }
   }
 
@@ -935,12 +941,25 @@ void engine_make_hierarchical_tasks_gravity(struct engine *e, struct cell *c) {
   struct scheduler *s = &e->sched;
   const int periodic = e->s->periodic;
   const int is_self_gravity = (e->policy & engine_policy_self_gravity);
+  const int stars_only_gravity =
+      (e->policy & engine_policy_stars) && !(e->policy & engine_policy_hydro);
 
   /* Are we in a super-cell ? */
   if (c->grav.super == c) {
 
     /* Local tasks only... */
     if (c->nodeID == e->nodeID) {
+
+      if (stars_only_gravity) {
+
+        /* In the special case where we have stars that just act under gravity
+         * we must create their drift task here and not just copy over the hydro
+         * behaviour. */
+        c->stars.drift = scheduler_addtask(s, task_type_drift_spart,
+                                           task_subtype_none, 0, 0, c, NULL);
+
+        scheduler_addunlock(s, c->stars.drift, c->super->kick2);
+      }
 
       c->grav.drift = scheduler_addtask(s, task_type_drift_gpart,
                                         task_subtype_none, 0, 0, c, NULL);
@@ -1101,6 +1120,7 @@ void engine_make_hierarchical_tasks_hydro(struct engine *e, struct cell *c,
   const int with_cooling = (e->policy & engine_policy_cooling);
   const int with_star_formation = (e->policy & engine_policy_star_formation);
   const int with_black_holes = (e->policy & engine_policy_black_holes);
+  const int with_rt = (e->policy & engine_policy_rt);
 #ifdef WITH_LOGGER
   const int with_logger = (e->policy & engine_policy_logger);
 #endif
@@ -1231,12 +1251,57 @@ void engine_make_hierarchical_tasks_hydro(struct engine *e, struct cell *c,
 #else
         scheduler_addunlock(s, c->super->kick2, c->stars.stars_in);
 #endif
-        scheduler_addunlock(s, c->stars.stars_out, c->super->timestep);
+        if (!with_rt) {
+          /* stars_out is used as rt_in ghost. timestep dependency
+           * follows after RT is done. */
+          scheduler_addunlock(s, c->stars.stars_out, c->super->timestep);
+        }
 
         if (with_feedback && with_star_formation && c->hydro.count > 0) {
           scheduler_addunlock(s, star_resort_cell->hydro.stars_resort,
                               c->stars.stars_in);
         }
+      }
+
+      /* Radiative Transfer */
+      if (with_rt) {
+        /* RT ghost in task */
+        if (!with_feedback) {
+          c->hydro.rt_in =
+              scheduler_addtask(s, task_type_rt_in, task_subtype_none, 0,
+                                /* implicit= */ 1, c, NULL);
+          if (with_star_formation && c->top->hydro.count > 0) {
+            scheduler_addunlock(s, c->top->hydro.star_formation,
+                                c->hydro.rt_in);
+          } else {
+            scheduler_addunlock(s, c->super->kick2, c->hydro.rt_in);
+          }
+        }
+
+        /* RT ghost out task, always needed */
+        c->hydro.rt_out =
+            scheduler_addtask(s, task_type_rt_out, task_subtype_none, 0,
+                              /* implicit= */ 1, c, NULL);
+        scheduler_addunlock(s, c->hydro.rt_out, c->super->timestep);
+      }
+
+      /* Subgrid tasks: sink */
+      if (with_sinks) {
+
+        c->sinks.sink_in =
+            scheduler_addtask(s, task_type_sink_in, task_subtype_none, 0,
+                              /* implicit = */ 1, c, NULL);
+
+        c->sinks.sink_out =
+            scheduler_addtask(s, task_type_sink_out, task_subtype_none, 0,
+                              /* implicit = */ 1, c, NULL);
+
+        scheduler_addunlock(s, c->sinks.sink_in, c->top->hydro.sink_formation);
+        scheduler_addunlock(s, c->top->hydro.sink_formation, c->sinks.sink_out);
+
+        /* Link to the main tasks */
+        scheduler_addunlock(s, c->super->kick2, c->sinks.sink_in);
+        scheduler_addunlock(s, c->sinks.sink_out, c->super->timestep);
       }
 
       /* Subgrid tasks: black hole feedback */
@@ -1758,6 +1823,7 @@ void engine_link_gravity_tasks(struct engine *e) {
           scheduler_addunlock(sched, t, cj_parent->grav.down_in);
         }
       }
+
     }
 
     /* Otherwise M-M interaction? */
@@ -1854,6 +1920,7 @@ void engine_make_extra_hydroloop_tasks_mapper(void *map_data, int num_elements,
   const int with_timestep_sync = (e->policy & engine_policy_timestep_sync);
   const int with_feedback = (e->policy & engine_policy_feedback);
   const int with_black_holes = (e->policy & engine_policy_black_holes);
+  const int with_rt = (e->policy & engine_policy_rt);
 #ifdef EXTRA_HYDRO_LOOP
   struct task *t_gradient = NULL;
 #endif
@@ -1866,6 +1933,7 @@ void engine_make_extra_hydroloop_tasks_mapper(void *map_data, int num_elements,
   struct task *t_do_gas_swallow = NULL;
   struct task *t_do_bh_swallow = NULL;
   struct task *t_bh_feedback = NULL;
+  struct task *t_rt_inject = NULL;
 
   for (int ind = 0; ind < num_elements; ind++) {
 
@@ -1880,6 +1948,7 @@ void engine_make_extra_hydroloop_tasks_mapper(void *map_data, int num_elements,
     if (t->type == task_type_none) continue;
     if (t->type == task_type_stars_resort) continue;
     if (t->type == task_type_star_formation) continue;
+    if (t->type == task_type_sink_formation) continue;
 
     /* Sort tasks depend on the drift of the cell (gas version). */
     if (t_type == task_type_sort && ci->nodeID == nodeID) {
@@ -1936,6 +2005,11 @@ void engine_make_extra_hydroloop_tasks_mapper(void *map_data, int num_elements,
                               flags, 0, ci, NULL);
       }
 
+      if (with_rt) {
+        t_rt_inject = scheduler_addtask(
+            sched, task_type_self, task_subtype_rt_inject, flags, 0, ci, NULL);
+      }
+
       /* Link the tasks to the cells */
       engine_addlink(e, &ci->hydro.force, t_force);
       if (with_timestep_limiter) {
@@ -1951,6 +2025,9 @@ void engine_make_extra_hydroloop_tasks_mapper(void *map_data, int num_elements,
         engine_addlink(e, &ci->black_holes.do_gas_swallow, t_do_gas_swallow);
         engine_addlink(e, &ci->black_holes.do_bh_swallow, t_do_bh_swallow);
         engine_addlink(e, &ci->black_holes.feedback, t_bh_feedback);
+      }
+      if (with_rt) {
+        engine_addlink(e, &ci->hydro.rt_inject, t_rt_inject);
       }
 
 #ifdef EXTRA_HYDRO_LOOP
@@ -2039,6 +2116,17 @@ void engine_make_extra_hydroloop_tasks_mapper(void *map_data, int num_elements,
       if (with_timestep_sync && with_black_holes && bcount_i > 0) {
         scheduler_addunlock(sched, t_bh_feedback, ci->super->timestep_sync);
       }
+
+      if (with_rt) {
+        if (with_feedback) {
+          /* then no rt_in task exists, use star ghost out */
+          scheduler_addunlock(sched, ci->hydro.super->stars.stars_out,
+                              t_rt_inject);
+        } else {
+          scheduler_addunlock(sched, ci->hydro.super->hydro.rt_in, t_rt_inject);
+        }
+        scheduler_addunlock(sched, t_rt_inject, ci->super->hydro.rt_out);
+      }
     }
 
     /* Otherwise, pair interaction? */
@@ -2097,6 +2185,11 @@ void engine_make_extra_hydroloop_tasks_mapper(void *map_data, int num_elements,
             sched, task_type_pair, task_subtype_bh_feedback, flags, 0, ci, cj);
       }
 
+      if (with_rt) {
+        t_rt_inject = scheduler_addtask(
+            sched, task_type_pair, task_subtype_rt_inject, flags, 0, ci, cj);
+      }
+
       engine_addlink(e, &ci->hydro.force, t_force);
       engine_addlink(e, &cj->hydro.force, t_force);
       if (with_timestep_limiter) {
@@ -2120,6 +2213,10 @@ void engine_make_extra_hydroloop_tasks_mapper(void *map_data, int num_elements,
         engine_addlink(e, &cj->black_holes.do_bh_swallow, t_do_bh_swallow);
         engine_addlink(e, &ci->black_holes.feedback, t_bh_feedback);
         engine_addlink(e, &cj->black_holes.feedback, t_bh_feedback);
+      }
+      if (with_rt) {
+        engine_addlink(e, &ci->hydro.rt_inject, t_rt_inject);
+        engine_addlink(e, &cj->hydro.rt_inject, t_rt_inject);
       }
 
 #ifdef EXTRA_HYDRO_LOOP
@@ -2240,6 +2337,19 @@ void engine_make_extra_hydroloop_tasks_mapper(void *map_data, int num_elements,
             (bcount_i > 0 || bcount_j > 0)) {
           scheduler_addunlock(sched, t_bh_feedback, ci->super->timestep_sync);
         }
+
+        if (with_rt) {
+          if (with_feedback) {
+            /* then no rt_in task exists, use star ghost out */
+            scheduler_addunlock(sched, ci->hydro.super->stars.stars_out,
+                                t_rt_inject);
+          } else {
+            scheduler_addunlock(sched, ci->hydro.super->hydro.rt_in,
+                                t_rt_inject);
+          }
+          scheduler_addunlock(sched, t_rt_inject, ci->super->hydro.rt_out);
+        }
+
       } else /*(ci->nodeID != nodeID) */ {
         if (with_feedback) {
           scheduler_addunlock(sched, ci->hydro.super->stars.sorts,
@@ -2311,6 +2421,18 @@ void engine_make_extra_hydroloop_tasks_mapper(void *map_data, int num_elements,
                                 t_bh_feedback);
             scheduler_addunlock(sched, t_bh_feedback,
                                 cj->hydro.super->black_holes.black_holes_out);
+          }
+
+          if (with_rt) {
+            if (with_feedback) {
+              /* then no rt_in task exists, use star ghost out */
+              scheduler_addunlock(sched, cj->hydro.super->stars.stars_out,
+                                  t_rt_inject);
+            } else {
+              scheduler_addunlock(sched, cj->hydro.super->hydro.rt_in,
+                                  t_rt_inject);
+            }
+            scheduler_addunlock(sched, t_rt_inject, cj->super->hydro.rt_out);
           }
 
           if (with_timestep_limiter) {
@@ -2402,6 +2524,12 @@ void engine_make_extra_hydroloop_tasks_mapper(void *map_data, int num_elements,
                               task_subtype_bh_feedback, flags, 0, ci, NULL);
       }
 
+      if (with_rt) {
+        t_rt_inject =
+            scheduler_addtask(sched, task_type_sub_self, task_subtype_rt_inject,
+                              flags, 0, ci, NULL);
+      }
+
       /* Add the link between the new loop and the cell */
       engine_addlink(e, &ci->hydro.force, t_force);
       if (with_timestep_limiter) {
@@ -2417,6 +2545,9 @@ void engine_make_extra_hydroloop_tasks_mapper(void *map_data, int num_elements,
         engine_addlink(e, &ci->black_holes.do_gas_swallow, t_do_gas_swallow);
         engine_addlink(e, &ci->black_holes.do_bh_swallow, t_do_bh_swallow);
         engine_addlink(e, &ci->black_holes.feedback, t_bh_feedback);
+      }
+      if (with_rt) {
+        engine_addlink(e, &ci->hydro.rt_inject, t_rt_inject);
       }
 
 #ifdef EXTRA_HYDRO_LOOP
@@ -2511,6 +2642,17 @@ void engine_make_extra_hydroloop_tasks_mapper(void *map_data, int num_elements,
       if (with_timestep_sync && with_black_holes && bcount_i > 0) {
         scheduler_addunlock(sched, t_bh_feedback, ci->super->timestep_sync);
       }
+
+      if (with_rt) {
+        if (with_feedback) {
+          /* then no rt_in task exists, use star ghost out */
+          scheduler_addunlock(sched, ci->hydro.super->stars.stars_out,
+                              t_rt_inject);
+        } else {
+          scheduler_addunlock(sched, ci->hydro.super->hydro.rt_in, t_rt_inject);
+        }
+        scheduler_addunlock(sched, t_rt_inject, ci->super->hydro.rt_out);
+      }
     }
 
     /* Otherwise, sub-pair interaction? */
@@ -2573,6 +2715,12 @@ void engine_make_extra_hydroloop_tasks_mapper(void *map_data, int num_elements,
                               task_subtype_bh_feedback, flags, 0, ci, cj);
       }
 
+      if (with_rt) {
+        t_rt_inject =
+            scheduler_addtask(sched, task_type_sub_pair, task_subtype_rt_inject,
+                              flags, 0, ci, cj);
+      }
+
       engine_addlink(e, &ci->hydro.force, t_force);
       engine_addlink(e, &cj->hydro.force, t_force);
       if (with_timestep_limiter) {
@@ -2596,6 +2744,10 @@ void engine_make_extra_hydroloop_tasks_mapper(void *map_data, int num_elements,
         engine_addlink(e, &cj->black_holes.do_bh_swallow, t_do_bh_swallow);
         engine_addlink(e, &ci->black_holes.feedback, t_bh_feedback);
         engine_addlink(e, &cj->black_holes.feedback, t_bh_feedback);
+      }
+      if (with_rt) {
+        engine_addlink(e, &ci->hydro.rt_inject, t_rt_inject);
+        engine_addlink(e, &cj->hydro.rt_inject, t_rt_inject);
       }
 
 #ifdef EXTRA_HYDRO_LOOP
@@ -2715,6 +2867,18 @@ void engine_make_extra_hydroloop_tasks_mapper(void *map_data, int num_elements,
             (bcount_i > 0 || bcount_j > 0)) {
           scheduler_addunlock(sched, t_bh_feedback, ci->super->timestep_sync);
         }
+
+        if (with_rt) {
+          if (with_feedback) {
+            /* then no rt_in task exists, use star ghost out */
+            scheduler_addunlock(sched, ci->hydro.super->stars.stars_out,
+                                t_rt_inject);
+          } else {
+            scheduler_addunlock(sched, ci->hydro.super->hydro.rt_in,
+                                t_rt_inject);
+          }
+          scheduler_addunlock(sched, t_rt_inject, ci->super->hydro.rt_out);
+        }
       } else /* ci->nodeID != nodeID */ {
 
         if (with_feedback) {
@@ -2787,6 +2951,17 @@ void engine_make_extra_hydroloop_tasks_mapper(void *map_data, int num_elements,
                                 t_bh_feedback);
             scheduler_addunlock(sched, t_bh_feedback,
                                 cj->hydro.super->black_holes.black_holes_out);
+          }
+          if (with_rt) {
+            if (with_feedback) {
+              /* then no rt_in task exists, use star ghost out */
+              scheduler_addunlock(sched, cj->hydro.super->stars.stars_out,
+                                  t_rt_inject);
+            } else {
+              scheduler_addunlock(sched, cj->hydro.super->hydro.rt_in,
+                                  t_rt_inject);
+            }
+            scheduler_addunlock(sched, t_rt_inject, cj->super->hydro.rt_out);
           }
 
           if (with_timestep_limiter) {

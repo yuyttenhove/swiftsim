@@ -366,7 +366,6 @@ INLINE static void black_holes_write_particles(const struct bpart* bparts,
       "Integer number of gas neighbour particles within the black hole "
       "kernels.");
 
-
   list[32] = io_make_output_field(
       "AccretionBoostFactors", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, bparts,
       accretion_boost_factor,
@@ -395,8 +394,8 @@ INLINE static void black_holes_write_particles(const struct bpart* bparts,
   list[36] = io_make_output_field(
       "FeedbackDeltaT", FLOAT, 1, UNIT_CONV_TEMPERATURE, 0.f, bparts,
       AGN_delta_T,
-      "Temperature by which gas particles are heated by the black hole "
-      "particles in case of feedback.");
+      "Temperature by which gas particles have been heated by the black hole "
+      "particles in the most recent feedback event.");
 
   list[37] = io_make_output_field_convert_bpart(
       "GasTemperatures", FLOAT, 1, UNIT_CONV_TEMPERATURE, 0.f, bparts,
@@ -433,7 +432,6 @@ INLINE static void black_holes_write_particles(const struct bpart* bparts,
       "Minimum energy reservoir required for the black holes to do feedback, "
       "expressed in units of the (constant) target heating temperature "
       "increase.");
-
 
   list[43] = io_make_output_field(
       "BirthGasDensities", FLOAT, 1, UNIT_CONV_DENSITY, 0.f, bparts,

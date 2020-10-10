@@ -356,7 +356,7 @@ fi
 
 # Check if gravity force checks are on for some particles.
 AC_ARG_ENABLE([gravity-force-checks],
-   [AS_HELP_STRING([--enable-gravity-force-checks],
+   [AS_HELP_STRING([--enable-gravity-force-checks=<N>],
      [Activate expensive brute-force gravity checks for a fraction 1/N of all particles @<:@N@:>@]
    )],
    [gravity_force_checks="$enableval"],
@@ -382,7 +382,7 @@ fi
 
 # Check if we want to zero the gravity forces for all particles below some ID.
 AC_ARG_ENABLE([no-gravity-below-id],
-   [AS_HELP_STRING([--enable-no-gravity-below-id],
+   [AS_HELP_STRING([--enable-no-gravity-below-id=<N>],
      [Zeros the gravitational acceleration of all particles with an ID smaller than @<:@N@:>@]
    )],
    [no_gravity_below_id="$enableval"],
@@ -396,7 +396,7 @@ fi
 
 # Check if we want to use boundary particles.
 AC_ARG_ENABLE([boundary-particles],
-   [AS_HELP_STRING([--enable-boundary-particles],
+   [AS_HELP_STRING([--enable-boundary-particles=<N>],
      [Set all particles with an ID smaller than @<:@N@:>@ as boundary particles (i.e. receive zero gravity + hydro forces).]
    )],
    [boundary_particles="$enableval"],
@@ -411,7 +411,7 @@ fi
 
 # Check if we want to use fixed boundary particles.
 AC_ARG_ENABLE([fixed-boundary-particles],
-   [AS_HELP_STRING([--enable-fixed-boundary-particles],
+   [AS_HELP_STRING([--enable-fixed-boundary-particles=<N>],
      [Set all particles with an ID smaller than @<:@N@:>@ as fixed boundary particles (i.e. receive zero gravity + hydro forces + zero velocity), this mode enables also --enable-boundary-particles and --enable-no-gravity-below-id.]
    )],
    [fixed_boundary_particles="$enableval"],
@@ -1130,6 +1130,7 @@ if test "x$with_python" != "xno"; then
       with_python="/usr/"
    fi
    AM_PATH_PYTHON([3], [], [AC_MSG_ERROR(python not found)])   
+   AC_ARG_VAR([PYTHON_LIBS], [Linking flags for python, bypassing python-config])
    AC_ARG_VAR([PYTHON_INCS], [Include flags for python, bypassing python-config])
    AC_ARG_VAR([PYTHON_CONFIG], [Path to python-config])
    AS_IF([test -z "$PYTHON_INCS"], [
@@ -1142,12 +1143,15 @@ if test "x$with_python" != "xno"; then
       ])
       AC_MSG_CHECKING([python include flags])
       PYTHON_INCS=`$PYTHON_CONFIG --includes`
+      PYTHON_LIBS=`$PYTHON_CONFIG --ldflags`
       AC_MSG_RESULT([$PYTHON_INCS])
+      AC_MSG_RESULT([$PYTHON_LIBS])
   ])
   have_python="yes"
   AC_DEFINE([HAVE_PYTHON],1,[Python appears to be present.])
 fi
 AC_SUBST([PYTHON_INCS])
+AC_SUBST([PYTHON_LIBS])
 AM_CONDITIONAL([HAVEPYTHON],[test -n "$PYTHON_INCS"])
 
 
@@ -1288,6 +1292,18 @@ if test "$enable_dummy_velociraptor" = "yes"; then
 
   AC_DEFINE(HAVE_VELOCIRAPTOR,1,[The VELOCIraptor library appears to be present.])
   AC_DEFINE(HAVE_DUMMY_VELOCIRAPTOR,1,[The dummy VELOCIraptor library is present.])
+fi
+
+# Check if we should be writing out most bound "orphan" particles from Velociraptor
+AC_ARG_ENABLE([velociraptor-orphans],
+    [AS_HELP_STRING([--enable-velociraptor-orphans],
+       [Enable output of orphan particles @<:@yes/no@:>@]
+    )],
+    [enable_velociraptor_orphans="$enableval"],
+    [enable_velociraptor_orphans="no"]
+)
+if test "$enable_velociraptor_orphans" = "yes"; then
+   AC_DEFINE([HAVE_VELOCIRAPTOR_ORPHANS], 1, [Orphan particles should be written out])
 fi
 
 # Check for floating-point execeptions
@@ -1847,7 +1863,7 @@ case "$with_riemann" in
 esac
 #  Cooling function
 AC_ARG_WITH([cooling],
-   [AS_HELP_STRING([--with-cooling=<function>],
+   [AS_HELP_STRING([--with-cooling=<model>],
       [cooling function @<:@none, const-du, const-lambda, QLA, EAGLE, grackle_* default: none@:>@.
       For Grackle, you need to provide the primordial chemistry parameter (e.g. grackle_0)]
    )],

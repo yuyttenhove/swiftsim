@@ -60,18 +60,6 @@ struct black_holes_props {
 
   /* ----- Properties of the accretion model ------ */
 
-  /*! Switch on Booth & Schaye (2009) accretion boost factor? */
-  int with_accretion_boost;
-
-  /*! Constant pre-factor for accretion rate */
-  float accretion_boost_alpha;
-
-  /*! Density normalisation of accretion boost */
-  float accretion_boost_dens_norm;
-
-  /*! Exponent of accretion boost dependence on density */
-  float accretion_boost_exponent;
-
   /*! Calculate Bondi accretion rate for individual neighbours? */
   int multi_phase_bondi;
 
@@ -93,6 +81,22 @@ struct black_holes_props {
 
   /*! Eddington fraction threshold for recording */
   float f_Edd_recording;
+
+  /*! Switch for the Booth & Schaye 2009 model */
+  int with_boost_factor;
+
+  /*! Use constant-alpha version of Booth & Schaye (2009) model? */
+  int boost_alpha_only;
+
+  /*! Lowest value of the boost of the Booth & Schaye 2009 model */
+  float boost_alpha;
+
+  /*! Power law slope for the boost of the Booth & Schaye 2009 model */
+  float boost_beta;
+
+  /*! Normalisation density (internal units) for the boost of the Booth & Schaye
+   * 2009 model */
+  double boost_n_h_star;
 
   /*! Switch for nibbling mode */
   int use_nibbling;
@@ -126,31 +130,32 @@ struct black_holes_props {
   /*! Exponent of the scaling of coupling efficiency with density */
   float epsilon_f_density_exponent;
 
-  /*! Switch on variable heating temperature scheme? */
-  int use_variable_delta_T;
-
-  /*! If we use variable delta_T, should we scale with BH mass? */
-  int scale_delta_T_with_mass_only;
-
-  /*! Normalisation dT if scaling with BH mass*/
-  float AGN_delta_T_mass_alpha;
-
-  /*! Pivot BH mass when scaling dT with BH mass */
-  float AGN_delta_T_mass_norm;
-
-  /*! BH mass scaling exponent if scaling dT with BH mass*/
-  float AGN_delta_T_mass_exponent;
-
-  /*! (Fixed) temperature increase induced by AGN feedback (Kelvin) */
+  /*! (Constant) temperature increase induced by AGN feedback [Kelvin] */
   float AGN_delta_T_desired;
 
+  /*! Switch on adaptive heating temperature scheme? */
+  int use_variable_delta_T;
+
+  /*! If we use variable delta_T, should we scale with local gas properties
+   *  in addition to BH mass? */
+  int AGN_with_locally_adaptive_delta_T;
+
+  /*! Normalisation for dT scaling with BH mass */
+  float AGN_delta_T_mass_norm;
+
+  /*! Reference BH mass for dT scaling [M_Sun] */
+  float AGN_delta_T_mass_reference;
+
+  /*! Exponent for dT scaling with BH mass */
+  float AGN_delta_T_mass_exponent;
+
   /*! Buffer factor for numerical efficiency temperature */
-  float AGN_T_crit_factor;
+  float AGN_delta_T_crit_factor;
 
   /*! Buffer factor for background temperature */
-  float AGN_T_background_factor;
+  float AGN_delta_T_background_factor;
 
-  /*! Maximum temperature increase induced by AGN feedback [Kelvin] */
+  /*! Max/min temperature increase induced by AGN feedback [Kelvin] */
   float AGN_delta_T_max;
   float AGN_delta_T_min;
 
@@ -223,6 +228,11 @@ struct black_holes_props {
   /*! Maximal distance over which BHs merge, in units of softening length */
   float max_merging_distance_ratio;
 
+  /* ---- Black hole time-step properties ---------- */
+
+  /*! Minimum allowed time-step of BH (internal units) */
+  float time_step_min;
+
   /* ---- Common conversion factors --------------- */
 
   /*! Conversion factor from temperature to internal energy */
@@ -233,7 +243,6 @@ struct black_holes_props {
 
   /*! Conversion factor from internal mass to solar masses */
   float mass_to_solar_mass;
-
 };
 
 /**
@@ -304,18 +313,6 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
 
   /* Accretion parameters ---------------------------------- */
 
-  /*! Booth & Schaye (2009) accretion boost model */
-  bp->with_accretion_boost =
-      parser_get_param_int(params, "EAGLEAGN:with_accretion_boost");
-  if (bp->with_accretion_boost) {
-    bp->accretion_boost_alpha = 
-        parser_get_param_float(params, "EAGLEAGN:accretion_boost_alpha");
-    bp->accretion_boost_dens_norm = 
-        parser_get_param_float(params, "EAGLEAGN:accretion_boost_dens_norm");
-    bp->accretion_boost_exponent =
-        parser_get_param_float(params, "EAGLEAGN:accretion_boost_exponent");
-  }
-
   bp->multi_phase_bondi =
       parser_get_param_int(params, "EAGLEAGN:multi_phase_bondi");
 
@@ -334,13 +331,31 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
 
   bp->epsilon_r =
       parser_get_param_float(params, "EAGLEAGN:radiative_efficiency");
-  if (bp->epsilon_r > 1)
-    error("EAGLEAGN:radiative_efficiency must be <= 1, not %f.",
-	  bp->epsilon_r);
+  if (bp->epsilon_r > 1.f)
+    error("EAGLEAGN:radiative_efficiency must be <= 1, not %f.", bp->epsilon_r);
 
   bp->f_Edd = parser_get_param_float(params, "EAGLEAGN:max_eddington_fraction");
   bp->f_Edd_recording = parser_get_param_float(
       params, "EAGLEAGN:eddington_fraction_for_recording");
+
+  /*  Booth & Schaye (2009) Parameters */
+  bp->with_boost_factor =
+      parser_get_param_int(params, "EAGLEAGN:with_boost_factor");
+
+  if (bp->with_boost_factor) {
+  	bp->boost_alpha_only = parser_get_param_int(
+  	    params, "EAGLEAGN:boost_alpha_only");
+    bp->boost_alpha = parser_get_param_float(params, "EAGLEAGN:boost_alpha");
+
+    if (!bp->boost_alpha_only) {
+      bp->boost_beta = parser_get_param_float(params, "EAGLEAGN:boost_beta");
+
+      /* Load the density in cgs and convert to internal units */
+      bp->boost_n_h_star =
+          parser_get_param_float(params, "EAGLEAGN:boost_n_h_star_H_p_cm3") /
+          units_cgs_conversion_factor(us, UNIT_CONV_NUMBER_DENSITY);
+    }
+  }
 
   bp->use_nibbling = parser_get_param_int(params, "EAGLEAGN:use_nibbling");
   if (bp->use_nibbling) {
@@ -371,36 +386,47 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
         parser_get_param_float(params, "EAGLEAGN:coupling_efficiency");    
   }
 
-  const double T_K_to_int = 1. / 
-      units_cgs_conversion_factor(us, UNIT_CONV_TEMPERATURE);
+  const double T_K_to_int =
+      1. / units_cgs_conversion_factor(us, UNIT_CONV_TEMPERATURE);
 
   bp->use_variable_delta_T =
       parser_get_param_int(params, "EAGLEAGN:use_variable_delta_T");
   if (bp->use_variable_delta_T) {
-
-    bp->scale_delta_T_with_mass_only =
-        parser_get_param_int(params, "EAGLEAGN:scale_delta_T_with_mass_only");
-    bp->AGN_delta_T_mass_alpha =
-        parser_get_param_float(params, "EAGLEAGN:AGN_delta_T_mass_alpha")
-        * T_K_to_int;
     bp->AGN_delta_T_mass_norm =
-        parser_get_param_float(params, "EAGLEAGN:AGN_delta_T_mass_norm")
-        * phys_const->const_solar_mass;   
+        parser_get_param_float(params, "EAGLEAGN:AGN_delta_T_mass_norm") *
+        T_K_to_int;
+    bp->AGN_delta_T_mass_reference =
+        parser_get_param_float(params, "EAGLEAGN:AGN_delta_T_mass_reference") *
+        phys_const->const_solar_mass;
     bp->AGN_delta_T_mass_exponent =
-        parser_get_param_float(params, "EAGLEAGN:AGN_delta_T_mass_exponent");   
-    bp->AGN_T_crit_factor =
-        parser_get_param_float(params, "EAGLEAGN:AGN_T_crit_factor");
-    bp->AGN_T_background_factor =
-        parser_get_param_float(params, "EAGLEAGN:AGN_T_background_factor");
+        parser_get_param_float(params, "EAGLEAGN:AGN_delta_T_mass_exponent");
+
+    bp->AGN_with_locally_adaptive_delta_T = parser_get_param_int(
+        params, "EAGLEAGN:AGN_with_locally_adaptive_delta_T");
+    if (bp->AGN_with_locally_adaptive_delta_T) {
+      bp->AGN_delta_T_crit_factor =
+          parser_get_param_float(params, "EAGLEAGN:AGN_delta_T_crit_factor");
+      bp->AGN_delta_T_background_factor = parser_get_param_float(
+          params, "EAGLEAGN:AGN_delta_T_background_factor");
+    }
 
     bp->AGN_delta_T_max =
         parser_get_param_float(params, "EAGLEAGN:AGN_delta_T_max") * T_K_to_int;
     bp->AGN_delta_T_min =
         parser_get_param_float(params, "EAGLEAGN:AGN_delta_T_min") * T_K_to_int;
+  } else {
+    bp->AGN_delta_T_desired =
+        parser_get_param_float(params, "EAGLEAGN:AGN_delta_T_K");
   }
-  bp->AGN_delta_T_desired =
-      parser_get_param_float(params, "EAGLEAGN:AGN_delta_T_K") * T_K_to_int;
-  
+
+  bp->AGN_use_nheat_with_fixed_dT =
+      parser_get_param_int(params, "EAGLEAGN:AGN_use_nheat_with_fixed_dT");
+  if (bp->AGN_use_nheat_with_fixed_dT && bp->use_variable_delta_T) {
+  	/* Need to also read in constant reference dT in this case */
+    bp->AGN_delta_T_desired =
+      parser_get_param_float(params, "EAGLEAGN:AGN_delta_T_K");  
+  }
+
   bp->use_adaptive_energy_reservoir_threshold =
       parser_get_param_int(
         params, "EAGLEAGN:AGN_use_adaptive_energy_reservoir_threshold");
@@ -491,6 +517,16 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
   bp->max_merging_distance_ratio =
       parser_get_param_float(params, "EAGLEAGN:merger_max_distance_ratio");
 
+  /* ---- Black hole time-step properties ------------------ */
+
+  const double Myr_in_cgs = 1e6 * 365.25 * 24. * 60. * 60.;
+
+  const double time_step_min_Myr = parser_get_opt_param_float(
+      params, "EAGLEAGN:minimum_timestep_Myr", FLT_MAX);
+
+  bp->time_step_min = time_step_min_Myr * Myr_in_cgs /
+                      units_cgs_conversion_factor(us, UNIT_CONV_TIME);
+
   /* Common conversion factors ----------------------------- */
 
   /* Calculate temperature to internal energy conversion factor (all internal
@@ -504,7 +540,7 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
    * Note this assumes primoridal abundance */
   const double X_H = hydro_props->hydrogen_mass_fraction;
   bp->rho_to_n_cgs =
-    (X_H / m_p) * units_cgs_conversion_factor(us, UNIT_CONV_NUMBER_DENSITY);
+      (X_H / m_p) * units_cgs_conversion_factor(us, UNIT_CONV_NUMBER_DENSITY);
 
   /* Conversion factor for internal mass to M_solar */
   bp->mass_to_solar_mass = 1. / phys_const->const_solar_mass;

@@ -261,6 +261,13 @@ void engine_marktasks_mapper(void *map_data, int num_elements,
         }
       }
 
+      /* Activate RT injection */
+      else if (t_subtype == task_subtype_rt_inject) {
+        if (ci_active_hydro) {
+          scheduler_activate(s, t);
+        }
+      }
+
 #ifdef SWIFT_DEBUG_CHECKS
       else {
         error("Invalid task type / sub-type encountered");
@@ -469,6 +476,24 @@ void engine_marktasks_mapper(void *map_data, int num_elements,
           error("Invalid task sub-type encountered");
         }
 #endif
+      }
+
+      /* RT injection tasks */
+      else if (t_subtype == task_subtype_rt_inject) {
+        /* We only want to activate the task if the cell is active and is
+           going to update some gas on the *local* node */
+        if ((ci_nodeID == nodeID && cj_nodeID == nodeID) &&
+            (ci_active_hydro || cj_active_hydro)) {
+          scheduler_activate(s, t);
+
+        } else if ((ci_nodeID == nodeID && cj_nodeID != nodeID) &&
+                   (cj_active_hydro)) {
+          scheduler_activate(s, t);
+
+        } else if ((ci_nodeID != nodeID && cj_nodeID == nodeID) &&
+                   (ci_active_hydro)) {
+          scheduler_activate(s, t);
+        }
       }
 
       /* Only interested in density tasks as of here. */
@@ -859,6 +884,11 @@ void engine_marktasks_mapper(void *map_data, int num_elements,
                                     cj_nodeID);
         }
 #endif
+      } /* Only interested in RT tasks as of here. */
+      else if (t_subtype == task_subtype_rt_inject) {
+#ifdef WITH_MPI
+        error("RT doesn't work with MPI yet.");
+#endif
       }
     }
 
@@ -947,6 +977,12 @@ void engine_marktasks_mapper(void *map_data, int num_elements,
         scheduler_activate(s, t);
     }
 
+    /* Feedback implicit tasks? */
+    else if (t_type == task_type_sink_in || t_type == task_type_sink_out) {
+      if (cell_is_active_sinks(t->ci, e) || cell_is_active_hydro(t->ci, e))
+        scheduler_activate(s, t);
+    }
+
     /* Black hole ghost tasks ? */
     else if (t_type == task_type_bh_density_ghost ||
              t_type == task_type_bh_swallow_ghost1 ||
@@ -984,6 +1020,26 @@ void engine_marktasks_mapper(void *map_data, int num_elements,
       if (cell_is_active_hydro(t->ci, e)) {
         cell_activate_star_formation_tasks(t->ci, s, with_feedback);
         cell_activate_super_spart_drifts(t->ci, s);
+      }
+    }
+
+    /* Radiative transfer ghost in */
+    else if (t->type == task_type_rt_in && with_feedback) {
+      if (cell_is_active_hydro(t->ci, e) || cell_is_active_stars(t->ci, e))
+        scheduler_activate(s, t);
+    }
+
+    /* Radiative transfer ghost out */
+    else if (t->type == task_type_rt_out) {
+      if (cell_is_active_hydro(t->ci, e) || cell_is_active_stars(t->ci, e))
+        scheduler_activate(s, t);
+    }
+
+    /* Subgrid tasks: sink formation */
+    else if (t_type == task_type_sink_formation) {
+      if (cell_is_active_hydro(t->ci, e)) {
+        cell_activate_sink_formation_tasks(t->ci, s);
+        cell_activate_super_sink_drifts(t->ci, s);
       }
     }
   }

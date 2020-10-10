@@ -260,15 +260,14 @@ runner_iact_nonsym_bh_gas_swallow(const float r2, const float *dx,
 
   /* Check if the BH needs to be fed. If not, we're done here */
   const float bh_mass_deficit = bi->subgrid_mass - bi->mass_at_start_of_step;
-  if (bh_mass_deficit <= 0) return;
+  if (bh_mass_deficit <= 0.f) return;
 
   if (bh_props->use_nibbling) {
 
     /* If we do nibbling, things are quite straightforward. We transfer
      * the mass and all associated quantities right here. */
 
-    if (bh_props->epsilon_r == 1)
-      return;
+    if (bh_props->epsilon_r == 1.f) return;
 
     const float bi_mass_orig = bi->mass;
     const float pj_mass_orig = hydro_get_mass(pj);
@@ -282,15 +281,15 @@ runner_iact_nonsym_bh_gas_swallow(const float r2, const float *dx,
 
     /* We radiated away some of the accreted mass, so need to take slightly
      * more from the gas than the BH gained */
-    const float excess_fraction = 1.0 / (1.0 - bh_props->epsilon_r);
+    const float excess_fraction = 1.f / (1.f - bh_props->epsilon_r);
 
-    /* Need to check whether nibbling would push gas mass below minimum 
+    /* Need to check whether nibbling would push gas mass below minimum
      * allowed mass */
     float new_gas_mass = pj_mass_orig - nibble_mass * excess_fraction;
     if (new_gas_mass < bh_props->min_gas_mass_for_nibbling) {
       new_gas_mass = bh_props->min_gas_mass_for_nibbling;
-      nibble_mass = (pj_mass_orig - bh_props->min_gas_mass_for_nibbling)
-                    / excess_fraction;
+      nibble_mass = (pj_mass_orig - bh_props->min_gas_mass_for_nibbling) /
+                    excess_fraction;
     }
 
     /* Transfer (dynamical) mass from the gas particle to the BH */
@@ -318,9 +317,6 @@ runner_iact_nonsym_bh_gas_swallow(const float r2, const float *dx,
     bi->v[0] = bi_mom[0] / bi->mass;
     bi->v[1] = bi_mom[1] / bi->mass;
     bi->v[2] = bi_mom[2] / bi->mass;
-    bi->gpart->v_full[0] = bi->v[0];
-    bi->gpart->v_full[1] = bi->v[1];
-    bi->gpart->v_full[2] = bi->v[2];
 
     /* Update the BH and also gas metal masses */
     struct chemistry_bpart_data *bi_chem = &bi->chemistry_data;
@@ -509,8 +505,8 @@ runner_iact_nonsym_bh_bh_swallow(const float r2, const float *dx,
 
     if ((v2_pec < v2_threshold) && (r2 < max_dist_merge2)) {
 
-      /* This particle is swallowed by the BH with the largest ID of all the
-       * candidates wanting to swallow it */
+      /* This particle is swallowed by the BH with the largest mass of all the
+       * candidates wanting to swallow it (we use IDs to break ties)*/
       if ((bj->merger_data.swallow_mass < bi->subgrid_mass) ||
           (bj->merger_data.swallow_mass == bi->subgrid_mass &&
            bj->merger_data.swallow_id < bi->id)) {
