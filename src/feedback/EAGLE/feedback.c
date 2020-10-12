@@ -207,7 +207,7 @@ double eagle_variable_feedback_temperature_change_v2(
   /* Relevant star properties */
   const double mean_ngb_mass = ngb_gas_mass / ((double)num_gas_ngbs);
   const double rho_birth_phys = sp->birth_density;
-  const double sfr_birth_phys = sp->sf_data.birth_star_formation_rate;
+  const double sfr_birth_phys = sp->birth_star_formation_rate;
   const double m_initial = sp->mass_init;
   const double n_phys = (props->SNII_use_instantaneous_density_for_dT ?
       ngb_nH_cgs : rho_birth_phys * props->rho_to_n_cgs);
@@ -536,9 +536,9 @@ double eagle_feedback_energy_fraction(struct spart* sp,
   const double denonimator = 1. + Z_term * n_term;
 
   double divergence_boost = 1.0;
-  if (props->with_SNII_divergence_boost && sp->sf_data.birth_div_v < 0)
+  if (props->with_SNII_divergence_boost && sp->birth_div_v < 0)
     divergence_boost =
-        1.0 + pow(-sp->sf_data.birth_div_v / props->SNII_divergence_norm,
+        1.0 + pow(-sp->birth_div_v / props->SNII_divergence_norm,
             props->SNII_divergence_exponent);
 
   sp->f_E_divergence_boost = divergence_boost;

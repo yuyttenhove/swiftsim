@@ -103,7 +103,7 @@ __attribute__((always_inline)) INLINE static void stars_first_init_spart(
     const int with_cosmology, const double scale_factor, const double time) {
 
   sp->time_bin = 0;
-  sp->sf_data.birth_div_v = FLT_MAX;
+  sp->birth_div_v = FLT_MAX;
   sp->f_E = -1.f;
   sp->delta_T_min = FLT_MAX;
   sp->delta_T_max = -FLT_MAX;

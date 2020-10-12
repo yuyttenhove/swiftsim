@@ -574,8 +574,8 @@ INLINE static void star_formation_copy_properties(
   sp->birth_temperature = cooling_get_temperature(phys_const, hydro_props, us,
                                                   cosmo, cooling, p, xp);
 
-  sp->sf_data.birth_div_v = hydro_get_velocity_divergence(p);
-  sp->sf_data.birth_star_formation_rate = xp->sf_data.SFR;
+  sp->birth_div_v = hydro_get_velocity_divergence(p);
+  sp->birth_star_formation_rate = xp->sf_data.SFR;
 
   /* Flag that this particle has not done feedback yet */
   sp->f_E = -1.f;

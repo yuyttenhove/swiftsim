@@ -249,13 +249,13 @@ INLINE static void stars_write_particles(const struct spart *sparts,
 
   list[22] = io_make_output_field(
       "BirthVelocityDivergences", FLOAT, 1, UNIT_CONV_FREQUENCY, 0.f, sparts,
-      sf_data.birth_div_v,
+      birth_div_v,
       "Velocity divergences at the time of birth of the gas particles that "
       "turned into stars");
 
   list[23] = io_make_output_field(
       "StarFormationRates", FLOAT, 1, UNIT_CONV_SFR, 0.f, sparts,
-      sf_data.birth_star_formation_rate,
+      birth_star_formation_rate,
       "Star formation rates of the parent gas particle at the point where they "
       "were converted to stars.");
 }
