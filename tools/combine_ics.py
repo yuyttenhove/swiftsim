@@ -66,7 +66,7 @@ for i in range(6):
 tot_num_parts_swift = np.copy(tot_num_parts)
 tot_num_parts_swift[2] += tot_num_parts_swift[3]
 tot_num_parts_swift[3] = 0
-    
+
 # Some basic information
 print("Reading", tot_num_parts, "particles from", num_files, "files.")
 
@@ -158,7 +158,7 @@ if tot_num_parts_swift[2] > 0:
     create_set(grp2, "Velocities", tot_num_parts_swift[2], 3, "f")
     create_set(grp2, "Masses", tot_num_parts_swift[2], 1, "f")
     create_set(grp2, "ParticleIDs", tot_num_parts_swift[2], 1, "l")
-    
+
 if tot_num_parts[4] > 0:
     create_set(grp4, "Coordinates", tot_num_parts[4], 3, "d")
     create_set(grp4, "Velocities", tot_num_parts[4], 3, "f")
@@ -225,8 +225,8 @@ for f in range(num_files):
         output_file[full_name_new][
             cumul_parts[2] : cumul_parts[2] + num_parts[3]
         ] = file[full_name_old]
-    
-        
+
+
     if num_parts[0] > 0:
         copy_grp_same_name("Coordinates", 0)
         copy_grp_same_name("Velocities", 0)
@@ -250,7 +250,7 @@ for f in range(num_files):
 
     # Need to update part counter for pt2 already here, so we append 3 in correct place
     cumul_parts[2] += num_parts[2]
-        
+
     if num_parts[3] > 0:
         copy_grp_pt3("Coordinates")
         copy_grp_pt3("Velocities")

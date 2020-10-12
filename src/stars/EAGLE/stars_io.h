@@ -120,7 +120,7 @@ INLINE static void stars_write_particles(const struct spart *sparts,
                                          const int with_cosmology) {
 
   /* Say how much we want to write */
-  *num_fields = 22;
+  *num_fields = 24;
 
   /* List what we want to write */
   list[0] = io_make_output_field_convert_spart(
@@ -171,11 +171,11 @@ INLINE static void stars_write_particles(const struct spart *sparts,
       "we store the physical density at the birth redshift, no conversion is "
       "needed)");
 
-  list[9] =
-      io_make_output_field("BirthTemperatures", FLOAT, 1, UNIT_CONV_TEMPERATURE,
-                           0.f, sparts, birth_temperature,
-                           "Temperatures at the time of birth of the gas "
-                           "particles that turned into stars");
+  list[9] = io_make_output_field(
+      "BirthTemperatures", FLOAT, 1, UNIT_CONV_TEMPERATURE, 0.f, sparts,
+      birth_temperature,
+      "Temperatures at the time of birth of the gas particles that turned into "
+      "stars");
 
   list[10] = io_make_output_field(
       "FeedbackMinimumDeltaT", FLOAT, 1, UNIT_CONV_TEMPERATURE, 0.f, sparts,
@@ -247,6 +247,17 @@ INLINE static void stars_write_particles(const struct spart *sparts,
       number_of_SNII_events,
       "Number of SNII energy injection events the stars went through.");
 
+  list[22] = io_make_output_field(
+      "BirthVelocityDivergences", FLOAT, 1, UNIT_CONV_FREQUENCY, 0.f, sparts,
+      sf_data.birth_div_v,
+      "Velocity divergences at the time of birth of the gas particles that "
+      "turned into stars");
+
+  list[23] = io_make_output_field(
+      "StarFormationRates", FLOAT, 1, UNIT_CONV_SFR, 0.f, sparts,
+      sf_data.birth_star_formation_rate,
+      "Star formation rates of the parent gas particle at the point where they "
+      "were converted to stars.");
 }
 
 /**

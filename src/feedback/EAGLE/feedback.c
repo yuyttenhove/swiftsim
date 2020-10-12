@@ -44,7 +44,7 @@ double eagle_feedback_temperature_change(const struct spart* sp,
 }
 
 /**
- * @brief Return the variable change in temperature (in internal units) to 
+ * @brief Return the variable change in temperature (in internal units) to
  * apply to a gas particle affected by SNe feedback.
  *
  * This is calculated as delta_T = min(dT_crit, dT_num, dT_max):
@@ -126,7 +126,7 @@ double eagle_variable_feedback_temperature_change(
 
 INLINE static double sn_phi(
   const double theta, const double theta_min, const double zeta) {
-  return theta * pow((theta - theta_min) / (1.0 - theta_min), zeta); 
+  return theta * pow((theta - theta_min) / (1.0 - theta_min), zeta);
 }
 
 INLINE static double sn_dphi_dtheta(
@@ -137,7 +137,7 @@ INLINE static double sn_dphi_dtheta(
 }
 
 /**
- * @brief Compute the "compromise" temperature increase that results in the 
+ * @brief Compute the "compromise" temperature increase that results in the
  *        right amount of energy received by the gas if dT must be < dT_crit.
  *
  * @param dT_sample The ideal dT for satisfying the sampling criterion.
@@ -176,7 +176,7 @@ double compute_compromise_dT(
 }
 
 /**
- * @brief Return the variable change in temperature (in internal units) to 
+ * @brief Return the variable change in temperature (in internal units) to
  * apply to a gas particle affected by SNe feedback (new version 11-Aug-20)
  *
  * @param sp The #spart.
@@ -218,9 +218,9 @@ double eagle_variable_feedback_temperature_change_v2(
   const double dT_crit = 3.162e7 * pow(n_phys * 0.1, 0.6666667) *
       pow(mean_ngb_mass * props->mass_to_solar_mass * 1e-6, 0.33333333) *
       f_crit;
- 
+
   /* Calculate sampling reduction factor nu */
-  if (props->SNII_sampling_reduction_within_smoothing_length)    
+  if (props->SNII_sampling_reduction_within_smoothing_length)
     gamma_star *= (h_pkpc_inv * h_pkpc_inv * h_pkpc_inv);
   double nu = rho_birth_phys * sfr_birth_phys / (m_initial * m_initial)
                  / gamma_star;
@@ -231,7 +231,7 @@ double eagle_variable_feedback_temperature_change_v2(
   } else if (rho_birth_phys < birth_sf_threshold * nu_shelf_factor *
             nu_drop_factor) {
 
-    /* Digamma is a factor that varies linearly from 0 at the shelf edge, to 
+    /* Digamma is a factor that varies linearly from 0 at the shelf edge, to
      * 1 at the end of the drop. */
     const double digamma =
         (rho_birth_phys / birth_sf_threshold - nu_shelf_factor) /
@@ -241,7 +241,7 @@ double eagle_variable_feedback_temperature_change_v2(
      * the (original) nu at the drop edge. */
     nu = 1.0 - digamma + nu * digamma;
   }
-  
+
   const double dT_sample = SNe_energy /
       (mean_ngb_mass * props->temp_to_u_factor * frac_SNII *
       num_to_heat / nu);
@@ -571,7 +571,7 @@ double eagle_feedback_energy_fraction(struct spart* sp,
  * @param birth_sf_threshold The SF density threshold at the star's birth
  * (in internal units, already corrected for hydrogen fraction).
  * @param h_pkpc_inv The inverse of the star particle's smoothing length
- * (in proper kpc). 
+ * (in proper kpc).
  */
 INLINE static void compute_SNII_feedback(
     struct spart* sp, const double star_age, const double dt,
@@ -1189,11 +1189,9 @@ void compute_stellar_evolution(const struct feedback_props* feedback_props,
 #endif
 
   /* Convert dt and stellar age from internal units to Gyr. */
-  const double Gyr_in_cgs = 1e9 * 365.25 * 24. * 3600.;
-  const double time_to_cgs = units_cgs_conversion_factor(us, UNIT_CONV_TIME);
-  const double conversion_factor = time_to_cgs / Gyr_in_cgs;
-  const double dt_Gyr = dt * conversion_factor;
-  const double star_age_Gyr = age * conversion_factor;
+  const double Gyr_inv = 1. / (phys_const->const_year * 1e9);
+  const double dt_Gyr = dt * Gyr_inv;
+  const double star_age_Gyr = age * Gyr_inv;
 
   /* Get the birth mass of the star */
   const double M_init = sp->mass_init;
@@ -1339,8 +1337,6 @@ void feedback_props_init(struct feedback_props* fp,
                          const struct hydro_props* hydro_props,
                          const struct cosmology* cosmo) {
 
-  const double Gyr_in_cgs = 1.0e9 * 365.2422 * 24. * 3600.;
-
   /* Main operation modes ------------------------------------------------- */
 
   fp->with_SNII_feedback =
@@ -1385,11 +1381,10 @@ void feedback_props_init(struct feedback_props* fp,
       parser_get_param_int(params, "EAGLEFeedback:SNII_sampled_delay");
 
   if (!fp->SNII_sampled_delay) {
-
     /* Set the delay time before SNII occur */
     fp->SNII_wind_delay =
         parser_get_param_double(params, "EAGLEFeedback:SNII_wind_delay_Gyr") *
-        Gyr_in_cgs / units_cgs_conversion_factor(us, UNIT_CONV_TIME);
+        phys_const->const_year * 1e9;
   }
 
   /* Energy released by supernova type II */
@@ -1416,7 +1411,7 @@ void feedback_props_init(struct feedback_props* fp,
     fp->SNII_delta_T_num_ngb_to_heat =
         parser_get_param_double(params,
                                 "EAGLEFeedback:SNII_delta_T_num_ngb_to_heat");
-    
+
     if (fp->SNII_use_variable_delta_T == 1) {
       fp->SNII_delta_T_num_ngb_to_heat_limit =
           parser_get_param_double(
@@ -1444,7 +1439,7 @@ void feedback_props_init(struct feedback_props* fp,
                 params, "EAGLEFeedback:SNII_efficiency_theta_min");
       }
 
-      fp->SNII_gamma_star = 
+      fp->SNII_gamma_star =
           parser_get_param_double(params, "EAGLEFeedback:SNII_gamma") /
               (phys_const->const_year * 1e7 * 4.0 / 3.0 * M_PI *
               phys_const->const_parsec * phys_const->const_parsec *
@@ -1588,7 +1583,7 @@ void feedback_props_init(struct feedback_props* fp,
   fp->stellar_evolution_age_cut =
       parser_get_param_double(params,
                               "EAGLEFeedback:stellar_evolution_age_cut_Gyr") *
-      Gyr_in_cgs / units_cgs_conversion_factor(us, UNIT_CONV_TIME);
+      phys_const->const_year * 1e9;
 
   fp->stellar_evolution_sampling_rate = parser_get_param_double(
       params, "EAGLEFeedback:stellar_evolution_sampling_rate");

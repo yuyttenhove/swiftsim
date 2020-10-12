@@ -159,7 +159,7 @@ struct black_holes_props {
   float AGN_delta_T_max;
   float AGN_delta_T_min;
 
-  /*! Vary the energy reservoir to the Eddington ratio? */
+  /*! Vary the energy reservoir according to the BH accretion rate? */
   int use_adaptive_energy_reservoir_threshold;
 
   /*! Normalisation for energy reservoir threshold, at upper end */
@@ -343,8 +343,8 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
       parser_get_param_int(params, "EAGLEAGN:with_boost_factor");
 
   if (bp->with_boost_factor) {
-  	bp->boost_alpha_only = parser_get_param_int(
-  	    params, "EAGLEAGN:boost_alpha_only");
+    bp->boost_alpha_only = parser_get_param_int(
+        params, "EAGLEAGN:boost_alpha_only");
     bp->boost_alpha = parser_get_param_float(params, "EAGLEAGN:boost_alpha");
 
     if (!bp->boost_alpha_only) {
@@ -383,7 +383,7 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
         params, "EAGLEAGN:epsilon_f_density_exponent");
   } else {
     bp->epsilon_f =
-        parser_get_param_float(params, "EAGLEAGN:coupling_efficiency");    
+        parser_get_param_float(params, "EAGLEAGN:coupling_efficiency");
   }
 
   const double T_K_to_int =
@@ -422,9 +422,9 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
   bp->AGN_use_nheat_with_fixed_dT =
       parser_get_param_int(params, "EAGLEAGN:AGN_use_nheat_with_fixed_dT");
   if (bp->AGN_use_nheat_with_fixed_dT && bp->use_variable_delta_T) {
-  	/* Need to also read in constant reference dT in this case */
+    /* Need to also read in constant reference dT in this case */
     bp->AGN_delta_T_desired =
-      parser_get_param_float(params, "EAGLEAGN:AGN_delta_T_K");  
+      parser_get_param_float(params, "EAGLEAGN:AGN_delta_T_K");
   }
 
   bp->use_adaptive_energy_reservoir_threshold =

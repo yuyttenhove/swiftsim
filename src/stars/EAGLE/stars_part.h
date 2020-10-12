@@ -95,22 +95,23 @@ struct spart {
   /*! Value of divergence boost factor (within f_E) */
   float f_E_divergence_boost;
 
-  /*! Feedback temperature increase */
+  /*! Feedback temperature increase (min/max) */
   float delta_T_min;
   float delta_T_max;
 
-  /*! Heating temperature in units of critical temperature */
+  /*! Heating temperature in units of critical temperature (min/max) */
   float T_critical_fraction_min;
   float T_critical_fraction_max;
 
-  /*! Heating temperature in units of T to heat one particle */
+  /*! Heating temperature in units of T to heat one particle (min/max) */
   float T_sampling_fraction_min;
   float T_sampling_fraction_max;
 
   /*! Sampling reduction factor nu */
   float nu;
 
-  /*! On-demand feedback efficiency boost factors against numerical losses */
+  /*! On-demand feedback efficiency boost factors against numerical losses
+   * (min/max) */
   float omega_min;
   float omega_max;
 
@@ -119,6 +120,12 @@ struct spart {
 
   /*! The birth temperature */
   float birth_temperature;
+
+  /*! Velocity divergence of gas at birth */
+  float birth_div_v;
+
+  /*! Star formation rate of the parent gas particle */
+  float birth_star_formation_rate;
 
   /*! Total number of (expected) feedback heating events so far */
   float number_of_heating_events;

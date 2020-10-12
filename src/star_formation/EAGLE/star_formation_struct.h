@@ -38,14 +38,6 @@ struct star_formation_xpart_data {
  * @brief Star-formation-related properties stored in the star particle
  * data.
  */
-struct star_formation_spart_data {
-
-  /*! Velocity divergence of gas at birth */
-  float birth_div_v;
-
-  /*! Star formation rate of the parent gas particle */
-  float birth_star_formation_rate;
-  
-};
+struct star_formation_spart_data {};
 
 #endif /* SWIFT_EAGLE_STAR_FORMATION_STRUCT_H */

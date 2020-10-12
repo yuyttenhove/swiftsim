@@ -157,9 +157,9 @@ __attribute__((always_inline)) INLINE static void black_holes_init_bpart(
   bp->velocity_gas[0] = 0.f;
   bp->velocity_gas[1] = 0.f;
   bp->velocity_gas[2] = 0.f;
-  bp->spec_angular_momentum_gas[0] = 0.f;
-  bp->spec_angular_momentum_gas[1] = 0.f;
-  bp->spec_angular_momentum_gas[2] = 0.f;
+  bp->circular_velocity_gas[0] = 0.f;
+  bp->circular_velocity_gas[1] = 0.f;
+  bp->circular_velocity_gas[2] = 0.f;
   bp->ngb_mass = 0.f;
   bp->num_ngbs = 0;
   bp->reposition.delta_x[0] = -FLT_MAX;
@@ -170,7 +170,7 @@ __attribute__((always_inline)) INLINE static void black_holes_init_bpart(
   bp->accretion_rate = 0.f; /* Optionally accumulated ngb-by-ngb */
   bp->f_visc = FLT_MAX;
   bp->gas_metal_mass_fraction = 0.f;
-  bp->accretion_boost_factor = FLT_MAX;
+  bp->accretion_boost_factor = -FLT_MAX;
   bp->mass_at_start_of_step = bp->mass; /* bp->mass may grow in nibbling mode */
   bp->epsilon_f = -FLT_MAX;
 }
@@ -473,9 +473,9 @@ __attribute__((always_inline)) INLINE static void black_holes_swallow_bpart(
 
 /**
  * @brief Computes the coupling fraction of black hole feedback energy.
- * 
- * This is computed in analogy to the scaling of supernova energy, using
- * equation 7 of Schaye et al. 2015.
+ *
+ * This is either constant, or (experimentally) computed in analogy to the
+ * scaling of supernova energy, using equation 7 of Schaye et al. (2015).
  *
  * @param bp The #bpart.
  * @param props The properties of the black hole model.
@@ -486,10 +486,9 @@ black_hole_feedback_energy_fraction(const struct bpart* bp,
                                     const struct black_holes_props* props,
                                     const struct cosmology* cosmo) {
 
-  /* Safety check: should only get here if we run with the boost model */
+  /* If we don't want an adaptive epsilon_f, things are simple. */
   if (!props->use_scaled_coupling_efficiency)
-    error("Attempting to compute variable black hole coupling efficiency "
-          "without activating this model. Cease and desist.");
+    return props->epsilon_f;
 
   /* Model parameters */
   const double f_min = props->epsilon_f_min;
@@ -573,13 +572,20 @@ __attribute__((always_inline)) INLINE static double black_hole_feedback_delta_T(
 
 /**
  * @brief Computes the energy reservoir threshold for AGN feedback.
- * 
+ *
+ * If adaptive, this is proportional to the accretion rate, with an
+ * asymptotic upper limit.
+ *
  * @param bp The #bpart.
  * @param props The properties of the black hole model.
  */
 __attribute__((always_inline)) INLINE static double
 black_hole_energy_reservoir_threshold(struct bpart* bp,
                                       const struct black_holes_props* props) {
+
+  /* If we want a constant threshold, this is short and sweet. */
+  if (!props->use_adaptive_energy_reservoir_threshold)
+    return props->num_ngbs_to_heat;
 
   double num_to_heat = props->nheat_alpha *
       (bp->accretion_rate / props->nheat_maccr_normalisation);
@@ -774,7 +780,7 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
     const double gas_rho_phys = bp->rho_gas * cosmo->a3_inv;
     const double n_H = gas_rho_phys * XH / proton_mass;
     const double boost_ratio = n_H / props->boost_n_h_star;
-    const double boost_factor = (props->boost_alpha_only) ? 
+    const double boost_factor = (props->boost_alpha_only) ?
         max(pow(boost_ratio, props->boost_beta), props->boost_alpha) :
         props->boost_alpha;
     Bondi_rate *= boost_factor;
@@ -820,7 +826,7 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
   const double accr_rate = min(Bondi_rate, f_Edd * Eddington_rate);
   bp->accretion_rate = accr_rate;
   bp->eddington_fraction = Bondi_rate / Eddington_rate;
- 
+
   /* Factor in the radiative efficiency */
   const double mass_rate = (1. - epsilon_r) * accr_rate;
   const double luminosity = epsilon_r * accr_rate * c * c;
@@ -830,10 +836,8 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
   bp->total_accreted_mass += mass_rate * dt;
 
   /* Calculate energy coupling efficiency to the gas */
-  const double epsilon_f = props->use_scaled_coupling_efficiency ?
-      black_hole_feedback_energy_fraction(bp, props, cosmo) :
-      props->epsilon_f;
-
+  const double epsilon_f =
+      black_hole_feedback_energy_fraction(bp, props, cosmo);
   bp->epsilon_f = epsilon_f;
   bp->cumulative_epsilon_f += epsilon_f;
   bp->energy_reservoir += luminosity * epsilon_f * dt;
@@ -868,19 +872,13 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
   const double delta_u_ref = props->AGN_use_nheat_with_fixed_dT ?
       props->AGN_delta_T_desired * props->temp_to_u_factor : delta_u;
 
-  /* Energy required to have a feedback event
-   * Note that we have subtracted the particles we swallowed from the ngb_mass
-   * and num_ngbs accumulators. */
-
+  /* Energy required to have a feedback event.
+   * Note that we have subtracted particles we may have swallowed from the
+   * ngb_mass and num_ngbs accumulators already. */
   const double num_ngbs_to_heat =
-      props->use_adaptive_energy_reservoir_threshold ?
-      black_hole_energy_reservoir_threshold(bp, props) :
-      props->num_ngbs_to_heat;
-
+      black_hole_energy_reservoir_threshold(bp, props);
   const double mean_ngb_mass = bp->ngb_mass / ((double)bp->num_ngbs);
-  
-  /* Energy reservoir threshold to do feedback */
-  const double E_feedback_event = num_ngbs_to_heat * delta_u_ref * 
+  const double E_feedback_event = num_ngbs_to_heat * delta_u_ref *
       mean_ngb_mass;
 
   /* Are we doing some feedback? */
@@ -930,7 +928,7 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
 
 /**
  * @brief Computes the (maximal) repositioning speed for a black hole.
- * 
+ *
  * Calculated as upsilon * (m_BH / m_ref) ^ beta_m * (n_H_BH / n_ref) ^ beta_n
  * where m_BH = BH subgrid mass, n_H_BH = physical gas density around BH
  * and upsilon, m_ref, beta_m, n_ref, and beta_n are parameters.

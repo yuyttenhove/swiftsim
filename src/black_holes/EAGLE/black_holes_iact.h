@@ -82,11 +82,11 @@ runner_iact_nonsym_bh_gas_density(
   bi->ngb_mass += mj;
 
   /* Contribution to the smoothed sound speed */
-  const double cj = hydro_get_comoving_soundspeed(pj);
+  const float cj = hydro_get_comoving_soundspeed(pj);
   bi->sound_speed_gas += mj * wi * cj;
 
   /* Contribution to the smoothed gas metallicity */
-  bi->gas_metal_mass_fraction += mj * wi * 
+  bi->gas_metal_mass_fraction += mj * wi *
       chemistry_get_metal_mass_fraction_for_black_holes(pj);
 
   /* Neighbour internal energy */
@@ -108,9 +108,9 @@ runner_iact_nonsym_bh_gas_density(
 
   /* Contribution to the specific angular momentum of gas, which is later
    * converted to the circular velocity at the smoothing length */
-  bi->spec_angular_momentum_gas[0] += mj * wi * (dx[1] * dv[2] - dx[2] * dv[1]);
-  bi->spec_angular_momentum_gas[1] += mj * wi * (dx[2] * dv[0] - dx[0] * dv[2]);
-  bi->spec_angular_momentum_gas[2] += mj * wi * (dx[0] * dv[1] - dx[1] * dv[0]);
+  bi->circular_velocity_gas[0] += mj * wi * (dx[1] * dv[2] - dx[2] * dv[1]);
+  bi->circular_velocity_gas[1] += mj * wi * (dx[2] * dv[0] - dx[0] * dv[2]);
+  bi->circular_velocity_gas[2] += mj * wi * (dx[0] * dv[1] - dx[1] * dv[0]);
 
   if (bh_props->multi_phase_bondi) {
     /* Contribution to BH accretion rate
