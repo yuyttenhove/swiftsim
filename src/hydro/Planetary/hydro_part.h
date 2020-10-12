@@ -211,6 +211,11 @@ struct part {
 
 #endif
 
+#ifdef PLANETARY_FIXED_ENTROPY
+    /* Fixed specific entropy */
+    float s_fixed;
+#endif
+
 } SWIFT_STRUCT_ALIGN;
 
 #endif /* SWIFT_PLANETARY_HYDRO_PART_H */
