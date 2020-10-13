@@ -269,8 +269,6 @@ double eagle_variable_feedback_temperature_change_v2(
   const double n_phys = (props->SNII_use_instantaneous_density_for_dT ?
       ngb_nH_cgs : rho_birth_phys * props->rho_to_n_cgs);
 
-  double SNe_energy = *p_SNe_energy;
-
   /* Calculate critical temperature */
   const double dT_crit = 3.162e7 * pow(n_phys * 0.1, 0.6666667) *
       pow(mean_ngb_mass * props->mass_to_solar_mass * 1e-6, 0.33333333) *
@@ -299,7 +297,7 @@ double eagle_variable_feedback_temperature_change_v2(
     nu = 1.0 - digamma + nu * digamma;
   }
 
-  const double dT_sample = SNe_energy /
+  const double dT_sample = *p_SNe_energy /
       (mean_ngb_mass * props->temp_to_u_factor * frac_SNII *
       num_to_heat / nu);
 
@@ -313,21 +311,22 @@ double eagle_variable_feedback_temperature_change_v2(
   } else {
     if (dT_crit < dT_sample) {
       dT = dT_crit;
+
     } else {
       const double dT_comp = compute_compromise_dT(dT_sample, dT_crit, props);
       if (dT_comp > dT_min) {
-
-        /* Safety check: should not get here if energy compensation is off */
-        if (!props->SNII_with_energy_compensation)
-          error("Running without energy compensation, but dT_comp (=%g) > "
-                "dT_sample (=%g)!",
-                dT_comp, dT_sample);
-
         dT = dT_comp;
         omega = dT_comp / dT_sample;
-        if (omega > omega_max * 1.0001)
+        if (omega > 1.0001 && !props->SNII_with_energy_compensation)
+          error("Running without energy compensation, but dT_comp=%g > "
+                "dT_sample=%g!",
+                dT_comp, dT_sample);
+
+        if (omega > omega_max * 1.0001) {
           error("SNII feedback requires omega=%g, but omega_max=%g!",
             omega, omega_max);
+        }
+
       } else {
         dT = dT_min;
         /* Choose omega to compensate the expected numerical cooling loss at
@@ -357,7 +356,7 @@ double eagle_variable_feedback_temperature_change_v2(
   if (omega > 1.0001 && !props->SNII_with_energy_compensation)
     error("Running without energy compensation, but omega=%g!",
           omega);
-  SNe_energy *= omega;
+  *p_SNe_energy *= omega;
 
   if (dT < 0)
     error("Ahm... I'm not going to set a negative heating temperature "
