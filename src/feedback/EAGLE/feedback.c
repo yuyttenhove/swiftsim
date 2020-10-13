@@ -277,24 +277,30 @@ double eagle_variable_feedback_temperature_change_v2(
   /* Calculate sampling reduction factor nu */
   if (props->SNII_sampling_reduction_within_smoothing_length)
     gamma_star *= (h_pkpc_inv * h_pkpc_inv * h_pkpc_inv);
-  double nu = rho_birth_phys * sfr_birth_phys / (m_initial * m_initial)
-                 / gamma_star;
-  nu = max(nu, 1.0);
+  double nu = rho_birth_phys * sfr_birth_phys / (m_initial * m_initial) /
+      gamma_star;
 
-  if (rho_birth_phys < birth_sf_threshold * nu_shelf_factor) {
-    nu = 1.0;
-  } else if (rho_birth_phys < birth_sf_threshold * nu_shelf_factor *
-            nu_drop_factor) {
+  /* Normally, we want nu >= 1, but this limit can be disabled */
+  if (!props->SNII_with_nu_below_one)
+    nu = max(nu, 1.0);
 
-    /* Digamma is a factor that varies linearly from 0 at the shelf edge, to
-     * 1 at the end of the drop. */
-    const double digamma =
-        (rho_birth_phys / birth_sf_threshold - nu_shelf_factor) /
-        (nu_shelf_factor * (nu_drop_factor - 1.0));
+  /* Apply shelf and drop in nu, but only if it is not below 1 already */
+  if (nu > 1) {
+    if (rho_birth_phys < birth_sf_threshold * nu_shelf_factor) {
+      nu = 1.0;
+    } else if (rho_birth_phys < birth_sf_threshold * nu_shelf_factor *
+              nu_drop_factor) {
 
-    /* The next line makes nu vary smoothly from 1 at the shelf edge to
-     * the (original) nu at the drop edge. */
-    nu = 1.0 - digamma + nu * digamma;
+      /* Digamma is a factor that varies linearly from 0 at the shelf edge, to
+       * 1 at the end of the drop. */
+      const double digamma =
+          (rho_birth_phys / birth_sf_threshold - nu_shelf_factor) /
+          (nu_shelf_factor * (nu_drop_factor - 1.0));
+
+      /* The next line makes nu vary smoothly from 1 at the shelf edge to
+       * the (original) nu at the drop edge. */
+      nu = 1.0 - digamma + nu * digamma;
+    }
   }
 
   const double dT_sample = *p_SNe_energy /
@@ -1538,6 +1544,9 @@ void feedback_props_init(struct feedback_props* fp,
       fp->SNII_nu_drop_interval_factor =
           exp10(parser_get_param_double(
                 params, "EAGLEFeedback:SNII_nu_drop_interval_dex"));
+
+      fp->SNII_with_nu_below_one =
+          parser_get_param_int(params, "EAGLEFeedback:SNII_with_nu_below_one");
     }
 
   } else {

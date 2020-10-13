@@ -288,6 +288,9 @@ struct feedback_props {
   double SNII_nu_const_interval_factor;
   double SNII_nu_drop_interval_factor;
 
+  /*! Switch to allow nu < 0, i.e. higher sampling at low density */
+  int SNII_with_nu_below_one;
+
   /*! (Constant) temperature increase induced by SNe feedback */
   double SNe_deltaT_desired;
 
