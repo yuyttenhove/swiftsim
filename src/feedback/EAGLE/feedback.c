@@ -124,15 +124,31 @@ double eagle_variable_feedback_temperature_change(
   return delta_T;
 }
 
-/* Returns the effective heating temperature for a feedback event */
+/* Returns the effective heating temperature ratio for a feedback event.
+ * 
+ * This is the temperature, in units of the numerically critical dT_crit,
+ * that injects the same energy into the gas after (estimated) cooling losses
+ * are accounted for. */
 INLINE static double sn_phi(
   const double theta, const double theta_min, const double zeta) {
+
+  /* If theta < theta_min, then all is lost */
+  if (theta < theta_min)
+    return 0.;
+
+  /* Otherwise, use the appropriate power-law model (index zeta) */
   return theta * pow((theta - theta_min) / (1.0 - theta_min), zeta);
 }
 
 /* Returns the derivative of the effective heating temprature with theta */
 INLINE static double sn_dphi_dtheta(
   const double theta, const double theta_min, const double zeta) {
+
+  /* If theta < theta_min, all energy is lost, with no dependence on theta */
+  if (theta < theta_min)
+    return 0.;
+
+  /* Otherwise, use the derivative of the zeta power law */
   const double term1 = (theta - theta_min) / (1.0 - theta_min);
   return zeta * pow(term1, zeta - 1.0) / (1.0 - theta_min) * theta
       + pow(term1, zeta);
