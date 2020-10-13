@@ -648,7 +648,7 @@ INLINE static void compute_SNII_feedback(
       error("Invalid choice of SNII_use_variable_delta_T (=%d).",
         feedback_props->SNII_use_variable_delta_T);
 
-    /* Calculate the default heating probability */
+    /* Calculate the default heating probability (accounting for round-off) */
     double prob = SNe_energy / (conv_factor * delta_T * ngb_gas_mass);
     prob = max(prob, 0.0);
 
