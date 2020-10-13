@@ -244,6 +244,9 @@ struct feedback_props {
   /*! Should we use the instantaneous or birth density for determining dT? */
   int SNII_use_instantaneous_density_for_dT;
 
+  /*! Should we use the instantaneous or birth metallicity for finding dT? */
+  int SNII_use_instantaneous_Z_for_dT;
+
   /*! Factor to reduce sampling requirement if n_birth > n_birth_limit */
   double SNII_sampling_nH_reduction_factor;
 
@@ -255,7 +258,21 @@ struct feedback_props {
 
   /*! Maximum temperature increase induced by SNII feedback [Kelvin] */
   double SNII_delta_T_max;
+
+  /*! (Constant) minimum SNII feedback dT [Kelvin], only used in v1 scheme */
   double SNII_delta_T_min;
+
+  /*! Low-metallicity limit of minimum SNII feedback dT [Kelvin] */
+  double SNII_delta_T_min_low;
+
+  /*! High-metallicity limit of minimum SNII feedback dT [Kelvin] */
+  double SNII_delta_T_min_high;
+
+  /*! Pivot metallicity for the scaling of SNII dT_min (mass fraction) */
+  double SNII_delta_T_min_Z_pivot;
+
+  /*! Exponent for the scaling of SNII dT_min with metallicity */
+  double SNII_delta_T_min_Z_exponent;
 
   /*! Parameters for sub-critical SNII efficiency scaling */
   int SNII_with_energy_compensation;

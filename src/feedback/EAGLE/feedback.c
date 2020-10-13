@@ -176,6 +176,33 @@ double compute_compromise_dT(
 }
 
 /**
+ * @brief Compute the minimal allowed heating temperature increase, dT_min.
+ *
+ * @param sp The star particle to consider.
+ * @param props The feedback model properties.
+ */
+double compute_SNII_dT_min(const struct spart* sp,
+                           const struct feedback_props* props) {
+
+  /* Get the relevant metallicity of the star (either birth or ambient gas) */
+  const double Z_star = (props->SNII_use_instantaneous_Z_for_dT) ?
+      sp->feedback_data.to_collect.ngb_Z :
+      chemistry_get_star_total_metal_mass_fraction_for_feedback(sp);
+
+  /* Extract required props */
+  const double Z_pivot = props->SNII_delta_T_min_Z_pivot;
+  const double Z_scale = props->SNII_delta_T_min_Z_exponent;
+  const double dT_min_low = props->SNII_delta_T_min_low;
+  const double dT_min_high = props->SNII_delta_T_min_high;
+
+  /* Calculate dT_min */
+  const double Z_term = pow(max(Z_star, 1e-6) / Z_pivot, Z_scale);
+  const double denonimator = 1. + Z_term;
+
+  return (dT_min_low + (dT_min_high - dT_min_low) / denonimator);
+}
+
+/**
  * @brief Return the variable change in temperature (in internal units) to
  * apply to a gas particle affected by SNe feedback (new version 11-Aug-20)
  *
@@ -197,7 +224,7 @@ double eagle_variable_feedback_temperature_change_v2(
   const double f_crit = props->SNII_T_crit_factor;
   const double num_to_heat = props->SNII_delta_T_num_ngb_to_heat;
   const double dT_max = props->SNII_delta_T_max;
-  const double dT_min = props->SNII_delta_T_min;
+  const double dT_min = compute_SNII_dT_min(sp, props);
   double gamma_star = props->SNII_gamma_star;
   const double nu_shelf_factor = props->SNII_nu_const_interval_factor;
   const double nu_drop_factor = props->SNII_nu_drop_interval_factor;
@@ -1416,18 +1443,35 @@ void feedback_props_init(struct feedback_props* fp,
       fp->SNII_delta_T_num_ngb_to_heat_limit =
           parser_get_param_double(
             params, "EAGLEFeedback:SNII_delta_T_num_ngb_to_heat_limit");
+      fp->SNII_delta_T_min =
+          parser_get_param_double(params, "EAGLEFeedback:SNII_delta_T_min") /
+          units_cgs_conversion_factor(us, UNIT_CONV_TEMPERATURE);
     }
 
     fp->SNII_delta_T_max =
         parser_get_param_double(params, "EAGLEFeedback:SNII_delta_T_max") /
         units_cgs_conversion_factor(us, UNIT_CONV_TEMPERATURE);
-    fp->SNII_delta_T_min =
-        parser_get_param_double(params, "EAGLEFeedback:SNII_delta_T_min") /
-        units_cgs_conversion_factor(us, UNIT_CONV_TEMPERATURE);
 
     if (fp->SNII_use_variable_delta_T == 2) {
-
       /* Extra parameters for "version 2" adaptive-dT scheme */
+
+      fp->SNII_use_instantaneous_Z_for_dT =
+          parser_get_param_int(
+            params, "EAGLEFeedback:SNII_use_instantaneous_metallicity_for_dT");
+
+      fp->SNII_delta_T_min_low =
+          parser_get_param_double(
+            params, "EAGLEFeedback:SNII_delta_T_min_low") /
+          units_cgs_conversion_factor(us, UNIT_CONV_TEMPERATURE);
+      fp->SNII_delta_T_min_high =
+          parser_get_param_double(
+            params, "EAGLEFeedback:SNII_delta_T_min_high") /
+          units_cgs_conversion_factor(us, UNIT_CONV_TEMPERATURE);
+      fp->SNII_delta_T_min_Z_pivot = parser_get_param_double(
+        params, "EAGLEFeedback:SNII_delta_T_min_Z_pivot");
+      fp->SNII_delta_T_min_Z_exponent = parser_get_param_double(
+        params, "EAGLEFeedback:SNII_delta_T_min_Z_exponent");
+
       fp->SNII_with_energy_compensation =
           parser_get_param_int(
               params, "EAGLEFeedback:SNII_with_energy_compensation");
