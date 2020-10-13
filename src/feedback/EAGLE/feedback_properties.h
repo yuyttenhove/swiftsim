@@ -279,6 +279,9 @@ struct feedback_props {
   double SNII_efficiency_zeta;
   double SNII_efficiency_theta_min;
 
+  /*! Maximum allowed increase in SNII energy to compensate numerical losses */
+  double SNII_delta_T_omega_max;
+
   /*! Parameters for sampling requirement reduction */
   double SNII_gamma_star;
   int SNII_sampling_reduction_within_smoothing_length;

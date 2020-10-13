@@ -124,11 +124,13 @@ double eagle_variable_feedback_temperature_change(
   return delta_T;
 }
 
+/* Returns the effective heating temperature for a feedback event */
 INLINE static double sn_phi(
   const double theta, const double theta_min, const double zeta) {
   return theta * pow((theta - theta_min) / (1.0 - theta_min), zeta);
 }
 
+/* Returns the derivative of the effective heating temprature with theta */
 INLINE static double sn_dphi_dtheta(
   const double theta, const double theta_min, const double zeta) {
   const double term1 = (theta - theta_min) / (1.0 - theta_min);
@@ -149,24 +151,34 @@ double compute_compromise_dT(
   const double dT_sample, const double dT_crit,
   const struct feedback_props* props) {
 
+  /* If energy compensation is off, we cannot go above dT_sample without
+   * violating the sampling criterion --> easy */
   if (props->SNII_with_energy_compensation == 0)
     return dT_sample;
 
   /* Extract required props */
   const double zeta = props->SNII_efficiency_zeta;
   const double theta_min = props->SNII_efficiency_theta_min;
+  const double omega_max = props->SNII_delta_T_omega_max;
 
   /* Required physical energy (in units of E_crit) */
-  const double phi = dT_sample / dT_crit;
+  const double phi_sample = dT_sample / dT_crit;
 
-  /* Initial guess for compromise dT */
-  double theta = dT_sample + (dT_crit - dT_sample) / 2.0;
+  /* First check whether dT_sample * omega_max is sufficient. Otherwise,
+   * we just take this as best possibility */
+  const double theta_max = phi_sample * omega_max;
+  if (sn_phi(theta_max, theta_min, zeta) < phi_sample)
+    return dT_sample * omega_max;
 
+  /* If we get here, we can find a compromise dT that is less than a factor of
+   * omega_max above the sampling dT. Start in the middle of the two, and then
+   * iterate with a Newton-Raphson scheme */
+  double theta = phi_sample + (theta_max - phi_sample) / 2.0;
   for (int ii = 0; ii < 1000; ii++) {
-    theta = theta - (sn_phi(theta, theta_min, zeta) - phi) /
+    theta = theta - (sn_phi(theta, theta_min, zeta) - phi_sample) /
         sn_dphi_dtheta(theta, theta_min, zeta);
     const double phi_result = sn_phi(theta, theta_min, zeta);
-    if ((fabs(phi_result - phi) / phi) < 0.001) {
+    if ((fabs(phi_result - phi_sample) / phi_sample) < 0.001) {
       break;
     }
   }
@@ -230,6 +242,8 @@ double eagle_variable_feedback_temperature_change_v2(
   const double nu_drop_factor = props->SNII_nu_drop_interval_factor;
   const double theta_min = props->SNII_efficiency_theta_min;
   const double zeta = props->SNII_efficiency_zeta;
+  const double omega_max = (props->SNII_with_energy_compensation) ?
+      props->SNII_delta_T_omega_max : 1.0;
 
   /* Relevant star properties */
   const double mean_ngb_mass = ngb_gas_mass / ((double)num_gas_ngbs);
@@ -279,27 +293,34 @@ double eagle_variable_feedback_temperature_change_v2(
   if (dT_crit < dT_min) {
     /* In this case, just use dT_min and live with the undersampling... */
     dT = dT_min;
-    /*message("sp %lld: dT=dT_min=%g, fs=%g.",
-        sp->id, dT, dT_sample / dT); */
+
   } else {
     if (dT_crit < dT_sample) {
       dT = dT_crit;
     } else {
       const double dT_comp = compute_compromise_dT(dT_sample, dT_crit, props);
       if (dT_comp > dT_min) {
-        /*message("sp %lld: dT_crit=%g > dT_sample=%g, dT_comp=%g",
-            sp->id, dT_crit, dT_sample, dT_comp); */
+
+        /* Safety check: should not get here if energy compensation is off */
+        if (!props->SNII_with_energy_compensation)
+          error("Running without energy compensation, but dT_comp (=%g) > "
+                "dT_sample (=%g)!",
+                dT_comp, dT_sample);
+
         dT = dT_comp;
-        if (props->SNII_with_energy_compensation)
-          omega = dT_comp / dT_sample;
+        omega = dT_comp / dT_sample;
+        if (omega > omega_max * 1.0001)
+          error("SNII feedback requires omega=%g, but omega_max=%g!",
+            omega, omega_max);
       } else {
         dT = dT_min;
         /* Choose omega to compensate the expected numerical cooling loss at
          * dT_min */
-        if (props->SNII_with_energy_compensation)
+        if (props->SNII_with_energy_compensation) {
           omega = 1. /
               (pow((dT_min / dT_crit - theta_min) / (1.0 - theta_min), zeta));
-        /*message("sp %lld: dT=%g, omega=%g.", sp->id, dT, omega); */
+          omega = min(omega, omega_max);
+        }
       }
     }
   }
@@ -310,14 +331,17 @@ double eagle_variable_feedback_temperature_change_v2(
     if (dT > dT_crit)
       error("Internal logic error: forced to heat at dT_max=%g, "
             "but dT_crit=%g", dT_max, dT_crit);
-    if (props->SNII_with_energy_compensation)
-      omega = 1. / (pow((dT_max / dT_crit - theta_min)/(1.0 - theta_min), zeta));
-    SNe_energy *= omega;
+    if (props->SNII_with_energy_compensation) {
+      omega = 1. / (pow((dT_max/dT_crit - theta_min)/(1.0 - theta_min), zeta));
+      omega = min(omega, omega_max);
+    }
   }
 
   /* Apply (potential) SNe energy increase to guarantee desire sampling */
+  if (omega > 1.0001 && !props->SNII_with_energy_compensation)
+    error("Running without energy compensation, but omega=%g!",
+          omega);
   SNe_energy *= omega;
-
 
   if (dT < 0)
     error("Ahm... I'm not going to set a negative heating temperature "
@@ -1476,6 +1500,8 @@ void feedback_props_init(struct feedback_props* fp,
           parser_get_param_int(
               params, "EAGLEFeedback:SNII_with_energy_compensation");
       if (fp->SNII_with_energy_compensation) {
+        fp->SNII_delta_T_omega_max = parser_get_param_double(
+          params, "EAGLEFeedback:SNII_delta_T_omega_max");
         fp->SNII_efficiency_zeta =
             parser_get_param_double(params, "EAGLEFeedback:SNII_efficiency_zeta");
         fp->SNII_efficiency_theta_min =
