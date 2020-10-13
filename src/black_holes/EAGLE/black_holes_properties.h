@@ -414,17 +414,16 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
         parser_get_param_float(params, "EAGLEAGN:AGN_delta_T_max") * T_K_to_int;
     bp->AGN_delta_T_min =
         parser_get_param_float(params, "EAGLEAGN:AGN_delta_T_min") * T_K_to_int;
+    bp->AGN_use_nheat_with_fixed_dT =
+        parser_get_param_int(params, "EAGLEAGN:AGN_use_nheat_with_fixed_dT");
+    if (bp->AGN_use_nheat_with_fixed_dT) {
+      bp->AGN_delta_T_desired =
+          parser_get_param_float(params, "EAGLEAGN:AGN_delta_T_K");
+    }
+
   } else {
     bp->AGN_delta_T_desired =
         parser_get_param_float(params, "EAGLEAGN:AGN_delta_T_K");
-  }
-
-  bp->AGN_use_nheat_with_fixed_dT =
-      parser_get_param_int(params, "EAGLEAGN:AGN_use_nheat_with_fixed_dT");
-  if (bp->AGN_use_nheat_with_fixed_dT && bp->use_variable_delta_T) {
-    /* Need to also read in constant reference dT in this case */
-    bp->AGN_delta_T_desired =
-      parser_get_param_float(params, "EAGLEAGN:AGN_delta_T_K");
   }
 
   bp->use_adaptive_energy_reservoir_threshold =
@@ -439,24 +438,23 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
         * phys_const->const_solar_mass / phys_const->const_year;
     bp->nheat_limit =
         parser_get_param_float(params, "EAGLEAGN:AGN_nheat_limit");
-
-  } else {
-    bp->num_ngbs_to_heat =
-        parser_get_param_float(params, "EAGLEAGN:AGN_num_ngb_to_heat");    
   }
 
-  bp->AGN_use_nheat_with_fixed_dT =
-      parser_get_param_int(params, "EAGLEAGN:AGN_use_nheat_with_fixed_dT");
+  /* We must always read a default value to initialize BHs to */
+  bp->num_ngbs_to_heat =
+      parser_get_param_float(params, "EAGLEAGN:AGN_num_ngb_to_heat");
 
   /* Reposition parameters --------------------------------- */
 
   bp->max_reposition_mass =
-      parser_get_param_float(params, "EAGLEAGN:max_reposition_mass")
-          * phys_const->const_solar_mass;
+      parser_get_param_float(params, "EAGLEAGN:max_reposition_mass") *
+      phys_const->const_solar_mass;
   bp->max_reposition_distance_ratio =
       parser_get_param_float(params, "EAGLEAGN:max_reposition_distance_ratio");
+
   bp->with_reposition_velocity_threshold = parser_get_param_int(
       params, "EAGLEAGN:with_reposition_velocity_threshold");
+
   if (bp->with_reposition_velocity_threshold) {
     bp->max_reposition_velocity_ratio = parser_get_param_float(
         params, "EAGLEAGN:max_reposition_velocity_ratio");

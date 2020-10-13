@@ -69,7 +69,7 @@ __attribute__((always_inline)) INLINE static float black_holes_compute_timestep(
    * rate. The time is multiplied by the number of Ngbs to heat because
    * if more particles are heated at once then the time between different
    * AGN feedback events increases proportionally. */
-  const double dt_heat = E_heat * props->num_ngbs_to_heat / Energy_rate;
+  const double dt_heat = E_heat * bp->num_ngbs_to_heat / Energy_rate;
 
   /* The new timestep of the BH cannot be smaller than the miminum allowed
    * time-step */
@@ -129,6 +129,7 @@ __attribute__((always_inline)) INLINE static void black_holes_first_init_bpart(
   bp->cumulative_actual_prob = 0.f;
   bp->cumulative_epsilon_f = 0.f;
   bp->last_repos_vel = 0.f;
+  bp->num_ngbs_to_heat = props->num_ngbs_to_heat;  /* Filler value */
 
   black_holes_mark_bpart_as_not_swallowed(&bp->merger_data);
 }
@@ -1139,6 +1140,9 @@ INLINE static void black_holes_create_from_gas(
   bp->cumulative_target_prob = 0.f;
   bp->cumulative_actual_prob = 0.f;
   bp->cumulative_epsilon_f = 0.f;
+
+  /* Initialise the energy reservoir threshold to the constant default */
+  bp->num_ngbs_to_heat = props->num_ngbs_to_heat;  /* Filler value */
 
   /* We haven't repositioned yet, nor attempted it */
   bp->number_of_repositions = 0;
