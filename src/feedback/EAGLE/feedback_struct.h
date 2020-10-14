@@ -55,6 +55,9 @@ struct feedback_spart_data {
        * (dimensionless) */
       float ngb_Z;
 
+      /*! SPH-weighted SFR density of the neighbouring gas particles */
+      float ngb_SFR;
+
     } to_collect;
 
     /**

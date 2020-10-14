@@ -112,6 +112,9 @@ struct part {
   /*! Particle density. */
   float rho;
 
+  /* Dummy (for now) to hold SFR */
+  float SFR;
+
   /* Store viscosity information in a separate struct. */
   struct {
 

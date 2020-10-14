@@ -29,6 +29,7 @@
 
 #include <strings.h>
 
+
 void compute_stellar_evolution(const struct feedback_props* feedback_props,
                                const struct star_formation* starform_props,
                                const struct hydro_props* hydro_props,
@@ -79,6 +80,7 @@ __attribute__((always_inline)) INLINE static void feedback_init_spart(
   sp->feedback_data.to_collect.ngb_rho = 0.f;
   sp->feedback_data.to_collect.ngb_Z = 0.f;
   sp->feedback_data.to_collect.num_ngbs = 0;
+  sp->feedback_data.to_collect.ngb_SFR = 0.;
 }
 
 /**
@@ -206,6 +208,7 @@ __attribute__((always_inline)) INLINE static void feedback_evolve_spart(
   sp->feedback_data.to_collect.ngb_rho *= h_inv_dim;
   const float rho_inv = 1.f / sp->feedback_data.to_collect.ngb_rho;
   sp->feedback_data.to_collect.ngb_Z *= h_inv_dim * rho_inv;
+  sp->feedback_data.to_collect.ngb_SFR *= h_inv_dim;
 
   /* Compute amount of enrichment and feedback that needs to be done in this
    * step */

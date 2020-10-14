@@ -19,8 +19,18 @@
 #ifndef SWIFT_EAGLE_FEEDBACK_PROPERTIES_H
 #define SWIFT_EAGLE_FEEDBACK_PROPERTIES_H
 
+#include "feedback.h"
 #include "chemistry.h"
 #include "hydro_properties.h"
+
+/**
+ * @brief Type of high-density oversampling criterion
+ */
+enum SNII_oversampling_criterion {
+  eagle_SNII_timescale_none,        /*<! No additional criterion */
+  eagle_SNII_timescale_gasconsum,   /*<! Gas consumption timescale */
+  eagle_SNII_timescale_freefall     /*<! Free-fall timescale */
+};
 
 /**
  * @brief Stores AGB and SNII yield tables
@@ -290,6 +300,9 @@ struct feedback_props {
 
   /*! Switch to allow nu < 0, i.e. higher sampling at low density */
   int SNII_with_nu_below_one;
+
+  /*! Switch to increase the sampling criterion according to a time scale */
+  enum SNII_oversampling_criterion SNII_with_oversampling_timescale;
 
   /*! (Constant) temperature increase induced by SNe feedback */
   double SNe_deltaT_desired;

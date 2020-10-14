@@ -28,6 +28,7 @@
 #include "timers.h"
 #include "yield_tables.h"
 #include "star_formation.h"
+#include "feedback_properties.h"
 
 /**
  * @brief Return the change in temperature (in internal units) to apply to a
@@ -240,7 +241,8 @@ double eagle_variable_feedback_temperature_change_v2(
   struct spart* sp, const double ngb_gas_mass, const int num_gas_ngbs,
   const double ngb_nH_cgs, double* p_SNe_energy,
   const struct feedback_props* props, const double frac_SNII,
-  const double birth_sf_threshold, const double h_pkpc_inv) {
+  const double birth_sf_threshold, const double h_pkpc_inv,
+  const double dt, const double G_Newton) {
 
   /* Safety check: should only get here if we run with the adaptive-dT model,
    * version 2 */
@@ -303,9 +305,45 @@ double eagle_variable_feedback_temperature_change_v2(
     }
   }
 
-  const double dT_sample = *p_SNe_energy /
-      (mean_ngb_mass * props->temp_to_u_factor * frac_SNII *
-      num_to_heat / nu);
+  /* Consider time-scale dependent sampling criteria */
+  double n_single = -1.;
+  switch (props->SNII_with_oversampling_timescale) {
+
+    case eagle_SNII_timescale_none:
+      printf("Hey!\n");
+      n_single = frac_SNII * num_to_heat;
+      break;
+    case eagle_SNII_timescale_gasconsum:      
+      {
+        const double dt_consum = sp->feedback_data.to_collect.ngb_rho / 
+            sp->feedback_data.to_collect.ngb_SFR;
+
+        /* Maximally, ask for num_to_heat heating events, even for long dt */
+        const double f_dt = min(dt / dt_consum, 1.);
+        n_single = num_to_heat * max(frac_SNII, f_dt);
+        break;
+      }
+    case eagle_SNII_timescale_freefall:
+      {      
+        const double dt_freefall = 
+            sqrt(3. * M_PI / 
+                 (32. * G_Newton * sp->feedback_data.to_collect.ngb_rho));
+ 
+        /* Maximally, ask for num_to_heat heating events, even for long dt */
+        const double f_dt = min(dt / dt_freefall, 1.);
+        n_single = num_to_heat * max(frac_SNII, f_dt);
+      }
+
+    default:
+      error("Invalid SNII oversampling requirement!!!");
+  }
+
+   /* Sanity check to make sure that we have set n_single... */
+    if (n_single < 0)
+    error("Tiny problem. n_single=%g.", n_single);
+
+  double dT_sample = *p_SNe_energy /
+      (mean_ngb_mass * props->temp_to_u_factor * n_single / nu);
 
   /* Begin decision logic... */
   double dT = -1;
@@ -650,7 +688,8 @@ INLINE static void compute_SNII_feedback(
     const float ngb_gas_mass, const int num_gas_ngbs, const double ngb_nH_cgs,
     const double ngb_Z, const struct feedback_props* feedback_props,
     const double min_dying_mass_Msun, const double max_dying_mass_Msun,
-    const double birth_sf_threshold, const double h_pkpc_inv) {
+    const double birth_sf_threshold, const double h_pkpc_inv,
+    const double G_Newton) {
 
   /* Are we sampling the delay function or using a fixed delay? */
   const int SNII_sampled_delay = feedback_props->SNII_sampled_delay;
@@ -715,7 +754,8 @@ INLINE static void compute_SNII_feedback(
     else if (feedback_props->SNII_use_variable_delta_T == 2)
       delta_T = eagle_variable_feedback_temperature_change_v2(
           sp, ngb_gas_mass, num_gas_ngbs, ngb_nH_cgs, &SNe_energy,
-          feedback_props, frac_SNII, birth_sf_threshold, h_pkpc_inv);
+          feedback_props, frac_SNII, birth_sf_threshold, h_pkpc_inv, dt,
+          G_Newton);
     else
       error("Invalid choice of SNII_use_variable_delta_T (=%d).",
         feedback_props->SNII_use_variable_delta_T);
@@ -1337,10 +1377,11 @@ void compute_stellar_evolution(const struct feedback_props* feedback_props,
         Z, starform_props, phys_const) / hydro_props->hydrogen_mass_fraction;
     const double h_pkpc_inv = phys_const->const_parsec * 1e3 * cosmo->a_inv /
         sp->h;
+    const double G_Newton = phys_const->const_newton_G;
     compute_SNII_feedback(sp, age, dt, ngb_gas_mass, num_gas_ngbs,
                           ngb_gas_phys_nH_cgs, ngb_gas_Z, feedback_props,
                           min_dying_mass_Msun, max_dying_mass_Msun,
-                          birth_sf_threshold, h_pkpc_inv);
+                          birth_sf_threshold, h_pkpc_inv, G_Newton);
   }
 
   /* Integration interval is zero - this can happen if minimum and maximum
@@ -1547,9 +1588,24 @@ void feedback_props_init(struct feedback_props* fp,
 
       fp->SNII_with_nu_below_one =
           parser_get_param_int(params, "EAGLEFeedback:SNII_with_nu_below_one");
+
+      char temp[32];
+      parser_get_param_string(
+          params, "EAGLEFeedback:SNII_with_oversampling_timescale", temp);
+
+      if (strcmp(temp, "None") == 0)
+        fp->SNII_with_oversampling_timescale = eagle_SNII_timescale_none;
+      else if (strcmp(temp, "GasConsumption") == 0)
+        fp->SNII_with_oversampling_timescale = eagle_SNII_timescale_gasconsum;
+      else if (strcmp(temp, "FreeFall") == 0)
+        fp->SNII_with_oversampling_timescale = eagle_SNII_timescale_freefall;
+      else
+        error("Invalid value of "
+              "EAGLEFeedback:SNII_with_oversampling_timescale: '%s'",
+              temp);
     }
 
-  } else {
+  } else {    /* Constant dT model */
     fp->SNe_deltaT_desired =
         parser_get_param_float(params, "EAGLEFeedback:SNII_delta_T_K") /
         units_cgs_conversion_factor(us, UNIT_CONV_TEMPERATURE);
