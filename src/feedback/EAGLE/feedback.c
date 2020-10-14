@@ -310,7 +310,6 @@ double eagle_variable_feedback_temperature_change_v2(
   switch (props->SNII_with_oversampling_timescale) {
 
     case eagle_SNII_timescale_none:
-      printf("Hey!\n");
       n_single = frac_SNII * num_to_heat;
       break;
     case eagle_SNII_timescale_gasconsum:      
