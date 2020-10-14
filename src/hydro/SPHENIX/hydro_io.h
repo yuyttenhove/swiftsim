@@ -160,7 +160,7 @@ INLINE static void hydro_write_particles(const struct part* parts,
                                          struct io_props* list,
                                          int* num_fields) {
 
-  *num_fields = 14;
+  *num_fields = 15;
   /* List what we want to write */
   list[0] = io_make_output_field_convert_part(
       "Coordinates", DOUBLE, 3, UNIT_CONV_LENGTH, 1.f, parts, xparts,
@@ -231,6 +231,12 @@ INLINE static void hydro_write_particles(const struct part* parts,
       "cosmology as this includes a Hubble flow term. To get back to a "
       "peculiar velocity divergence time differential, x_pec = a^4 (x - a^{-2} "
       "n_D dH / dt)");
+
+  list[14] = io_make_output_field(
+      "StarFormationRates", FLOAT, 1, UNIT_CONV_SFR, 0.f, parts, SFR,
+      "If positive, star formation rates of the particles. If negative, stores "
+      "the last time/scale-factor at which the gas particle was star-forming. "
+      "If zero, the particle was never star-forming.");
 }
 
 /**

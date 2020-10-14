@@ -112,7 +112,8 @@ struct part {
   /*! Particle density. */
   float rho;
 
-  /* Dummy (for now) to hold SFR */
+  /*! Star formation rate (internal units) or (if negative) time/scale-factor of
+   * last SF episode */
   float SFR;
 
   /* Store viscosity information in a separate struct. */

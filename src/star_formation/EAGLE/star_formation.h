@@ -328,7 +328,7 @@ INLINE static int star_formation_is_star_forming(
  * @param dt_star The time-step of this particle.
  */
 INLINE static void star_formation_compute_SFR_schmidt_law(
-    const struct part* p, struct xpart* xp,
+    struct part* p, struct xpart* xp,
     const struct star_formation* starform, const struct phys_const* phys_const,
     const struct hydro_props* hydro_props, const struct cosmology* cosmo,
     const double dt_star) {
@@ -341,7 +341,7 @@ INLINE static void star_formation_compute_SFR_schmidt_law(
       starform->schmidt_law.mdot_const * sqrt(physical_density);
 
   /* Store the SFR */
-  xp->sf_data.SFR = SFRpergasmass * hydro_get_mass(p);
+  p->SFR = SFRpergasmass * hydro_get_mass(p);
 }
 
 /**
@@ -362,7 +362,7 @@ INLINE static void star_formation_compute_SFR_schmidt_law(
  * @param dt_star The time-step of this particle.
  */
 INLINE static void star_formation_compute_SFR_pressure_law(
-    const struct part* p, struct xpart* xp,
+    struct part* p, struct xpart* xp,
     const struct star_formation* starform, const struct phys_const* phys_const,
     const struct hydro_props* hydro_props, const struct cosmology* cosmo,
     const double dt_star) {
@@ -395,7 +395,7 @@ INLINE static void star_formation_compute_SFR_pressure_law(
   }
 
   /* Store the SFR */
-  xp->sf_data.SFR = SFRpergasmass * hydro_get_mass(p);
+  p->SFR = SFRpergasmass * hydro_get_mass(p);
 }
 
 /**
@@ -411,7 +411,7 @@ INLINE static void star_formation_compute_SFR_pressure_law(
  * @param dt_star The time-step of this particle.
  */
 INLINE static void star_formation_compute_SFR(
-    const struct part* restrict p, struct xpart* restrict xp,
+    struct part* restrict p, struct xpart* restrict xp,
     const struct star_formation* starform, const struct phys_const* phys_const,
     const struct hydro_props* hydro_props, const struct cosmology* cosmo,
     const double dt_star) {
@@ -419,7 +419,7 @@ INLINE static void star_formation_compute_SFR(
   /* Abort early if time-step size is 0 */
   if (dt_star == 0.) {
 
-    xp->sf_data.SFR = 0.f;
+    p->SFR = 0.f;
     return;
   }
 
@@ -431,7 +431,7 @@ INLINE static void star_formation_compute_SFR(
   if (physical_density >
       starform->gas_density_direct * phys_const->const_proton_mass) {
 
-    xp->sf_data.SFR = hydro_get_mass(p) / dt_star;
+    p->SFR = hydro_get_mass(p) / dt_star;
     return;
   }
 
@@ -470,7 +470,7 @@ INLINE static int star_formation_should_convert_to_star(
     const double dt_star) {
 
   /* Calculate the propability of forming a star */
-  const double prob = xp->sf_data.SFR * dt_star / hydro_get_mass(p);
+  const double prob = p->SFR * dt_star / hydro_get_mass(p);
 
   /* Get a unique random number between 0 and 1 for star formation */
   const double random_number =
@@ -508,15 +508,15 @@ INLINE static void star_formation_update_part_not_SFR(
     struct part* p, struct xpart* xp, const struct engine* e,
     const struct star_formation* starform, const int with_cosmology) {
 
-  /* Check if it is the first time steps after star formation */
-  if (xp->sf_data.SFR > 0.f) {
+  /* Check if it is the first time step after star formation */
+  if (p->SFR > 0.f) {
 
     /* Record the current time as an indicator of when this particle was last
        star-forming. */
     if (with_cosmology) {
-      xp->sf_data.SFR = -e->cosmology->a;
+      p->SFR = -e->cosmology->a;
     } else {
-      xp->sf_data.SFR = -e->time;
+      p->SFR = -e->time;
     }
   }
 }
@@ -575,7 +575,7 @@ INLINE static void star_formation_copy_properties(
                                                   cosmo, cooling, p, xp);
 
   sp->birth_div_v = hydro_get_velocity_divergence(p);
-  sp->birth_star_formation_rate = xp->sf_data.SFR;
+  sp->birth_star_formation_rate = p->SFR;
 
   /* Flag that this particle has not done feedback yet */
   sp->f_E = -1.f;
@@ -934,7 +934,7 @@ star_formation_first_init_part(const struct phys_const* restrict phys_const,
 __attribute__((always_inline)) INLINE static void star_formation_split_part(
     struct part* p, struct xpart* xp, const double n) {
 
-  if (xp->sf_data.SFR > 0.) xp->sf_data.SFR /= n;
+  if (p->SFR > 0.) p->SFR /= n;
 }
 
 /**

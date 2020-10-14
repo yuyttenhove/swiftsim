@@ -1124,7 +1124,7 @@ void cooling_Hydrogen_reionization(const struct cooling_function_data *cooling,
 
     if (part_is_inhibited(p, s->e)) continue;
 
-    if (xp->sf_data.SFR <= 0.) {
+    if (p->SFR <= 0.) {
       const float old_u = hydro_get_physical_internal_energy(p, xp, cosmo);
       const float new_u = old_u + extra_heat;
 

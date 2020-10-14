@@ -235,10 +235,10 @@ INLINE static void star_formation_logger_log_active_part(
     struct star_formation_history *sf, const double dt_star) {
 
   /* Add the SFR to the logger file */
-  sf->SFR_active += xp->sf_data.SFR;
+  sf->SFR_active += p->SFR;
 
   /* Update the active SFR*dt */
-  sf->SFRdt_active += xp->sf_data.SFR * dt_star;
+  sf->SFRdt_active += p->SFR * dt_star;
 }
 
 /**
@@ -254,7 +254,7 @@ INLINE static void star_formation_logger_log_inactive_part(
     struct star_formation_history *sf) {
 
   /* Add the SFR to the logger file */
-  sf->SFR_inactive += max(xp->sf_data.SFR, 0.f);
+  sf->SFR_inactive += max(p->SFR, 0.f);
 }
 
 #endif /* SWIFT_EAGLE_STARFORMATION_LOGGER_H */
