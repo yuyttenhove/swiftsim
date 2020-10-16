@@ -691,4 +691,13 @@ INLINE static float SESAME_temperature_from_internal_energy(
   return 0.f;
 }
 
+// gas_density_from_pressure_and_temperature
+INLINE static float SESAME_density_from_pressure_and_temperature(
+    float P, float T, const struct SESAME_params *mat) {
+
+  error("This EOS function is not yet implemented!");
+
+  return 0.f;
+}
+
 #endif /* SWIFT_SESAME_EQUATION_OF_STATE_H */
