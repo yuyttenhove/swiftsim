@@ -44,6 +44,7 @@
 // SESAME parameters
 struct SESAME_params {
   float *table_log_rho;
+  float *table_log_T;
   float *table_log_u_rho_T;
   float *table_P_rho_T;
   float *table_c_rho_T;
@@ -132,6 +133,7 @@ INLINE static void load_table_SESAME(struct SESAME_params *mat,
 
   // Allocate table memory
   mat->table_log_rho = (float *)malloc(mat->num_rho * sizeof(float));
+  mat->table_log_T = (float *)malloc(mat->num_T * sizeof(float));
   mat->table_log_u_rho_T =
       (float *)malloc(mat->num_rho * mat->num_T * sizeof(float));
   mat->table_P_rho_T =
@@ -152,11 +154,17 @@ INLINE static void load_table_SESAME(struct SESAME_params *mat,
       if (c != 1) error("Failed to read the SESAME EoS table %s", table_file);
     }
   }
-
-  // Temperatures (ignored)
+  
+  // Temperatures (not log yet)
   for (int i_T = -1; i_T < mat->num_T; i_T++) {
-    c = fscanf(f, "%f", &ignore);
-    if (c != 1) error("Failed to read the SESAME EoS table %s", table_file);
+    // Ignore the first elements of rho = 0, T = 0
+    if (i_T == -1) {
+      c = fscanf(f, "%f", &ignore);
+      if (c != 1) error("Failed to read the SESAME EoS table %s", table_file);
+    } else {
+      c = fscanf(f, "%f", &mat->table_log_T[i_T]);
+      if (c != 1) error("Failed to read the SESAME EoS table %s", table_file);
+    }
   }
 
   // Sp. int. energies (not log yet), pressures, sound speeds, and sp. 
@@ -187,6 +195,11 @@ INLINE static void prepare_table_SESAME(struct SESAME_params *mat) {
   // Convert densities to log(density)
   for (int i_rho = 0; i_rho < mat->num_rho; i_rho++) {
     mat->table_log_rho[i_rho] = logf(mat->table_log_rho[i_rho]);
+  }
+  
+  // Convert temperatures to log(temperature)
+  for (int i_T = 0; i_T < mat->num_T; i_T++) {
+    mat->table_log_T[i_T] = logf(mat->table_log_T[i_T]);
   }
 
   // Initialise tiny values
@@ -273,6 +286,13 @@ INLINE static void convert_units_SESAME(struct SESAME_params *mat,
     mat->table_log_rho[i_rho] +=
         logf(units_cgs_conversion_factor(&si, UNIT_CONV_DENSITY) /
              units_cgs_conversion_factor(us, UNIT_CONV_DENSITY));
+  }
+  
+  // Temperatures (log)
+  for (int i_T = 0; i_T < mat->num_T; i_T++) {
+    mat->table_log_T[i_T] +=
+        logf(units_cgs_conversion_factor(&si, UNIT_CONV_TEMPERATURE) /
+             units_cgs_conversion_factor(us, UNIT_CONV_TEMPERATURE));
   }
 
   // Sp. int. energies (log), pressures, sound speeds, and sp. entropies
