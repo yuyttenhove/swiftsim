@@ -127,7 +127,9 @@ __attribute__((always_inline)) INLINE static void black_holes_first_init_bpart(
   bp->accreted_angular_momentum[1] = 0.f;
   bp->accreted_angular_momentum[2] = 0.f;
   bp->last_repos_vel = 0.f;
-  bp->num_ngbs_to_heat = props->num_ngbs_to_heat; /* Filler value */
+  bp->dt_heat = 0.f;
+  bp->AGN_number_of_AGN_events = 0;
+  bp->AGN_number_of_energy_injections = 0;
 
   black_holes_mark_bpart_as_not_swallowed(&bp->merger_data);
 }
@@ -997,7 +999,7 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
   } else {
 
     /* Flag that we don't want to heat anyone */
-    bp->to_distribute.AGN_heating_probability = 0.f;
+    bp->to_distribute.AGN_number_of_energy_injections = 0;
     bp->to_distribute.AGN_delta_u = 0.f;
   }
 }
