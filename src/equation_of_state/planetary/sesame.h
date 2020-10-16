@@ -793,7 +793,7 @@ INLINE static float SESAME_temperature_from_internal_energy(
   }
   
   // Convert back from log
-  T = = expf(log_T);
+  T = expf(log_T);
   
   return T;
 }
