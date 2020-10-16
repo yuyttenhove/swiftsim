@@ -682,4 +682,13 @@ INLINE static float SESAME_soundspeed_from_pressure(
   return 0.f;
 }
 
+// gas_temperature_from_internal_energy
+INLINE static float SESAME_temperature_from_internal_energy(
+    float density, float u, const struct SESAME_params *mat) {
+
+  error("This EOS function is not yet implemented!");
+
+  return 0.f;
+}
+
 #endif /* SWIFT_SESAME_EQUATION_OF_STATE_H */

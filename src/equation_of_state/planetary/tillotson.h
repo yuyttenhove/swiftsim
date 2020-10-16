@@ -312,4 +312,11 @@ INLINE static float Til_soundspeed_from_pressure(float density, float P,
   return 0.f;
 }
 
+// gas_temperature_from_internal_energy
+INLINE static float Til_temperature_from_internal_energy(
+    float density, float u, const struct Til_params *mat) {
+
+  return 0.f;
+}
+
 #endif /* SWIFT_TILLOTSON_EQUATION_OF_STATE_H */
