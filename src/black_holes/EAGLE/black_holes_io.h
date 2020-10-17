@@ -135,7 +135,7 @@ INLINE static void convert_bpart_gas_temperatures(const struct engine* e,
 
   /* Conversion from specific internal energy to temperature */
   ret[0] = bp->internal_energy_gas * cosmo->a_factor_internal_energy /
-      props->temp_to_u_factor;
+           props->temp_to_u_factor;
 }
 
 /**
