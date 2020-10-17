@@ -22,6 +22,13 @@
 #include "chemistry.h"
 #include "hydro_properties.h"
 
+enum SNII_feedback_models {
+  SNII_random_ngb_model,       /*< Random neighbour model for SNII feedback */
+  SNII_isotropic_model,        /*< Isotropic model of SNII feedback */
+  SNII_minimum_distance_model, /*< Minimum-distance model of SNII feedback */
+  SNII_minimum_density_model   /*< Minimum-density model of SNII feedback */
+};
+
 /**
  * @brief Stores AGB and SNII yield tables
  */
@@ -212,6 +219,9 @@ struct feedback_props {
 
   /* ------------ SNe feedback properties ------------ */
 
+  /*! SNII feedback model: random, isotropic or minimum distance */
+  enum SNII_feedback_models feedback_model;
+
   /*! Minimal stellar mass considered for SNII feedback (in solar masses) */
   double SNII_min_mass_msun;
 
@@ -265,9 +275,13 @@ struct feedback_props {
    */
   double n_Z;
 
-  /*! Are we using the birth properties to compute f_th or the properties at
+  /*! Are we using the birth density to compute f_th or the properties at
    * feedback time? */
-  int use_birth_props_for_feedback;
+  int use_birth_density_for_f_th;
+
+  /*! Are we using the birth metallicity to compute f_th or the properties at
+   * feedback time? */
+  int use_birth_Z_for_f_th;
 
   /* ------------ Enrichment sampling properties ------------ */
 

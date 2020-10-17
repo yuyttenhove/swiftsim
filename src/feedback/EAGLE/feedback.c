@@ -251,8 +251,8 @@ double eagle_feedback_energy_fraction(const struct spart* sp,
 
   /* Choose either the birth properties or current properties */
   const double nH =
-      props->use_birth_props_for_feedback ? n_birth_cgs : ngb_nH_cgs;
-  const double Z = props->use_birth_props_for_feedback ? Z_birth : ngb_Z;
+      props->use_birth_density_for_f_th ? n_birth_cgs : ngb_nH_cgs;
+  const double Z = props->use_birth_Z_for_f_th ? Z_birth : ngb_Z;
 
   /* Calculate f_E */
   const double Z_term = pow(max(Z, 1e-6) / Z_0, n_Z);
@@ -275,6 +275,8 @@ double eagle_feedback_energy_fraction(const struct spart* sp,
  * @param ngb_gas_N Integer number of neighbours of the star particle.
  * @param ngb_gas_mass Total un-weighted mass in the star's kernel (internal
  * units)
+ * @param num_gas_ngbs Total (integer) number of gas neighbours within the
+ * star's kernel.
  * @param ngb_nH_cgs Hydrogen number density of the gas surrounding the star
  * (physical cgs units).
  * @param ngb_Z Metallicity (metal mass fraction) of the gas surrounding the
@@ -333,13 +335,14 @@ INLINE static void compute_SNII_feedback(
     }
 
     /* Abort if there are no SNe exploding this step */
-    if (N_SNe == 0.) return;
+    if (N_SNe <= 0.) return;
 
     /* Conversion factor from T to internal energy */
     const double conv_factor = feedback_props->temp_to_u_factor;
 
-    /* Calculate the default heating probability */
+    /* Calculate the default heating probability (accounting for round-off) */
     double prob = f_E * E_SNe * N_SNe / (conv_factor * delta_T * ngb_gas_mass);
+    prob = max(prob, 0.0);
 
     /* Calculate the change in internal energy of the gas particles that get
      * heated */
@@ -885,6 +888,7 @@ INLINE static void evolve_AGB(const double log10_min_mass,
  * @param ti_begin The current integer time (for random number hashing).
  */
 void compute_stellar_evolution(const struct feedback_props* feedback_props,
+                               const struct phys_const* phys_const,
                                const struct cosmology* cosmo, struct spart* sp,
                                const struct unit_system* us, const double age,
                                const double dt, const integertime_t ti_begin) {
@@ -899,11 +903,9 @@ void compute_stellar_evolution(const struct feedback_props* feedback_props,
 #endif
 
   /* Convert dt and stellar age from internal units to Gyr. */
-  const double Gyr_in_cgs = 1e9 * 365.25 * 24. * 3600.;
-  const double time_to_cgs = units_cgs_conversion_factor(us, UNIT_CONV_TIME);
-  const double conversion_factor = time_to_cgs / Gyr_in_cgs;
-  const double dt_Gyr = dt * conversion_factor;
-  const double star_age_Gyr = age * conversion_factor;
+  const double Gyr_inv = 1. / (phys_const->const_year * 1e9);
+  const double dt_Gyr = dt * Gyr_inv;
+  const double star_age_Gyr = age * Gyr_inv;
 
   /* Get the birth mass of the star */
   const double M_init = sp->mass_init;
@@ -1044,8 +1046,6 @@ void feedback_props_init(struct feedback_props* fp,
                          const struct hydro_props* hydro_props,
                          const struct cosmology* cosmo) {
 
-  const double Gyr_in_cgs = 1.0e9 * 365.25 * 24. * 3600.;
-
   /* Main operation modes ------------------------------------------------- */
 
   fp->with_SNII_feedback =
@@ -1085,6 +1085,22 @@ void feedback_props_init(struct feedback_props* fp,
 
   /* Properties of the SNII energy feedback model ------------------------- */
 
+  char model[64];
+  parser_get_param_string(params, "EAGLEFeedback:SNII_feedback_model", model);
+  if (strcmp(model, "Random") == 0)
+    fp->feedback_model = SNII_random_ngb_model;
+  else if (strcmp(model, "Isotropic") == 0)
+    fp->feedback_model = SNII_isotropic_model;
+  else if (strcmp(model, "MinimumDistance") == 0)
+    fp->feedback_model = SNII_minimum_distance_model;
+  else if (strcmp(model, "MinimumDensity") == 0)
+    fp->feedback_model = SNII_minimum_density_model;
+  else
+    error(
+        "The SNII feedback model must be either 'Random', 'MinimumDistance', "
+        "'MinimumDensity' or 'Isotropic', not %s",
+        model);
+
   /* Are we sampling the SNII lifetimes for feedback or using a fixed delay? */
   fp->SNII_sampled_delay =
       parser_get_param_int(params, "EAGLEFeedback:SNII_sampled_delay");
@@ -1094,7 +1110,7 @@ void feedback_props_init(struct feedback_props* fp,
     /* Set the delay time before SNII occur */
     fp->SNII_wind_delay =
         parser_get_param_double(params, "EAGLEFeedback:SNII_wind_delay_Gyr") *
-        Gyr_in_cgs / units_cgs_conversion_factor(us, UNIT_CONV_TIME);
+        phys_const->const_year * 1e9;
   }
 
   /* Read the temperature change to use in stochastic heating */
@@ -1145,8 +1161,10 @@ void feedback_props_init(struct feedback_props* fp,
   }
 
   /* Are we using the stars' birth properties or at feedback time? */
-  fp->use_birth_props_for_feedback = parser_get_param_int(
-      params, "EAGLEFeedback:SNII_energy_fraction_use_birth_props");
+  fp->use_birth_density_for_f_th = parser_get_param_int(
+      params, "EAGLEFeedback:SNII_energy_fraction_use_birth_density");
+  fp->use_birth_Z_for_f_th = parser_get_param_int(
+      params, "EAGLEFeedback:SNII_energy_fraction_use_birth_metallicity");
 
   /* Properties of the SNII enrichment model -------------------------------- */
 
@@ -1221,7 +1239,7 @@ void feedback_props_init(struct feedback_props* fp,
   fp->stellar_evolution_age_cut =
       parser_get_param_double(params,
                               "EAGLEFeedback:stellar_evolution_age_cut_Gyr") *
-      Gyr_in_cgs / units_cgs_conversion_factor(us, UNIT_CONV_TIME);
+      phys_const->const_year * 1e9;
 
   fp->stellar_evolution_sampling_rate = parser_get_param_double(
       params, "EAGLEFeedback:stellar_evolution_sampling_rate");
