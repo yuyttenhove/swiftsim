@@ -184,7 +184,7 @@ struct bpart {
   /*! Cumulative coupling efficiency for feedback energy */
   float cumulative_epsilon_f;
 
-  /*! Instantaneous heating temperature increase for feedback */
+  /*! Instantaneous temperature increase for feedback */
   float AGN_delta_T;
 
   /*! Instantaneous energy reservoir threshold (num-to-heat) */

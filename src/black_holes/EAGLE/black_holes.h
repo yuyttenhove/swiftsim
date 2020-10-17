@@ -129,7 +129,7 @@ __attribute__((always_inline)) INLINE static void black_holes_first_init_bpart(
   bp->cumulative_actual_prob = 0.f;
   bp->cumulative_epsilon_f = 0.f;
   bp->last_repos_vel = 0.f;
-  bp->num_ngbs_to_heat = props->num_ngbs_to_heat;  /* Filler value */
+  bp->num_ngbs_to_heat = props->num_ngbs_to_heat; /* Filler value */
 
   black_holes_mark_bpart_as_not_swallowed(&bp->merger_data);
 }
@@ -609,7 +609,7 @@ black_hole_energy_reservoir_threshold(struct bpart* bp,
     return props->num_ngbs_to_heat;
 
   double num_to_heat = props->nheat_alpha *
-      (bp->accretion_rate / props->nheat_maccr_normalisation);
+                       (bp->accretion_rate / props->nheat_maccr_normalisation);
 
   /* Impose smooth truncation of num_to_heat towards props->nheat_limit */
   if (num_to_heat > props->nheat_alpha) {
@@ -658,7 +658,6 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
   const double f_Edd = props->f_Edd;
   const double f_Edd_recording = props->f_Edd_recording;
   const double epsilon_r = props->epsilon_r;
-  const double epsilon_f = props->epsilon_f;
   const int with_angmom_limiter = props->with_angmom_limiter;
 
   /* (Subgrid) mass of the BH (internal units) */
@@ -1147,9 +1146,6 @@ INLINE static void black_holes_create_from_gas(
   bp->cumulative_epsilon_f = 0.f;
 
   /* Initialise the energy reservoir threshold to the constant default */
-  bp->num_ngbs_to_heat = props->num_ngbs_to_heat;  /* Filler value */
-
-  /* Initialise the energy reservoir threshold to the constant default */
   bp->num_ngbs_to_heat = props->num_ngbs_to_heat; /* Filler value */
 
   /* We haven't repositioned yet, nor attempted it */
@@ -1180,9 +1176,5 @@ INLINE static void black_holes_create_from_gas(
 
   black_holes_mark_bpart_as_not_swallowed(&bp->merger_data);
 }
-
-
-
-
 
 #endif /* SWIFT_EAGLE_BLACK_HOLES_H */

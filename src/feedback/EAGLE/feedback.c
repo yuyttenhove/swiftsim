@@ -126,7 +126,7 @@ double eagle_variable_feedback_temperature_change(
 }
 
 /* Returns the effective heating temperature ratio for a feedback event.
- * 
+ *
  * This is the temperature, in units of the numerically critical dT_crit,
  * that injects the same energy into the gas after (estimated) cooling losses
  * are accounted for. */
@@ -313,7 +313,7 @@ double eagle_variable_feedback_temperature_change_v2(
     case eagle_SNII_timescale_none:
       n_single = frac_SNII * num_to_heat;
       break;
-    case eagle_SNII_timescale_gasconsum:      
+    case eagle_SNII_timescale_gasconsum:
       {
         /* Time scale for gas consumption by star formation.
          * If SFR = 0, set it to very large, in which case it has no effect. */
@@ -325,11 +325,11 @@ double eagle_variable_feedback_temperature_change_v2(
       }
       break;
     case eagle_SNII_timescale_freefall:
-      {      
-        const double dt_freefall = 
-            sqrt(3. * M_PI / 
+      {
+        const double dt_freefall =
+            sqrt(3. * M_PI /
                  (32. * G_Newton * ngb_rho));
- 
+
         /* Maximally, ask for num_to_heat heating events, even for long dt */
         const double f_dt = min(dt / dt_freefall, 1.);
         n_single = num_to_heat * max(frac_SNII, f_dt);

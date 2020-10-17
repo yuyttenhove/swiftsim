@@ -239,8 +239,7 @@ INLINE static void stars_write_particles(const struct spart *sparts,
   list[20] = io_make_output_field(
       "FeedbackNumberOfHeatingEvents", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f,
       sparts, number_of_heating_events,
-      "Expected number of feedback heating events caused by each star "
-      "particle.");
+      "Expected number of particles that were heated by each star particle.");
 
   list[21] = io_make_output_field(
       "NumberOfFeedbackEvents", INT, 1, UNIT_CONV_NO_UNITS, 0.f, sparts,
