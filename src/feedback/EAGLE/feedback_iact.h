@@ -59,9 +59,6 @@ runner_iact_nonsym_feedback_density(const float r2, const float *dx,
   float wi;
   kernel_eval(ui, &wi);
 
-  /* We found a neighbour! */
-  si->feedback_data.to_collect.ngb_N++;
-
   /* Add mass of pj to neighbour mass of si  */
   si->feedback_data.to_collect.ngb_mass += mj;
 
@@ -121,7 +118,7 @@ runner_iact_nonsym_feedback_density(const float r2, const float *dx,
        * star), then bi->num_ngbs = 1 and there is nothing to sort. Note that
        * the maximum size of the sorted array cannot be larger then the maximum
        * number of rays. */
-      const int arr_size = min(si->feedback_data.to_collect.ngb_N,
+      const int arr_size = min(si->feedback_data.to_collect.num_ngbs,
                                eagle_SNII_feedback_num_of_rays);
 
       /* Minimise separation between the gas particles and the star. The rays
@@ -137,7 +134,7 @@ runner_iact_nonsym_feedback_density(const float r2, const float *dx,
        * star), then bi->num_ngbs = 1 and there is nothing to sort. Note that
        * the maximum size of the sorted array cannot be larger then the maximum
        * number of rays. */
-      const int arr_size = min(si->feedback_data.to_collect.ngb_N,
+      const int arr_size = min(si->feedback_data.to_collect.num_ngbs,
                                eagle_SNII_feedback_num_of_rays);
 
       /* Minimise separation between the gas particles and the star. The rays
@@ -153,7 +150,7 @@ runner_iact_nonsym_feedback_density(const float r2, const float *dx,
        * star), then bi->num_ngbs = 1 and there is nothing to sort. Note that
        * the maximum size of the sorted array cannot be larger then the maximum
        * number of rays. */
-      const int arr_size = min(si->feedback_data.to_collect.ngb_N,
+      const int arr_size = min(si->feedback_data.to_collect.num_ngbs,
                                eagle_SNII_feedback_num_of_rays);
 
       /* To mimic a random draw among all the particles in the kernel, we

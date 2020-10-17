@@ -126,8 +126,6 @@ __attribute__((always_inline)) INLINE static void black_holes_first_init_bpart(
   bp->accreted_angular_momentum[0] = 0.f;
   bp->accreted_angular_momentum[1] = 0.f;
   bp->accreted_angular_momentum[2] = 0.f;
-  bp->cumulative_target_prob = 0.f;
-  bp->cumulative_actual_prob = 0.f;
   bp->cumulative_epsilon_f = 0.f;
   bp->last_repos_vel = 0.f;
   bp->num_ngbs_to_heat = props->num_ngbs_to_heat; /* Filler value */
@@ -907,6 +905,8 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
   /* Energy required to have a feedback event
    * Note that we have subtracted the particles we swallowed from the ngb_mass
    * and num_ngbs accumulators. */
+  const double num_ngbs_to_heat =
+      black_hole_energy_reservoir_threshold(bp, props);
   const double mean_ngb_mass = bp->ngb_mass / ((double)bp->num_ngbs);
   const double E_feedback_event =
       num_ngbs_to_heat * delta_u_ref * mean_ngb_mass;
@@ -923,10 +923,6 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
   /* Are we doing some feedback? */
   if (bp->energy_reservoir > E_feedback_event) {
 
-    /* Default probability of heating */
-    double target_prob = bp->energy_reservoir / (delta_u * bp->ngb_mass);
-    bp->cumulative_target_prob += target_prob;
-   
     int number_of_energy_injections;
 
     /* How are we doing feedback? */
@@ -1015,8 +1011,6 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
     bp->to_distribute.AGN_delta_u = delta_u;
     bp->to_distribute.AGN_number_of_energy_injections =
         number_of_energy_injections;
-    bp->cumulative_actual_prob += prob;
-    bp->target_heating_prob = target_prob;
 
     /* Subtract the deposited energy from the BH energy reservoir. Note
      * that in the stochastic case, the resulting value might be negative.
@@ -1061,7 +1055,6 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
     /* Flag that we don't want to heat anyone */
     bp->to_distribute.AGN_number_of_energy_injections = 0;
     bp->to_distribute.AGN_delta_u = 0.f;
-    bp->target_heating_prob = 0.f;
   }
 }
 
@@ -1256,8 +1249,6 @@ INLINE static void black_holes_create_from_gas(
   bp->number_of_gas_swallows = 0;
   bp->number_of_direct_gas_swallows = 0;
   bp->number_of_time_steps = 0;
-  bp->cumulative_target_prob = 0.f;
-  bp->cumulative_actual_prob = 0.f;
   bp->cumulative_epsilon_f = 0.f;
 
   /* Initialise the energy reservoir threshold to the constant default */

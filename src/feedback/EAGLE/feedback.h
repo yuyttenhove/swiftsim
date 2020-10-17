@@ -77,7 +77,6 @@ __attribute__((always_inline)) INLINE static void feedback_init_spart(
     struct spart* sp) {
 
   sp->feedback_data.to_collect.enrichment_weight_inv = 0.f;
-  sp->feedback_data.to_collect.ngb_N = 0;
   sp->feedback_data.to_collect.ngb_mass = 0.f;
   sp->feedback_data.to_collect.ngb_rho = 0.f;
   sp->feedback_data.to_collect.ngb_Z = 0.f;

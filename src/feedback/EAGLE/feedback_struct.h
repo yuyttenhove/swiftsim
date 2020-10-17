@@ -62,9 +62,6 @@ struct feedback_spart_data {
       /*! SPH-weighted SFR density of the neighbouring gas particles */
       float ngb_SFR;
 
-      /*! Total (unweighted) number gas neighbours in the stellar kernel */
-      int ngb_N;
-
     } to_collect;
 
     /**

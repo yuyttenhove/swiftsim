@@ -676,7 +676,6 @@ double eagle_feedback_energy_fraction(struct spart* sp,
  * @param sp The star particle.
  * @param star_age Age of star at the beginning of the step in internal units.
  * @param dt Length of time-step in internal units.
- * @param ngb_gas_N Integer number of neighbours of the star particle.
  * @param ngb_gas_mass Total un-weighted mass in the star's kernel (internal
  * units)
  * @param num_gas_ngbs Total (integer) number of gas neighbours within the
@@ -698,7 +697,7 @@ double eagle_feedback_energy_fraction(struct spart* sp,
  */
 INLINE static void compute_SNII_feedback(
     struct spart* sp, const double star_age, const double dt,
-    const int ngb_gas_N, const float ngb_gas_mass, const double ngb_nH_cgs,
+    const float ngb_gas_mass, const int num_gas_ngbs, const double ngb_nH_cgs,
     const double ngb_Z, const struct feedback_props* feedback_props,
     const double min_dying_mass_Msun, const double max_dying_mass_Msun,
     const integertime_t ti_begin,
@@ -790,7 +789,7 @@ INLINE static void compute_SNII_feedback(
       /* Normal case */
       delta_u = delta_T * conv_factor;
 
-      for (int i = 0; i < ngb_gas_N; i++) {
+      for (int i = 0; i < num_gas_ngbs; i++) {
         const double rand_thermal = random_unit_interval_part_ID_and_ray_idx(
             sp->id, i, ti_begin, random_number_stellar_feedback_3);
         if (rand_thermal < prob) number_of_SN_events++;
@@ -803,7 +802,7 @@ INLINE static void compute_SNII_feedback(
       delta_u = f_E * E_SNe * N_SNe / ngb_gas_mass;
 
       /* Number of SNIa events is equal to the number of Ngbs */
-      number_of_SN_events = ngb_gas_N;
+      number_of_SN_events = num_gas_ngbs;
     }
 
 #ifdef SWIFT_DEBUG_CHECKS
@@ -1357,7 +1356,7 @@ void compute_stellar_evolution(const struct feedback_props* feedback_props,
       chemistry_get_star_metal_mass_fraction_for_feedback(sp);
 
   /* Properties collected in the stellar density loop. */
-  const int ngb_Number = sp->feedback_data.to_collect.ngb_N;
+  const int num_gas_ngbs = sp->feedback_data.to_collect.num_ngbs;
   const float ngb_gas_mass = sp->feedback_data.to_collect.ngb_mass;
   const float ngb_gas_Z = sp->feedback_data.to_collect.ngb_Z;
   const float ngb_gas_SFR = sp->feedback_data.to_collect.ngb_SFR;
