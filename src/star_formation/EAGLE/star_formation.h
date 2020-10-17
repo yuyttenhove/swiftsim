@@ -592,7 +592,8 @@ INLINE static void star_formation_copy_properties(
   sp->nu = -FLT_MAX;
   sp->omega_min = FLT_MAX;
   sp->omega_max = -FLT_MAX;
-  sp->number_of_heating_events = 0.;
+  sp->number_of_heated_particles = 0;
+  sp->expected_number_of_heated_particles = 0.;
 }
 
 /**

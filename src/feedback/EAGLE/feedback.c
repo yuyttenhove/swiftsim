@@ -801,7 +801,7 @@ INLINE static void compute_SNII_feedback(
          desired deltaT to ensure we inject all the available energy. */
       delta_u = f_E * E_SNe * N_SNe / ngb_gas_mass;
 
-      /* Number of SNIa events is equal to the number of Ngbs */
+      /* Number of SNII events is equal to the number of Ngbs */
       number_of_SN_events = num_gas_ngbs;
     }
 
@@ -834,6 +834,8 @@ INLINE static void compute_SNII_feedback(
     sp->feedback_data.to_distribute.SNII_delta_u = delta_u;
     sp->feedback_data.to_distribute.SNII_num_of_thermal_energy_inj =
         number_of_SN_events;
+    sp->expected_number_of_heated_particles += (prob * num_gas_ngbs);
+    sp->number_of_heated_particles += number_of_SN_events;
   }
 }
 

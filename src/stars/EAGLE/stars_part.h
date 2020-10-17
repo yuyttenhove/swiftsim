@@ -128,7 +128,10 @@ struct spart {
   float birth_star_formation_rate;
 
   /*! Total number of (expected) feedback heating events so far */
-  float number_of_heating_events;
+  float expected_number_of_heated_particles;
+
+  /*! Total number of actual particles heated by this star particle. */
+  int number_of_heated_particles;
 
   /*! Star formation struct */
   struct star_formation_spart_data sf_data;
