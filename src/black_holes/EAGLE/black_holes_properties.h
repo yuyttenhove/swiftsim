@@ -22,6 +22,15 @@
 #include "chemistry.h"
 #include "hydro_properties.h"
 
+#include <string.h>
+
+enum AGN_feedback_models {
+  AGN_random_ngb_model,       /*< Random neighbour model for AGN feedback */
+  AGN_isotropic_model,        /*< Isotropic model of AGN feedback */
+  AGN_minimum_distance_model, /*< Minimum-distance model of AGN feedback */
+  AGN_minimum_density_model   /*< Minimum-density model of AGN feedback */
+};
+
 /**
  * @brief Properties of black holes and AGN feedback in the EAGEL model.
  */
@@ -61,10 +70,10 @@ struct black_holes_props {
   /* ----- Properties of the accretion model ------ */
 
   /*! Calculate Bondi accretion rate for individual neighbours? */
-  int multi_phase_bondi;
+  int use_multi_phase_bondi;
 
   /*! Are we using the subgrid gas properties in the Bondi model? */
-  int subgrid_bondi;
+  int use_subgrid_bondi;
 
   /*! Are we applying the angular-momentum-based multiplicative term from
    * Rosas-Guevara et al. (2015)? */
@@ -105,6 +114,12 @@ struct black_holes_props {
   float min_gas_mass_for_nibbling;
 
   /* ---- Properties of the feedback model ------- */
+
+  /*! AGN feedback model: random, isotropic or minimum distance */
+  enum AGN_feedback_models feedback_model;
+
+  /*! Is the AGN feedback model deterministic or stochastic? */
+  int AGN_deterministic;
 
   /*! Switch on density and metallicity dependent feedback scaling */
   int use_scaled_coupling_efficiency;
@@ -313,12 +328,13 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
 
   /* Accretion parameters ---------------------------------- */
 
-  bp->multi_phase_bondi =
-      parser_get_param_int(params, "EAGLEAGN:multi_phase_bondi");
+  bp->use_multi_phase_bondi =
+      parser_get_param_int(params, "EAGLEAGN:use_multi_phase_bondi");
 
-  bp->subgrid_bondi = parser_get_param_int(params, "EAGLEAGN:subgrid_bondi");
+  bp->use_subgrid_bondi =
+      parser_get_param_int(params, "EAGLEAGN:use_subgrid_bondi");
 
-  if (bp->multi_phase_bondi && bp->subgrid_bondi)
+  if (bp->use_multi_phase_bondi && bp->use_subgrid_bondi)
     error(
         "Cannot run with both the multi-phase Bondi and subgrid Bondi models "
         "at the same time!");
@@ -385,6 +401,25 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
     bp->epsilon_f =
         parser_get_param_float(params, "EAGLEAGN:coupling_efficiency");
   }
+
+  char temp[40];
+  parser_get_param_string(params, "EAGLEAGN:AGN_feedback_model", temp);
+  if (strcmp(temp, "Random") == 0)
+    bp->feedback_model = AGN_random_ngb_model;
+  else if (strcmp(temp, "Isotropic") == 0)
+    bp->feedback_model = AGN_isotropic_model;
+  else if (strcmp(temp, "MinimumDistance") == 0)
+    bp->feedback_model = AGN_minimum_distance_model;
+  else if (strcmp(temp, "MinimumDensity") == 0)
+    bp->feedback_model = AGN_minimum_density_model;
+  else
+    error(
+        "The AGN feedback model must be either 'Random', 'MinimumDistance', "
+        "'MinimumDensity' or 'Isotropic', not %s",
+        temp);
+
+  bp->AGN_deterministic =
+      parser_get_param_int(params, "EAGLEAGN:AGN_use_deterministic_feedback");
 
   const double T_K_to_int =
       1. / units_cgs_conversion_factor(us, UNIT_CONV_TEMPERATURE);

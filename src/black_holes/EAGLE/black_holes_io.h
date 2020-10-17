@@ -152,7 +152,7 @@ INLINE static void black_holes_write_particles(const struct bpart* bparts,
                                                int with_cosmology) {
 
   /* Say how much we want to write */
-  *num_fields = 44;
+  *num_fields = 50;
 
   /* List what we want to write */
   list[0] = io_make_output_field_convert_bpart(
@@ -427,13 +427,52 @@ INLINE static void black_holes_write_particles(const struct bpart* bparts,
       "can be above unity.");
 
   list[42] = io_make_output_field(
+      "NumberOfHeatingEvents", INT, 1, UNIT_CONV_NO_UNITS, 0.f, bparts,
+      AGN_number_of_energy_injections,
+      "Integer number of (thermal) energy injections the black hole has had "
+      "so far");
+
+  list[43] = io_make_output_field(
+      "NumberOfAGNEvents", INT, 1, UNIT_CONV_NO_UNITS, 0.f, bparts,
+      AGN_number_of_AGN_events,
+      "Integer number of AGN events the black hole has had so far"
+      " (the number of times the BH did AGN feedback)");
+
+  if (with_cosmology) {
+    list[44] = io_make_output_field(
+        "LastAGNFeedbackScaleFactors", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f,
+        bparts, last_AGN_event_scale_factor,
+        "Scale-factors at which the black holes last had an AGN event.");
+  } else {
+    list[44] = io_make_output_field(
+        "LastAGNFeedbackTimes", FLOAT, 1, UNIT_CONV_TIME, 0.f, bparts,
+        last_AGN_event_time,
+        "Times at which the black holes last had an AGN event.");
+  }
+
+  list[45] = io_make_output_field(
+      "AccretionLimitedTimeSteps", FLOAT, 1, UNIT_CONV_TIME, 0.f, bparts,
+      dt_heat, "Accretion-limited time-steps of black holes.");
+
+  list[46] = io_make_output_field(
+      "AGNTotalInjectedEnergies", FLOAT, 1, UNIT_CONV_ENERGY, 0.f, bparts,
+      AGN_cumulative_energy,
+      "Total (cumulative) physical energies injected into gas particles "
+      "in AGN feedback.");
+
+  list[47] = io_make_output_field_convert_bpart(
+      "GasTemperatures", FLOAT, 1, UNIT_CONV_TEMPERATURE, 0.f, bparts,
+      convert_bpart_gas_temperatures,
+      "Temperature of the gas surrounding the black holes.");
+
+  list[48] = io_make_output_field(
       "EnergyReservoirThresholds", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, bparts,
       num_ngbs_to_heat,
       "Minimum energy reservoir required for the black holes to do feedback, "
       "expressed in units of the (constant) target heating temperature "
       "increase.");
 
-  list[43] = io_make_output_field(
+  list[49] = io_make_output_field(
       "BirthGasDensities", FLOAT, 1, UNIT_CONV_DENSITY, 0.f, bparts,
       formation_gas_density,
       "Physical densities of the converted part at the time of birth. "
