@@ -172,9 +172,6 @@ struct bpart {
   /*! Total (physical) angular momentum accumulated from subgrid accretion */
   float accreted_angular_momentum[3];
 
-  /*! Instantaneous target probability of heating any one neighbour particle */
-  float target_heating_prob;
-
   /*! Instantaneous coupling efficiency for feedback energy */
   float epsilon_f;
 
