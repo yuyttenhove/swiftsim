@@ -28,6 +28,7 @@
 #include "space.h"
 #include "timestep_sync_part.h"
 #include "tracers.h"
+#include "kernel_hydro.h"
 
 /**
  * @brief Density interaction between two particles (non-symmetric).
@@ -161,32 +162,139 @@ runner_iact_nonsym_bh_gas_density(
   /* Choose AGN feedback model */
   switch (bh_props->feedback_model) {
     case AGN_isotropic_model: {
-      /* Compute arc lengths in AGN isotropic feedback and collect
-       * relevant data for later use in the feedback_apply loop */
 
-      /* Loop over rays */
-      for (int i = 0; i < eagle_blackhole_number_of_rays; i++) {
+      switch (bh_props->weighting_model) {
+        case AGN_isotropic_weighting: {
 
-        /* We generate two random numbers that we use
-        to randomly select the direction of the ith ray */
+          /* Compute arc lengths in AGN isotropic feedback and collect
+           * relevant data for later use in the feedback_apply loop */
 
-        /* Random number in [0, 1[ */
-        const double rand_theta = random_unit_interval_part_ID_and_ray_idx(
-            bi->id, i, ti_current,
-            random_number_isotropic_AGN_feedback_ray_theta);
+          /* Loop over rays */
+          for (int i = 0; i < eagle_blackhole_number_of_rays; i++) {
 
-        /* Random number in [0, 1[ */
-        const double rand_phi = random_unit_interval_part_ID_and_ray_idx(
-            bi->id, i, ti_current,
-            random_number_isotropic_AGN_feedback_ray_phi);
+            /* Random number in [0, 1[ */
+            const double rand_theta = random_unit_interval_part_ID_and_ray_idx(
+                bi->id, i, ti_current,
+                random_number_isotropic_AGN_feedback_ray_theta);
 
-        /* Compute arc length */
-        ray_minimise_arclength(dx, r, bi->rays + i, /*switch=*/-1, gas_id,
-                               rand_theta, rand_phi, pj->mass, /*ray_ext=*/NULL,
-                               /*v=*/NULL);
+            /* Random number in [0, 1[ */
+            const double rand_phi = random_unit_interval_part_ID_and_ray_idx(
+                bi->id, i, ti_current,
+                random_number_isotropic_AGN_feedback_ray_phi);
+
+            /* Compute arc length */
+            ray_minimise_arclength(dx, r, bi->rays + i, /*switch=*/-1, gas_id,
+                                   rand_theta, rand_phi, pj->mass,
+                                   /*ray_ext=*/NULL, /*v=*/NULL);
+          }
+        } break;
+        
+        case AGN_homogeneous_weighting: {
+          
+          /* Loop over rays */
+          for (int i = 0; i < eagle_blackhole_number_of_rays; i++) {
+
+            /* Two random numbers in [0, 1[ */
+            const double rand_theta_AGN = 
+                random_unit_interval_part_ID_and_ray_idx(
+                    bi->id, i, ti_current,
+                    random_number_isotropic_AGN_feedback_ray_theta);
+            const double rand_phi_AGN =
+                random_unit_interval_part_ID_and_ray_idx(
+                    bi->id, i, ti_current,
+                    random_number_isotropic_AGN_feedback_ray_phi);
+
+            /* And one random radius in [0, kernel_radius[ */
+            double rand_rad_AGN =
+                random_unit_interval_part_ID_and_ray_idx(
+                    bi->id, i, ti_current,
+                    random_number_isotropic_AGN_feedback_ray_rad);
+                
+            /* For the radius, we do *not* want a uniform distribution: most 
+             * volume is at larger radius. The following re-scaling maps
+             * it to an r^2 distribution instead (not fully trivial). */
+            rand_rad_AGN = pj->h * kernel_gamma * pow(rand_rad_AGN, 0.333333);
+
+            /* Minimise offset from target point */
+            ray_minimise_offset(dx, bi->rays + i,
+                                pj->id, pj->mass, rand_theta_AGN,
+                                rand_phi_AGN, rand_rad_AGN);
+          }
+        } break;
+
+        case AGN_isothermal_weighting: {
+         
+          /* Loop over rays */
+          for (int i = 0; i < eagle_blackhole_number_of_rays; i++) {
+
+            /* Two random numbers in [0, 1[ */
+            const double rand_theta_AGN = 
+                random_unit_interval_part_ID_and_ray_idx(
+                    bi->id, i, ti_current,
+                    random_number_isotropic_AGN_feedback_ray_theta);
+            const double rand_phi_AGN =
+                random_unit_interval_part_ID_and_ray_idx(
+                    bi->id, i, ti_current,
+                    random_number_isotropic_AGN_feedback_ray_phi);
+
+            /* And one random radius in [0, kernel_radius[ */
+            double rand_rad_AGN =
+                random_unit_interval_part_ID_and_ray_idx(
+                    bi->id, i, ti_current,
+                    random_number_isotropic_AGN_feedback_ray_rad);
+
+            /* For the radius, we here *do* want a uniform distribution. This
+             * causes a r^-2 probability density distribution in 3D radius
+             * (not fully trivial). */
+            rand_rad_AGN = pj->h * kernel_gamma * rand_rad_AGN;
+
+            /* Minimise offset from target point */
+            ray_minimise_offset(dx, bi->rays + i,
+                                pj->id, pj->mass, rand_theta_AGN,
+                                rand_phi_AGN, rand_rad_AGN);
+          }
+        } break;
+
+        case AGN_antisothermal_weighting: {
+         
+          /* Loop over rays */
+          for (int i = 0; i < eagle_blackhole_number_of_rays; i++) {
+
+            /* Two random numbers in [0, 1[ */
+            const double rand_theta_AGN = 
+                random_unit_interval_part_ID_and_ray_idx(
+                    bi->id, i, ti_current,
+                    random_number_isotropic_AGN_feedback_ray_theta);
+            const double rand_phi_AGN =
+                random_unit_interval_part_ID_and_ray_idx(
+                    bi->id, i, ti_current,
+                    random_number_isotropic_AGN_feedback_ray_phi);
+
+            /* And one random radius in [0, kernel_radius[ */
+            double rand_rad_AGN =
+                random_unit_interval_part_ID_and_ray_idx(
+                    bi->id, i, ti_current,
+                    random_number_isotropic_AGN_feedback_ray_rad);
+                
+
+            /* For the radius, we do *not* want a uniform distribution: most 
+             * volume is at larger radius, and we want (here) to choose
+             * preferentially particles at large radius. The following
+             * re-scaling maps it to an r^4 distribution, for an r^2 probability
+             * distribution in 3D (not fully trivial). */
+            rand_rad_AGN = pj->h * kernel_gamma * pow(rand_rad_AGN, 0.2);
+
+            /* Minimise offset from target point */
+            ray_minimise_offset(dx, bi->rays + i,
+                                pj->id, pj->mass, rand_theta_AGN,
+                                rand_phi_AGN, rand_rad_AGN);
+          }
+        } break;
       }
-      break;
-    }
+
+    } break;  /* Ends section covering different weighting models for
+               * isotropic feedback */
+
     case AGN_minimum_distance_model: {
       /* Compute the size of the array that we want to sort. If the current
        * function is called for the first time (at this time-step for this BH),

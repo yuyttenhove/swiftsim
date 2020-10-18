@@ -1547,6 +1547,26 @@ void feedback_props_init(struct feedback_props* fp,
         "'MinimumDensity' or 'Isotropic', not %s",
         model);
 
+  if (fp->feedback_model == SNII_isotropic_model) {
+    char weighting[64];
+    parser_get_param_string(params, "EAGLEFeedback:SNII_weighting_model",
+      weighting);
+    if (strcmp(weighting, "Isotropic") == 0)
+      fp->weighting_model = SNII_isotropic_weighting;
+    else if (strcmp(weighting, "Homogeneous") == 0)
+      fp->weighting_model = SNII_homogeneous_weighting;
+    else if (strcmp(weighting, "Isothermal") == 0)
+      fp->weighting_model = SNII_isothermal_weighting;
+    else if (strcmp(weighting, "Antisothermal") == 0)
+      fp->weighting_model = SNII_antisothermal_weighting;
+    else
+      error(
+          "The SNII feedback weighting must be either 'Isotropic', "
+          "'Homogeneous', 'Isothermal', or 'Antisothermal', "
+          "not '%s'.",
+          weighting);
+  }
+
   /* Are we sampling the SNII lifetimes for feedback or using a fixed delay? */
   fp->SNII_sampled_delay =
       parser_get_param_int(params, "EAGLEFeedback:SNII_sampled_delay");

@@ -185,6 +185,52 @@ __attribute__((always_inline)) INLINE static void ray_minimise_arclength(
 }
 
 /**
+ * @brief For a given ray, minimise the offset between the stellar/BH
+ * chosen point and the gas neighbours, and store relevant
+ * properties of the gas particle that has the minimum offset with the ray
+ *
+ * @param dx Comoving vector separating both particles (si - pj)
+ * @param ray Ray data
+ * @param gas_part_id ID of the gas particle
+ * @param gas_part_mass Gas particle mass
+ * @param rand_theta_gen Random number to generate \theta_ray
+ * @param rand_phi_gen Random number to generate \phi_ray
+ * @param rand_r The radial distance of the target point from the star/BH.
+ */
+__attribute__((always_inline)) INLINE static void ray_minimise_offset(
+    const float *dx, struct ray_data *ray,
+    const long long gas_part_id, const float gas_part_mass,
+    const double rand_theta_gen, const double rand_phi_gen, const double r_pt) {
+
+  /* Scale the (uniform) random number for theta correctly, should lie within
+   * [1, -1[. The acos transform comes from the non-uniform length of "rings"
+   * of equal theta at a given radius (not trivial). */
+  const double theta_pt = acos(1 - 2. * rand_theta_gen);
+  
+  /* Transform the random number for phi from [0,1[ to [-pi, pi[ */
+  const double phi_pt = 2.0 * M_PI * rand_phi_gen - M_PI;
+
+  /* Calculate the Cartesian coordinates of the target point, with the
+   * neighbour gas particle at the origin */
+  const double x_pt = r_pt * sin(theta_pt) * sin(phi_pt) - dx[0];
+  const double y_pt = r_pt * sin(theta_pt) * sin(phi_pt) - dx[1];
+  const double z_pt = r_pt * cos(theta_pt) - dx[2];
+
+  /* Calculate the Cartesian (squared) distance from the target point to the gas
+   * particle we are considering */
+  const double rsq = x_pt * x_pt + y_pt * y_pt + z_pt * z_pt;
+
+  /* If the new offset is smaller than the current best value (from a previous
+   * particle), store the new one alongside the particle id and its other
+   * relevant properties that will be used later. */
+  if (rsq < ray->min_length) {
+    ray->min_length = rsq;
+    ray->id_min_length = gas_part_id;
+    ray->mass = gas_part_mass;
+  }
+}
+
+/**
  * @brief Compute the kick velocity in stellar kinetic feedback
  *
  * @param v_kick The kick velocty vector to be computed

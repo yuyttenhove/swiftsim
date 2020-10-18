@@ -24,6 +24,7 @@
 #include "rays.h"
 #include "timestep_sync_part.h"
 #include "tracers.h"
+#include "kernel_hydro.h"
 
 /**
  * @brief Density interaction between two particles (non-symmetric).
@@ -87,31 +88,144 @@ runner_iact_nonsym_feedback_density(const float r2, const float *dx,
   switch (fb_props->feedback_model) {
     case SNII_isotropic_model: {
 
-      /* Compute arc lengths in stellar isotropic feedback and collect
-       * relevant data for later use in the feedback_apply loop */
+      switch (fb_props->weighting_model) {
+        case SNII_isotropic_weighting: {
 
-      /* Loop over rays */
-      for (int i = 0; i < eagle_SNII_feedback_num_of_rays; i++) {
+          /* Compute arc lengths in stellar isotropic feedback and collect
+           * relevant data for later use in the feedback_apply loop */
 
-        /* We generate two random numbers that we use
-         * to randomly select the direction of the ith ray */
+          /* Loop over rays */
+          for (int i = 0; i < eagle_SNII_feedback_num_of_rays; i++) {
 
-        /* Two random numbers in [0, 1[ */
-        const double rand_theta_SNII = random_unit_interval_part_ID_and_ray_idx(
-            si->id, i, ti_current,
-            random_number_isotropic_SNII_feedback_ray_theta);
-        const double rand_phi_SNII = random_unit_interval_part_ID_and_ray_idx(
-            si->id, i, ti_current,
-            random_number_isotropic_SNII_feedback_ray_phi);
+            /* We generate two random numbers that we use
+             * to randomly select the direction of the ith ray */
 
-        /* Compute arclength */
-        ray_minimise_arclength(dx, r, si->feedback_data.SNII_rays + i,
-                               /*switch=*/-1, pj->id, rand_theta_SNII,
-                               rand_phi_SNII, pj->mass, /*ray_ext=*/NULL,
-                               /*v=*/NULL);
+            /* Two random numbers in [0, 1[ */
+            const double rand_theta_SNII = 
+                random_unit_interval_part_ID_and_ray_idx(
+                    si->id, i, ti_current,
+                    random_number_isotropic_SNII_feedback_ray_theta);
+            const double rand_phi_SNII =
+                random_unit_interval_part_ID_and_ray_idx(
+                    si->id, i, ti_current,
+                    random_number_isotropic_SNII_feedback_ray_phi);
+
+            /* Compute arclength */
+            ray_minimise_arclength(dx, r, si->feedback_data.SNII_rays + i,
+                                   /*switch=*/-1, pj->id, rand_theta_SNII,
+                                   rand_phi_SNII, pj->mass, /*ray_ext=*/NULL,
+                                   /*v=*/NULL);
+          }
+        } break;
+        
+        case SNII_homogeneous_weighting: {
+          
+          /* Loop over rays */
+          for (int i = 0; i < eagle_SNII_feedback_num_of_rays; i++) {
+
+            /* Two random numbers in [0, 1[ */
+            const double rand_theta_SNII = 
+                random_unit_interval_part_ID_and_ray_idx(
+                    si->id, i, ti_current,
+                    random_number_isotropic_SNII_feedback_ray_theta);
+            const double rand_phi_SNII =
+                random_unit_interval_part_ID_and_ray_idx(
+                    si->id, i, ti_current,
+                    random_number_isotropic_SNII_feedback_ray_phi);
+
+            /* And one random radius in [0, kernel_radius[ */
+            double rand_rad_SNII =
+                random_unit_interval_part_ID_and_ray_idx(
+                    si->id, i, ti_current,
+                    random_number_isotropic_SNII_feedback_ray_rad);
+                
+
+            /* For the radius, we do *not* want a uniform distribution: most 
+             * volume is at larger radius. The following re-scaling maps
+             * it to an r^2 distribution instead (not fully trivial). */
+            rand_rad_SNII = pj->h * kernel_gamma * pow(rand_rad_SNII, 0.333333);
+
+            /* Minimise offset from target point */
+            ray_minimise_offset(dx, si->feedback_data.SNII_rays + i,
+                                pj->id, pj->mass, rand_theta_SNII,
+                                rand_phi_SNII, rand_rad_SNII);
+          }
+        } break;
+
+        case SNII_isothermal_weighting: {
+         
+          /* Loop over rays */
+          for (int i = 0; i < eagle_SNII_feedback_num_of_rays; i++) {
+
+            /* Two random numbers in [0, 1[ */
+            const double rand_theta_SNII = 
+                random_unit_interval_part_ID_and_ray_idx(
+                    si->id, i, ti_current,
+                    random_number_isotropic_SNII_feedback_ray_theta);
+            const double rand_phi_SNII =
+                random_unit_interval_part_ID_and_ray_idx(
+                    si->id, i, ti_current,
+                    random_number_isotropic_SNII_feedback_ray_phi);
+
+            /* And one random radius in [0, kernel_radius[ */
+            double rand_rad_SNII =
+                random_unit_interval_part_ID_and_ray_idx(
+                    si->id, i, ti_current,
+                    random_number_isotropic_SNII_feedback_ray_rad);
+                
+
+            /* For the radius, we here *do* want a uniform distribution. This
+             * causes a r^-2 probability density distribution in 3D radius
+             * (not fully trivial). */
+            rand_rad_SNII = pj->h * kernel_gamma * rand_rad_SNII;
+
+            /* Minimise offset from target point */
+            ray_minimise_offset(dx, si->feedback_data.SNII_rays + i,
+                                pj->id, pj->mass, rand_theta_SNII,
+                                rand_phi_SNII, rand_rad_SNII);
+          }
+
+        } break;
+
+        case SNII_antisothermal_weighting: {
+         
+          /* Loop over rays */
+          for (int i = 0; i < eagle_SNII_feedback_num_of_rays; i++) {
+
+            /* Two random numbers in [0, 1[ */
+            const double rand_theta_SNII = 
+                random_unit_interval_part_ID_and_ray_idx(
+                    si->id, i, ti_current,
+                    random_number_isotropic_SNII_feedback_ray_theta);
+            const double rand_phi_SNII =
+                random_unit_interval_part_ID_and_ray_idx(
+                    si->id, i, ti_current,
+                    random_number_isotropic_SNII_feedback_ray_phi);
+
+            /* And one random radius in [0, kernel_radius[ */
+            double rand_rad_SNII =
+                random_unit_interval_part_ID_and_ray_idx(
+                    si->id, i, ti_current,
+                    random_number_isotropic_SNII_feedback_ray_rad);
+                
+
+            /* For the radius, we do *not* want a uniform distribution: most 
+             * volume is at larger radius, and we want (here) to choose
+             * preferentially particles at large radius. The following
+             * re-scaling maps it to an r^4 distribution, for an r^2 probability
+             * distribution in 3D (not fully trivial). */
+            rand_rad_SNII = pj->h * kernel_gamma * pow(rand_rad_SNII, 0.2);
+
+            /* Minimise offset from target point */
+            ray_minimise_offset(dx, si->feedback_data.SNII_rays + i,
+                                pj->id, pj->mass, rand_theta_SNII,
+                                rand_phi_SNII, rand_rad_SNII);
+          }
+        } break;
       }
-      break;
-    }
+
+    } break;
+
     case SNII_minimum_distance_model: {
       /* Compute the size of the array that we want to sort. If the current
        * function is called for the first time (at this time-step for this

@@ -30,6 +30,13 @@ enum SNII_feedback_models {
   SNII_minimum_density_model   /*< Minimum-density model of SNII feedback */
 };
 
+enum SNII_weighting_models {
+  SNII_isotropic_weighting,     /*< Minimum arc length from each ray */
+  SNII_homogeneous_weighting,   /*< Injection sites homoeneous in kernel */
+  SNII_isothermal_weighting,    /*< Injection radial PDF isothermal */
+  SNII_antisothermal_weighting  /*< Injection radial PDF "ant-isothermal" */
+};
+
 /**
  * @brief Type of high-density oversampling criterion
  */
@@ -231,6 +238,9 @@ struct feedback_props {
 
   /*! SNII feedback model: random, isotropic or minimum distance */
   enum SNII_feedback_models feedback_model;
+
+  /*! SNII feedback weighting model */
+  enum SNII_weighting_models weighting_model;
 
   /*! Minimal stellar mass considered for SNII feedback (in solar masses) */
   double SNII_min_mass_msun;

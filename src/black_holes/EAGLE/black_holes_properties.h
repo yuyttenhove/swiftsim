@@ -31,6 +31,13 @@ enum AGN_feedback_models {
   AGN_minimum_density_model   /*< Minimum-density model of AGN feedback */
 };
 
+enum AGN_weighting_models {
+  AGN_isotropic_weighting,     /*< Minimum arc length from each ray */
+  AGN_homogeneous_weighting,   /*< Injection sites homoeneous in kernel */
+  AGN_isothermal_weighting,    /*< Injection radial PDF isothermal */
+  AGN_antisothermal_weighting  /*< Injection radial PDF "ant-isothermal" */
+};
+
 /**
  * @brief Properties of black holes and AGN feedback in the EAGEL model.
  */
@@ -117,6 +124,9 @@ struct black_holes_props {
 
   /*! AGN feedback model: random, isotropic or minimum distance */
   enum AGN_feedback_models feedback_model;
+
+  /*! AGN weighting model: isotropic, homogeneous, or (ant-)isothermal */
+  enum AGN_weighting_models weighting_model;
 
   /*! Is the AGN feedback model deterministic or stochastic? */
   int AGN_deterministic;
@@ -417,6 +427,26 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
         "The AGN feedback model must be either 'Random', 'MinimumDistance', "
         "'MinimumDensity' or 'Isotropic', not %s",
         temp);
+
+  if (bp->feedback_model == AGN_isotropic_model) {
+    char weighting[64];
+    parser_get_param_string(params, "EAGLEAGN:AGN_weighting_model",
+      weighting);
+    if (strcmp(weighting, "Isotropic") == 0)
+      bp->weighting_model = AGN_isotropic_weighting;
+    else if (strcmp(weighting, "Homogeneous") == 0)
+      bp->weighting_model = AGN_homogeneous_weighting;
+    else if (strcmp(weighting, "Isothermal") == 0)
+      bp->weighting_model = AGN_isothermal_weighting;
+    else if (strcmp(weighting, "Antisothermal") == 0)
+      bp->weighting_model = AGN_antisothermal_weighting;
+    else
+      error(
+          "The AGN feedback weighting must be either 'Isotropic', "
+          "'Homogeneous', 'Isothermal', or 'Antisothermal', "
+          "not '%s'.",
+          weighting);
+  }
 
   bp->AGN_deterministic =
       parser_get_param_int(params, "EAGLEAGN:AGN_use_deterministic_feedback");
