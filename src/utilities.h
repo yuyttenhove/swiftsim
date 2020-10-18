@@ -73,7 +73,7 @@ INLINE static int vertical_find_value_in_monot_incr_array(const float x,
                                                  const float *array,
                                                  const int n_row,
                                                  const int n_col,
-                                                 const int j,
+                                                 const int j
                                                  ) {
     
                                 
