@@ -823,13 +823,13 @@ INLINE static float SESAME_density_from_pressure_and_temperature(
   if (idx_T <= -1) {
     idx_T = 0;
   } else if (idx_T >= mat->num_T) {
-    idx_rho = mat->num_T - 2;
+    idx_T = mat->num_T - 2;
   }
 
   // Pressure at this and the next temperature (in relevant vertical slice of P array)
   idx_P_1 = vertical_find_value_in_monot_incr_array(
       P, mat->table_P_rho_T, mat->num_rho, mat->num_T, idx_T);
-  idx_P_2 = find_value_in_monot_incr_array(
+  idx_P_2 = vertical_find_value_in_monot_incr_array(
       P, mat->table_P_rho_T, mat->num_rho, mat->num_T, idx_T + 1);
 
   // If outside the table then extrapolate from the edge and edge-but-one values
@@ -849,7 +849,7 @@ INLINE static float SESAME_density_from_pressure_and_temperature(
     intp_T = (log_T - mat->table_log_T[idx_T]) /
                (mat->table_log_T[idx_T + 1] - mat->table_log_T[idx_T]);
   } else {
-    intp_rho = 1.f;
+    intp_T = 1.f;
   }
   if (mat->table_P_rho_T[(idx_P_1 + 1) * mat->num_T + idx_T] !=
       mat->table_P_rho_T[idx_P_1 * mat->num_T + idx_T]) {
