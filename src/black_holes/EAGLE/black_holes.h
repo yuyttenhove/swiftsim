@@ -30,6 +30,7 @@
 #include "minmax.h"
 #include "physical_constants.h"
 #include "random.h"
+#include "rays.h"
 
 /* Standard includes */
 #include <float.h>
@@ -176,6 +177,9 @@ __attribute__((always_inline)) INLINE static void black_holes_init_bpart(
   bp->accretion_boost_factor = -FLT_MAX;
   bp->mass_at_start_of_step = bp->mass; /* bp->mass may grow in nibbling mode */
   bp->epsilon_f = -FLT_MAX;
+
+  /* Reset the rays carried by this BH */
+  ray_init(bp->rays, eagle_blackhole_number_of_rays);
 }
 
 /**
