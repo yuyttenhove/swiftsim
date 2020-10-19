@@ -602,6 +602,10 @@ __attribute__((always_inline)) INLINE static void hydro_prepare_force(
   /* Compute the sound speed */
   const float soundspeed =
       gas_soundspeed_from_internal_energy(p->rho, p->u, p->mat_id);
+      
+  /* Compute the temperature */
+  const float temperature =
+      gas_temperature_from_internal_energy(p->rho, p->u, p->mat_id);
 
   /* Compute the "grad h" term */
   const float rho_inv = 1.f / p->rho;
@@ -627,6 +631,7 @@ __attribute__((always_inline)) INLINE static void hydro_prepare_force(
   p->force.pressure = pressure;
   p->force.soundspeed = soundspeed;
   p->force.balsara = balsara;
+  p->temperature = temperature;
 }
 
 /**

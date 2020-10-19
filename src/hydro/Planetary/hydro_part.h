@@ -123,7 +123,10 @@ struct part {
 
   /*! Particle density. */
   float rho;
-
+  
+  /*! Particle temperature. */
+  float T;
+  
   /* Store density/force specific stuff. */
   union {
 
