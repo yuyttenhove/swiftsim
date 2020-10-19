@@ -207,24 +207,10 @@ INLINE static void prepare_table_SESAME(struct SESAME_params *mat) {
   mat->P_tiny = FLT_MAX;
   mat->c_tiny = FLT_MAX;
   mat->s_tiny = FLT_MAX;
-
-  // Enforce that the 1D arrays of u (at each rho) are monotonic
-  // This is necessary because, for some high-density u slices at very low T,
-  // u decreases (very slightly) with T, which makes the interpolation fail
+  
+  // Compute tiny values
   for (int i_rho = 0; i_rho < mat->num_rho; i_rho++) {
-    for (int i_T = mat->num_T - 1; i_T > 0; i_T--) {
-
-      // If the one-lower-T u is greater than this u
-      if (mat->table_log_u_rho_T[i_rho * mat->num_T + i_T] <
-          mat->table_log_u_rho_T[i_rho * mat->num_T + i_T - 1]) {
-
-        // Replace it and all elements below it with that value
-        for (int j_u = 0; j_u < i_T; j_u++) {
-          mat->table_log_u_rho_T[i_rho * mat->num_T + j_u] =
-              mat->table_log_u_rho_T[i_rho * mat->num_T + i_T];
-        }
-        break;
-      }
+    for (int i_T = 0; i_T < mat->num_T; i_T++) {
 
       // Smallest positive values
       if ((mat->table_log_u_rho_T[i_rho * mat->num_T + i_T] < mat->u_tiny) &&
@@ -245,14 +231,15 @@ INLINE static void prepare_table_SESAME(struct SESAME_params *mat) {
       }
     }
   }
-
+  
   // Tiny values to allow interpolation near non-positive values
   mat->u_tiny *= 1e-3f;
   mat->P_tiny *= 1e-3f;
   mat->c_tiny *= 1e-3f;
   mat->s_tiny *= 1e-3f;
 
-  // Convert sp. int. energies to log(sp. int. energy), same for sp. entropies
+  // Convert sp. int. energies to log(sp. int. energy),
+  // same for sp. entropies, and ensure P > 0
   for (int i_rho = 0; i_rho < mat->num_rho; i_rho++) {
     for (int i_T = 0; i_T < mat->num_T; i_T++) {
       // If not positive then set very small for the log
@@ -263,14 +250,51 @@ INLINE static void prepare_table_SESAME(struct SESAME_params *mat) {
       mat->table_log_u_rho_T[i_rho * mat->num_T + i_T] =
           logf(mat->table_log_u_rho_T[i_rho * mat->num_T + i_T]);
       
+      // Same for entropy
       if (mat->table_log_s_rho_T[i_rho * mat->num_T + i_T] <= 0) {
         mat->table_log_s_rho_T[i_rho * mat->num_T + i_T] = mat->s_tiny;
       }
 
       mat->table_log_s_rho_T[i_rho * mat->num_T + i_T] =
           logf(mat->table_log_s_rho_T[i_rho * mat->num_T + i_T]);
+          
+      // Ensure P > 0
+      if (mat->table_P_rho_T[i_rho * mat->num_T + i_T] <= 0) {
+        mat->table_P_rho_T[i_rho * mat->num_T + i_T] = mat->P_tiny;
+      }
     }
   }
+
+  // Enforce that the 1D arrays of u (at each rho) are monotonic
+  // This is necessary because, for some high-density u slices at very low T,
+  // u decreases (very slightly) with T, which makes the interpolation fail
+  // Ensure partial u/partial T at fixed rho is >= 0
+  for (int i_rho = 0; i_rho < mat->num_rho; i_rho++) {
+    for (int i_T = mat->num_T - 1; i_T > 0; i_T--) {
+
+      // If the one-lower-T u is greater than this u
+      if (mat->table_log_u_rho_T[i_rho * mat->num_T + i_T] <
+          mat->table_log_u_rho_T[i_rho * mat->num_T + i_T - 1]) {
+
+        mat->table_log_u_rho_T[i_rho * mat->num_T + i_T - 1] =
+              mat->table_log_u_rho_T[i_rho * mat->num_T + i_T];
+      }
+    }
+  }
+  
+  // Ensure partial P/partial rho at fixed T >= 0
+  for (int i_rho = mat->num_rho - 1; i_rho > 0; i_rho--) {
+    for (int i_T = 0; i_T < mat->num_T; i_T++) {
+      if (mat->table_P_rho_T[i_rho * mat->num_T + i_T] <
+          mat->table_P_rho_T[(i_rho - 1) * mat->num_T + i_T]) {
+
+        mat->table_P_rho_T[(i_rho - 1) * mat->num_T + i_T] =
+              mat->table_P_rho_T[i_rho * mat->num_T + i_T];
+      }    
+    }
+  }
+
+  
 }
 
 // Convert to internal units
