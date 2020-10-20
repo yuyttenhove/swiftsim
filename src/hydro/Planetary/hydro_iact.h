@@ -160,24 +160,27 @@ __attribute__((always_inline)) INLINE static void runner_iact_gradient(
   const float mi = pi->mass;
   const float mj = pj->mass;
 
-  /* Compute density of pi. */
+  /* Compute kernel of pi. */
   const float hi_inv = 1.f / hi;
   const float ui = r * hi_inv;
   kernel_deval(ui, &wi, &wi_dx);
   
-  // Add if pi->boundary_flag == 1
-
-  pi->KA_T += pi->T * mj * wi / pi->rho;
-  pi->KA_P += pi->P * mj * wi / pi->rho;
-
-  /* Compute density of pj. */
+  // If particle is boundary particle compute kernel averages
+  if (pi->boundary_flag == 1){
+      pi->KA_T += pi->T * mj * wi / pi->rho;
+      pi->KA_P += pi->force.pressure * mj * wi / pi->rho;
+  }
+  
+  /* Compute kernel of pj. */
   const float hj_inv = 1.f / hj;
   const float uj = r * hj_inv;
   kernel_deval(uj, &wj, &wj_dx);
 
-  pj->KA_T += pj->T * mi * wj / pj->rho;
-  pj->KA_P += pj->P * mi * wj / pj->rho;
-  
+  // If particle is boundary particle compute kernel averages
+  if (pj->boundary_flag == 1){
+      pj->KA_T += pj->T * mi * wj / pj->rho;
+      pj->KA_P += pj->force.pressure * mi * wj / pj->rho;
+  }
 }
 
 /**
@@ -213,10 +216,11 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_gradient(
   const float ui = r * h_inv;
   kernel_deval(ui, &wi, &wi_dx);
   
-  // Add if pi->boundary_flag == 1
-
-  pi->KA_T += pi->T * mj * wi / pi->rho;
-  pi->KA_P += pi->P * mj * wi / pi->rho;
+  // If particle is boundary particle compute kernel averages
+  if (pi->boundary_flag == 1){
+      pi->KA_T += pi->T * mj * wi / pi->rho;
+      pi->KA_P += pi->force.pressure * mj * wi / pi->rho;
+  }
   
 }
 
