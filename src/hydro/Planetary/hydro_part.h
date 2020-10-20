@@ -128,7 +128,7 @@ struct part {
   float T;
   
   /*! Particle kernel average pressure. */
-  float KA_rho;
+  float KA_P;
   
   /*! Particle kernel average temperature. */
   float KA_T;
