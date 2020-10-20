@@ -669,6 +669,26 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
   /* (Subgrid) mass of the BH (internal units) */
   const double BH_mass = bp->subgrid_mass;
 
+  /* Safety check: is the BH's subgrid mass significantly higher than its
+   * dynamical mass and we are nibbling? In this case, we have entered a
+   * state of "self-locked accretion", and better stop. */
+  if (BH_mass > 2. * bp->mass && props->use_nibbling &&
+      !props->disable_self_lock_check)
+    error("BH ID %lld has a subgrid mass of %g, but particle mass of %g, "
+          "and we are running with nibbling. This likely means that the "
+          "BH has nibbled all its neighbours to the maximum extent possible "
+          "and has now entered a state of self-locked accretion that will "
+          "continue exponentially, forever. This should not happen in "
+          "physically sensible setups, but, well, you got here anyway. "
+          "You may want to re-start the run without nibbling, or with a higher "
+          "BH feedback efficiency (current e_f x e_r[min] = %g). If you "
+          "absolutely know what you are doing, you can disable this error by "
+          "setting EAGLEAGN:disable_self_lock_check to 1.",
+          bp->id, BH_mass, bp->mass, props->epsilon_r * 
+          (props->use_scaled_coupling_efficiency ? props->epsilon_f_min :
+           props->epsilon_f)
+          );
+
   /* Convert the quantities we gathered to physical frame (all internal units).
    * Note: for the velocities this means peculiar velocities */
   double gas_c_phys = bp->sound_speed_gas * cosmo->a_factor_sound_speed;

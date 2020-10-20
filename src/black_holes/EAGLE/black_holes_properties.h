@@ -120,6 +120,12 @@ struct black_holes_props {
   /*! Minimum gas particle mass in nibbling mode */
   float min_gas_mass_for_nibbling;
 
+  /*! Override switch for self-lock check */
+  int disable_self_lock_check;
+
+  /*! Minimum allowed feedback effiency, to prevent possible self-lock */
+  float check_min_feedback_efficiency;
+
   /* ---- Properties of the feedback model ------- */
 
   /*! AGN feedback model: random, isotropic or minimum distance */
@@ -388,6 +394,10 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
     bp->min_gas_mass_for_nibbling =
         parser_get_param_float(params, "EAGLEAGN:min_gas_mass_for_nibbling");
     bp->min_gas_mass_for_nibbling *= phys_const->const_solar_mass;
+    bp->check_min_feedback_efficiency = parser_get_opt_param_float(
+        params, "EAGLEAGN:check_min_feedback_efficiency", 1e-4);
+    bp->disable_self_lock_check = parser_get_opt_param_int(
+        params, "EAGLEAGN:disable_self_lock_check", 0);
   }
 
   /* Feedback parameters ---------------------------------- */
@@ -410,6 +420,22 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
   } else {
     bp->epsilon_f =
         parser_get_param_float(params, "EAGLEAGN:coupling_efficiency");
+  }
+
+  if (bp->use_nibbling) {
+    const float erf_min = 
+        (bp->use_scaled_coupling_efficiency ?
+         bp->epsilon_f_min : bp->epsilon_f) * bp->epsilon_r;
+    if (erf_min < bp->check_min_feedback_efficiency)
+      error("You are running with particle nibbling, but with a very low "
+            "(minimum) AGN feedback efficiency, e_r x e_f[min] = %g. "
+            "This may lead to a state of self-locked accretion at some point, "
+            "possibly after a significant fraction of the total run time. "
+            "If you are absolutely sure that you intended this, you can "
+            "prevent this error by setting "
+            "EAGLEAGN:check_min_feedback_efficiency to a lower value "
+            "(currently: %g), possibly to zero to disable it completely.",
+            erf_min, bp->check_min_feedback_efficiency);
   }
 
   char temp[40];
