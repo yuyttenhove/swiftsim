@@ -127,6 +127,12 @@ struct part {
   /*! Particle temperature. */
   float T;
   
+  /*! Particle kernel average pressure. */
+  float KA_rho;
+  
+  /*! Particle kernel average temperature. */
+  float KA_T;
+  
   /* Store density/force specific stuff. */
   union {
 

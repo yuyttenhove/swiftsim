@@ -901,4 +901,60 @@ __attribute__((always_inline)) INLINE static void hydro_remove_part(
   fflush(stdout);
 }
 
+/**
+ * @brief Prepare a particle for the gradient calculation.
+ *
+ * This function is called after the density loop and before the gradient loop.
+ *
+ * We use it to set the physical timestep for the particle and to copy the
+ * actual velocities, which we need to boost our interfaces during the flux
+ * calculation. We also initialize the variables used for the time step
+ * calculation.
+ *
+ * @param p The particle to act upon.
+ * @param xp The extended particle data to act upon.
+ * @param cosmo The cosmological model.
+ * @param hydro_props Hydrodynamic properties.
+ */
+__attribute__((always_inline)) INLINE static void hydro_prepare_gradient(
+    struct part *restrict p, struct xpart *restrict xp,
+    const struct cosmology *cosmo, const struct hydro_props *hydro_props) {
+
+  // To be completed
+  
+}
+
+/**
+ * @brief Resets the variables that are required for a gradient calculation.
+ *
+ * This function is called after hydro_prepare_gradient.
+ *
+ * @param p The particle to act upon.
+ * @param xp The extended particle data to act upon.
+ * @param cosmo The cosmological model.
+ */
+__attribute__((always_inline)) INLINE static void hydro_reset_gradient(
+    struct part *restrict p) {
+
+  p->KA_T = 0.f;
+  p->KA_rho = 0.f;
+}
+
+/**
+ * @brief Finishes the gradient calculation.
+ *
+ * Just a wrapper around hydro_gradients_finalize, which can be an empty method,
+ * in which case no gradients are used.
+ *
+ * This method also initializes the force loop variables.
+ *
+ * @param p The particle to act upon.
+ */
+__attribute__((always_inline)) INLINE static void hydro_end_gradient(
+    struct part *p) {
+
+  // To be completed
+}
+
+
 #endif /* SWIFT_PLANETARY_HYDRO_H */

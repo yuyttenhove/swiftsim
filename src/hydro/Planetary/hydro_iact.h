@@ -132,6 +132,95 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_density(
 }
 
 /**
+ * @brief Calculate the gradient interaction between particle i and particle j
+ *
+ * This method wraps around hydro_gradients_collect, which can be an empty
+ * method, in which case no gradients are used.
+ *
+ * @param r2 Comoving square distance between the two particles.
+ * @param dx Comoving vector separating both particles (pi - pj).
+ * @param hi Comoving smoothing-length of particle i.
+ * @param hj Comoving smoothing-length of particle j.
+ * @param pi First particle.
+ * @param pj Second particle.
+ * @param a Current scale factor.
+ * @param H Current Hubble parameter.
+ */
+__attribute__((always_inline)) INLINE static void runner_iact_gradient(
+    float r2, const float *dx, float hi, float hj, struct part *restrict pi,
+    struct part *restrict pj, float a, float H) {
+
+  float wi, wj, wi_dx, wj_dx;
+
+  /* Get r. */
+  const float r_inv = 1.0f / sqrtf(r2);
+  const float r = r2 * r_inv;
+
+  /* Get the masses. */
+  const float mi = pi->mass;
+  const float mj = pj->mass;
+
+  /* Compute density of pi. */
+  const float hi_inv = 1.f / hi;
+  const float ui = r * hi_inv;
+  kernel_deval(ui, &wi, &wi_dx);
+  
+  // Add if pi->boundary_flag == 1
+
+  pi->KA_T += pi->T * mj * wi / pi->rho;
+  pi->KA_P += pi->P * mj * wi / pi->rho;
+
+  /* Compute density of pj. */
+  const float hj_inv = 1.f / hj;
+  const float uj = r * hj_inv;
+  kernel_deval(uj, &wj, &wj_dx);
+
+  pj->KA_T += pj->T * mi * wj / pj->rho;
+  pj->KA_P += pj->P * mi * wj / pj->rho;
+  
+}
+
+/**
+ * @brief Calculate the gradient interaction between particle i and particle j:
+ * non-symmetric version
+ *
+ * This method wraps around hydro_gradients_nonsym_collect, which can be an
+ * empty method, in which case no gradients are used.
+ *
+ * @param r2 Comoving square distance between the two particles.
+ * @param dx Comoving vector separating both particles (pi - pj).
+ * @param hi Comoving smoothing-length of particle i.
+ * @param hj Comoving smoothing-length of particle j.
+ * @param pi First particle.
+ * @param pj Second particle (not updated).
+ * @param a Current scale factor.
+ * @param H Current Hubble parameter.
+ */
+__attribute__((always_inline)) INLINE static void runner_iact_nonsym_gradient(
+    float r2, const float *dx, float hi, float hj, struct part *restrict pi,
+    const struct part *restrict pj, float a, float H) {
+
+  float wi, wi_dx;
+
+  /* Get the masses. */
+  const float mj = pj->mass;
+
+  /* Get r. */
+  const float r_inv = 1.0f / sqrtf(r2);
+  const float r = r2 * r_inv;
+
+  const float h_inv = 1.f / hi;
+  const float ui = r * h_inv;
+  kernel_deval(ui, &wi, &wi_dx);
+  
+  // Add if pi->boundary_flag == 1
+
+  pi->KA_T += pi->T * mj * wi / pi->rho;
+  pi->KA_P += pi->P * mj * wi / pi->rho;
+  
+}
+
+/**
  * @brief Force interaction between two particles.
  *
  * @param r2 Comoving square distance between the two particles.
