@@ -197,6 +197,9 @@ struct part {
 
   /*! Material identifier flag */
   enum eos_planetary_material_id mat_id;
+  
+  /*! Boundary particle flag*/
+  int boundary_flag;
 
   /*! Time-step length */
   timebin_t time_bin;

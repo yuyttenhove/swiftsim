@@ -493,6 +493,7 @@ __attribute__((always_inline)) INLINE static void hydro_init_part(
   p->density.wcount_dh = 0.f;
   p->rho = 0.f;
   p->density.rho_dh = 0.f;
+  p->boundary_flag = 0;
 }
 
 /**
@@ -631,7 +632,7 @@ __attribute__((always_inline)) INLINE static void hydro_prepare_force(
   p->force.pressure = pressure;
   p->force.soundspeed = soundspeed;
   p->force.balsara = balsara;
-  p->temperature = temperature;
+  p->T = temperature;
 }
 
 /**

@@ -83,6 +83,12 @@ __attribute__((always_inline)) INLINE static void runner_iact_density(
   pj->density.rho_dh -= mi * (hydro_dimension * wj + uj * wj_dx);
   pj->density.wcount += wj;
   pj->density.wcount_dh -= (hydro_dimension * wj + uj * wj_dx);
+  
+  /* Check if particles i and j are a boundary particles*/
+  if (pi->mat_id != pj->mat_id){
+      pi->boundary_flag = 1;
+      pj->boundary_flag = 1;
+  }
 }
 
 /**
@@ -118,6 +124,11 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_density(
   pi->density.rho_dh -= mj * (hydro_dimension * wi + ui * wi_dx);
   pi->density.wcount += wi;
   pi->density.wcount_dh -= (hydro_dimension * wi + ui * wi_dx);
+  
+  /* Check if particle i is a boundary particle*/
+  if (pi->mat_id != pj->mat_id){
+      pi->boundary_flag = 1;
+  }
 }
 
 /**
