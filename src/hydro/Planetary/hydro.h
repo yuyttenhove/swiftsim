@@ -920,7 +920,21 @@ __attribute__((always_inline)) INLINE static void hydro_prepare_gradient(
     struct part *restrict p, struct xpart *restrict xp,
     const struct cosmology *cosmo, const struct hydro_props *hydro_props) {
 
-  // To be completed
+  /* Compute the pressure */
+  const float pressure =
+      gas_pressure_from_internal_energy(p->rho, p->u, p->mat_id);
+
+  /* Compute the sound speed */
+  const float soundspeed =
+      gas_soundspeed_from_internal_energy(p->rho, p->u, p->mat_id);
+      
+  /* Compute the temperature */
+  const float temperature =
+      gas_temperature_from_internal_energy(p->rho, p->u, p->mat_id);
+
+  p->force.pressure = pressure;
+  p->force.soundspeed = soundspeed;
+  p->T = temperature;
   
 }
 
