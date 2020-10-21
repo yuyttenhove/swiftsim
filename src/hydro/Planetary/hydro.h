@@ -951,7 +951,7 @@ __attribute__((always_inline)) INLINE static void hydro_reset_gradient(
     struct part *restrict p) {
 
   p->KA_T = 0.f;
-  p->KA_rho = 0.f;
+  p->KA_P = 0.f;
 }
 
 /**
@@ -967,7 +967,20 @@ __attribute__((always_inline)) INLINE static void hydro_reset_gradient(
 __attribute__((always_inline)) INLINE static void hydro_end_gradient(
     struct part *p) {
 
-  // To be completed
+  /* Some smoothing length multiples. */
+  const float h = p->h;
+  const float h_inv = 1.0f / h;                       /* 1/h */
+  const float h_inv_dim = pow_dimension(h_inv);       /* 1/h^d */
+  const float h_inv_dim_plus_one = h_inv_dim * h_inv; /* 1/h^(d+1) */
+
+  /* Final operation on the KA_P and KA_T (add self-contribution). */
+  p->KA_P += p->force.pressure * p->mass * kernel_root;
+  p->KA_T += p->T * p->mass * kernel_root;
+
+  /* Finish the calculation by inserting the missing h-factors */
+  p->KA_P *= h_inv_dim / p->rho;
+  p->KA_T *= h_inv_dim / p->rho;
+  
 }
 
 

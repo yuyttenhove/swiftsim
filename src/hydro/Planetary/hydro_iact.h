@@ -167,8 +167,8 @@ __attribute__((always_inline)) INLINE static void runner_iact_gradient(
   
   // If particle is boundary particle compute kernel averages
   if (pi->boundary_flag == 1){
-      pi->KA_T += pi->T * mj * wi / pi->rho;
-      pi->KA_P += pi->force.pressure * mj * wi / pi->rho;
+      pi->KA_T += pj->T * mj * wi;
+      pi->KA_P += pj->force.pressure * mj * wi;
   }
   
   /* Compute kernel of pj. */
@@ -178,8 +178,8 @@ __attribute__((always_inline)) INLINE static void runner_iact_gradient(
 
   // If particle is boundary particle compute kernel averages
   if (pj->boundary_flag == 1){
-      pj->KA_T += pj->T * mi * wj / pj->rho;
-      pj->KA_P += pj->force.pressure * mi * wj / pj->rho;
+      pj->KA_T += pi->T * mi * wj;
+      pj->KA_P += pi->force.pressure * mi * wj;
   }
 }
 
@@ -218,8 +218,8 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_gradient(
   
   // If particle is boundary particle compute kernel averages
   if (pi->boundary_flag == 1){
-      pi->KA_T += pi->T * mj * wi / pi->rho;
-      pi->KA_P += pi->force.pressure * mj * wi / pi->rho;
+      pi->KA_T += pj->T * mj * wi;
+      pi->KA_P += pj->force.pressure * mj * wi;
   }
   
 }
