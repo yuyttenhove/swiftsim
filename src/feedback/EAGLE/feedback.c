@@ -196,10 +196,18 @@ double compute_compromise_dT(
     theta = theta - (sn_phi(theta, theta_min, zeta) - phi_sample) /
         sn_dphi_dtheta(theta, theta_min, zeta);
     const double phi_result = sn_phi(theta, theta_min, zeta);
-    if ((fabs(phi_result - phi_sample) / phi_sample) < 0.001) {
+    if ((fabs(phi_result - phi_sample) / phi_sample) < 0.0001) {
       break;
     }
   }
+
+  if (theta > 1.001)
+    error("theta=%g > 1!", theta);
+
+  const double phi_result = sn_phi(theta, theta_min, zeta);
+  if ((fabs(phi_result - phi_sample) / phi_sample) > 0.001)
+    error("Unconverged dT_sample: phi_result=%g, phi_sample=%g",
+         phi_result, phi_sample);
 
   /* Convert back to temperature */
   return theta * dT_crit;
@@ -365,15 +373,15 @@ double eagle_variable_feedback_temperature_change_v2(
       if (dT_comp > dT_min) {
         dT = dT_comp;
         omega = dT_comp / dT_sample;
-        if (omega > 1.0001 && !props->SNII_with_energy_compensation)
+        if (omega > 1.01 && !props->SNII_with_energy_compensation)
           error("Running without energy compensation, but dT_comp=%g > "
                 "dT_sample=%g!",
                 dT_comp, dT_sample);
 
-        if (omega > omega_max * 1.0001) {
-          error("SNII feedback requires omega=%g, but omega_max=%g!",
-            omega, omega_max);
-        }
+        if (omega > omega_max * 1.01)
+          error("SP %lld: SNII feedback requires omega=%g, but omega_max=%g! "
+                "(dT_comp=%g, dT_sample=%g, dT_crit=%g)",
+             sp->id, omega, omega_max, dT_comp, dT_sample, dT_crit);
 
       } else {
         dT = dT_min;
@@ -396,7 +404,7 @@ double eagle_variable_feedback_temperature_change_v2(
   /* Apply maximum dT ceiling, correcting for expected cooling losses */
   if (dT > dT_max) {
     dT = dT_max;
-    if (dT > dT_crit)
+    if (dT > dT_crit * 1.01)
       error("Internal logic error: forced to heat at dT_max=%g, "
             "but dT_crit=%g", dT_max, dT_crit);
     if (props->SNII_with_energy_compensation) {
@@ -409,7 +417,7 @@ double eagle_variable_feedback_temperature_change_v2(
   }
 
   /* Apply (potential) SNe energy increase to guarantee desire sampling */
-  if (omega > 1.0001 && !props->SNII_with_energy_compensation)
+  if (omega > 1.01 && !props->SNII_with_energy_compensation)
     error("Running without energy compensation, but omega=%g!",
           omega);
   *p_SNe_energy *= omega;
@@ -837,6 +845,7 @@ INLINE static void compute_SNII_feedback(
         number_of_SN_events;
     sp->expected_number_of_heated_particles += (prob * num_gas_ngbs);
     sp->number_of_heated_particles += number_of_SN_events;
+
   }
 }
 
