@@ -77,12 +77,13 @@ runner_iact_nonsym_feedback_density(const float r2, const float *dx,
   /* Contribution to the star's surrounding metallicity (metal mass fraction */
   si->feedback_data.to_collect.ngb_Z += mj * Zj * wi;
 
-  /* Add contribution of pj to normalisation of density weighted fraction
-   * which determines how much mass to distribute to neighbouring
-   * gas particles */
+  /* Add contribution of pj to the normalisation of the fraction of mass that
+   * each neighbouring gas particles will receive. We weight each particle
+   * by the product of its kernel weight and its inverse (!) density (particles
+   * with zero density are ignored). */ 
   const float rho = hydro_get_comoving_density(pj);
   if (rho != 0.f)
-    si->feedback_data.to_collect.enrichment_weight_inv += wi / rho;
+    si->feedback_data.to_collect.enrichment_weight_sum += wi / rho;
 
   /* Choose SNII feedback model */
   switch (fb_props->feedback_model) {
@@ -312,8 +313,9 @@ runner_iact_nonsym_feedback_apply(const float r2, const float *dx,
     error("Computing feedback from a star that should not");
 #endif
 
-  /* Get r. */
+  /* Get distance si <--> pj and density of pj */
   const float r = sqrtf(r2);
+  const float rho_j = hydro_get_comoving_density(pj);
 
   /* Compute the kernel function */
   const float hi_inv = 1.0f / hi;
@@ -321,23 +323,16 @@ runner_iact_nonsym_feedback_apply(const float r2, const float *dx,
   float wi;
   kernel_eval(ui, &wi);
 
-  /* Gas particle density */
-  const float rho_j = hydro_get_comoving_density(pj);
-
-  /* Compute weighting for distributing feedback quantities */
-  float Omega_frac;
-  if (rho_j != 0.f) {
-    Omega_frac = si->feedback_data.to_distribute.enrichment_weight * wi / rho_j;
-  } else {
-    Omega_frac = 0.f;
-  }
+  /* Compute Omega_r, the fraction of feedback quantities going to pj */
+  const float Omega_frac = (rho_j > 0) ? wi / rho_j *
+        si->feedback_data.to_distribute.enrichment_normalisation : 0.f;
 
 #ifdef SWIFT_DEBUG_CHECKS
   if (Omega_frac < 0. || Omega_frac > 1.01)
     error(
-        "Invalid fraction of material to distribute for star ID=%lld "
-        "Omega_frac=%e count since last enrich=%d",
-        si->id, Omega_frac, si->count_since_last_enrichment);
+        "Invalid fraction of material to distribute from star ID=%lld "
+        "to gas ID=%lld: Omega_frac=%e (count since last enrich=%d).",
+        si->id, pj->id, Omega_frac, si->count_since_last_enrichment);
 #endif
 
   /* Update particle mass */

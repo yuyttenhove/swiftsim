@@ -76,7 +76,7 @@ __attribute__((always_inline)) INLINE static int feedback_is_active(
 __attribute__((always_inline)) INLINE static void feedback_init_spart(
     struct spart* sp) {
 
-  sp->feedback_data.to_collect.enrichment_weight_inv = 0.f;
+  sp->feedback_data.to_collect.enrichment_weight_sum = 0.f;
   sp->feedback_data.to_collect.ngb_mass = 0.f;
   sp->feedback_data.to_collect.ngb_rho = 0.f;
   sp->feedback_data.to_collect.ngb_Z = 0.f;
@@ -119,7 +119,7 @@ __attribute__((always_inline)) INLINE static void feedback_reset_feedback(
     struct spart* sp, const struct feedback_props* feedback_props) {
 
   /* Zero the distribution weights */
-  sp->feedback_data.to_distribute.enrichment_weight = 0.f;
+  sp->feedback_data.to_distribute.enrichment_normalisation = 0.f;
 
   /* Zero the amount of mass that is distributed */
   sp->feedback_data.to_distribute.mass = 0.f;

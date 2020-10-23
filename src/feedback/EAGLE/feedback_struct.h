@@ -42,8 +42,8 @@ struct feedback_spart_data {
      */
     struct {
 
-      /*! Inverse of normalisation factor used for the enrichment */
-      float enrichment_weight_inv;
+      /*! Sum of the (non-normalised) enrichment weights for all neighbours */
+      float enrichment_weight_sum;
 
       /*! Total mass (unweighted) of neighbouring gas particles */
       float ngb_mass;
@@ -71,8 +71,8 @@ struct feedback_spart_data {
      */
     struct {
 
-      /*! Normalisation factor used for the enrichment */
-      float enrichment_weight;
+      /*! Normalisation factor for particle enrichment weights */
+      float enrichment_normalisation;
 
       /*! Mass released */
       float mass;

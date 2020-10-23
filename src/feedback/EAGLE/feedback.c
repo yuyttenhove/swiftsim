@@ -1365,6 +1365,8 @@ void compute_stellar_evolution(const struct feedback_props* feedback_props,
   const float ngb_gas_rho = sp->feedback_data.to_collect.ngb_rho;
   const float ngb_gas_phys_nH_cgs =
       ngb_gas_rho * cosmo->a3_inv * feedback_props->rho_to_n_cgs;
+  const float enrichment_weight_sum =
+      sp->feedback_data.to_collect.enrichment_weight_sum;
 
   /* Check if there are neighbours, otherwise exit */
   if (ngb_gas_mass == 0.f || sp->density.wcount * pow_dimension(sp->h) < 1e-4) {
@@ -1372,13 +1374,10 @@ void compute_stellar_evolution(const struct feedback_props* feedback_props,
     return;
   }
 
-  /* Update the enrichment weights */
-  const float enrichment_weight_inv =
-      sp->feedback_data.to_collect.enrichment_weight_inv;
-
 #ifdef SWIFT_DEBUG_CHECKS
-  if (sp->feedback_data.to_collect.enrichment_weight_inv < 0.)
-    error("Negative inverse weight!");
+  if (enrichment_weight_sum < 0.)
+    error("Enrichment weight sum must be positive, not %g!",
+          enrichment_weight_sum);
 #endif
 
   /* Now we start filling the data structure for information to apply to the
@@ -1387,14 +1386,14 @@ void compute_stellar_evolution(const struct feedback_props* feedback_props,
   /* Zero all the output fields */
   feedback_reset_feedback(sp, feedback_props);
 
-  /* Update the weights used for distribution */
-  const float enrichment_weight =
-      (enrichment_weight_inv != 0.f) ? 1.f / enrichment_weight_inv : 0.f;
-  sp->feedback_data.to_distribute.enrichment_weight = enrichment_weight;
+  /* Store the inverse sum of all enrichment weights as normalisation factor */
+  sp->feedback_data.to_distribute.enrichment_normalisation = 
+      (enrichment_weight_sum > 0) ? 1.f / enrichment_weight_sum : 0.f;
 
 #ifdef SWIFT_DEBUG_CHECKS
-  if (sp->feedback_data.to_distribute.enrichment_weight < 0.)
-    error("Negative weight!");
+  if (sp->feedback_data.to_distribute.enrichment_normalisation < 0.)
+    error("Enrichment normalisation must be positive, not %g",
+          sp->feedback_data.to_distribute.enrichment_normalisation);
 #endif
 
   /* Calculate mass of stars that has died from the star's birth up to the
