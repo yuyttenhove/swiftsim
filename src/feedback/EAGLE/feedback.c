@@ -253,7 +253,7 @@ double eagle_variable_feedback_temperature_change_v2(
   const struct feedback_props* props, const double frac_SNII,
   const double birth_sf_threshold, const double h_pkpc_inv,
   const double dt, const double G_Newton, const double ngb_SFR,
-  const double ngb_rho, const double ngb_Z) {
+  const double ngb_rho_phys, const double ngb_Z) {
 
   /* Safety check: should only get here if we run with the adaptive-dT model,
    * version 2 */
@@ -327,7 +327,8 @@ double eagle_variable_feedback_temperature_change_v2(
       {
         /* Time scale for gas consumption by star formation.
          * If SFR = 0, set it to very large, in which case it has no effect. */
-        const double dt_consum = (ngb_SFR > 0) ? ngb_rho / ngb_SFR : FLT_MAX;
+        const double dt_consum = (ngb_SFR > 0) ?
+            ngb_rho_phys / ngb_SFR : FLT_MAX;
 
         /* Maximally, ask for num_to_heat heating events, even for long dt */
         const double f_dt = min(dt / dt_consum, 1.);
@@ -338,7 +339,7 @@ double eagle_variable_feedback_temperature_change_v2(
       {
         const double dt_freefall =
             sqrt(3. * M_PI /
-                 (32. * G_Newton * ngb_rho));
+                 (32. * G_Newton * ngb_rho_phys));
 
         /* Maximally, ask for num_to_heat heating events, even for long dt */
         const double f_dt = min(dt / dt_freefall, 1.);
@@ -711,7 +712,7 @@ INLINE static void compute_SNII_feedback(
     const double min_dying_mass_Msun, const double max_dying_mass_Msun,
     const integertime_t ti_begin,
     const double birth_sf_threshold, const double h_pkpc_inv,
-    const double G_Newton, const double ngb_SFR, const double ngb_rho) {
+    const double G_Newton, const double ngb_SFR, const double ngb_rho_phys) {
 
   /* Are we sampling the delay function or using a fixed delay? */
   const int SNII_sampled_delay = feedback_props->SNII_sampled_delay;
@@ -777,7 +778,7 @@ INLINE static void compute_SNII_feedback(
       delta_T = eagle_variable_feedback_temperature_change_v2(
           sp, ngb_gas_mass, num_gas_ngbs, ngb_nH_cgs, &SNe_energy,
           feedback_props, frac_SNII, birth_sf_threshold, h_pkpc_inv, dt,
-          G_Newton, ngb_SFR, ngb_rho, ngb_Z);
+          G_Newton, ngb_SFR, ngb_rho_phys, ngb_Z);
     else
       error("Invalid choice of SNII_use_variable_delta_T (=%d).",
         feedback_props->SNII_use_variable_delta_T);
@@ -1372,9 +1373,10 @@ void compute_stellar_evolution(const struct feedback_props* feedback_props,
   const float ngb_gas_mass = sp->feedback_data.to_collect.ngb_mass;
   const float ngb_gas_Z = sp->feedback_data.to_collect.ngb_Z;
   const float ngb_gas_SFR = sp->feedback_data.to_collect.ngb_SFR;
-  const float ngb_gas_rho = sp->feedback_data.to_collect.ngb_rho;
+  const float ngb_gas_rho_phys =
+      sp->feedback_data.to_collect.ngb_rho * cosmo->a3_inv;
   const float ngb_gas_phys_nH_cgs =
-      ngb_gas_rho * cosmo->a3_inv * feedback_props->rho_to_n_cgs;
+      ngb_gas_rho_phys * feedback_props->rho_to_n_cgs;
   const float enrichment_weight_sum =
       sp->feedback_data.to_collect.enrichment_weight_sum;
 
@@ -1432,7 +1434,7 @@ void compute_stellar_evolution(const struct feedback_props* feedback_props,
                           min_dying_mass_Msun, max_dying_mass_Msun,
                           ti_begin,
                           birth_sf_threshold, h_pkpc_inv, G_Newton,
-                          ngb_gas_SFR, ngb_gas_rho);
+                          ngb_gas_SFR, ngb_gas_rho_phys);
   }
 
   /* Integration interval is zero - this can happen if minimum and maximum
