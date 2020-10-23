@@ -209,15 +209,16 @@ double compute_compromise_dT(
  * @brief Compute the minimal allowed heating temperature increase, dT_min.
  *
  * @param sp The star particle to consider.
+ * @param ngb_Z The (current) ambient metallicity of the star.
  * @param props The feedback model properties.
  */
 double compute_SNII_dT_min(const struct spart* sp,
+                           const double ngb_Z,
                            const struct feedback_props* props) {
 
   /* Get the relevant metallicity of the star (either birth or ambient gas) */
   const double Z_star = (props->SNII_use_instantaneous_Z_for_dT) ?
-      sp->feedback_data.to_collect.ngb_Z :
-      chemistry_get_star_total_metal_mass_fraction_for_feedback(sp);
+      ngb_Z : chemistry_get_star_total_metal_mass_fraction_for_feedback(sp);
 
   /* Extract required props */
   const double Z_pivot = props->SNII_delta_T_min_Z_pivot;
@@ -244,7 +245,7 @@ double eagle_variable_feedback_temperature_change_v2(
   const struct feedback_props* props, const double frac_SNII,
   const double birth_sf_threshold, const double h_pkpc_inv,
   const double dt, const double G_Newton, const double ngb_SFR,
-  const double ngb_rho) {
+  const double ngb_rho, const double ngb_Z) {
 
   /* Safety check: should only get here if we run with the adaptive-dT model,
    * version 2 */
@@ -256,7 +257,7 @@ double eagle_variable_feedback_temperature_change_v2(
   const double f_crit = props->SNII_T_crit_factor;
   const double num_to_heat = props->SNII_delta_T_num_ngb_to_heat;
   const double dT_max = props->SNII_delta_T_max;
-  const double dT_min = compute_SNII_dT_min(sp, props);
+  const double dT_min = compute_SNII_dT_min(sp, ngb_Z, props);
   double gamma_star = props->SNII_gamma_star;
   const double nu_shelf_factor = props->SNII_nu_const_interval_factor;
   const double nu_drop_factor = props->SNII_nu_drop_interval_factor;
@@ -768,7 +769,7 @@ INLINE static void compute_SNII_feedback(
       delta_T = eagle_variable_feedback_temperature_change_v2(
           sp, ngb_gas_mass, num_gas_ngbs, ngb_nH_cgs, &SNe_energy,
           feedback_props, frac_SNII, birth_sf_threshold, h_pkpc_inv, dt,
-          G_Newton, ngb_SFR, ngb_rho);
+          G_Newton, ngb_SFR, ngb_rho, ngb_Z);
     else
       error("Invalid choice of SNII_use_variable_delta_T (=%d).",
         feedback_props->SNII_use_variable_delta_T);
