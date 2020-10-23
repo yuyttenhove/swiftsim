@@ -115,6 +115,14 @@ struct spart {
   float omega_min;
   float omega_max;
 
+  /*! Min/max of ambient gas density while doing feedback */
+  float feedback_density_min;
+  float feedback_density_max;
+
+  /*! Min/max of ambient gas metallicity while doing feedback */
+  float feedback_Z_min;
+  float feedback_Z_max;
+
   /*! The physical birth density */
   float birth_density;
 

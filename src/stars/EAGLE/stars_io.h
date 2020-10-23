@@ -120,7 +120,7 @@ INLINE static void stars_write_particles(const struct spart *sparts,
                                          const int with_cosmology) {
 
   /* Say how much we want to write */
-  *num_fields = 25;
+  *num_fields = 29;
 
   /* List what we want to write */
   list[0] = io_make_output_field_convert_spart(
@@ -266,6 +266,32 @@ INLINE static void stars_write_particles(const struct spart *sparts,
       birth_star_formation_rate,
       "Star formation rates of the parent gas particle at the point where they "
       "were converted to stars.");
+
+  list[25] = io_make_output_field(
+      "FeedbackMinimumDensity", FLOAT, 1, UNIT_CONV_DENSITY, 0.f,
+      sparts, feedback_density_min,
+      "Minimum ambient physical densities during the period of SNII feedback "
+      "(note that we store the physical density at the respective epoch, no "
+      "conversion is needed).");
+
+  list[26] = io_make_output_field(
+      "FeedbackMaximumDensity", FLOAT, 1, UNIT_CONV_DENSITY, 0.f,
+      sparts, feedback_density_max,
+      "Maximum ambient physical densities during the period of SNII feedback "
+      "(note that we store the physical density at the respective epoch, no "
+      "conversion is needed).");
+
+  list[27] = io_make_output_field(
+      "FeedbackMinimumMetalMassFractions", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f,
+      sparts, feedback_Z_min,
+      "Minimum ambient metal mass fractions during the period of SNII "
+      "feedback.");
+
+  list[28] = io_make_output_field(
+      "FeedbackMaximumMetalMassFractions", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f,
+      sparts, feedback_Z_max,
+      "Maximum ambient metal mass fractions during the period of SNII "
+      "feedback.");
 }
 
 /**

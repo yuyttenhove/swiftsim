@@ -111,6 +111,10 @@ __attribute__((always_inline)) INLINE static void stars_first_init_spart(
   sp->T_critical_fraction_max = -FLT_MAX;
   sp->T_sampling_fraction_min = FLT_MAX;
   sp->T_sampling_fraction_max = -FLT_MAX;
+  sp->feedback_density_min = FLT_MAX;
+  sp->feedback_density_max = -FLT_MAX;
+  sp->feedback_Z_min = FLT_MAX;
+  sp->feedback_Z_max = -FLT_MAX;
   sp->f_E_divergence_boost = -FLT_MAX;
   sp->count_since_last_enrichment = -1;
   sp->nu = -FLT_MAX;

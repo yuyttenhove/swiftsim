@@ -847,6 +847,13 @@ INLINE static void compute_SNII_feedback(
     sp->expected_number_of_heated_particles += (prob * num_gas_ngbs);
     sp->number_of_heated_particles += number_of_SN_events;
 
+    /* Also update min/max ambient density and metallicity */
+    sp->feedback_density_min = (float) min(sp->feedback_density_min,
+                                           ngb_rho_phys);
+    sp->feedback_density_max = (float) max(sp->feedback_density_max,
+                                           ngb_rho_phys);
+    sp->feedback_Z_min = (float) min(sp->feedback_Z_min, ngb_Z);
+    sp->feedback_Z_max = (float) max(sp->feedback_Z_max, ngb_Z);
   }
 }
 
