@@ -130,8 +130,11 @@ struct cell_hydro {
     /*! Radiative transfer ghost out task */
     struct task *rt_out;
 
-    /*! Last (integer) time the cell's part were drifted forward in time. */
-    integertime_t ti_old_part;
+    /*! Max smoothing length of active particles in this cell. */
+    float h_max_active;
+
+    /*! Maximum part movement in this cell since last construction. */
+    float dx_max_part;
 
     /*! Maximum end of (integer) time step in this cell for hydro tasks. */
     integertime_t ti_end_max;
