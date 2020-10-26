@@ -904,7 +904,7 @@ __attribute__((always_inline)) INLINE static void hydro_remove_part(
 /**
  * @brief Prepare a particle for the gradient calculation.
  *
- * This function is called after the density loop and before the gradient loop.
+ * This function is called after the density loop and before the force loop.
  *
  * We use it to set the physical timestep for the particle and to copy the
  * actual velocities, which we need to boost our interfaces during the flux
@@ -981,6 +981,57 @@ __attribute__((always_inline)) INLINE static void hydro_end_gradient(
       p->KA_P *= h_inv_dim / p->rho;
       p->KA_T *= h_inv_dim / p->rho;
   }
+}
+
+/**
+ * @brief Prepare a particle for the boundary calculation.
+ *
+ * This function is called after the gradient loop and before the force loop.
+ *
+ * We use it to set the physical timestep for the particle and to copy the
+ * actual velocities, which we need to boost our interfaces during the flux
+ * calculation. We also initialize the variables used for the time step
+ * calculation.
+ *
+ * @param p The particle to act upon.
+ * @param xp The extended particle data to act upon.
+ * @param cosmo The cosmological model.
+ * @param hydro_props Hydrodynamic properties.
+ */
+__attribute__((always_inline)) INLINE static void hydro_prepare_boundary(
+    struct part *restrict p, struct xpart *restrict xp,
+    const struct cosmology *cosmo, const struct hydro_props *hydro_props) {
+
+  
+}
+
+/**
+ * @brief Resets the variables that are required for a boundary calculation.
+ *
+ * This function is called after hydro_prepare_boundary.
+ *
+ * @param p The particle to act upon.
+ * @param xp The extended particle data to act upon.
+ * @param cosmo The cosmological model.
+ */
+__attribute__((always_inline)) INLINE static void hydro_reset_boundary(
+    struct part *restrict p) {
+
+}
+
+/**
+ * @brief Finishes the boundary calculation.
+ *
+ * Just a wrapper around hydro_boundaries_finalize, which can be an empty method,
+ * in which case no boundaries are used.
+ *
+ * This method also initializes the force loop variables.
+ *
+ * @param p The particle to act upon.
+ */
+__attribute__((always_inline)) INLINE static void hydro_end_boundary(
+    struct part *p) {
+
 }
 
 
