@@ -116,6 +116,7 @@ const char *subtaskID_names[task_subtype_count] = {
     "none",
     "density",
     "gradient",
+    "boundary", /* boundary_loop */
     "force",
     "limiter",
     "grav",
@@ -207,6 +208,7 @@ __attribute__((always_inline)) INLINE static enum task_actions task_acts_on(
     case task_type_sort:
     case task_type_ghost:
     case task_type_extra_ghost:
+    case task_type_boundary_ghost: /* boundary_loop */
     case task_type_cooling:
     case task_type_end_hydro_force:
       return task_action_part;
@@ -241,6 +243,7 @@ __attribute__((always_inline)) INLINE static enum task_actions task_acts_on(
 
         case task_subtype_density:
         case task_subtype_gradient:
+        case task_subtype_boundary: /* boundary_loop */
         case task_subtype_force:
         case task_subtype_limiter:
           return task_action_part;
@@ -501,6 +504,7 @@ void task_unlock(struct task *t) {
     case task_type_sort:
     case task_type_ghost:
     case task_type_extra_ghost:
+    case task_type_boundary_ghost: /* boundary_loop */
     case task_type_end_hydro_force:
     case task_type_timestep_limiter:
     case task_type_timestep_sync:
@@ -684,6 +688,7 @@ int task_lock(struct task *t) {
     case task_type_sort:
     case task_type_ghost:
     case task_type_extra_ghost:
+    case task_type_boundary_ghost: /* boundary_loop */
     case task_type_end_hydro_force:
     case task_type_timestep_limiter:
     case task_type_timestep_sync:
@@ -961,6 +966,14 @@ void task_get_group_name(int type, int subtype, char *cluster) {
         strcpy(cluster, "None");
       } else {
         strcpy(cluster, "Gradient");
+      }
+      break;
+    /* boundary_loop */
+    case task_subtype_boundary:
+      if (type == task_type_send || type == task_type_recv) {
+        strcpy(cluster, "None");
+      } else {
+        strcpy(cluster, "Boundary");
       }
       break;
     case task_subtype_force:
@@ -1470,6 +1483,7 @@ enum task_categories task_get_category(const struct task *t) {
 
     case task_type_ghost:
     case task_type_extra_ghost:
+    case task_type_boundary_ghost: /* boundary_loop */
     case task_type_end_hydro_force:
       return task_category_hydro;
 
@@ -1500,6 +1514,7 @@ enum task_categories task_get_category(const struct task *t) {
 
         case task_subtype_density:
         case task_subtype_gradient:
+        case task_subtype_boundary: /* boundary_loop */
         case task_subtype_force:
           return task_category_hydro;
 

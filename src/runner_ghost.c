@@ -921,7 +921,7 @@ void runner_do_extra_ghost(struct runner *r, struct cell *c, int timer) {
         }
 
         /* Compute variables required for the force loop */
-        hydro_prepare_force(p, xp, cosmo, hydro_props, dt_alpha);
+        hydro_prepare_boundary(p, xp, cosmo, hydro_props);
         timestep_limiter_prepare_force(p, xp);
 
         /* The particle force values are now set.  Do _NOT_
@@ -934,6 +934,91 @@ void runner_do_extra_ghost(struct runner *r, struct cell *c, int timer) {
   }
 
   if (timer) TIMER_TOC(timer_do_extra_ghost);
+
+#else
+  error("SWIFT was not compiled with the extra hydro loop activated.");
+#endif
+}
+
+/**
+ * @brief Intermediate task after the boundary loop that does final operations
+ * on the boundary quantities and optionally slope limits the gradients
+ *
+ * @param r The runner thread.
+ * @param c The cell.
+ * @param timer Are we timing this ?
+ */
+ 
+/* boundary_loop */
+void runner_do_boundary_ghost(struct runner *r, struct cell *c, int timer) {
+
+#ifdef EXTRA_HYDRO_LOOP
+
+  struct part *restrict parts = c->hydro.parts;
+  struct xpart *restrict xparts = c->hydro.xparts;
+  const int count = c->hydro.count;
+  const struct engine *e = r->e;
+  const integertime_t ti_current = e->ti_current;
+  const int with_cosmology = (e->policy & engine_policy_cosmology);
+  const double time_base = e->time_base;
+  const struct cosmology *cosmo = e->cosmology;
+  const struct hydro_props *hydro_props = e->hydro_properties;
+
+  TIMER_TIC;
+
+  /* Anything to do here? */
+  if (!cell_is_active_hydro(c, e)) return;
+
+  /* Recurse? */
+  if (c->split) {
+    for (int k = 0; k < 8; k++)
+      if (c->progeny[k] != NULL) runner_do_boundary_ghost(r, c->progeny[k], 0);
+  } else {
+
+    /* Loop over the parts in this cell. */
+    for (int i = 0; i < count; i++) {
+
+      /* Get a direct pointer on the part. */
+      struct part *restrict p = &parts[i];
+      struct xpart *restrict xp = &xparts[i];
+
+      if (part_is_active(p, e)) {
+
+        /* Finish the gradient calculation */
+        hydro_end_boundary(p);
+
+        /* As of here, particle force variables will be set. */
+
+        /* Calculate the time-step for passing to hydro_prepare_force.
+         * This is the physical time between the start and end of the time-step
+         * without any scale-factor powers. */
+        double dt_alpha;
+
+        if (with_cosmology) {
+          const integertime_t ti_step = get_integer_timestep(p->time_bin);
+          const integertime_t ti_begin =
+              get_integer_time_begin(ti_current - 1, p->time_bin);
+
+          dt_alpha =
+              cosmology_get_delta_time(cosmo, ti_begin, ti_begin + ti_step);
+        } else {
+          dt_alpha = get_timestep(p->time_bin, time_base);
+        }
+
+        /* Compute variables required for the force loop */
+        hydro_prepare_force(p, xp, cosmo, hydro_props, dt_alpha);
+        timestep_limiter_prepare_force(p, xp);
+
+        /* The particle force values are now set.  Do _NOT_
+           try to read any particle density variables! */
+
+        /* Prepare the particle for the force loop over neighbours */
+        hydro_reset_acceleration(p);
+      }
+    }
+  }
+
+  if (timer) TIMER_TOC(timer_do_boundary_ghost);
 
 #else
   error("SWIFT was not compiled with the extra hydro loop activated.");

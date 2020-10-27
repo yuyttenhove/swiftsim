@@ -141,6 +141,7 @@ void engine_addtasks_send_gravity(struct engine *e, struct cell *ci,
 void engine_addtasks_send_hydro(struct engine *e, struct cell *ci,
                                 struct cell *cj, struct task *t_xv,
                                 struct task *t_rho, struct task *t_gradient,
+                                struct task *t_boundary, /* boundary_loop */
                                 struct task *t_ti, struct task *t_limiter,
                                 const int with_limiter, const int with_sync) {
 
@@ -175,6 +176,8 @@ void engine_addtasks_send_hydro(struct engine *e, struct cell *ci,
 #ifdef EXTRA_HYDRO_LOOP
       t_gradient = scheduler_addtask(s, task_type_send, task_subtype_gradient,
                                      ci->mpi.tag, 0, ci, cj);
+      t_boundary = scheduler_addtask(s, task_type_send, task_subtype_boundary,
+                                     ci->mpi.tag, 0, ci, cj); /* boundary_loop */
 #endif
 
       t_ti = scheduler_addtask(s, task_type_send, task_subtype_tend_part,
@@ -186,6 +189,8 @@ void engine_addtasks_send_hydro(struct engine *e, struct cell *ci,
       }
 
 #ifdef EXTRA_HYDRO_LOOP
+
+      /* boundary_loop ? */
 
       scheduler_addunlock(s, t_gradient, ci->hydro.super->hydro.end_force);
 
@@ -227,6 +232,7 @@ void engine_addtasks_send_hydro(struct engine *e, struct cell *ci,
     engine_addlink(e, &ci->mpi.send, t_rho);
 #ifdef EXTRA_HYDRO_LOOP
     engine_addlink(e, &ci->mpi.send, t_gradient);
+    engine_addlink(e, &ci->mpi.send, t_boundary); /* boundary_loop */
 #endif
     engine_addlink(e, &ci->mpi.send, t_ti);
     if (with_limiter) engine_addlink(e, &ci->mpi.send, t_limiter);
@@ -237,7 +243,7 @@ void engine_addtasks_send_hydro(struct engine *e, struct cell *ci,
     for (int k = 0; k < 8; k++)
       if (ci->progeny[k] != NULL)
         engine_addtasks_send_hydro(e, ci->progeny[k], cj, t_xv, t_rho,
-                                   t_gradient, t_ti, t_limiter, with_limiter,
+                                   t_gradient, t_boundary, t_ti, t_limiter, with_limiter, /* boundary_loop */
                                    with_sync);
 
 #else
@@ -457,7 +463,9 @@ void engine_addtasks_send_black_holes(struct engine *e, struct cell *ci,
  */
 void engine_addtasks_recv_hydro(struct engine *e, struct cell *c,
                                 struct task *t_xv, struct task *t_rho,
-                                struct task *t_gradient, struct task *t_ti,
+                                struct task *t_gradient,
+                                struct task *t_boundary, /* boundary_loop */
+                                struct task *t_ti,
                                 struct task *t_limiter, const int with_limiter,
                                 const int with_sync) {
 
@@ -483,6 +491,8 @@ void engine_addtasks_recv_hydro(struct engine *e, struct cell *c,
 #ifdef EXTRA_HYDRO_LOOP
     t_gradient = scheduler_addtask(s, task_type_recv, task_subtype_gradient,
                                    c->mpi.tag, 0, c, NULL);
+    t_boundary = scheduler_addtask(s, task_type_recv, task_subtype_boundary,
+                                   c->mpi.tag, 0, c, NULL); /* boundary_loop */
 #endif
 
     t_ti = scheduler_addtask(s, task_type_recv, task_subtype_tend_part,
@@ -499,6 +509,7 @@ void engine_addtasks_recv_hydro(struct engine *e, struct cell *c,
     engine_addlink(e, &c->mpi.recv, t_rho);
 #ifdef EXTRA_HYDRO_LOOP
     engine_addlink(e, &c->mpi.recv, t_gradient);
+    engine_addlink(e, &c->mpi.recv, t_boundary); /* boundary_loop */
 #endif
     engine_addlink(e, &c->mpi.recv, t_ti);
     if (with_limiter) engine_addlink(e, &c->mpi.recv, t_limiter);
@@ -518,8 +529,14 @@ void engine_addtasks_recv_hydro(struct engine *e, struct cell *c,
       scheduler_addunlock(s, t_rho, l->t);
       scheduler_addunlock(s, l->t, t_gradient);
     }
-    for (struct link *l = c->hydro.force; l != NULL; l = l->next) {
+    /* boundary_loop */
+    for (struct link *l = c->hydro.boundary; l != NULL; l = l->next) {
       scheduler_addunlock(s, t_gradient, l->t);
+      scheduler_addunlock(s, l->t, t_boundary);
+    }
+    
+    for (struct link *l = c->hydro.force; l != NULL; l = l->next) {
+      scheduler_addunlock(s, t_boundary, l->t); /* boundary_loop */
       scheduler_addunlock(s, l->t, t_ti);
     }
 #else
@@ -1186,6 +1203,8 @@ void engine_make_hierarchical_tasks_hydro(struct engine *e, struct cell *c,
 #ifdef EXTRA_HYDRO_LOOP
       c->hydro.extra_ghost = scheduler_addtask(
           s, task_type_extra_ghost, task_subtype_none, 0, 0, c, NULL);
+      c->hydro.boundary_ghost = scheduler_addtask(
+          s, task_type_boundary_ghost, task_subtype_none, 0, 0, c, NULL); /* boundary_loop */
 #endif
 
       /* Stars */
@@ -1862,16 +1881,18 @@ void engine_link_gravity_tasks(struct engine *e) {
  * @param with_limiter Do we have a time-step limiter ?
  */
 static inline void engine_make_hydro_loops_dependencies(
-    struct scheduler *sched, struct task *density, struct task *gradient,
+    struct scheduler *sched, struct task *density, struct task *gradient, struct task *boundary,
     struct task *force, struct task *limiter, struct cell *c, int with_cooling,
     int with_limiter) {
 
-  /* density loop --> ghost --> gradient loop --> extra_ghost */
+  /* density loop --> ghost --> gradient loop --> extra_ghost */ /* boundary_loop */
   /* extra_ghost --> force loop  */
   scheduler_addunlock(sched, density, c->hydro.super->hydro.ghost_in);
   scheduler_addunlock(sched, c->hydro.super->hydro.ghost_out, gradient);
   scheduler_addunlock(sched, gradient, c->hydro.super->hydro.extra_ghost);
-  scheduler_addunlock(sched, c->hydro.super->hydro.extra_ghost, force);
+  scheduler_addunlock(sched, c->hydro.super->hydro.extra_ghost, boundary);
+  scheduler_addunlock(sched, boundary, c->hydro.super->hydro.boundary_ghost);
+  scheduler_addunlock(sched, c->hydro.super->hydro.boundary_ghost, force);
 }
 
 #else
@@ -1923,6 +1944,7 @@ void engine_make_extra_hydroloop_tasks_mapper(void *map_data, int num_elements,
   const int with_rt = (e->policy & engine_policy_rt);
 #ifdef EXTRA_HYDRO_LOOP
   struct task *t_gradient = NULL;
+  struct task *t_boundary = NULL; /* boundary_loop */
 #endif
   struct task *t_force = NULL;
   struct task *t_limiter = NULL;
@@ -2038,11 +2060,20 @@ void engine_make_extra_hydroloop_tasks_mapper(void *map_data, int num_elements,
 
       /* Add the link between the new loops and the cell */
       engine_addlink(e, &ci->hydro.gradient, t_gradient);
+                                           
+      /* boundary_loop */
+      /* Same work for the additional hydro loop */
+      t_boundary = scheduler_addtask(sched, task_type_self,
+                                     task_subtype_boundary, flags, 0, ci, NULL);
+
+      /* Add the link between the new loops and the cell */
+      engine_addlink(e, &ci->hydro.boundary, t_boundary);
 
       /* Now, build all the dependencies for the hydro */
-      engine_make_hydro_loops_dependencies(sched, t, t_gradient, t_force,
+      engine_make_hydro_loops_dependencies(sched, t, t_gradient, t_boundary, t_force, /* boundary_loop */
                                            t_limiter, ci, with_cooling,
-                                           with_timestep_limiter);
+                                           with_timestep_limiter);       
+                                    
 #else
 
       /* Now, build all the dependencies for the hydro */
@@ -2224,23 +2255,34 @@ void engine_make_extra_hydroloop_tasks_mapper(void *map_data, int num_elements,
       /* Start by constructing the task for the second and third hydro loop */
       t_gradient = scheduler_addtask(sched, task_type_pair,
                                      task_subtype_gradient, flags, 0, ci, cj);
+                                     
+      /* Start by constructing the task for the second and third hydro loop */
+      t_boundary = scheduler_addtask(sched, task_type_pair,
+                                     task_subtype_boundary, flags, 0, ci, cj);  /* boundary_loop */
 
       /* Add the link between the new loop and both cells */
       engine_addlink(e, &ci->hydro.gradient, t_gradient);
       engine_addlink(e, &cj->hydro.gradient, t_gradient);
+      
+      /* Add the link between the new loop and both cells */
+      engine_addlink(e, &ci->hydro.boundary, t_boundary);  /* boundary_loop */
+      engine_addlink(e, &cj->hydro.boundary, t_boundary);
+      
+      /* boundary_loop */
 
       /* Now, build all the dependencies for the hydro for the cells */
       /* that are local and are not descendant of the same super_hydro-cells */
       if (ci->nodeID == nodeID) {
-        engine_make_hydro_loops_dependencies(sched, t, t_gradient, t_force,
+        engine_make_hydro_loops_dependencies(sched, t, t_gradient, t_boundary, t_force,
                                              t_limiter, ci, with_cooling,
                                              with_timestep_limiter);
       }
       if ((cj->nodeID == nodeID) && (ci->hydro.super != cj->hydro.super)) {
-        engine_make_hydro_loops_dependencies(sched, t, t_gradient, t_force,
+        engine_make_hydro_loops_dependencies(sched, t, t_gradient, t_boundary, t_force,
                                              t_limiter, cj, with_cooling,
                                              with_timestep_limiter);
       }
+      
 #else
 
       /* Now, build all the dependencies for the hydro for the cells */
@@ -2558,12 +2600,20 @@ void engine_make_extra_hydroloop_tasks_mapper(void *map_data, int num_elements,
 
       /* Add the link between the new loop and the cell */
       engine_addlink(e, &ci->hydro.gradient, t_gradient);
+      
+      /* Start by constructing the task for the second and third hydro loop */
+      t_boundary = scheduler_addtask(sched, task_type_sub_self,
+                                     task_subtype_boundary, flags, 0, ci, NULL); /* boundary_loop */
+
+      /* Add the link between the new loop and the cell */
+      engine_addlink(e, &ci->hydro.boundary, t_boundary); /* boundary_loop */
 
       /* Now, build all the dependencies for the hydro for the cells */
       /* that are local and are not descendant of the same super_hydro-cells */
-      engine_make_hydro_loops_dependencies(sched, t, t_gradient, t_force,
+      engine_make_hydro_loops_dependencies(sched, t, t_gradient, t_boundary, t_force, /* boundary_loop */
                                            t_limiter, ci, with_cooling,
                                            with_timestep_limiter);
+                                           
 #else
 
       /* Now, build all the dependencies for the hydro for the cells */
@@ -2759,19 +2809,28 @@ void engine_make_extra_hydroloop_tasks_mapper(void *map_data, int num_elements,
       /* Add the link between the new loop and both cells */
       engine_addlink(e, &ci->hydro.gradient, t_gradient);
       engine_addlink(e, &cj->hydro.gradient, t_gradient);
+      
+      /* Start by constructing the task for the second and third hydro loop */
+      t_boundary = scheduler_addtask(sched, task_type_sub_pair,
+                                     task_subtype_boundary, flags, 0, ci, cj); /* boundary_loop */
+
+      /* Add the link between the new loop and both cells */
+      engine_addlink(e, &ci->hydro.boundary, t_boundary); /* boundary_loop */
+      engine_addlink(e, &cj->hydro.boundary, t_boundary); /* boundary_loop */
 
       /* Now, build all the dependencies for the hydro for the cells */
       /* that are local and are not descendant of the same super_hydro-cells */
       if (ci->nodeID == nodeID) {
-        engine_make_hydro_loops_dependencies(sched, t, t_gradient, t_force,
+        engine_make_hydro_loops_dependencies(sched, t, t_gradient, t_boundary, t_force, /* boundary_loop */
                                              t_limiter, ci, with_cooling,
                                              with_timestep_limiter);
       }
       if ((cj->nodeID == nodeID) && (ci->hydro.super != cj->hydro.super)) {
-        engine_make_hydro_loops_dependencies(sched, t, t_gradient, t_force,
+        engine_make_hydro_loops_dependencies(sched, t, t_gradient, t_boundary, t_force /* boundary_loop */
                                              t_limiter, cj, with_cooling,
                                              with_timestep_limiter);
       }
+      
 #else
 
       /* Now, build all the dependencies for the hydro for the cells */
@@ -3160,7 +3219,7 @@ void engine_addtasks_send_mapper(void *map_data, int num_elements,
      * connection. */
     if ((e->policy & engine_policy_hydro) && (type & proxy_cell_type_hydro))
       engine_addtasks_send_hydro(e, ci, cj, /*t_xv=*/NULL,
-                                 /*t_rho=*/NULL, /*t_gradient=*/NULL,
+                                 /*t_rho=*/NULL, /*t_gradient=*/NULL, /*t_boundary=*/NULL, /* boundary_loop */
                                  /*t_ti=*/NULL, /*t_limiter=*/NULL,
                                  with_limiter, with_sync);
 
@@ -3206,7 +3265,7 @@ void engine_addtasks_recv_mapper(void *map_data, int num_elements,
      * connection. */
     if ((e->policy & engine_policy_hydro) && (type & proxy_cell_type_hydro))
       engine_addtasks_recv_hydro(e, ci, /*t_xv=*/NULL, /*t_rho=*/NULL,
-                                 /*t_gradient=*/NULL, /*t_ti=*/NULL,
+                                 /*t_gradient=*/NULL, /*t_boundary=*/NULL, /*t_ti=*/NULL, /* boundary_loop */
                                  /*t_limiter=*/NULL, with_limiter, with_sync);
 
     /* Add the recv tasks for the cells in the proxy that have a stars

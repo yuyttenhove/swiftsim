@@ -201,6 +201,7 @@ void space_rebuild_recycle_mapper(void *map_data, int num_elements,
     c->grav.nr_mm_tasks = 0;
     c->hydro.density = NULL;
     c->hydro.gradient = NULL;
+    c->hydro.boundary = NULL; /* boundary_loop */
     c->hydro.force = NULL;
     c->hydro.limiter = NULL;
     c->grav.grav = NULL;
@@ -230,6 +231,7 @@ void space_rebuild_recycle_mapper(void *map_data, int num_elements,
     c->grav.init = NULL;
     c->grav.init_out = NULL;
     c->hydro.extra_ghost = NULL;
+    c->hydro.boundary_ghost = NULL; /* boundary_loop */
     c->hydro.ghost_in = NULL;
     c->hydro.ghost_out = NULL;
     c->hydro.ghost = NULL;

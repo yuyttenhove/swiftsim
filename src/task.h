@@ -55,6 +55,7 @@ enum task_types {
   task_type_ghost,
   task_type_ghost_out, /* Implicit */
   task_type_extra_ghost,
+  task_type_boundary_ghost, /* boundary_loop */
   task_type_drift_part,
   task_type_drift_spart,
   task_type_drift_sink,
@@ -112,6 +113,7 @@ enum task_subtypes {
   task_subtype_none = 0,
   task_subtype_density,
   task_subtype_gradient,
+  task_subtype_boundary, /* boundary_loop */
   task_subtype_force,
   task_subtype_limiter,
   task_subtype_grav,

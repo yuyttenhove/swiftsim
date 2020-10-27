@@ -1427,9 +1427,9 @@ static void partition_gather_weights(void *map_data, int num_elements,
     /* Get the cell IDs. */
     int cid = ci - cells;
 
-    /* Different weights for different tasks. */
+    /* Different weights for different tasks. */  /* boundary_loop */
     if (t->type == task_type_drift_part || t->type == task_type_drift_gpart ||
-        t->type == task_type_ghost || t->type == task_type_extra_ghost ||
+        t->type == task_type_ghost || t->type == task_type_extra_ghost || t->type == task_type_boundary_ghost ||
         t->type == task_type_kick1 || t->type == task_type_kick2 ||
         t->type == task_type_end_hydro_force ||
         t->type == task_type_end_grav_force || t->type == task_type_cooling ||
@@ -2347,9 +2347,9 @@ static void check_weights(struct task *tasks, int nr_tasks,
     /* Get the cell IDs. */
     int cid = ci - cells;
 
-    /* Different weights for different tasks. */
+    /* Different weights for different tasks. */ /* boundary_loop */
     if (t->type == task_type_drift_part || t->type == task_type_drift_gpart ||
-        t->type == task_type_ghost || t->type == task_type_extra_ghost ||
+        t->type == task_type_ghost || t->type == task_type_extra_ghost || t->type == task_type_boundary_ghost ||
         t->type == task_type_kick1 || t->type == task_type_kick2 ||
         t->type == task_type_end_hydro_force ||
         t->type == task_type_end_grav_force || t->type == task_type_cooling ||

@@ -142,6 +142,17 @@ void engine_marktasks_mapper(void *map_data, int num_elements,
                t_subtype == task_subtype_gradient) {
         if (ci_active_hydro) scheduler_activate(s, t);
       }
+      
+      /* boundary_loop */
+      
+      else if (t_type == task_type_self && t_subtype == task_subtype_boundary) {
+        if (ci_active_hydro) scheduler_activate(s, t);
+      }
+
+      else if (t_type == task_type_sub_self &&
+               t_subtype == task_subtype_boundary) {
+        if (ci_active_hydro) scheduler_activate(s, t);
+      }
 
       /* Activate the star density */
       else if (t_type == task_type_self &&
@@ -305,6 +316,7 @@ void engine_marktasks_mapper(void *map_data, int num_elements,
       /* Only activate tasks that involve a local active cell. */
       if ((t_subtype == task_subtype_density ||
            t_subtype == task_subtype_gradient ||
+           t_subtype == task_subtype_boundary ||  /* boundary_loop */
            t_subtype == task_subtype_limiter ||
            t_subtype == task_subtype_force) &&
           ((ci_active_hydro && ci_nodeID == nodeID) ||
@@ -513,6 +525,7 @@ void engine_marktasks_mapper(void *map_data, int num_elements,
               scheduler_activate_recv(s, ci->mpi.recv, task_subtype_rho);
 #ifdef EXTRA_HYDRO_LOOP
               scheduler_activate_recv(s, ci->mpi.recv, task_subtype_gradient);
+              scheduler_activate_recv(s, ci->mpi.recv, task_subtype_boundary); /* boundary_loop */
 #endif
             }
           }
@@ -543,6 +556,8 @@ void engine_marktasks_mapper(void *map_data, int num_elements,
 
 #ifdef EXTRA_HYDRO_LOOP
               scheduler_activate_send(s, cj->mpi.send, task_subtype_gradient,
+                                      ci_nodeID);
+              scheduler_activate_send(s, cj->mpi.send, task_subtype_boundary, /* boundary_loop */
                                       ci_nodeID);
 #endif
             }
@@ -583,6 +598,7 @@ void engine_marktasks_mapper(void *map_data, int num_elements,
               scheduler_activate_recv(s, cj->mpi.recv, task_subtype_rho);
 #ifdef EXTRA_HYDRO_LOOP
               scheduler_activate_recv(s, cj->mpi.recv, task_subtype_gradient);
+              scheduler_activate_recv(s, cj->mpi.recv, task_subtype_boundary);  /* boundary_loop */
 #endif
             }
           }
@@ -615,6 +631,8 @@ void engine_marktasks_mapper(void *map_data, int num_elements,
 
 #ifdef EXTRA_HYDRO_LOOP
               scheduler_activate_send(s, ci->mpi.send, task_subtype_gradient,
+                                      cj_nodeID);
+              scheduler_activate_send(s, ci->mpi.send, task_subtype_boundary, /* boundary_loop */
                                       cj_nodeID);
 #endif
             }
@@ -919,8 +937,8 @@ void engine_marktasks_mapper(void *map_data, int num_elements,
       if (cell_is_active_sinks(t->ci, e)) cell_activate_drift_sink(t->ci, s);
     }
 
-    /* Hydro ghost tasks ? */
-    else if (t_type == task_type_ghost || t_type == task_type_extra_ghost ||
+    /* Hydro ghost tasks ? */ /* boundary_loop */
+    else if (t_type == task_type_ghost || t_type == task_type_extra_ghost || t_type == task_type_boundary_ghost ||
              t_type == task_type_ghost_in || t_type == task_type_ghost_out) {
       if (cell_is_active_hydro(t->ci, e)) scheduler_activate(s, t);
     }

@@ -55,6 +55,15 @@
 #undef FUNCTION_TASK_LOOP
 #endif
 
+/* Import the gradient loop functions (if required). */ /* boundary_loop */
+#ifdef EXTRA_HYDRO_LOOP
+#define FUNCTION boundary
+#define FUNCTION_TASK_LOOP TASK_LOOP_BOUNDARY
+#include "runner_doiact_hydro.h"
+#undef FUNCTION
+#undef FUNCTION_TASK_LOOP
+#endif
+
 /* Import the force loop functions. */
 #define FUNCTION force
 #define FUNCTION_TASK_LOOP TASK_LOOP_FORCE
@@ -183,6 +192,8 @@ void *runner_main(void *data) {
 #ifdef EXTRA_HYDRO_LOOP
           else if (t->subtype == task_subtype_gradient)
             runner_doself1_branch_gradient(r, ci);
+          else if (t->subtype == task_subtype_boundary)
+            runner_doself1_branch_boundary(r, ci);  /* boundary_loop */
 #endif
           else if (t->subtype == task_subtype_force)
             runner_doself2_branch_force(r, ci);
@@ -219,6 +230,8 @@ void *runner_main(void *data) {
 #ifdef EXTRA_HYDRO_LOOP
           else if (t->subtype == task_subtype_gradient)
             runner_dopair1_branch_gradient(r, ci, cj);
+          else if (t->subtype == task_subtype_boundary)
+            runner_dopair1_branch_boundary(r, ci, cj); /* boundary_loop */
 #endif
           else if (t->subtype == task_subtype_force)
             runner_dopair2_branch_force(r, ci, cj);
@@ -253,6 +266,8 @@ void *runner_main(void *data) {
 #ifdef EXTRA_HYDRO_LOOP
           else if (t->subtype == task_subtype_gradient)
             runner_dosub_self1_gradient(r, ci, 1);
+          else if (t->subtype == task_subtype_boundary)
+            runner_dosub_self1_boundary(r, ci, 1); /* boundary_loop */
 #endif
           else if (t->subtype == task_subtype_force)
             runner_dosub_self2_force(r, ci, 1);
@@ -285,6 +300,8 @@ void *runner_main(void *data) {
 #ifdef EXTRA_HYDRO_LOOP
           else if (t->subtype == task_subtype_gradient)
             runner_dosub_pair1_gradient(r, ci, cj, 1);
+          else if (t->subtype == task_subtype_boundary)
+            runner_dosub_pair1_boundary(r, ci, cj, 1); /* boundary_loop */
 #endif
           else if (t->subtype == task_subtype_force)
             runner_dosub_pair2_force(r, ci, cj, 1);
@@ -336,6 +353,9 @@ void *runner_main(void *data) {
 #ifdef EXTRA_HYDRO_LOOP
         case task_type_extra_ghost:
           runner_do_extra_ghost(r, ci, 1);
+          break;
+        case task_type_boundary_ghost:
+          runner_do_boundary_ghost(r, ci, 1); /* boundary_loop */
           break;
 #endif
         case task_type_stars_ghost:
@@ -428,6 +448,8 @@ void *runner_main(void *data) {
             runner_do_recv_part(r, ci, 0, 1);
           } else if (t->subtype == task_subtype_gradient) {
             runner_do_recv_part(r, ci, 0, 1);
+          } else if (t->subtype == task_subtype_boundary) {
+            runner_do_recv_part(r, ci, 0, 1); /* boundary_loop */
           } else if (t->subtype == task_subtype_part_swallow) {
             cell_unpack_part_swallow(ci,
                                      (struct black_holes_part_data *)t->buff);

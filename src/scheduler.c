@@ -1539,6 +1539,9 @@ void scheduler_reweight(struct scheduler *s, int verbose) {
       case task_type_extra_ghost:
         if (t->ci == t->ci->hydro.super) cost = wscale * count_i;
         break;
+      case task_type_boundary_ghost:
+        if (t->ci == t->ci->hydro.super) cost = wscale * count_i; /* boundary_loop */
+        break;
       case task_type_stars_ghost:
         if (t->ci == t->ci->hydro.super) cost = wscale * scount_i;
         break;

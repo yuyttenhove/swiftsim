@@ -51,6 +51,15 @@
 #undef FUNCTION_TASK_LOOP
 #endif
 
+/* Import the boundary loop functions (if required). */ /* boundary_loop */
+#ifdef EXTRA_HYDRO_LOOP
+#define FUNCTION boundary
+#define FUNCTION_TASK_LOOP TASK_LOOP_BOUNDARY
+#include "runner_doiact_functions_hydro.h"
+#undef FUNCTION
+#undef FUNCTION_TASK_LOOP
+#endif
+
 /* Import the force loop functions. */
 #define FUNCTION force
 #define FUNCTION_TASK_LOOP TASK_LOOP_FORCE
