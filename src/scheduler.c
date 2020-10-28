@@ -1398,6 +1398,7 @@ void scheduler_reweight(struct scheduler *s, int verbose) {
           cost = 1.f * wscale * bcount_i;
         else if (t->subtype == task_subtype_density ||
                  t->subtype == task_subtype_gradient ||
+                 t->subtype == task_subtype_boundary || /* boundary_loop */
                  t->subtype == task_subtype_force ||
                  t->subtype == task_subtype_limiter)
           cost = 1.f * (wscale * count_i) * count_i;
@@ -1444,6 +1445,7 @@ void scheduler_reweight(struct scheduler *s, int verbose) {
 
         } else if (t->subtype == task_subtype_density ||
                    t->subtype == task_subtype_gradient ||
+                   t->subtype == task_subtype_boundary || /* boundary_loop */
                    t->subtype == task_subtype_force ||
                    t->subtype == task_subtype_limiter) {
           if (t->ci->nodeID != nodeID || t->cj->nodeID != nodeID)
@@ -1494,6 +1496,7 @@ void scheduler_reweight(struct scheduler *s, int verbose) {
 
         } else if (t->subtype == task_subtype_density ||
                    t->subtype == task_subtype_gradient ||
+                   t->subtype == task_subtype_boundary || /* boundary_loop */
                    t->subtype == task_subtype_force ||
                    t->subtype == task_subtype_limiter) {
           if (t->ci->nodeID != nodeID || t->cj->nodeID != nodeID) {
@@ -1523,6 +1526,7 @@ void scheduler_reweight(struct scheduler *s, int verbose) {
           cost = 1.f * wscale * bcount_i;
         } else if (t->subtype == task_subtype_density ||
                    t->subtype == task_subtype_gradient ||
+                   t->subtype == task_subtype_boundary || /* boundary_loop */
                    t->subtype == task_subtype_force ||
                    t->subtype == task_subtype_limiter) {
           cost = 1.f * (wscale * count_i) * count_i;
@@ -1836,6 +1840,7 @@ void scheduler_enqueue(struct scheduler *s, struct task *t) {
         } else if (t->subtype == task_subtype_xv ||
                    t->subtype == task_subtype_rho ||
                    t->subtype == task_subtype_gradient ||
+                   t->subtype == task_subtype_boundary || /* boundary_loop */
                    t->subtype == task_subtype_limiter) {
 
           count = t->ci->hydro.count;
@@ -1953,6 +1958,7 @@ void scheduler_enqueue(struct scheduler *s, struct task *t) {
         } else if (t->subtype == task_subtype_xv ||
                    t->subtype == task_subtype_rho ||
                    t->subtype == task_subtype_gradient ||
+                   t->subtype == task_subtype_boundary || /* boundary_loop */
                    t->subtype == task_subtype_limiter) {
 
           count = t->ci->hydro.count;
