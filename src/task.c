@@ -62,6 +62,7 @@ const char *taskID_names[task_type_count] = {
     "ghost",
     "ghost_out",
     "extra_ghost",
+    "boundary_ghost", /* boundary_loop */
     "drift_part",
     "drift_spart",
     "drift_sink",

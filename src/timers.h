@@ -53,6 +53,7 @@ enum {
   timer_dosort,
   timer_doself_density,
   timer_doself_gradient,
+  timer_doself_boundary, /* boundary_loop */
   timer_doself_force,
   timer_doself_limiter,
   timer_doself_stars_density,
@@ -63,6 +64,7 @@ enum {
   timer_doself_grav_pp,
   timer_dopair_density,
   timer_dopair_gradient,
+  timer_dopair_boundary, /* boundary_loop */
   timer_dopair_force,
   timer_dopair_limiter,
   timer_dopair_stars_density,
@@ -79,6 +81,7 @@ enum {
   timer_dograv_long_range,
   timer_dosub_self_density,
   timer_dosub_self_gradient,
+  timer_dosub_self_boundary, /* boundary_loop */
   timer_dosub_self_force,
   timer_dosub_self_limiter,
   timer_dosub_self_stars_density,
@@ -89,6 +92,7 @@ enum {
   timer_dosub_self_grav,
   timer_dosub_pair_density,
   timer_dosub_pair_gradient,
+  timer_dosub_pair_boundary, /* boundary_loop */
   timer_dosub_pair_force,
   timer_dosub_pair_limiter,
   timer_dosub_pair_stars_density,
@@ -103,6 +107,7 @@ enum {
   timer_dosub_subset,
   timer_do_ghost,
   timer_do_extra_ghost,
+  timer_do_boundary_ghost, /* boundary_loop */
   timer_do_stars_ghost,
   timer_do_black_holes_ghost,
   timer_dorecv_part,

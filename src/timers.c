@@ -52,6 +52,7 @@ const char* timers_names[timer_count] = {
     "dosort",
     "doself_density",
     "doself_gradient",
+    "doself_boundary", /* boundary_loop */
     "doself_force",
     "doself_limiter",
     "doself_stars_density",
@@ -62,6 +63,7 @@ const char* timers_names[timer_count] = {
     "doself_grav_pp",
     "dopair_density",
     "dopair_gradient",
+    "dopair_boundary", /* boundary_loop */
     "dopair_force",
     "dopair_limiter",
     "dopair_stars_density",
@@ -78,6 +80,7 @@ const char* timers_names[timer_count] = {
     "dograv_long_range",
     "dosub_self_density",
     "dosub_self_gradient",
+    "dosub_self_boundary", /* boundary_loop */
     "dosub_self_force",
     "dosub_self_limiter",
     "dosub_self_stars_density",
@@ -88,6 +91,7 @@ const char* timers_names[timer_count] = {
     "dosub_self_grav",
     "dosub_pair_density",
     "dosub_pair_gradient",
+    "dosub_pair_boundary", /* boundary_loop */
     "dosub_pair_force",
     "dosub_pair_limiter",
     "dosub_pair_stars_density",
@@ -102,6 +106,7 @@ const char* timers_names[timer_count] = {
     "dosub_subset",
     "do_ghost",
     "do_extra_ghost",
+    "do_boundary_ghost", /* boundary_loop */
     "do_stars_ghost",
     "do_black_holes_ghost",
     "dorecv_part",
