@@ -57,6 +57,9 @@ runner_iact_nonsym_stars_density(const float r2, const float *dx,
 #ifdef SWIFT_STARS_DENSITY_CHECKS
   si->rho += pj->mass * wi;
   si->n += wi;
+  si->rho += pj->mass * wi;
+
+#ifdef SWIFT_HYDRO_DENSITY_CHECKS
   si->N_density++;
 #endif
 

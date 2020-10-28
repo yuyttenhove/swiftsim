@@ -62,6 +62,8 @@ struct spart {
   /*! Particle smoothing length. */
   float h;
 
+  float rho;
+
   struct {
 
     /* Number of neighbours. */
