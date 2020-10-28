@@ -370,6 +370,9 @@ struct cell {
 
     /* Linked list of the tasks computing this cell's hydro gradients. */
     struct link *gradient;
+    
+    /* Linked list of the tasks computing this cell's hydro gradients. */ /* boundary_loop */
+    struct link *boundary;
 
     /*! Linked list of the tasks computing this cell's hydro forces. */
     struct link *force;
@@ -388,6 +391,9 @@ struct cell {
 
     /*! The extra ghost task for complex hydro schemes */
     struct task *extra_ghost;
+    
+    /*! The extra ghost task for complex hydro schemes */ /* boundary_loop */
+    struct task *boundary_ghost;
 
     /*! The task to end the force calculation */
     struct task *end_force;

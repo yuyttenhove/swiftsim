@@ -570,7 +570,7 @@ void engine_addtasks_recv_hydro(struct engine *e, struct cell *c,
   if (c->split)
     for (int k = 0; k < 8; k++)
       if (c->progeny[k] != NULL)
-        engine_addtasks_recv_hydro(e, c->progeny[k], t_xv, t_rho, t_gradient,
+        engine_addtasks_recv_hydro(e, c->progeny[k], t_xv, t_rho, t_gradient, t_boundary, /* boundary_loop */
                                    t_ti, t_limiter, with_limiter, with_sync);
 
 #else
@@ -2826,7 +2826,7 @@ void engine_make_extra_hydroloop_tasks_mapper(void *map_data, int num_elements,
                                              with_timestep_limiter);
       }
       if ((cj->nodeID == nodeID) && (ci->hydro.super != cj->hydro.super)) {
-        engine_make_hydro_loops_dependencies(sched, t, t_gradient, t_boundary, t_force /* boundary_loop */
+        engine_make_hydro_loops_dependencies(sched, t, t_gradient, t_boundary, t_force, /* boundary_loop */
                                              t_limiter, cj, with_cooling,
                                              with_timestep_limiter);
       }
