@@ -952,6 +952,7 @@ __attribute__((always_inline)) INLINE static void hydro_reset_gradient(
 
   p->KA_T = 0.f;
   p->KA_P = 0.f;
+  p->rho_KA_P_T = 0.f;
 }
 
 /**
@@ -1002,7 +1003,10 @@ __attribute__((always_inline)) INLINE static void hydro_prepare_boundary(
     struct part *restrict p, struct xpart *restrict xp,
     const struct cosmology *cosmo, const struct hydro_props *hydro_props) {
 
-  
+  if (p->boundary_flag == 1){
+      /* Compute rho from KA_P and KA_T */
+      p->rho_KA_P_T = gas_density_from_pressure_and_temperature(p->KA_P, p->KA_T, p->mat_id);
+  }
 }
 
 /**
@@ -1016,7 +1020,11 @@ __attribute__((always_inline)) INLINE static void hydro_prepare_boundary(
  */
 __attribute__((always_inline)) INLINE static void hydro_reset_boundary(
     struct part *restrict p) {
-
+  /* If particle is a boundary particle recalculate rho */
+  if (p->boundary_flag == 1){
+      /* Reset rho and related values */
+      p->rho = 0.f;
+  }
 }
 
 /**
@@ -1031,7 +1039,20 @@ __attribute__((always_inline)) INLINE static void hydro_reset_boundary(
  */
 __attribute__((always_inline)) INLINE static void hydro_end_boundary(
     struct part *p) {
+    
+  /* Some smoothing length multiples. */
+  const float h = p->h;
+  const float h_inv = 1.0f / h;                       /* 1/h */
+  const float h_inv_dim = pow_dimension(h_inv);       /* 1/h^d */
 
+  if (p->boundary_flag == 1){
+      /* Final operation on the density (add self-contribution). */
+      p->rho += p->mass * kernel_root;
+    
+      /* Finish the calculation by inserting the missing h-factors */
+      p->rho *= h_inv_dim;
+      
+  }
 }
 
 

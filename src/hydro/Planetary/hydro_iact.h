@@ -242,7 +242,54 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_gradient(
 __attribute__((always_inline)) INLINE static void runner_iact_boundary(
     float r2, const float *dx, float hi, float hj, struct part *restrict pi,
     struct part *restrict pj, float a, float H) {
+    
+  float wi, wj, wi_dx, wj_dx;
+  float f_ij = 1.f;
+  float f_ji = 1.f;
 
+  /* Get r. */
+  const float r_inv = 1.0f / sqrtf(r2);
+  const float r = r2 * r_inv;
+
+  /* Get the masses. */
+  const float mi = pi->mass;
+  const float mj = pj->mass;
+
+  /* Compute density of pi. */
+  const float hi_inv = 1.f / hi;
+  const float ui = r * hi_inv;
+  kernel_deval(ui, &wi, &wi_dx);
+
+  /* Compute density of pj. */
+  const float hj_inv = 1.f / hj;
+  const float uj = r * hj_inv;
+  kernel_deval(uj, &wj, &wj_dx);
+  
+  /* Check if particle is boundary particle */
+  if (pi-> boundary_flag == 1){
+    /* Check if need to compute f_ij */
+    if (pi->mat_id != pj->mat_id){
+      if (pj->rho_KA_P_T != 0){
+        f_ij = pi->rho_KA_P_T/pj->rho_KA_P_T;
+      }
+    }
+    /* Add density contribution */
+    pi->rho += f_ij * mj * wi;
+  }
+  
+  /* Check if particle is boundary particle */
+  if (pj-> boundary_flag == 1){
+    /* Check if need to compute f_ij */
+    if (pj->mat_id != pi->mat_id){
+      if (pi->rho_KA_P_T != 0){
+        f_ji = pj->rho_KA_P_T/pi->rho_KA_P_T;
+      }
+    }
+    /* Add density contribution */
+    pj->rho += f_ji * mi * wj;
+  }
+  
+  
 }
 
 /**
@@ -264,6 +311,33 @@ __attribute__((always_inline)) INLINE static void runner_iact_boundary(
 __attribute__((always_inline)) INLINE static void runner_iact_nonsym_boundary(
     float r2, const float *dx, float hi, float hj, struct part *restrict pi,
     const struct part *restrict pj, float a, float H) {
+  
+  float wi, wi_dx;
+  float f_ij = 1.f;
+
+  /* Get r. */
+  const float r_inv = 1.0f / sqrtf(r2);
+  const float r = r2 * r_inv;
+
+  /* Get the masses. */
+  const float mj = pj->mass;
+
+  /* Compute density of pi. */
+  const float hi_inv = 1.f / hi;
+  const float ui = r * hi_inv;
+  kernel_deval(ui, &wi, &wi_dx);
+  
+  /* Check if particle is boundary particle */
+  if (pi-> boundary_flag == 1){
+    /* Check if need to compute f_ij */
+    if (pi->mat_id != pj->mat_id){
+      if (pj->rho_KA_P_T != 0){
+        f_ij = pi->rho_KA_P_T/pj->rho_KA_P_T;
+      }
+    }
+    /* Add density contribution */
+    pi->rho += f_ij * mj * wi;
+  }
   
 }
 
