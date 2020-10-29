@@ -572,7 +572,7 @@ EAGLEAGN:
   epsilon_f_metallicity_exponent:     0.8686        # Power law index for the dependence of the black hole energy coupling efficiency on ambient gas metallicity (only used if use_scaled_coupling_efficiency is 1).
   epsilon_f_density_norm:             0.67          # Pivot point for the dependence of the black hole energy coupling efficiency on ambient gas density [n_H / cm^3] (only used if use_scaled_coupling_efficiency is 1).
   epsilon_f_density_exponent:         0.8686        # Power law index for the dependence of the black hole energy coupling efficiency on ambient gas density (only used if use_scaled_coupling_efficiency is 1).
-  AGN_delta_T_K:                      3.16228e8     # Change in temperature to apply to the gas particle in an AGN feedback event [K] (only used if use_variable_delta_T is 0 or AGN_use_nheat_with_fixed_dT is 1).
+  AGN_delta_T_K:                      3.16228e8     # Change in temperature to apply to the gas particle in an AGN feedback event in Kelvin, this is used for the constant AGN model, for the mass dependend heating model we use this as an initialization value for the IC and birth properties of the BHs
   use_variable_delta_T:               1             # Switch to enable adaptive calculation of AGN dT [1], rather than using a constant value [0].
   AGN_with_locally_adaptive_delta_T:  1             # Switch to enable additional dependence of AGN dT on local gas density and temperature (only used if use_variable_delta_T is 1).
   AGN_delta_T_mass_norm:              3e8           # Normalisation temperature of AGN dT scaling with BH subgrid mass [K] (only used if use_variable_delta_T is 1).
