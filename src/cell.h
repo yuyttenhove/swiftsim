@@ -371,7 +371,7 @@ struct cell {
     /* Linked list of the tasks computing this cell's hydro gradients. */
     struct link *gradient;
     
-    /* Linked list of the tasks computing this cell's hydro gradients. */ /* boundary_loop */
+    /* Linked list of the tasks computing this cell's hydro boundaries. */ /* boundary_loop */
     struct link *boundary;
 
     /*! Linked list of the tasks computing this cell's hydro forces. */
