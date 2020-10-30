@@ -113,6 +113,9 @@ struct feedback_spart_data {
       /*! Change in energy from SNII feedback energy injection */
       float SNII_delta_u;
 
+      /*! Birth density of the star */
+      float star_birth_density;
+
     } to_distribute;
   };
 

@@ -74,16 +74,18 @@ __attribute__((always_inline)) INLINE static int tracers_write_particles(
   }
 
   list[2] =
-      io_make_output_field("HeatedBySNIIFeedback", CHAR, 1, UNIT_CONV_NO_UNITS,
-                           0.f, xparts, tracers_data.hit_by_SNII_feedback,
-                           "Flags the particles that have been directly hit by "
-                           "a SNII feedback event at some point in the past.");
+      io_make_output_field(
+        "HeatedBySNIIFeedback", INT, 1, UNIT_CONV_NO_UNITS,
+        0.f, xparts, tracers_data.hit_by_SNII_feedback,
+        "Number of times that the particles have been directly hit by a SNII "
+        "feedback event at some point in the past.");
 
   list[3] =
-      io_make_output_field("HeatedByAGNFeedback", CHAR, 1, UNIT_CONV_NO_UNITS,
-                           0.f, xparts, tracers_data.hit_by_AGN_feedback,
-                           "Flags the particles that have been directly hit by "
-                           "an AGN feedback event at some point in the past.");
+      io_make_output_field(
+        "HeatedByAGNFeedback", INT, 1, UNIT_CONV_NO_UNITS,
+        0.f, xparts, tracers_data.hit_by_AGN_feedback,
+        "Number of times that the particles have been directly hit by an AGN "
+        "feedback event at some point in the past.");
 
   list[4] = io_make_output_field("EnergiesReceivedFromAGNFeedback", FLOAT, 1,
                                  UNIT_CONV_ENERGY, 0.f, xparts,
@@ -91,7 +93,27 @@ __attribute__((always_inline)) INLINE static int tracers_write_particles(
                                  "Total amount of thermal energy from AGN "
                                  "feedback events received by the particles.");
 
-  return 5;
+  list[5] = io_make_output_field("EnergiesReceivedFromSNIIFeedback", FLOAT, 1,
+                                 UNIT_CONV_ENERGY, 0.f, xparts,
+                                 tracers_data.SNII_feedback_energy,
+                                 "Total amount of thermal energy from SNII "
+                                 "feedback events received by the particles.");
+
+  list[6] = io_make_output_field(
+    "AverageSNIIBirthDensities", FLOAT, 1, UNIT_CONV_DENSITY, 0.f, xparts,
+    tracers_data.SNII_birth_density,
+    "Average birth densities of the stars whose SNII feedback events have "
+    "heated each particle. Set to -FLT_MAX for particles that have never "
+    "been hit by SNII feedback.");
+
+  list[7] = io_make_output_field(
+    "MaximumStarFormingDensities", FLOAT, 1, UNIT_CONV_DENSITY, 0.f, xparts,
+    tracers_data.maximum_physical_density,
+    "Maximum physical densities of each gas particle while having a non-zero "
+    "star formation rate.");
+
+
+  return 8;
 }
 
 __attribute__((always_inline)) INLINE static int tracers_write_sparticles(
@@ -119,18 +141,18 @@ __attribute__((always_inline)) INLINE static int tracers_write_sparticles(
   }
 
   list[2] =
-      io_make_output_field("HeatedBySNIIFeedback", CHAR, 1, UNIT_CONV_NO_UNITS,
-                           0.f, sparts, tracers_data.hit_by_SNII_feedback,
-                           "Flags the particles that have been directly hit by "
-                           "a SNII feedback event at some point in the past "
-                           "when the particle was still a gas particle.");
+      io_make_output_field(
+        "HeatedBySNIIFeedback", INT, 1, UNIT_CONV_NO_UNITS,
+        0.f, sparts, tracers_data.hit_by_SNII_feedback,
+        "Number of times that the particles have been directly hit by a SNII "
+        "feedback event at some point in the past.");
 
   list[3] =
-      io_make_output_field("HeatedByAGNFeedback", CHAR, 1, UNIT_CONV_NO_UNITS,
-                           0.f, sparts, tracers_data.hit_by_AGN_feedback,
-                           "Flags the particles that have been directly hit by "
-                           "an AGN feedback event at some point in the past "
-                           "when the particle was still a gas particle.");
+      io_make_output_field(
+        "HeatedByAGNFeedback", INT, 1, UNIT_CONV_NO_UNITS,
+        0.f, sparts, tracers_data.hit_by_AGN_feedback,
+        "Number of times that the particles have been directly hit by an AGN "
+        "feedback event at some point in the past.");
 
   list[4] = io_make_output_field(
       "EnergiesReceivedFromAGNFeedback", FLOAT, 1, UNIT_CONV_ENERGY, 0.f,
@@ -138,7 +160,26 @@ __attribute__((always_inline)) INLINE static int tracers_write_sparticles(
       "Total amount of thermal energy from AGN feedback events received by the "
       "particles when the particle was still a gas particle.");
 
-  return 4;
+  list[5] = io_make_output_field("EnergiesReceivedFromSNIIFeedback", FLOAT, 1,
+                                 UNIT_CONV_ENERGY, 0.f, sparts,
+                                 tracers_data.SNII_feedback_energy,
+                                 "Total amount of thermal energy from SNII "
+                                 "feedback events received by the particles.");
+
+  list[6] = io_make_output_field(
+    "AverageSNIIBirthDensities", FLOAT, 1, UNIT_CONV_DENSITY, 0.f, sparts,
+    tracers_data.SNII_birth_density,
+    "Average birth densities of the stars whose SNII feedback events have "
+    "heated each particle. Set to -FLT_MAX for particles that have never "
+    "been hit by SNII feedback.");
+
+  list[7] = io_make_output_field(
+    "MaximumStarFormingDensities", FLOAT, 1, UNIT_CONV_DENSITY, 0.f, sparts,
+    tracers_data.maximum_physical_density,
+    "Maximum physical densities of each progenitor gas particle while having a "
+    "non-zero star formation rate.");
+
+  return 8;
 }
 
 #endif /* SWIFT_TRACERS_EAGLE_IO_H */
