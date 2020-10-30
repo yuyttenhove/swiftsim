@@ -506,6 +506,9 @@ __attribute__((always_inline)) INLINE static void hydro_init_part(
   p->n_gradient_exact = 0.f;
   p->n_density = 0.f;
   p->n_density_exact = 0.f;
+  p->N_density_exact = 0;
+  p->N_force_exact = 0;
+  p->rho_exact = 0.f;
   p->n_force = 0.f;
   p->n_force_exact = 0.f;
   p->inhibited_exact = 0;
