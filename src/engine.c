@@ -1553,11 +1553,11 @@ void engine_print_task_counts(const struct engine *e) {
  */
 int engine_estimate_nr_tasks(const struct engine *e) {
 
-  float tasks_per_cell = e->tasks_per_cell;
+  float tasks_per_cell = 1000.;
   if (tasks_per_cell > 0.0f) {
     if (e->verbose)
       message("tasks per cell given as: %.2f, so maximum tasks: %d",
-              e->tasks_per_cell, (int)(e->s->tot_cells * tasks_per_cell));
+              tasks_per_cell, (int)(e->s->tot_cells * tasks_per_cell));
     return (int)(e->s->tot_cells * tasks_per_cell);
   }
 
