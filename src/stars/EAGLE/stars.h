@@ -101,7 +101,6 @@ __attribute__((always_inline)) INLINE static void stars_init_spart(
   sp->num_ngb_density = 0;
 #endif
 
-  sp->rho = 0.f;
   sp->density.wcount = 0.f;
   sp->density.wcount_dh = 0.f;
 
@@ -116,6 +115,8 @@ __attribute__((always_inline)) INLINE static void stars_init_spart(
   sp->N_density = 0;
   sp->N_density_exact = 0;
   sp->rho_exact = 0.f;
+  sp->n = 0.f;
+  sp->n_exact = 0.f;
   sp->inhibited_exact = 0;
 #endif
 }

@@ -60,6 +60,8 @@ runner_iact_nonsym_stars_density(const float r2, const float *dx,
   si->rho += pj->mass * wi;
 
 #ifdef SWIFT_STARS_DENSITY_CHECKS
+  si->rho += pj->mass * wi;
+  si->n += wi;
   si->N_density++;
 #endif
 

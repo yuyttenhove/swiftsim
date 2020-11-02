@@ -290,9 +290,9 @@ void stars_exact_density_check(struct space *s, const struct engine *e,
        * Note that we ignore particles that saw an inhibted particle as a
        * neighbour as we don't know whether that neighbour became inhibited in
        * that step or not. */
-      if (!found_inhibited && spi->N_density_exact != spi->N_density &&
-          (fabsf(spi->rho / spi->rho_exact - 1.f) > rel_tol ||
-           fabsf(spi->rho_exact / spi->rho - 1.f) > rel_tol)) {
+      if (!found_inhibited && spi->N_density_exact != spi->N_density //&&
+          /*(fabsf(spi->rho / spi->rho_exact - 1.f) > rel_tol ||
+	    fabsf(spi->rho_exact / spi->rho - 1.f) > rel_tol)*/) {
         message("RHO: id=%lld swift=%e exact=%e N_true=%d N_swift=%d %d %e", id,
                 spi->rho, spi->rho_exact, spi->N_density_exact, spi->N_density,
                 spi->count_since_last_enrichment, spi->birth_time);
