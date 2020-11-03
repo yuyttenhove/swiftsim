@@ -37,6 +37,7 @@
 #include "const.h"
 #include "hydro_parameters.h"
 #include "minmax.h"
+#include "equation_of_state.h"
 
 /**
  * @brief Density interaction between two particles.
@@ -246,6 +247,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_boundary(
   float wi, wj, wi_dx, wj_dx;
   float f_ij = 1.f;
   float f_ji = 1.f;
+  float rho_ii, rho_jj, rho_ij, rho_ji; // rho_ij = rho_i(P_j, T_j)
 
   /* Get r. */
   const float r_inv = 1.0f / sqrtf(r2);
@@ -269,8 +271,10 @@ __attribute__((always_inline)) INLINE static void runner_iact_boundary(
   if (pi-> boundary_flag == 1){
     /* Check if need to compute f_ij */
     if (pi->mat_id != pj->mat_id){
-      if (pj->rho_KA_P_T != 0){
-        f_ij = pi->rho_KA_P_T/pj->rho_KA_P_T;
+      rho_ii = gas_density_from_pressure_and_temperature(pi->KA_P, pi->KA_T, pi->mat_id);
+      rho_ji = gas_density_from_pressure_and_temperature(pi->KA_P, pi->KA_T, pj->mat_id);
+      if (rho_ji != 0){
+        f_ij = rho_ii/rho_ji; 
       }
     }
     /* Add density contribution */
@@ -281,8 +285,10 @@ __attribute__((always_inline)) INLINE static void runner_iact_boundary(
   if (pj-> boundary_flag == 1){
     /* Check if need to compute f_ij */
     if (pj->mat_id != pi->mat_id){
-      if (pi->rho_KA_P_T != 0){
-        f_ji = pj->rho_KA_P_T/pi->rho_KA_P_T;
+      rho_jj = gas_density_from_pressure_and_temperature(pj->KA_P, pj->KA_T, pj->mat_id);
+      rho_ij = gas_density_from_pressure_and_temperature(pj->KA_P, pj->KA_T, pi->mat_id);
+      if (rho_ij != 0){
+        f_ji = rho_jj/rho_ij;
       }
     }
     /* Add density contribution */
@@ -314,6 +320,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_boundary(
   
   float wi, wi_dx;
   float f_ij = 1.f;
+  float rho_ii, rho_ji; // rho_ij = rho_i(P_j, T_j)
 
   /* Get r. */
   const float r_inv = 1.0f / sqrtf(r2);
@@ -323,16 +330,18 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_boundary(
   const float mj = pj->mass;
 
   /* Compute density of pi. */
-  const float hi_inv = 1.f / hi;
-  const float ui = r * hi_inv;
+  const float h_inv = 1.f / hi;
+  const float ui = r * h_inv;
   kernel_deval(ui, &wi, &wi_dx);
   
   /* Check if particle is boundary particle */
   if (pi-> boundary_flag == 1){
     /* Check if need to compute f_ij */
     if (pi->mat_id != pj->mat_id){
-      if (pj->rho_KA_P_T != 0){
-        f_ij = pi->rho_KA_P_T/pj->rho_KA_P_T;
+      rho_ii = gas_density_from_pressure_and_temperature(pi->KA_P, pi->KA_T, pi->mat_id);
+      rho_ji = gas_density_from_pressure_and_temperature(pi->KA_P, pi->KA_T, pj->mat_id);
+      if (rho_ji != 0){
+        f_ij = rho_ii/rho_ji;
       }
     }
     /* Add density contribution */
