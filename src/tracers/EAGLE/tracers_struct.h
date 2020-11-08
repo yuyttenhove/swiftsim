@@ -42,10 +42,19 @@ struct tracers_xpart_data {
   float AGN_feedback_energy;
 
   /*! Has this particle been hit by SNII feedback? */
-  char hit_by_SNII_feedback;
+  int hit_by_SNII_feedback;
 
   /*! Has this particle been hit by AGN feedback? */
-  char hit_by_AGN_feedback;
+  int hit_by_AGN_feedback;
+
+  /*! Total amount of SN feedback energy received by this particle */
+  float SNII_feedback_energy;
+
+  /*! Average birth density of stars responsible for feedback */
+  float SNII_birth_density;
+
+  /*! Maximum physical densities while star forming */
+  float maximum_physical_density;
 };
 
 #endif /* SWIFT_TRACERS_STRUCT_EAGLE_H */

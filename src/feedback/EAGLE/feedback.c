@@ -842,6 +842,7 @@ INLINE static void compute_SNII_feedback(
     sp->f_E = star_f_E;
     sp->number_of_SNII_events++;
     sp->feedback_data.to_distribute.SNII_delta_u = delta_u;
+    sp->feedback_data.to_distribute.star_birth_density = sp->birth_density;
     sp->feedback_data.to_distribute.SNII_num_of_thermal_energy_inj =
         number_of_SN_events;
     sp->expected_number_of_heated_particles += (prob * num_gas_ngbs);
