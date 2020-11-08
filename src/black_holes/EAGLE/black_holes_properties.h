@@ -114,6 +114,12 @@ struct black_holes_props {
    * 2009 model */
   double boost_n_h_star;
 
+  /*! Switch to limit accretion boost according to BH mass */
+  int with_boost_mass_limit;
+
+  /*! Maximum mass for BH boost, at lower M boost is limited to M_max / M */
+  float boost_maximum_mass;
+
   /*! Switch for nibbling mode */
   int use_nibbling;
 
@@ -387,6 +393,14 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
       bp->boost_n_h_star =
           parser_get_param_float(params, "EAGLEAGN:boost_n_h_star_H_p_cm3") /
           units_cgs_conversion_factor(us, UNIT_CONV_NUMBER_DENSITY);
+    }
+
+    bp->with_boost_mass_limit =
+        parser_get_param_int(params, "EAGLEAGN:with_boost_mass_limit");
+    if (bp->with_boost_mass_limit) {
+      bp->boost_maximum_mass =
+          parser_get_param_float(params, "EAGLEAGN:boost_maximum_mass") *
+          phys_const->const_solar_mass;
     }
   }
 

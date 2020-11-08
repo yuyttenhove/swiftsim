@@ -635,6 +635,46 @@ black_hole_energy_reservoir_threshold(struct bpart* bp,
   return num_to_heat;
 }
 
+/** 
+ * @brief Compute the Booth & Schaye (2009) like accretion boost factor.
+ *
+ * @param bp The black hole particle.
+ * @param props The properties of the black hole scheme.
+ */
+__attribute__((always_inline)) INLINE static double accretion_boost_factor(
+    struct bpart* restrict bp, const struct black_holes_props* props,
+    const struct cosmology* cosmo, const double proton_mass) {
+
+  /* If we don't want a boost factor, this is short and sweet. */
+  if (!props->with_boost_factor) {
+    bp->accretion_boost_factor = 1.;
+    return 1.;
+  }
+
+  /* Compute ambient gas density n_H (assuming primordial metallicity) */
+  const double XH = 0.75;
+  const double gas_rho_phys = bp->rho_gas * cosmo->a3_inv;
+  const double n_H = gas_rho_phys * XH / proton_mass;
+
+  /* Calculate the boost factor */
+  const double boost_ratio = n_H / props->boost_n_h_star;
+  double boost_factor =
+      (props->boost_alpha_only) ?
+          props->boost_alpha : 
+          max(pow(boost_ratio, props->boost_beta), props->boost_alpha);
+
+  /* Limit the boost factor according to BH mass, if desired */
+  if (props->with_boost_mass_limit) {
+    const double max_boost =
+        max(props->boost_maximum_mass / bp->subgrid_mass, 1.);
+    boost_factor = min(boost_factor, max_boost);
+  }
+          
+  /* Store the result, for output. */
+  bp->accretion_boost_factor = boost_factor;
+  return boost_factor;
+}
+
 /**
  * @brief Compute the accretion rate of the black hole and all the quantites
  * required for the feedback loop.
@@ -828,21 +868,8 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
     }
   }
 
-  /* Compute the boost factor from Booth &^^ Schaye (2009) */
-  if (props->with_boost_factor) {
-    const double XH = 0.75;
-    const double gas_rho_phys = bp->rho_gas * cosmo->a3_inv;
-    const double n_H = gas_rho_phys * XH / proton_mass;
-    const double boost_ratio = n_H / props->boost_n_h_star;
-    const double boost_factor =
-        (props->boost_alpha_only)
-            ? max(pow(boost_ratio, props->boost_beta), props->boost_alpha)
-            : props->boost_alpha;
-    Bondi_rate *= boost_factor;
-    bp->accretion_boost_factor = boost_factor;
-  } else {
-    bp->accretion_boost_factor = 1.;
-  }
+  /* Compute and apply the boost factor from Booth & Schaye (2009) */
+  Bondi_rate *= accretion_boost_factor(bp, props, cosmo, proton_mass);
 
   /* Compute the reduction factor from Rosas-Guevara et al. (2015) */
   if (with_angmom_limiter) {

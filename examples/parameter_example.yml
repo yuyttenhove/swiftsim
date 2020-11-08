@@ -557,6 +557,8 @@ EAGLEAGN:
   with_boost_factor:                  0             # Are we applying a boost factor to BH accretion rates with the model from Booth & Schaye (2009)?
   boost_alpha:                        1.            # Lowest value for the accretion efficiency for the Booth & Schaye 2009 accretion model (only used if with_boost_factor is 1).
   boost_alpha_only:                   0             # Are we applying a constant multiplicative pre-factor [1] or a density-dependent one [0] (only used if with_boost_factor is 1).
+  with_boost_mass_limit:              0             # Should an accretion boost be limited to M_ref / M?
+  boost_maximum_mass:                 1e7           # Reference (maximum) BH mass for accretion boost
   boost_beta:                         2.            # Slope of the power law for the Booth & Schaye 2009 model (only used if with_boost_factor is 1 and boost_alpha_only is 0).
   boost_n_h_star_H_p_cm3:             0.1           # Normalization of the power law for the Booth & Schaye 2009 model in cgs [cm^-3] (only used if with_boost_factor is 1 and boost_alpha_only is 0).
   radiative_efficiency:               0.1           # Fraction of the accreted mass that gets radiated.
