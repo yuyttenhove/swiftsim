@@ -27,6 +27,9 @@
 #include "chemistry.h"
 #include "hydro_properties.h"
 
+/**
+ * @brief Modes of energy injection for SNII feedback
+ */
 enum SNII_feedback_models {
   SNII_random_ngb_model,       /*< Random neighbour model for SNII feedback */
   SNII_isotropic_model,        /*< Isotropic model of SNII feedback */
@@ -50,15 +53,6 @@ enum SNII_oversampling_criterion {
   eagle_SNII_timescale_freefall     /*<! Free-fall timescale */
 };
 
-/**
- * @brief Modes of energy injection for SNII feedback
- */
-enum SNII_feedback_models {
-  SNII_random_ngb_model,       /*< Random neighbour model for SNII feedback */
-  SNII_isotropic_model,        /*< Isotropic model of SNII feedback */
-  SNII_minimum_distance_model, /*< Minimum-distance model of SNII feedback */
-  SNII_minimum_density_model   /*< Minimum-density model of SNII feedback */
-};
 
 /**
  * @brief Stores AGB and SNII yield tables

@@ -61,9 +61,6 @@ runner_iact_nonsym_feedback_density(const float r2, const float *dx,
   float wi;
   kernel_eval(ui, &wi);
 
-  /* We found a neighbour! */
-  si->feedback_data.to_collect.ngb_N++;
-
   /* Add mass of pj to neighbour mass of si  */
   si->feedback_data.to_collect.ngb_mass += mj;
 

@@ -63,8 +63,7 @@ double eagle_variable_feedback_temperature_change(
   struct spart* sp, const double ngb_gas_mass, const int num_gas_ngbs,
   const double ngb_nH_cgs, const double SNe_energy,
   const struct feedback_props* props, const double frac_SNII,
-  double* critical_fraction, double* sampling_fraction,
-  const double birth_sf_threshold) {
+  double* critical_fraction, double* sampling_fraction) {
 
   /* Safety check: should only get here if we run with the varying-dT model */
   if (!props->SNII_use_variable_delta_T)
@@ -251,7 +250,7 @@ double eagle_variable_feedback_temperature_change_v2(
   struct spart* sp, const double ngb_gas_mass, const int num_gas_ngbs,
   const double ngb_nH_cgs, double* p_SNe_energy,
   const struct feedback_props* props, const double frac_SNII,
-  const double birth_sf_threshold, const double h_pkpc_inv,
+  const double h_pkpc_inv,
   const double dt, const double G_Newton, const double ngb_SFR,
   const double ngb_rho_phys, const double ngb_Z) {
 
@@ -267,8 +266,6 @@ double eagle_variable_feedback_temperature_change_v2(
   const double dT_max = props->SNII_delta_T_max;
   const double dT_min = compute_SNII_dT_min(sp, ngb_Z, props);
   double gamma_star = props->SNII_gamma_star;
-  const double nu_shelf_factor = props->SNII_nu_const_interval_factor;
-  const double nu_drop_factor = props->SNII_nu_drop_interval_factor;
   const double theta_min = props->SNII_efficiency_theta_min;
   const double zeta = props->SNII_efficiency_zeta;
   const double omega_max = (props->SNII_with_energy_compensation) ?
@@ -296,25 +293,6 @@ double eagle_variable_feedback_temperature_change_v2(
   /* Normally, we want nu >= 1, but this limit can be disabled */
   if (!props->SNII_with_nu_below_one)
     nu = max(nu, 1.0);
-
-  /* Apply shelf and drop in nu, but only if it is not below 1 already */
-  if (nu > 1) {
-    if (rho_birth_phys < birth_sf_threshold * nu_shelf_factor) {
-      nu = 1.0;
-    } else if (rho_birth_phys < birth_sf_threshold * nu_shelf_factor *
-              nu_drop_factor) {
-
-      /* Digamma is a factor that varies linearly from 0 at the shelf edge, to
-       * 1 at the end of the drop. */
-      const double digamma =
-          (rho_birth_phys / birth_sf_threshold - nu_shelf_factor) /
-          (nu_shelf_factor * (nu_drop_factor - 1.0));
-
-      /* The next line makes nu vary smoothly from 1 at the shelf edge to
-       * the (original) nu at the drop edge. */
-      nu = 1.0 - digamma + nu * digamma;
-    }
-  }
 
   /* Consider time-scale dependent sampling criteria */
   double n_single = -1.;
@@ -699,19 +677,17 @@ double eagle_feedback_energy_fraction(struct spart* sp,
  * masses).
  * @param max_dying_mass_Msun Maximal star mass dying this step (in solar
  * masses).
- * @param birth_sf_threshold The SF density threshold at the star's birth
- * (in internal units, already corrected for hydrogen fraction).
  * @param h_pkpc_inv The inverse of the star particle's smoothing length
  * (in proper kpc).
  * @param ti_begin Integer time value at the beginning of timestep
  */
 INLINE static void compute_SNII_feedback(
     struct spart* sp, const double star_age, const double dt,
-    const int ngb_gas_N, const float ngb_gas_mass, const double ngb_nH_cgs,
+    const float ngb_gas_mass, const int num_gas_ngbs, const double ngb_nH_cgs,
     const double ngb_Z, const struct feedback_props* feedback_props,
     const double min_dying_mass_Msun, const double max_dying_mass_Msun,
     const integertime_t ti_begin,
-    const double birth_sf_threshold, const double h_pkpc_inv,
+    const double h_pkpc_inv,
     const double G_Newton, const double ngb_SFR, const double ngb_rho_phys) {
 
   /* Are we sampling the delay function or using a fixed delay? */
@@ -772,12 +748,11 @@ INLINE static void compute_SNII_feedback(
     else if (feedback_props->SNII_use_variable_delta_T == 1)
       delta_T = eagle_variable_feedback_temperature_change(
           sp, ngb_gas_mass, num_gas_ngbs, ngb_nH_cgs, SNe_energy,
-          feedback_props, frac_SNII, &critical_fraction, &sampling_fraction,
-          birth_sf_threshold);
+          feedback_props, frac_SNII, &critical_fraction, &sampling_fraction);
     else if (feedback_props->SNII_use_variable_delta_T == 2)
       delta_T = eagle_variable_feedback_temperature_change_v2(
           sp, ngb_gas_mass, num_gas_ngbs, ngb_nH_cgs, &SNe_energy,
-          feedback_props, frac_SNII, birth_sf_threshold, h_pkpc_inv, dt,
+          feedback_props, frac_SNII, h_pkpc_inv, dt,
           G_Newton, ngb_SFR, ngb_rho_phys, ngb_Z);
     else
       error("Invalid choice of SNII_use_variable_delta_T (=%d).",
@@ -1433,16 +1408,13 @@ void compute_stellar_evolution(const struct feedback_props* feedback_props,
 
   /* Compute properties of the stochastic SNII feedback model. */
   if (feedback_props->with_SNII_feedback) {
-    const double birth_sf_threshold = star_formation_threshold(
-        Z, starform_props, phys_const) / hydro_props->hydrogen_mass_fraction;
     const double h_pkpc_inv = phys_const->const_parsec * 1e3 * cosmo->a_inv /
         sp->h;
     const double G_Newton = phys_const->const_newton_G;
     compute_SNII_feedback(sp, age, dt, ngb_gas_mass, num_gas_ngbs,
                           ngb_gas_phys_nH_cgs, ngb_gas_Z, feedback_props,
                           min_dying_mass_Msun, max_dying_mass_Msun,
-                          ti_begin,
-                          birth_sf_threshold, h_pkpc_inv, G_Newton,
+                          ti_begin, h_pkpc_inv, G_Newton,
                           ngb_gas_SFR, ngb_gas_rho_phys);
   }
 
@@ -1677,13 +1649,6 @@ void feedback_props_init(struct feedback_props* fp,
       fp->SNII_sampling_reduction_within_smoothing_length =
           parser_get_param_int(params,
             "EAGLEFeedback:SNII_sampling_reduction_within_smoothing_length");
-      fp->SNII_nu_const_interval_factor =
-          exp10(parser_get_param_double(
-                params, "EAGLEFeedback:SNII_nu_const_interval_dex"));
-      fp->SNII_nu_drop_interval_factor =
-          exp10(parser_get_param_double(
-                params, "EAGLEFeedback:SNII_nu_drop_interval_dex"));
-
       fp->SNII_with_nu_below_one =
           parser_get_param_int(params, "EAGLEFeedback:SNII_with_nu_below_one");
 
