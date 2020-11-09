@@ -19,6 +19,10 @@
 #ifndef SWIFT_EAGLE_FEEDBACK_PROPERTIES_H
 #define SWIFT_EAGLE_FEEDBACK_PROPERTIES_H
 
+/* Config parameters. */
+#include "../config.h"
+
+/* Local includes. */
 #include "feedback.h"
 #include "chemistry.h"
 #include "hydro_properties.h"
@@ -44,6 +48,16 @@ enum SNII_oversampling_criterion {
   eagle_SNII_timescale_none,        /*<! No additional criterion */
   eagle_SNII_timescale_gasconsum,   /*<! Gas consumption timescale */
   eagle_SNII_timescale_freefall     /*<! Free-fall timescale */
+};
+
+/**
+ * @brief Modes of energy injection for SNII feedback
+ */
+enum SNII_feedback_models {
+  SNII_random_ngb_model,       /*< Random neighbour model for SNII feedback */
+  SNII_isotropic_model,        /*< Isotropic model of SNII feedback */
+  SNII_minimum_distance_model, /*< Minimum-distance model of SNII feedback */
+  SNII_minimum_density_model   /*< Minimum-density model of SNII feedback */
 };
 
 /**

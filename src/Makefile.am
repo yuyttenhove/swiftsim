@@ -60,7 +60,8 @@ include_HEADERS += pressure_floor.h pressure_floor_struct.h pressure_floor_iact.
 include_HEADERS += velociraptor_struct.h velociraptor_io.h random.h memuse.h mpiuse.h memuse_rnodes.h 
 include_HEADERS += black_holes.h black_holes_io.h black_holes_properties.h black_holes_struct.h 
 include_HEADERS += feedback.h feedback_struct.h feedback_properties.h 
-include_HEADERS += space_unique_id.h line_of_sight.h io_compression.h rays.h rays_struct.h
+include_HEADERS += space_unique_id.h line_of_sight.h io_compression.h
+include_HEADERS += rays.h rays_struct.h
 include_HEADERS += logger_history.h
 
 # source files for EAGLE cooling

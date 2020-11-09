@@ -707,7 +707,7 @@ double eagle_feedback_energy_fraction(struct spart* sp,
  */
 INLINE static void compute_SNII_feedback(
     struct spart* sp, const double star_age, const double dt,
-    const float ngb_gas_mass, const int num_gas_ngbs, const double ngb_nH_cgs,
+    const int ngb_gas_N, const float ngb_gas_mass, const double ngb_nH_cgs,
     const double ngb_Z, const struct feedback_props* feedback_props,
     const double min_dying_mass_Msun, const double max_dying_mass_Msun,
     const integertime_t ti_begin,
@@ -1334,6 +1334,7 @@ INLINE static void evolve_AGB(const double log10_min_mass,
  * functions to calculate feedback due to SNIa, SNII and AGB
  *
  * @param feedback_props feedback_props data structure
+ * @param phys_const The physical constants in internal units.
  * @param cosmo The cosmological model.
  * @param sp spart that we're evolving
  * @param us unit_system data structure
