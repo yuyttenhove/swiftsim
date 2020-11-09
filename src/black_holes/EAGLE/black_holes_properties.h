@@ -26,6 +26,7 @@
 #include "chemistry.h"
 #include "hydro_properties.h"
 
+/* Includes. */
 #include <string.h>
 
 /**
@@ -445,7 +446,7 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
   }
 
   if (bp->use_nibbling) {
-    const float erf_min = 
+    const float erf_min =
         (bp->use_scaled_coupling_efficiency ?
          bp->epsilon_f_min : bp->epsilon_f) * bp->epsilon_r;
     if (erf_min < bp->check_min_feedback_efficiency)

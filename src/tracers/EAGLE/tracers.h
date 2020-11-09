@@ -163,7 +163,7 @@ static INLINE void tracers_after_feedback(
       xp->tracers_data.SNII_birth_density;
 
   /* New total */
-  xp->tracers_data.SNII_birth_density = 
+  xp->tracers_data.SNII_birth_density =
       (gas_nH_birth + nH_birth * delta_energy) /
       (xp->tracers_data.SNII_feedback_energy + delta_energy);
 

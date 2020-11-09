@@ -638,7 +638,7 @@ black_hole_energy_reservoir_threshold(struct bpart* bp,
   return num_to_heat;
 }
 
-/** 
+/**
  * @brief Compute the Booth & Schaye (2009) like accretion boost factor.
  *
  * @param bp The black hole particle.
@@ -663,7 +663,7 @@ __attribute__((always_inline)) INLINE static double accretion_boost_factor(
   const double boost_ratio = n_H / props->boost_n_h_star;
   double boost_factor =
       (props->boost_alpha_only) ?
-          props->boost_alpha : 
+          props->boost_alpha :
           max(pow(boost_ratio, props->boost_beta), props->boost_alpha);
 
   /* Limit the boost factor according to BH mass, if desired */
@@ -672,7 +672,7 @@ __attribute__((always_inline)) INLINE static double accretion_boost_factor(
         max(props->boost_maximum_mass / bp->subgrid_mass, 1.);
     boost_factor = min(boost_factor, max_boost);
   }
-          
+
   /* Store the result, for output. */
   bp->accretion_boost_factor = boost_factor;
   return boost_factor;
@@ -734,7 +734,7 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
           "BH feedback efficiency (current e_f x e_r[min] = %g). If you "
           "absolutely know what you are doing, you can disable this error by "
           "setting EAGLEAGN:disable_self_lock_check to 1.",
-          bp->id, BH_mass, bp->mass, props->epsilon_r * 
+          bp->id, BH_mass, bp->mass, props->epsilon_r *
           (props->use_scaled_coupling_efficiency ? props->epsilon_f_min :
            props->epsilon_f)
           );

@@ -188,14 +188,14 @@ runner_iact_nonsym_bh_gas_density(
                                    /*ray_ext=*/NULL, /*v=*/NULL);
           }
         } break;
-        
+
         case AGN_homogeneous_weighting: {
-          
+
           /* Loop over rays */
           for (int i = 0; i < eagle_blackhole_number_of_rays; i++) {
 
             /* Two random numbers in [0, 1[ */
-            const double rand_theta_AGN = 
+            const double rand_theta_AGN =
                 random_unit_interval_part_ID_and_ray_idx(
                     bi->id, i, ti_current,
                     random_number_isotropic_AGN_feedback_ray_theta);
@@ -209,8 +209,8 @@ runner_iact_nonsym_bh_gas_density(
                 random_unit_interval_part_ID_and_ray_idx(
                     bi->id, i, ti_current,
                     random_number_isotropic_AGN_feedback_ray_rad);
-                
-            /* For the radius, we do *not* want a uniform distribution: most 
+
+            /* For the radius, we do *not* want a uniform distribution: most
              * volume is at larger radius. The following re-scaling maps
              * it to an r^2 distribution instead (not fully trivial). */
             rand_rad_AGN = pj->h * kernel_gamma * pow(rand_rad_AGN, 0.333333);
@@ -223,12 +223,12 @@ runner_iact_nonsym_bh_gas_density(
         } break;
 
         case AGN_isothermal_weighting: {
-         
+
           /* Loop over rays */
           for (int i = 0; i < eagle_blackhole_number_of_rays; i++) {
 
             /* Two random numbers in [0, 1[ */
-            const double rand_theta_AGN = 
+            const double rand_theta_AGN =
                 random_unit_interval_part_ID_and_ray_idx(
                     bi->id, i, ti_current,
                     random_number_isotropic_AGN_feedback_ray_theta);
@@ -256,12 +256,12 @@ runner_iact_nonsym_bh_gas_density(
         } break;
 
         case AGN_antisothermal_weighting: {
-         
+
           /* Loop over rays */
           for (int i = 0; i < eagle_blackhole_number_of_rays; i++) {
 
             /* Two random numbers in [0, 1[ */
-            const double rand_theta_AGN = 
+            const double rand_theta_AGN =
                 random_unit_interval_part_ID_and_ray_idx(
                     bi->id, i, ti_current,
                     random_number_isotropic_AGN_feedback_ray_theta);
@@ -275,9 +275,9 @@ runner_iact_nonsym_bh_gas_density(
                 random_unit_interval_part_ID_and_ray_idx(
                     bi->id, i, ti_current,
                     random_number_isotropic_AGN_feedback_ray_rad);
-                
 
-            /* For the radius, we do *not* want a uniform distribution: most 
+
+            /* For the radius, we do *not* want a uniform distribution: most
              * volume is at larger radius, and we want (here) to choose
              * preferentially particles at large radius. The following
              * re-scaling maps it to an r^4 distribution, for an r^2 probability

@@ -206,7 +206,7 @@ __attribute__((always_inline)) INLINE static void ray_minimise_offset(
    * [1, -1[. The acos transform comes from the non-uniform length of "rings"
    * of equal theta at a given radius (not trivial). */
   const double theta_pt = acos(1 - 2. * rand_theta_gen);
-  
+
   /* Transform the random number for phi from [0,1[ to [-pi, pi[ */
   const double phi_pt = 2.0 * M_PI * rand_phi_gen - M_PI;
 

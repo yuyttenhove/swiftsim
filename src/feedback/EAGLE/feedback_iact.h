@@ -81,7 +81,7 @@ runner_iact_nonsym_feedback_density(const float r2, const float *dx,
   /* Add contribution of pj to the normalisation of the fraction of mass that
    * each neighbouring gas particles will receive. We weight each particle
    * by the product of its kernel weight and its inverse (!) density (particles
-   * with zero density are ignored). */ 
+   * with zero density are ignored). */
   const float rho = hydro_get_comoving_density(pj);
   if (rho != 0.f)
     si->feedback_data.to_collect.enrichment_weight_sum += wi / rho;
@@ -103,7 +103,7 @@ runner_iact_nonsym_feedback_density(const float r2, const float *dx,
              * to randomly select the direction of the ith ray */
 
             /* Two random numbers in [0, 1[ */
-            const double rand_theta_SNII = 
+            const double rand_theta_SNII =
                 random_unit_interval_part_ID_and_ray_idx(
                     si->id, i, ti_current,
                     random_number_isotropic_SNII_feedback_ray_theta);
@@ -119,14 +119,14 @@ runner_iact_nonsym_feedback_density(const float r2, const float *dx,
                                    /*v=*/NULL);
           }
         } break;
-        
+
         case SNII_homogeneous_weighting: {
-          
+
           /* Loop over rays */
           for (int i = 0; i < eagle_SNII_feedback_num_of_rays; i++) {
 
             /* Two random numbers in [0, 1[ */
-            const double rand_theta_SNII = 
+            const double rand_theta_SNII =
                 random_unit_interval_part_ID_and_ray_idx(
                     si->id, i, ti_current,
                     random_number_isotropic_SNII_feedback_ray_theta);
@@ -140,9 +140,9 @@ runner_iact_nonsym_feedback_density(const float r2, const float *dx,
                 random_unit_interval_part_ID_and_ray_idx(
                     si->id, i, ti_current,
                     random_number_isotropic_SNII_feedback_ray_rad);
-                
 
-            /* For the radius, we do *not* want a uniform distribution: most 
+
+            /* For the radius, we do *not* want a uniform distribution: most
              * volume is at larger radius. The following re-scaling maps
              * it to an r^2 distribution instead (not fully trivial). */
             rand_rad_SNII = pj->h * kernel_gamma * pow(rand_rad_SNII, 0.333333);
@@ -155,12 +155,12 @@ runner_iact_nonsym_feedback_density(const float r2, const float *dx,
         } break;
 
         case SNII_isothermal_weighting: {
-         
+
           /* Loop over rays */
           for (int i = 0; i < eagle_SNII_feedback_num_of_rays; i++) {
 
             /* Two random numbers in [0, 1[ */
-            const double rand_theta_SNII = 
+            const double rand_theta_SNII =
                 random_unit_interval_part_ID_and_ray_idx(
                     si->id, i, ti_current,
                     random_number_isotropic_SNII_feedback_ray_theta);
@@ -174,7 +174,7 @@ runner_iact_nonsym_feedback_density(const float r2, const float *dx,
                 random_unit_interval_part_ID_and_ray_idx(
                     si->id, i, ti_current,
                     random_number_isotropic_SNII_feedback_ray_rad);
-                
+
 
             /* For the radius, we here *do* want a uniform distribution. This
              * causes a r^-2 probability density distribution in 3D radius
@@ -190,12 +190,12 @@ runner_iact_nonsym_feedback_density(const float r2, const float *dx,
         } break;
 
         case SNII_antisothermal_weighting: {
-         
+
           /* Loop over rays */
           for (int i = 0; i < eagle_SNII_feedback_num_of_rays; i++) {
 
             /* Two random numbers in [0, 1[ */
-            const double rand_theta_SNII = 
+            const double rand_theta_SNII =
                 random_unit_interval_part_ID_and_ray_idx(
                     si->id, i, ti_current,
                     random_number_isotropic_SNII_feedback_ray_theta);
@@ -209,9 +209,9 @@ runner_iact_nonsym_feedback_density(const float r2, const float *dx,
                 random_unit_interval_part_ID_and_ray_idx(
                     si->id, i, ti_current,
                     random_number_isotropic_SNII_feedback_ray_rad);
-                
 
-            /* For the radius, we do *not* want a uniform distribution: most 
+
+            /* For the radius, we do *not* want a uniform distribution: most
              * volume is at larger radius, and we want (here) to choose
              * preferentially particles at large radius. The following
              * re-scaling maps it to an r^4 distribution, for an r^2 probability

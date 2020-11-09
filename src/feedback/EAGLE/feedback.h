@@ -32,7 +32,6 @@
 
 
 void compute_stellar_evolution(const struct feedback_props* feedback_props,
-                               const struct star_formation* starform_props,
                                const struct hydro_props* hydro_props,
                                const struct phys_const* phys_const,
                                const struct cosmology* cosmo, struct spart* sp,
@@ -197,8 +196,7 @@ __attribute__((always_inline)) INLINE static void feedback_evolve_spart(
     const struct cosmology* cosmo, const struct unit_system* us,
     const struct phys_const* phys_const, const double star_age_beg_step,
     const double dt, const double time, const integertime_t ti_begin,
-    const int with_cosmology, const struct star_formation* starform_props,
-    const struct hydro_props* hydro_props) {
+    const int with_cosmology, const struct hydro_props* hydro_props) {
 
 #ifdef SWIFT_DEBUG_CHECKS
   if (sp->birth_time == -1.) error("Evolving a star particle that should not!");
@@ -216,7 +214,7 @@ __attribute__((always_inline)) INLINE static void feedback_evolve_spart(
 
   /* Compute amount of enrichment and feedback that needs to be done in this
    * step */
-  compute_stellar_evolution(feedback_props, starform_props, hydro_props,
+  compute_stellar_evolution(feedback_props, hydro_props,
                             phys_const, cosmo,
                             sp, us, star_age_beg_step, dt, ti_begin);
 

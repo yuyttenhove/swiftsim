@@ -431,7 +431,7 @@ INLINE static void black_holes_write_particles(const struct bpart* bparts,
       eddington_fraction,
       "Accretion rates of black holes in units of their Eddington rates. "
       "This is based on the unlimited accretion rates, so these fractions "
-      "can be above unity.");
+      "can be above the limiting Eddington fraction.");
 
   list[43] = io_make_output_field(
       "GasMetallicities", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, bparts,
@@ -450,31 +450,6 @@ INLINE static void black_holes_write_particles(const struct bpart* bparts,
       "Cumulative fraction of available feedback energy that is coupled to "
       "the ambient gas. This can be combined with NumberOfTimeSteps to find "
       "the average coupling efficiency between two outputs.");
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 #ifdef DEBUG_INTERACTIONS_BLACK_HOLES
 

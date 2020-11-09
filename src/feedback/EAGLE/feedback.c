@@ -28,7 +28,6 @@
 #include "random.h"
 #include "timers.h"
 #include "yield_tables.h"
-#include "star_formation.h"
 #include "feedback_properties.h"
 
 /**
@@ -683,7 +682,7 @@ double eagle_feedback_energy_fraction(struct spart* sp,
  */
 INLINE static void compute_SNII_feedback(
     struct spart* sp, const double star_age, const double dt,
-    const float ngb_gas_mass, const int num_gas_ngbs, const double ngb_nH_cgs,
+    const int num_gas_ngbs, const float ngb_gas_mass, const double ngb_nH_cgs,
     const double ngb_Z, const struct feedback_props* feedback_props,
     const double min_dying_mass_Msun, const double max_dying_mass_Msun,
     const integertime_t ti_begin,
@@ -1318,7 +1317,6 @@ INLINE static void evolve_AGB(const double log10_min_mass,
  * @param ti_begin The current integer time (for random number hashing).
  */
 void compute_stellar_evolution(const struct feedback_props* feedback_props,
-                               const struct star_formation* starform_props,
                                const struct hydro_props* hydro_props,
                                const struct phys_const* phys_const,
                                const struct cosmology* cosmo, struct spart* sp,
@@ -1383,7 +1381,7 @@ void compute_stellar_evolution(const struct feedback_props* feedback_props,
   feedback_reset_feedback(sp, feedback_props);
 
   /* Store the inverse sum of all enrichment weights as normalisation factor */
-  sp->feedback_data.to_distribute.enrichment_normalisation = 
+  sp->feedback_data.to_distribute.enrichment_normalisation =
       (enrichment_weight_sum > 0) ? 1.f / enrichment_weight_sum : 0.f;
 
 #ifdef SWIFT_DEBUG_CHECKS
@@ -1411,7 +1409,7 @@ void compute_stellar_evolution(const struct feedback_props* feedback_props,
     const double h_pkpc_inv = phys_const->const_parsec * 1e3 * cosmo->a_inv /
         sp->h;
     const double G_Newton = phys_const->const_newton_G;
-    compute_SNII_feedback(sp, age, dt, ngb_gas_mass, num_gas_ngbs,
+    compute_SNII_feedback(sp, age, dt, num_gas_ngbs, ngb_gas_mass,
                           ngb_gas_phys_nH_cgs, ngb_gas_Z, feedback_props,
                           min_dying_mass_Msun, max_dying_mass_Msun,
                           ti_begin, h_pkpc_inv, G_Newton,
@@ -1564,6 +1562,7 @@ void feedback_props_init(struct feedback_props* fp,
       parser_get_param_int(params, "EAGLEFeedback:SNII_sampled_delay");
 
   if (!fp->SNII_sampled_delay) {
+
     /* Set the delay time before SNII occur */
     fp->SNII_wind_delay =
         parser_get_param_double(params, "EAGLEFeedback:SNII_wind_delay_Gyr") *
