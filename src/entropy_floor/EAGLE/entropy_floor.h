@@ -61,6 +61,9 @@ struct entropy_floor_properties {
   /*! Pressure of the Jeans floor at the density thresh. in internal units */
   float Jeans_pressure_norm;
 
+  /*! Should we apply the Jeans floor even when it is above the Cool floor? */
+  int Jeans_use_above_Cool;
+
   /*! Density threshold for the Cool floor in Hydrogen atoms per cubic cm */
   float Cool_density_threshold_H_p_cm3;
 
@@ -84,6 +87,9 @@ struct entropy_floor_properties {
 
   /*! Pressure of the Cool floor at the density thresh. in internal units */
   float Cool_pressure_norm;
+
+  /*! Should we apply the Cool floor even when it is above the Jeans floor? */
+  int Cool_use_above_Jeans;
 };
 
 /**
@@ -135,7 +141,12 @@ static INLINE float entropy_floor(
         powf(rho_phys * props->Cool_density_threshold_inv,
              props->Cool_gamma_effective);
 
-    pressure = max(pressure, pressure_Cool);
+    /* Take different floor priorities into account: use Cool if
+     * (i) it is below Jeans but we don't want to use a higher Jeans floor;
+     * (ii) it is above Jeans and we do want to use a higher Cool floor */
+    if (((pressure_Cool < pressure) && !props->Jeans_use_above_Cool) ||
+        (props->Cool_use_above_Jeans))
+      pressure = max(pressure_Cool, 0.);
   }
 
   /* Convert to an entropy.
@@ -191,7 +202,12 @@ static INLINE float entropy_floor_gas_temperature(
         props->Cool_temperature_norm *
         pow(rho_phys * props->Cool_density_threshold_inv, cool_slope);
 
-    temperature = max(temperature, temperature_Cool);
+    /* Take different floor priorities into account: use Cool if
+     * (i) it is below Jeans but we don't want to use a higher Jeans floor;
+     * (ii) it is above Jeans and we do want to use a higher Cool floor */
+    if (((temperature_Cool < temperature) && !props->Jeans_use_above_Cool) ||
+        (props->Cool_use_above_Jeans))
+      temperature = max(temperature_Cool, 0.);
   }
 
   return temperature;
@@ -250,6 +266,8 @@ static INLINE void entropy_floor_init(struct entropy_floor_properties *props,
       params, "EAGLEEntropyFloor:Jeans_temperature_norm_K");
   props->Jeans_gamma_effective =
       parser_get_param_float(params, "EAGLEEntropyFloor:Jeans_gamma_effective");
+  props->Jeans_use_above_Cool =
+      parser_get_param_int(params, "EAGLEEntropyFloor:Jeans_use_above_Cool");
 
   props->Cool_density_threshold_H_p_cm3 = parser_get_param_float(
       params, "EAGLEEntropyFloor:Cool_density_threshold_H_p_cm3");
@@ -259,17 +277,8 @@ static INLINE void entropy_floor_init(struct entropy_floor_properties *props,
       params, "EAGLEEntropyFloor:Cool_temperature_norm_K");
   props->Cool_gamma_effective =
       parser_get_param_float(params, "EAGLEEntropyFloor:Cool_gamma_effective");
-
-  /* Cross-check that the input makes sense */
-  if (props->Cool_density_threshold_H_p_cm3 >=
-      props->Jeans_density_threshold_H_p_cm3) {
-    error(
-        "Invalid values for the entrop floor density thresholds. The 'Jeans' "
-        "threshold (%e cm^-3) should be at a higher density than the 'Cool' "
-        "threshold (%e cm^-3)",
-        props->Jeans_density_threshold_H_p_cm3,
-        props->Cool_density_threshold_H_p_cm3);
-  }
+  props->Cool_use_above_Jeans =
+      parser_get_param_int(params, "EAGLEEntropyFloor:Cool_use_above_Jeans");
 
   /* Initial Hydrogen abundance (mass fraction) */
   const double X_H = hydro_props->hydrogen_mass_fraction;
@@ -326,6 +335,10 @@ static INLINE void entropy_floor_print(
   message(" Cool limiter with slope n=%.3f at rho=%e (%e H/cm^3) and T=%.1f K",
           props->Cool_gamma_effective, props->Cool_density_threshold,
           props->Cool_density_threshold_H_p_cm3, props->Cool_temperature_norm);
+  if (!props->Jeans_use_above_Cool)
+    message(" Jeans limiter is applied only below the Cool limiter.");
+  if (!props->Cool_use_above_Jeans)
+    message(" Cool limiter is applied only below the Jeans limiter.");
 }
 
 #ifdef HAVE_HDF5
