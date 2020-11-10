@@ -80,8 +80,8 @@ __attribute__((always_inline)) INLINE static void runner_iact_density(
   pi->density.rho_dh -= mj * (hydro_dimension * wi + ui * wi_dx);
   pi->density.wcount += wi;
   pi->density.wcount_dh -= (hydro_dimension * wi + ui * wi_dx);
-  pi->density.deltawcount += delta_ij * wi
-  pi->density.deltamwcount += mj * delta_ij * wi
+  pi->density.dwcount += delta_ij * wi;
+  pi->density.dmwcount += mj * delta_ij * wi;
 
   /* Compute density of pj. */
   const float hj_inv = 1.f / hj;
@@ -92,8 +92,8 @@ __attribute__((always_inline)) INLINE static void runner_iact_density(
   pj->density.rho_dh -= mi * (hydro_dimension * wj + uj * wj_dx);
   pj->density.wcount += wj;
   pj->density.wcount_dh -= (hydro_dimension * wj + uj * wj_dx);
-  pj->density.deltawcount += delta_ij * wj
-  pj->density.deltamwcount += mi * delta_ij * wj
+  pj->density.dwcount += delta_ij * wj;
+  pj->density.dmwcount += mi * delta_ij * wj;
 }
 
 /**
@@ -136,8 +136,8 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_density(
   pi->density.rho_dh -= mj * (hydro_dimension * wi + ui * wi_dx);
   pi->density.wcount += wi;
   pi->density.wcount_dh -= (hydro_dimension * wi + ui * wi_dx);
-  pi->density.deltawcount += delta_ij * wi
-  pi->density.deltamwcount += mj * delta_ij * wi
+  pi->density.dwcount += delta_ij * wi;
+  pi->density.dmwcount += mj * delta_ij * wi;
 }
 
 /**
