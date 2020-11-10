@@ -55,6 +55,13 @@ __attribute__((always_inline)) INLINE static void runner_iact_density(
     struct part *restrict pj, float a, float H) {
 
   float wi, wj, wi_dx, wj_dx;
+  float delta_ij;
+  
+  if (pi->mat_id == pj->mat_id){
+      delta_ij = 1.0f;
+  } else {
+      delta_ij = 0.0f;
+  }
 
   /* Get r. */
   const float r_inv = 1.0f / sqrtf(r2);
@@ -73,6 +80,8 @@ __attribute__((always_inline)) INLINE static void runner_iact_density(
   pi->density.rho_dh -= mj * (hydro_dimension * wi + ui * wi_dx);
   pi->density.wcount += wi;
   pi->density.wcount_dh -= (hydro_dimension * wi + ui * wi_dx);
+  pi->density.deltawcount += delta_ij * wi
+  pi->density.deltamwcount += mj * delta_ij * wi
 
   /* Compute density of pj. */
   const float hj_inv = 1.f / hj;
@@ -83,6 +92,8 @@ __attribute__((always_inline)) INLINE static void runner_iact_density(
   pj->density.rho_dh -= mi * (hydro_dimension * wj + uj * wj_dx);
   pj->density.wcount += wj;
   pj->density.wcount_dh -= (hydro_dimension * wj + uj * wj_dx);
+  pj->density.deltawcount += delta_ij * wj
+  pj->density.deltamwcount += mi * delta_ij * wj
 }
 
 /**
@@ -102,6 +113,13 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_density(
     const struct part *restrict pj, float a, float H) {
 
   float wi, wi_dx;
+  float delta_ij;
+  
+  if (pi->mat_id == pj->mat_id){
+      delta_ij = 1.0f;
+  } else {
+      delta_ij = 0.0f;
+  }
 
   /* Get the masses. */
   const float mj = pj->mass;
@@ -118,6 +136,8 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_density(
   pi->density.rho_dh -= mj * (hydro_dimension * wi + ui * wi_dx);
   pi->density.wcount += wi;
   pi->density.wcount_dh -= (hydro_dimension * wi + ui * wi_dx);
+  pi->density.deltawcount += delta_ij * wi
+  pi->density.deltamwcount += mj * delta_ij * wi
 }
 
 /**

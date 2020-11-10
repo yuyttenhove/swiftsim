@@ -138,6 +138,12 @@ struct part {
 
       /*! Neighbour number count. */
       float wcount;
+      
+      /*! Neighbour number count times delta. */
+      float dwcount;
+      
+      /*! Neighbour number count times delta times m. */
+      float dmwcount;
 
       /*! Derivative of the neighbour number with respect to h. */
       float wcount_dh;

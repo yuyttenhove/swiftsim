@@ -493,6 +493,8 @@ __attribute__((always_inline)) INLINE static void hydro_init_part(
   p->density.wcount_dh = 0.f;
   p->rho = 0.f;
   p->density.rho_dh = 0.f;
+  p->density.dwcount = 0.f;
+  p->density.dmwcount = 0.f;
 }
 
 /**
@@ -522,12 +524,19 @@ __attribute__((always_inline)) INLINE static void hydro_end_density(
   p->density.rho_dh -= hydro_dimension * p->mass * kernel_root;
   p->density.wcount += kernel_root;
   p->density.wcount_dh -= hydro_dimension * kernel_root;
+  p->density.dwcount += kernel_root;
+  p->density.dmwcount += p->mass * kernel_root;
 
   /* Finish the calculation by inserting the missing h-factors */
   p->rho *= h_inv_dim;
   p->density.rho_dh *= h_inv_dim_plus_one;
   p->density.wcount *= h_inv_dim;
   p->density.wcount_dh *= h_inv_dim_plus_one;
+  p->density.dwcount *= h_inv_dim;
+  p->density.dmwcount *= h_inv_dim;
+  
+  /* test new method */
+  p->rho = p->density.dmwcount * p->density.wcount / p->density.dwcount
 }
 
 /**
@@ -555,6 +564,10 @@ __attribute__((always_inline)) INLINE static void hydro_part_has_no_neighbours(
   p->density.wcount = kernel_root * h_inv_dim;
   p->density.rho_dh = 0.f;
   p->density.wcount_dh = 0.f;
+  p->density.dwcount = kernel_root * h_inv_dim;
+  p->density.dmwcount = p->mass * kernel_root * h_inv_dim;
+  
+  /* In this case both methods are equivalent */
 }
 
 /**
