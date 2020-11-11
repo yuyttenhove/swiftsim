@@ -536,7 +536,7 @@ __attribute__((always_inline)) INLINE static void hydro_end_density(
   p->density.dmwcount *= h_inv_dim;
   
   /* test new method */
-  p->rho = p->density.dmwcount * p->density.wcount / p->density.dwcount
+  p->rho = p->density.dmwcount * p->density.wcount / p->density.dwcount;
 }
 
 /**
