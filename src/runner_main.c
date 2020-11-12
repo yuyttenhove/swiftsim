@@ -218,15 +218,15 @@ void *runner_main(void *data) {
           else if (t->subtype == task_subtype_stars_feedback)
             runner_doself_branch_stars_feedback(r, ci, t->flags, t->flags);
           else if (t->subtype == task_subtype_bh_density)
-            runner_doself_branch_bh_density(r, ci);
+            runner_doself_branch_bh_density(r, ci, t->flags, t->flags);
           else if (t->subtype == task_subtype_bh_swallow)
-            runner_doself_branch_bh_swallow(r, ci);
+            runner_doself_branch_bh_swallow(r, ci, t->flags, t->flags);
           else if (t->subtype == task_subtype_do_gas_swallow)
             runner_do_gas_swallow_self(r, ci, 1);
           else if (t->subtype == task_subtype_do_bh_swallow)
             runner_do_bh_swallow_self(r, ci, 1);
           else if (t->subtype == task_subtype_bh_feedback)
-            runner_doself_branch_bh_feedback(r, ci);
+            runner_doself_branch_bh_feedback(r, ci, t->flags, t->flags);
           else if (t->subtype == task_subtype_rt_inject)
             runner_doself_branch_rt_inject(r, ci, 1);
           else if (t->subtype == task_subtype_rt_gradient)
@@ -258,15 +258,15 @@ void *runner_main(void *data) {
           else if (t->subtype == task_subtype_stars_feedback)
             runner_dopair_branch_stars_feedback(r, ci, cj, t->flags, t->flags);
           else if (t->subtype == task_subtype_bh_density)
-            runner_dopair_branch_bh_density(r, ci, cj);
+            runner_dopair_branch_bh_density(r, ci, cj, t->flags, t->flags);
           else if (t->subtype == task_subtype_bh_swallow)
-            runner_dopair_branch_bh_swallow(r, ci, cj);
+            runner_dopair_branch_bh_swallow(r, ci, cj, t->flags, t->flags);
           else if (t->subtype == task_subtype_do_gas_swallow)
             runner_do_gas_swallow_pair(r, ci, cj, 1);
           else if (t->subtype == task_subtype_do_bh_swallow)
             runner_do_bh_swallow_pair(r, ci, cj, 1);
           else if (t->subtype == task_subtype_bh_feedback)
-            runner_dopair_branch_bh_feedback(r, ci, cj);
+            runner_dopair_branch_bh_feedback(r, ci, cj, t->flags, t->flags);
           else if (t->subtype == task_subtype_rt_inject)
             runner_dopair_branch_rt_inject(r, ci, cj, 1);
           else if (t->subtype == task_subtype_rt_gradient)
@@ -302,15 +302,18 @@ void *runner_main(void *data) {
             runner_dosub_self_stars_feedback(
                 r, ci, /*recurse_below_h_max=*/t->flags, 1);
           else if (t->subtype == task_subtype_bh_density)
-            runner_dosub_self_bh_density(r, ci, 1);
+            runner_dosub_self_bh_density(r, ci,
+                                         /*recurse_below_h_max=*/t->flags, 1);
           else if (t->subtype == task_subtype_bh_swallow)
-            runner_dosub_self_bh_swallow(r, ci, 1);
+            runner_dosub_self_bh_swallow(r, ci,
+                                         /*recurse_below_h_max=*/t->flags, 1);
           else if (t->subtype == task_subtype_do_gas_swallow)
             runner_do_gas_swallow_self(r, ci, 1);
           else if (t->subtype == task_subtype_do_bh_swallow)
             runner_do_bh_swallow_self(r, ci, 1);
           else if (t->subtype == task_subtype_bh_feedback)
-            runner_dosub_self_bh_feedback(r, ci, 1);
+            runner_dosub_self_bh_feedback(r, ci,
+                                          /*recurse_below_h_max=*/t->flags, 1);
           else if (t->subtype == task_subtype_rt_inject)
             runner_dosub_self_rt_inject(r, ci, 1);
           else if (t->subtype == task_subtype_rt_gradient)
@@ -348,15 +351,18 @@ void *runner_main(void *data) {
                                              /*recurse_below_h_max=*/t->flags,
                                              1);
           else if (t->subtype == task_subtype_bh_density)
-            runner_dosub_pair_bh_density(r, ci, cj, 1);
+            runner_dosub_pair_bh_density(r, ci, cj,
+                                         /*recurse_below_h_max=*/t->flags, 1);
           else if (t->subtype == task_subtype_bh_swallow)
-            runner_dosub_pair_bh_swallow(r, ci, cj, 1);
+            runner_dosub_pair_bh_swallow(r, ci, cj,
+                                         /*recurse_below_h_max=*/t->flags, 1);
           else if (t->subtype == task_subtype_do_gas_swallow)
             runner_do_gas_swallow_pair(r, ci, cj, 1);
           else if (t->subtype == task_subtype_do_bh_swallow)
             runner_do_bh_swallow_pair(r, ci, cj, 1);
           else if (t->subtype == task_subtype_bh_feedback)
-            runner_dosub_pair_bh_feedback(r, ci, cj, 1);
+            runner_dosub_pair_bh_feedback(r, ci, cj,
+                                          /*recurse_below_h_max=*/t->flags, 1);
           else if (t->subtype == task_subtype_rt_inject)
             runner_dosub_pair_rt_inject(r, ci, cj, 1);
           else if (t->subtype == task_subtype_rt_gradient)
