@@ -146,7 +146,7 @@ INLINE static double sn_dphi_dtheta(
 
   /* If theta < theta_min, all energy is lost, with no dependence on theta */
   if (theta < theta_min)
-    return 0.;
+    return -FLT_MAX;
 
   /* Otherwise, use the derivative of the zeta power law */
   const double term1 = (theta - theta_min) / (1.0 - theta_min);
@@ -191,8 +191,11 @@ double compute_compromise_dT(
    * iterate with a Newton-Raphson scheme */
   double theta = phi_sample + (theta_max - phi_sample) / 2.0;
   for (int ii = 0; ii < 1000; ii++) {
-    theta = theta - (sn_phi(theta, theta_min, zeta) - phi_sample) /
-        sn_dphi_dtheta(theta, theta_min, zeta);
+    const double dphi_dtheta = sn_dphi_dtheta(theta, theta_min, zeta);
+    theta = (dphi_dtheta > -FLT_MAX) ?
+        theta - (sn_phi(theta, theta_min, zeta) - phi_sample) / dphi_dtheta :
+        theta_min;
+
     const double phi_result = sn_phi(theta, theta_min, zeta);
     if ((fabs(phi_result - phi_sample) / phi_sample) < 0.0001) {
       break;
@@ -204,8 +207,9 @@ double compute_compromise_dT(
 
   const double phi_result = sn_phi(theta, theta_min, zeta);
   if ((fabs(phi_result - phi_sample) / phi_sample) > 0.001)
-    error("Unconverged dT_sample: phi_result=%g, phi_sample=%g",
-         phi_result, phi_sample);
+    error("Unconverged dT_sample: phi_result=%g, phi_sample=%g,"
+          "theta=%g, theta_min=%g, zeta=%g; dT_sample=%g, dT_crit=%g",
+         phi_result, phi_sample, theta, theta_min, zeta, dT_sample, dT_crit);
 
   /* Convert back to temperature */
   return theta * dT_crit;
