@@ -1602,6 +1602,11 @@ __attribute__((always_inline)) INLINE static void eos_init(
     set_Til_granite(&e->Til_granite, eos_planetary_id_Til_granite);
     set_Til_water(&e->Til_water, eos_planetary_id_Til_water);
     set_Til_basalt(&e->Til_basalt, eos_planetary_id_Til_basalt);
+    
+    set_A1_u_cold(&e->Til_iron, eos_planetary_id_Til_iron);
+    set_A1_u_cold(&e->Til_granite, eos_planetary_id_Til_granite);
+    set_A1_u_cold(&e->Til_water, eos_planetary_id_Til_water);
+    set_A1_u_cold(&e->Til_basalt, eos_planetary_id_Til_basalt);
 
     convert_units_Til(&e->Til_iron, us);
     convert_units_Til(&e->Til_granite, us);

@@ -43,6 +43,7 @@
 struct Til_params {
   float rho_0, a, b, A, B, u_0, u_iv, u_cv, alpha, beta, eta_min, eta_zero,
       P_min;
+  float *A1_u_cold;
   enum eos_planetary_material_id mat_id;
 };
 
@@ -114,6 +115,43 @@ INLINE static void set_Til_water(struct Til_params *mat,
   mat->eta_min = 0.925f;
   mat->eta_zero = 0.875f;
   mat->P_min = 0.0f;
+}
+
+// Specific heat capacity
+INLINE static float C_V_Til(enum eos_planetary_material_id mat_id){
+
+}
+
+// rho_0 for every material
+INLINE static float rho_0(enum eos_planetary_material_id mat_id){
+
+}
+
+// Compute u cold
+INLINE static float compute_u_cold(float density,
+                                 struct Til_params *mat,
+                                 enum eos_planetary_material_id mat_id) {
+  
+}
+
+
+// Compute A1_u_cold
+INLINE static void set_A1_u_cold(struct Til_params *mat,
+                                 enum eos_planetary_material_id mat_id) {
+  
+  int N = 10000;
+  float rho_min = 100.0f;
+  float rho_max = 100000.0f;
+  
+  // Allocate table memory
+  mat->A1_ucold = (float *)malloc(N * sizeof(float));
+}
+
+// Compute u cold fast from precomputed values
+INLINE static float compute_fast_u_cold(float density,
+                                 struct Til_params *mat,
+                                 enum eos_planetary_material_id mat_id) {
+  
 }
 
 // Convert to internal units
