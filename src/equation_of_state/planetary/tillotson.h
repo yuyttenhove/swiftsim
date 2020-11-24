@@ -44,6 +44,7 @@ struct Til_params {
   float rho_0, a, b, A, B, u_0, u_iv, u_cv, alpha, beta, eta_min, eta_zero,
       P_min;
   float *A1_u_cold;
+  float CV;
   enum eos_planetary_material_id mat_id;
 };
 
@@ -64,6 +65,7 @@ INLINE static void set_Til_iron(struct Til_params *mat,
   mat->eta_min = 0.0f;
   mat->eta_zero = 0.0f;
   mat->P_min = 0.0f;
+  mat->CV = 449.f;
 }
 INLINE static void set_Til_granite(struct Til_params *mat,
                                    enum eos_planetary_material_id mat_id) {
@@ -81,6 +83,7 @@ INLINE static void set_Til_granite(struct Til_params *mat,
   mat->eta_min = 0.0f;
   mat->eta_zero = 0.0f;
   mat->P_min = 0.0f;
+  mat->CV = 790.f;
 }
 INLINE static void set_Til_basalt(struct Til_params *mat,
                                   enum eos_planetary_material_id mat_id) {
@@ -98,6 +101,7 @@ INLINE static void set_Til_basalt(struct Til_params *mat,
   mat->eta_min = 0.0f;
   mat->eta_zero = 0.0f;
   mat->P_min = 0.0f;
+  mat->CV = 4186.f;
 }
 INLINE static void set_Til_water(struct Til_params *mat,
                                  enum eos_planetary_material_id mat_id) {
@@ -115,23 +119,7 @@ INLINE static void set_Til_water(struct Til_params *mat,
   mat->eta_min = 0.925f;
   mat->eta_zero = 0.875f;
   mat->P_min = 0.0f;
-}
-
-// Specific heat capacity
-INLINE static float C_V_Til(enum eos_planetary_material_id mat_id){
-
-    if (mat_id == 100){
-        return 449.f;
-    } else if (mat_id == 101) {
-        return 790.f;
-    } else if (mat_id == 102) {
-        return 4186.f;
-    } else if (mat_id == 103) {
-        return 790.f;
-    } else {
-        error("Material not implemented!");
-        return 0.f;
-    }
+  mat->CV = 790.f;
 }
 
 // Convert to internal units
@@ -364,7 +352,7 @@ INLINE static float compute_u_cold(float density,
 
 
 // Compute A1_u_cold
-INLINE static void set_A1_u_cold(struct Til_params *mat,
+INLINE static void set_Til_u_cold(struct Til_params *mat,
                                  enum eos_planetary_material_id mat_id) {
   
   int N = 10000;
@@ -423,12 +411,23 @@ INLINE static float Til_temperature_from_internal_energy(
     float u_cold, CV, T;
     
     u_cold = compute_fast_u_cold(density, mat);
-    CV = C_V_Til(mat->mat_id);
     
-    T = (u - u_cold)/CV;
+    T = (u - u_cold)/(mat->CV);
     
     return T;
     
+}
+
+// gas_pressure_from_density_and_temperature
+INLINE static float Til_pressure_from_temperature(
+    float density, float T, const struct Til_params *mat) {
+
+  float u, P;
+  
+  u = compute_fast_u_cold(density, mat->mat_id) + mat->CV * T
+  P = Til_pressure_from_internal_energy(density, u, mat);
+  
+  return P
 }
 
 // gas_density_from_pressure_and_temperature
