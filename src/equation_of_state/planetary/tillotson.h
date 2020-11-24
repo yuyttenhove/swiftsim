@@ -151,46 +151,6 @@ INLINE static float _rho_0(enum eos_planetary_material_id mat_id){
     }
 }
 
-// Compute u cold
-INLINE static float compute_u_cold(float density,
-                                 struct Til_params *mat,
-                                 enum eos_planetary_material_id mat_id) {
-    float rho_0, x, u_cold;
-    int N = 10000;
-    
-    rho_0 = _rho_0(mat_id);
-    drho = (density - rho_0) / N;
-    x = rho_0;
-    u_cold = 1e-9;
-    
-    for (int i = 0; i < N; i++) {
-        x += drho;
-        u_cold += Til_pressure_from_internal_energy(x, u_cold, mat) * drho / (x*x);
-    }
-    
-    return u_cold;
-}
-
-
-// Compute A1_u_cold
-INLINE static void set_A1_u_cold(struct Til_params *mat,
-                                 enum eos_planetary_material_id mat_id) {
-  
-  int N = 10000;
-  float rho_min = 100.0f;
-  float rho_max = 100000.0f;
-  
-  // Allocate table memory
-  mat->A1_ucold = (float *)malloc(N * sizeof(float));
-}
-
-// Compute u cold fast from precomputed values
-INLINE static float compute_fast_u_cold(float density,
-                                 struct Til_params *mat,
-                                 enum eos_planetary_material_id mat_id) {
-    return 0.f;
-}
-
 // Convert to internal units
 INLINE static void convert_units_Til(struct Til_params *mat,
                                      const struct unit_system *us) {
@@ -385,6 +345,50 @@ INLINE static float Til_soundspeed_from_pressure(float density, float P,
   error("This EOS function is not yet implemented!");
 
   return 0.f;
+}
+
+// Compute u cold
+INLINE static float compute_u_cold(float density,
+                                 struct Til_params *mat,
+                                 enum eos_planetary_material_id mat_id) {
+    float rho_0, x, u_cold;
+    int N = 10000;
+    
+    rho_0 = _rho_0(mat_id);
+    drho = (density - rho_0) / N;
+    x = rho_0;
+    u_cold = 1e-9;
+    
+    for (int i = 0; i < N; i++) {
+        x += drho;
+        u_cold += Til_pressure_from_internal_energy(x, u_cold, mat) * drho / (x*x);
+    }
+    
+    return u_cold;
+}
+
+
+// Compute A1_u_cold
+INLINE static void set_A1_u_cold(struct Til_params *mat,
+                                 enum eos_planetary_material_id mat_id) {
+  
+  int N = 10000;
+  //float rho_min = 100.0f;
+  //float rho_max = 100000.0f;
+  
+  // Allocate table memory
+  mat->A1_u_cold = (float *)malloc(N * sizeof(float));
+  
+  for (int i = 0; i < N; i++) {
+        mat->A1_u_cold[i] = 0.f;
+    }
+}
+
+// Compute u cold fast from precomputed values
+INLINE static float compute_fast_u_cold(float density,
+                                 struct Til_params *mat,
+                                 enum eos_planetary_material_id mat_id) {
+    return 0.f;
 }
 
 // gas_temperature_from_internal_energy
