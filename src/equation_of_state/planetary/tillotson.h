@@ -157,6 +157,8 @@ INLINE static void convert_units_Til(struct Til_params *mat,
 
   struct unit_system si;
   units_init_si(&si);
+  
+  int N = 10000;
 
   // SI to cgs
   mat->rho_0 *= units_cgs_conversion_factor(&si, UNIT_CONV_DENSITY);
@@ -166,6 +168,11 @@ INLINE static void convert_units_Til(struct Til_params *mat,
   mat->u_iv *= units_cgs_conversion_factor(&si, UNIT_CONV_ENERGY_PER_UNIT_MASS);
   mat->u_cv *= units_cgs_conversion_factor(&si, UNIT_CONV_ENERGY_PER_UNIT_MASS);
   mat->P_min *= units_cgs_conversion_factor(&si, UNIT_CONV_PRESSURE);
+  
+  for (int i = 0; i < N; i++) {
+    mat->A1_u_cold[i] *= units_cgs_conversion_factor(&si, UNIT_CONV_ENERGY_PER_UNIT_MASS);
+  }
+  
 
   // cgs to internal
   mat->rho_0 /= units_cgs_conversion_factor(us, UNIT_CONV_DENSITY);
@@ -175,6 +182,11 @@ INLINE static void convert_units_Til(struct Til_params *mat,
   mat->u_iv /= units_cgs_conversion_factor(us, UNIT_CONV_ENERGY_PER_UNIT_MASS);
   mat->u_cv /= units_cgs_conversion_factor(us, UNIT_CONV_ENERGY_PER_UNIT_MASS);
   mat->P_min /= units_cgs_conversion_factor(us, UNIT_CONV_PRESSURE);
+  
+  for (int i = 0; i < N; i++) {
+    mat->A1_u_cold[i] /= units_cgs_conversion_factor(us, UNIT_CONV_ENERGY_PER_UNIT_MASS);
+  }
+  
 }
 
 // gas_internal_energy_from_entropy
@@ -391,8 +403,7 @@ INLINE static void set_A1_u_cold(struct Til_params *mat,
 
 // Compute u cold fast from precomputed values
 INLINE static float compute_fast_u_cold(float density,
-                                 struct Til_params *mat,
-                                 enum eos_planetary_material_id mat_id) {
+                                 struct Til_params *mat) {
                                  
     int N = 10000;
     float rho_min = 100.f;
@@ -402,20 +413,20 @@ INLINE static float compute_fast_u_cold(float density,
     
     drho = (rho_max - rho_min) / (N - 1);
 
-    a = (int)((rho - rho_min) / drho);
+    a = (int)((density - rho_min) / drho);
     b = a + 1;
     
     if (a >= 0 && a < (N - 1)){
-        u_cold = mat->A1_u_cold[a]
+        u_cold = mat->A1_u_cold[a];
         u_cold += ((mat->A1_u_cold[b] - mat->A1_u_cold[a]) / drho) * (
             density - rho_min - a * drho
         );
     } else if (density < rho_min){
         u_cold = mat->A1_u_cold[0];
     } else {
-        u_cold = mat->A1_u_cold[(int)(N - 1)]
+        u_cold = mat->A1_u_cold[(N - 1];
         u_cold += (
-            (mat->A1_u_cold[(int)(N - 1)] - mat->A1_u_cold[N - 2]) / drho
+            (mat->A1_u_cold[N - 1] - mat->A1_u_cold[N - 2]) / drho
         ) * (density - rho_max);
     }
     return u_cold;
@@ -426,7 +437,15 @@ INLINE static float compute_fast_u_cold(float density,
 INLINE static float Til_temperature_from_internal_energy(
     float density, float u, const struct Til_params *mat) {
 
-  return 0.f;
+    float u_cold, CV, T;
+    
+    u_cold = compute_fast_u_cold(density, mat);
+    CV = C_V_Til(mat->mat_id);
+    
+    T = (u - u_cold)/CV;
+    
+    return T;
+    
 }
 
 // gas_density_from_pressure_and_temperature
