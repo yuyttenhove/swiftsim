@@ -129,7 +129,7 @@ INLINE static float C_V_Til(enum eos_planetary_material_id mat_id){
     } else if (mat_id == 103) {
         return 790.f;
     } else {
-        error("Material not implemented!")
+        error("Material not implemented!");
         return 0.f;
     }
 }
@@ -146,7 +146,7 @@ INLINE static float _rho_0(enum eos_planetary_material_id mat_id){
     } else if (mat_id == 103) {
         return 2700.f;
     } else {
-        error("Material not implemented!")
+        error("Material not implemented!");
         return 0.f;
     }
 }
@@ -351,7 +351,7 @@ INLINE static float Til_soundspeed_from_pressure(float density, float P,
 INLINE static float compute_u_cold(float density,
                                  struct Til_params *mat,
                                  enum eos_planetary_material_id mat_id) {
-    float rho_0, x, u_cold;
+    float rho_0, x, u_cold, drho;
     int N = 10000;
     
     rho_0 = _rho_0(mat_id);
@@ -373,14 +373,19 @@ INLINE static void set_A1_u_cold(struct Til_params *mat,
                                  enum eos_planetary_material_id mat_id) {
   
   int N = 10000;
-  //float rho_min = 100.0f;
-  //float rho_max = 100000.0f;
+  float rho_min = 100.f;
+  float rho_max = 100000.f;
+  float rho, drho;
   
   // Allocate table memory
   mat->A1_u_cold = (float *)malloc(N * sizeof(float));
   
+  rho = rho_min;
+  drho = (rho_max - rho_min) / (N - 1);
+  
   for (int i = 0; i < N; i++) {
-        mat->A1_u_cold[i] = 0.f;
+        mat->A1_u_cold[i] = compute_u_cold(rho, mat, mat_id);
+        rho += drho;
     }
 }
 
@@ -388,7 +393,33 @@ INLINE static void set_A1_u_cold(struct Til_params *mat,
 INLINE static float compute_fast_u_cold(float density,
                                  struct Til_params *mat,
                                  enum eos_planetary_material_id mat_id) {
-    return 0.f;
+                                 
+    int N = 10000;
+    float rho_min = 100.f;
+    float rho_max = 100000.f;
+    float drho, u_cold;
+    int a, b;
+    
+    drho = (rho_max - rho_min) / (N - 1);
+
+    a = (int)((rho - rho_min) / drho);
+    b = a + 1;
+    
+    if (a >= 0 && a < (N - 1)){
+        u_cold = mat->A1_u_cold[a]
+        u_cold += ((mat->A1_u_cold[b] - mat->A1_u_cold[a]) / drho) * (
+            density - rho_min - a * drho
+        );
+    } else if (density < rho_min){
+        u_cold = mat->A1_u_cold[0];
+    } else {
+        u_cold = mat->A1_u_cold[(int)(N - 1)]
+        u_cold += (
+            (mat->A1_u_cold[(int)(N - 1)] - mat->A1_u_cold[N - 2]) / drho
+        ) * (density - rho_max);
+    }
+    return u_cold;
+
 }
 
 // gas_temperature_from_internal_energy
