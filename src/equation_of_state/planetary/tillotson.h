@@ -120,18 +120,55 @@ INLINE static void set_Til_water(struct Til_params *mat,
 // Specific heat capacity
 INLINE static float C_V_Til(enum eos_planetary_material_id mat_id){
 
+    if (mat_id == 100){
+        return 449.f;
+    } else if (mat_id == 101) {
+        return 790.f;
+    } else if (mat_id == 102) {
+        return 4186.f;
+    } else if (mat_id == 103) {
+        return 790.f;
+    } else {
+        error("Material not implemented!")
+        return 0.f;
+    }
 }
 
 // rho_0 for every material
-INLINE static float rho_0(enum eos_planetary_material_id mat_id){
-
+INLINE static float _rho_0(enum eos_planetary_material_id mat_id){
+    
+    if (mat_id == 100){
+        return 7800.f;
+    } else if (mat_id == 101) {
+        return 2680.f;
+    } else if (mat_id == 102) {
+        return 998.f;
+    } else if (mat_id == 103) {
+        return 2700.f;
+    } else {
+        error("Material not implemented!")
+        return 0.f;
+    }
 }
 
 // Compute u cold
 INLINE static float compute_u_cold(float density,
                                  struct Til_params *mat,
                                  enum eos_planetary_material_id mat_id) {
-  
+    float rho_0, x, u_cold;
+    int N = 10000;
+    
+    rho_0 = _rho_0(mat_id);
+    drho = (density - rho_0) / N;
+    x = rho_0;
+    u_cold = 1e-9;
+    
+    for (int i = 0; i < N; i++) {
+        x += drho;
+        u_cold += Til_pressure_from_internal_energy(x, u_cold, mat) * drho / (x*x);
+    }
+    
+    return u_cold;
 }
 
 
@@ -151,7 +188,7 @@ INLINE static void set_A1_u_cold(struct Til_params *mat,
 INLINE static float compute_fast_u_cold(float density,
                                  struct Til_params *mat,
                                  enum eos_planetary_material_id mat_id) {
-  
+    return 0.f;
 }
 
 // Convert to internal units
