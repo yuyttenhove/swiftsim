@@ -101,7 +101,7 @@ INLINE static void set_Til_basalt(struct Til_params *mat,
   mat->eta_min = 0.0f;
   mat->eta_zero = 0.0f;
   mat->P_min = 0.0f;
-  mat->CV = 4186.f;
+  mat->CV = 790.f;
 }
 INLINE static void set_Til_water(struct Til_params *mat,
                                  enum eos_planetary_material_id mat_id) {
@@ -119,7 +119,7 @@ INLINE static void set_Til_water(struct Til_params *mat,
   mat->eta_min = 0.925f;
   mat->eta_zero = 0.875f;
   mat->P_min = 0.0f;
-  mat->CV = 790.f;
+  mat->CV = 4186.f;
 }
 
 // Convert to internal units
@@ -424,10 +424,10 @@ INLINE static float Til_pressure_from_temperature(
 
   float u, P;
   
-  u = compute_fast_u_cold(density, mat->mat_id) + mat->CV * T
+  u = compute_fast_u_cold(density, mat->mat_id) + mat->CV * T;
   P = Til_pressure_from_internal_energy(density, u, mat);
   
-  return P
+  return P;
 }
 
 // gas_density_from_pressure_and_temperature
