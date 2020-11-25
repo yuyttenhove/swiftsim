@@ -1034,7 +1034,7 @@ void runner_do_ghost(struct runner *r, struct cell *c, int timer) {
       if (part_is_active(&parts[k], e)) {
         pid[count] = k;
         h_0[count] = parts[k].h;
-        left[count] = 0.f;
+        left[count] = hydro_h_min;
         right[count] = hydro_h_max;
         ++count;
       }
@@ -1074,6 +1074,9 @@ void runner_do_ghost(struct runner *r, struct cell *c, int timer) {
 
           /* Double h and try again */
           h_new = 2.f * h_old;
+
+          /* Improve the bisection bound as well */
+          left[i] = max(left[i], h_old);
 
         } else {
 
