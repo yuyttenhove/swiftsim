@@ -440,7 +440,7 @@ INLINE static float compute_fast_u_cold(float density,
 INLINE static float Til_temperature_from_internal_energy(
     float density, float u, const struct Til_params *mat) {
 
-    float u_cold, CV, T;
+    float u_cold, T;
     
     u_cold = compute_fast_u_cold(density, mat);
     
@@ -456,7 +456,7 @@ INLINE static float Til_pressure_from_temperature(
 
   float u, P;
   
-  u = compute_fast_u_cold(density, mat->mat_id) + mat->CV * T;
+  u = compute_fast_u_cold(density, mat) + mat->CV * T;
   P = Til_pressure_from_internal_energy(density, u, mat);
   
   return P;
@@ -470,8 +470,8 @@ INLINE static float Til_density_from_pressure_and_temperature(
     float rho_max = mat->rho_max;
     float rho_mid = (rho_min + rho_max)/2.f;
     float P_min, P_mid, P_max;
-    float P_des, T_des;
-    float tolerance = rho_min/10000000;
+    float P_des;
+    float tolerance = rho_min/10000;
     int counter = 0;
     int max_counter = 200;
     float f0, f2;
@@ -494,8 +494,8 @@ INLINE static float Til_density_from_pressure_and_temperature(
             P_mid = Til_pressure_from_temperature(rho_mid, T, mat);
             P_max = Til_pressure_from_temperature(rho_max, T, mat);
             
-            f0 = P_des - P_min
-            f2 = P_des - P_mid
+            f0 = P_des - P_min;
+            f2 = P_des - P_mid;
 
             if ((f0 * f2) > 0){
                 rho_min = rho_mid;
@@ -506,15 +506,13 @@ INLINE static float Til_density_from_pressure_and_temperature(
             rho_mid = (rho_min + rho_max) / 2.f;
             counter += 1;
         }
-        
-        return rho_mid;
     
     } else {
-        error("Error in Til_density_from_pressure_and_temperature")
+        error("Error in Til_density_from_pressure_and_temperature");
         return 0.f;
     }
     
-    return 0.f;
+    return rho_mid;
 }
 
 #endif /* SWIFT_TILLOTSON_EQUATION_OF_STATE_H */
