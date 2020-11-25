@@ -162,7 +162,8 @@ INLINE static void convert_units_Til(struct Til_params *mat,
     mat->A1_u_cold[i] *= units_cgs_conversion_factor(&si, UNIT_CONV_ENERGY_PER_UNIT_MASS);
   }
   
-  mat->CV *= units_cgs_conversion_factor(&si, UNIT_CONV_ENTROPY_PER_UNIT_MASS);
+  mat->CV *= units_cgs_conversion_factor(&si, UNIT_CONV_ENERGY_PER_UNIT_MASS);
+  // Entropy units don't work? using internal kelvin
   
   mat->rho_min_A1_u_cold *= units_cgs_conversion_factor(&si, UNIT_CONV_DENSITY);
   mat->rho_max_A1_u_cold *= units_cgs_conversion_factor(&si, UNIT_CONV_DENSITY);
@@ -183,7 +184,8 @@ INLINE static void convert_units_Til(struct Til_params *mat,
     mat->A1_u_cold[i] /= units_cgs_conversion_factor(us, UNIT_CONV_ENERGY_PER_UNIT_MASS);
   }
   
-  mat->CV /= units_cgs_conversion_factor(us, UNIT_CONV_ENTROPY_PER_UNIT_MASS);
+  mat->CV /= units_cgs_conversion_factor(us, UNIT_CONV_ENERGY_PER_UNIT_MASS);
+  // Entropy units don't work? using internal kelvin
   
   mat->rho_min_A1_u_cold /= units_cgs_conversion_factor(us, UNIT_CONV_DENSITY);
   mat->rho_max_A1_u_cold /= units_cgs_conversion_factor(us, UNIT_CONV_DENSITY);
@@ -446,6 +448,19 @@ INLINE static float Til_temperature_from_internal_energy(
     
     T = (u - u_cold)/(mat->CV);
     
+    /*
+		const float M = 5.9724e24;
+    const float L = 6.371e6;
+
+    printf("\n check %d, %.6g, %.6g, %.6g, %.6g, %.6g \n",
+    mat->mat_id,
+    density*M/(L*L*L),
+    u*L*L,
+    u_cold*L*L,
+    T,
+    mat->CV*L*L
+    );*/
+    
     return T;
     
 }
@@ -471,7 +486,7 @@ INLINE static float Til_density_from_pressure_and_temperature(
     float rho_mid = (rho_min + rho_max)/2.f;
     float P_min, P_mid, P_max;
     float P_des;
-    float tolerance = rho_min/10000;
+    float tolerance = 0.001*rho_min;
     int counter = 0;
     int max_counter = 200;
     float f0, f2;
@@ -488,7 +503,7 @@ INLINE static float Til_density_from_pressure_and_temperature(
     P_max = Til_pressure_from_temperature(rho_max, T, mat);
     
     if (P_des > P_min && P_des < P_max){
-        while (abs(rho_max - rho_min) > tolerance && counter < max_counter){
+        while ((rho_max - rho_min) > tolerance && counter < max_counter){
         
             P_min = Til_pressure_from_temperature(rho_min, T, mat);
             P_mid = Til_pressure_from_temperature(rho_mid, T, mat);
@@ -512,6 +527,17 @@ INLINE static float Til_density_from_pressure_and_temperature(
         return 0.f;
     }
     
+    /*
+    const float M = 5.9724e24;
+    const float L = 6.371e6;
+
+    printf("\n check %d, %.6g, %.6g, %.6g \n",
+    mat->mat_id,
+    P*M/L,
+    T,
+    rho_mid*M/L/L/L    
+    );
+    */
     return rho_mid;
 }
 
