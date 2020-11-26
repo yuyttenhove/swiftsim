@@ -544,6 +544,9 @@ double compute_SNII_dT_sample(
   double nu = rho_birth_phys * sfr_birth_phys / (m_initial * m_initial) /
       gamma_star;
 
+  /* Apply specified limit to nu */
+  nu = min(nu, props->SNII_maximum_nu);
+
   /* Normally, we want nu >= 1, but this limit can be disabled */
   if (!props->SNII_with_nu_below_one)
     nu = max(nu, 1.0);
@@ -2035,6 +2038,9 @@ void feedback_props_init(struct feedback_props* fp,
 
         fp->SNII_efficiency_eta_min = parser_get_param_float(
             params, "EAGLEFeedback:SNII_efficiency_eta_min");
+        fp->SNII_maximum_nu = parser_get_param_float(
+            params, "EAGLEFeedback:SNII_maximum_nu");
+
 
       } /* Ends section for v3 variable dT */
     } /* Ends section for v-2/3 variable dT*/

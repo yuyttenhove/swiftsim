@@ -332,6 +332,9 @@ struct feedback_props {
   /*! Switch to increase the sampling criterion according to a time scale */
   enum SNII_oversampling_criterion SNII_with_oversampling_timescale;
 
+  /*! Maximum allowed sampling suppression factor */
+  float SNII_maximum_nu;
+
   /* --- Parameters describing the dT_crit and dT_limit planes --- */
 
   /*! Minimum allowed dT_crit */
