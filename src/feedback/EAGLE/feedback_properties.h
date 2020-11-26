@@ -332,6 +332,35 @@ struct feedback_props {
   /*! Switch to increase the sampling criterion according to a time scale */
   enum SNII_oversampling_criterion SNII_with_oversampling_timescale;
 
+  /* --- Parameters describing the dT_crit and dT_limit planes --- */
+
+  /*! Minimum allowed dT_crit */
+  float SNII_dTcrit_floor;
+
+  /*! Density exponent for dT_crit plane */
+  float SNII_dTcrit_exp_nH;
+
+  /*! Metallicity exponent for dT_crit plane */
+  float SNII_dTcrit_exp_Z;
+
+  /*! Normalisation temperature for dT_crit plane */
+  float SNII_dTcrit_norm;
+
+  /*! Density exponent for dT_limit plane */
+  float SNII_dTlimit_exp_nH;
+
+  /*! Metallicity exponent for dT_limit plane */
+  float SNII_dTlimit_exp_Z;
+
+  /*! Minimum metallicity for dT_limit plane */
+  float SNII_dT_Zmin;
+
+  /*! Normalisation temperature for dT_limit plane */
+  float SNII_dTlimit_norm;
+
+  /*! Minimum allowed efficiency for compromise dT finding */
+  float SNII_efficiency_eta_min;
+
   /*! (Constant) temperature increase induced by SNe feedback */
   double SNe_deltaT_desired;
 
