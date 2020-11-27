@@ -234,7 +234,8 @@ void *runner_main(void *data) {
           else if (t->subtype == task_subtype_rt_transport)
             runner_doself2_branch_rt_transport(r, ci);
           else if (t->subtype == task_subtype_sink_compute_formation)
-            runner_doself_branch_sinks_compute_formation(r, ci);
+            runner_doself_branch_sinks_compute_formation(r, ci, t->flags,
+                                                         t->flags);
           else
             error("Unknown/invalid task subtype (%s).",
                   subtaskID_names[t->subtype]);
@@ -274,7 +275,8 @@ void *runner_main(void *data) {
           else if (t->subtype == task_subtype_rt_transport)
             runner_dopair2_branch_rt_transport(r, ci, cj);
           else if (t->subtype == task_subtype_sink_compute_formation)
-            runner_dopair_branch_sinks_compute_formation(r, ci, cj);
+            runner_dopair_branch_sinks_compute_formation(r, ci, cj, t->flags,
+                                                         t->flags);
           else
             error("Unknown/invalid task subtype (%s/%s).",
                   taskID_names[t->type], subtaskID_names[t->subtype]);
@@ -321,7 +323,9 @@ void *runner_main(void *data) {
           else if (t->subtype == task_subtype_rt_transport)
             runner_dosub_self2_rt_transport(r, ci, 1);
           else if (t->subtype == task_subtype_sink_compute_formation)
-            runner_dosub_self_sinks_compute_formation(r, ci, 1);
+            runner_dosub_self_sinks_compute_formation(
+                r, ci, /*recurse_below_h_max=*/t->flags, 1);
+
           else
             error("Unknown/invalid task subtype (%s/%s).",
                   taskID_names[t->type], subtaskID_names[t->subtype]);
@@ -370,7 +374,8 @@ void *runner_main(void *data) {
           else if (t->subtype == task_subtype_rt_transport)
             runner_dosub_pair2_rt_transport(r, ci, cj, 1);
           else if (t->subtype == task_subtype_sink_compute_formation)
-            runner_dosub_pair_sinks_compute_formation(r, ci, cj, 1);
+            runner_dosub_pair_sinks_compute_formation(
+                r, ci, cj, /*recurse_below_h_max=*/t->flags, 1);
           else
             error("Unknown/invalid task subtype (%s/%s).",
                   taskID_names[t->type], subtaskID_names[t->subtype]);
