@@ -49,6 +49,7 @@
 #include "part.h"
 #include "physical_constants.h"
 #include "space.h"
+#include "star_formation.h"
 #include "units.h"
 
 /* Maximum number of iterations for
