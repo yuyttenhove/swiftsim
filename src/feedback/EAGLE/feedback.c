@@ -1096,6 +1096,11 @@ INLINE static void compute_SNII_feedback(
           sp, ngb_gas_mass, num_gas_ngbs, ngb_nH_cgs, &SNe_energy,
           feedback_props, frac_SNII, h_pkpc_inv, dt,
           G_Newton, ngb_SFR, ngb_rho_phys, ngb_Z);
+    else if (feedback_props->SNII_use_variable_delta_T == 3)
+      delta_T = eagle_variable_feedback_temperature_change_v3(
+          sp, ngb_gas_mass, num_gas_ngbs, ngb_nH_cgs, &SNe_energy,
+          feedback_props, frac_SNII, h_pkpc_inv, dt,
+          G_Newton, ngb_SFR, ngb_rho_phys, ngb_Z);
     else
       error("Invalid choice of SNII_use_variable_delta_T (=%d).",
         feedback_props->SNII_use_variable_delta_T);
