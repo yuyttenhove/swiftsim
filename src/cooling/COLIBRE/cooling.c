@@ -1149,7 +1149,7 @@ void cooling_Hydrogen_reionization(const struct cooling_function_data *cooling,
 
     if (part_is_inhibited(p, s->e)) continue;
 
-    if (p->SFR <= 0.) {
+    if (star_formation_get_SFR(p, xp) == 0.f) {
       const float old_u = hydro_get_physical_internal_energy(p, xp, cosmo);
       const float new_u = old_u + extra_heat;
 

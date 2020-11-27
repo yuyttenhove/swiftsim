@@ -936,10 +936,7 @@ INLINE static void starformation_print_backend(
  */
 INLINE static float star_formation_get_SFR(const struct part* p,
                                            const struct xpart* xp) {
-  if (xp->sf_data.SFR <= 0.)
-    return 0.f;
-  else
-    return xp->sf_data.SFR;
+  return max(p->SFR, 0.f);
 }
 
 /**
