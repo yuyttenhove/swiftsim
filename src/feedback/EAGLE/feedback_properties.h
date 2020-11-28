@@ -335,6 +335,9 @@ struct feedback_props {
   /*! Maximum allowed sampling suppression factor */
   float SNII_maximum_nu;
 
+  /*! Set omega to enforce sampling, rather than energy conservation? */
+  int SNII_omega_by_sampling;
+
   /* --- Parameters describing the dT_crit and dT_limit planes --- */
 
   /*! Minimum allowed dT_crit */

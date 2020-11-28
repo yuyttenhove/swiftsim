@@ -228,7 +228,7 @@ static INLINE float entropy_floor_gas_temperature(
      * (i) it is below Jeans but we don't want to use a higher Jeans floor;
      * (ii) it is above Jeans and we do want to use a higher Cool floor */
     if ((temperature_Cool < temperature && !props->Jeans_use_above_Cool) ||
-        (temperature_Cool > temperature && props->Cool_use_above_Jeans))  
+        (temperature_Cool > temperature && props->Cool_use_above_Jeans))
       temperature = max(temperature_Cool, 0.);
   }
 

@@ -721,7 +721,9 @@ double eagle_variable_feedback_temperature_change_v3(
     /* Compromise dT is guaranteed to be within partly efficient region,
      * and may be much higher than dT_sample. To avoid boosting the energy
      * too much, limit omega to the specified maximum. */
-    omega = min(dT / dT_sample, omega_max); 
+    omega = (props->SNII_omega_by_sampling) ? dT / dT_sample :
+        1. / SN_eta(dT, dT_crit, dT_limit, zeta);
+    omega = min(omega, omega_max); 
   }
 
   /* Apply maximum dT ceiling, correcting for expected cooling losses */
@@ -2045,6 +2047,8 @@ void feedback_props_init(struct feedback_props* fp,
             params, "EAGLEFeedback:SNII_efficiency_eta_min");
         fp->SNII_maximum_nu = parser_get_param_float(
             params, "EAGLEFeedback:SNII_maximum_nu");
+        fp->SNII_omega_by_sampling = parser_get_param_int(
+            params, "EAGLEFeedback:SNII_omega_by_sampling");
 
 
       } /* Ends section for v3 variable dT */
