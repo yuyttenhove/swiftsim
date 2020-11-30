@@ -772,6 +772,9 @@ double eagle_variable_feedback_temperature_change_v3(
   sp->dT_limit = (float) dT_limit;
   sp->eta = (float) SN_eta(dT, dT_crit, dT_limit, zeta);  
 
+  sp->ngb_rho = (float) ngb_rho_phys;
+  sp->ngb_Z = (float) ngb_Z;
+
   sp->omega_min = (float) min(sp->omega_min, omega);
   sp->omega_max = (float) max(sp->omega_max, omega);
 
