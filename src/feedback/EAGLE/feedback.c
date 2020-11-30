@@ -453,7 +453,8 @@ double compute_SNII_dT_crit(const double ngb_n,
   /* Finally, apply a density and metallicity dependent additional floor */
   const double dT_crit_plane =
       pow(ngb_n, props->SNII_dTcrit_exp_nH) *
-      pow(ngb_Z, props->SNII_dTcrit_exp_Z) * props->SNII_dTcrit_norm;
+      pow(ngb_Z / props->Z_Sol, props->SNII_dTcrit_exp_Z) *
+      props->SNII_dTcrit_norm;
   dT_crit = max(dT_crit, dT_crit_plane);
 
   return dT_crit;
@@ -470,7 +471,7 @@ double compute_SNII_dT_limit(const double ngb_n,
                              const double ngb_Z,
                              const struct feedback_props* props) {
 
-  const double Z = max(ngb_Z, props->SNII_dT_Zmin);
+  const double Z = max(ngb_Z / props->Z_Sol, props->SNII_dT_Zmin);
   const double dT_limit =
       pow(ngb_n, props->SNII_dTlimit_exp_nH) *
       pow(Z, props->SNII_dTlimit_exp_Z) * props->SNII_dTlimit_norm;
@@ -2058,7 +2059,8 @@ void feedback_props_init(struct feedback_props* fp,
         fp->SNII_maximum_nu = parser_get_param_float(
             params, "EAGLEFeedback:SNII_maximum_nu");
         fp->SNII_omega_by_sampling = parser_get_param_int(
-            params, "EAGLEFeedback:SNII_omega_by_sampling");
+           params, "EAGLEFeedback:SNII_omega_by_sampling");
+        fp->Z_Sol = parser_get_param_float(params, "EAGLEFeedback:Z_Sol");
 
 
       } /* Ends section for v3 variable dT */

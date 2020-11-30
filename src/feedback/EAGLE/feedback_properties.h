@@ -340,6 +340,9 @@ struct feedback_props {
 
   /* --- Parameters describing the dT_crit and dT_limit planes --- */
 
+  /*! Solar metallicity value */
+  float Z_Sol;
+
   /*! Minimum allowed dT_crit */
   float SNII_dTcrit_floor;
 
