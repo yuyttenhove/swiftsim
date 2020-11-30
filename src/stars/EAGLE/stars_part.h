@@ -114,6 +114,8 @@ struct spart {
 
   float omega;
   float eta;
+  float ngb_rho;
+  float ngb_Z;
 
   /*! Sampling reduction factor nu */
   float nu;

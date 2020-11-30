@@ -120,7 +120,7 @@ INLINE static void stars_write_particles(const struct spart *sparts,
                                          const int with_cosmology) {
 
   /* Say how much we want to write */
-  *num_fields = 35;
+  *num_fields = 37;
 
   /* List what we want to write */
   list[0] = io_make_output_field_convert_spart(
@@ -328,6 +328,18 @@ INLINE static void stars_write_particles(const struct spart *sparts,
       sparts, eta,
       "Model energy efficiency in last step in which the stars "
       "were eligible for feedback (but may not have caused any).");
+
+  list[35] = io_make_output_field(
+      "FeedbackLastDensities", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f,
+      sparts, ngb_rho,
+      "Ambient gas density in the last step in which the stars were "
+      "eligible for feedback.");
+
+  list[36] = io_make_output_field(
+      "FeedbackLastZ", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f,
+      sparts, ngb_Z,
+      "Ambient gas metallicity in the last step in which the stars were "
+      "eligible for feedback.");
 }
 
 /**
