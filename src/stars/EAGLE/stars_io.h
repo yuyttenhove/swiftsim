@@ -120,7 +120,7 @@ INLINE static void stars_write_particles(const struct spart *sparts,
                                          const int with_cosmology) {
 
   /* Say how much we want to write */
-  *num_fields = 29;
+  *num_fields = 35;
 
   /* List what we want to write */
   list[0] = io_make_output_field_convert_spart(
@@ -292,6 +292,42 @@ INLINE static void stars_write_particles(const struct spart *sparts,
       sparts, feedback_Z_max,
       "Maximum ambient metal mass fractions during the period of SNII "
       "feedback.");
+
+  list[29] = io_make_output_field(
+      "FeedbackLastDeltaT", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f,
+      sparts, delta_T,
+      "Feedback temperature increase in last step in which the stars were "
+      "eligible for feedback (but may not have caused any).");
+
+  list[30] = io_make_output_field(
+      "FeedbackLastDTSample", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f,
+      sparts, dT_sample,
+      "Target dT for optimal sampling in last step in which the stars were "
+      "eligible for feedback (but may not have caused any).");
+
+  list[31] = io_make_output_field(
+      "FeedbackLastDTCrit", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f,
+      sparts, dT_crit,
+      "Target dT for optimal energy efficiency in last step in which the stars "
+      "were eligible for feedback (but may not have caused any).");
+
+  list[32] = io_make_output_field(
+      "FeedbackLastDTLimit", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f,
+      sparts, dT_limit,
+      "Minimum effective dT in last step in which the stars "
+      "were eligible for feedback (but may not have caused any).");
+
+  list[33] = io_make_output_field(
+      "FeedbackLastOmega", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f,
+      sparts, omega,
+      "Ad-hoc energy boost factor in last step in which the stars "
+      "were eligible for feedback (but may not have caused any).");
+
+  list[34] = io_make_output_field(
+      "FeedbackLastEta", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f,
+      sparts, eta,
+      "Model energy efficiency in last step in which the stars "
+      "were eligible for feedback (but may not have caused any).");
 }
 
 /**

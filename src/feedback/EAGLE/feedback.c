@@ -765,6 +765,13 @@ double eagle_variable_feedback_temperature_change_v3(
   sp->T_sampling_fraction_max = (float) max(sp->T_sampling_fraction_max,
                                     sampling_fraction);
 
+  sp->delta_T = (float) dT;
+  sp->dT_crit = (float) dT_crit;
+  sp->dT_sample = (float) dT_sample;
+  sp->omega = (float) omega;
+  sp->dT_limit = (float) dT_limit;
+  sp->eta = (float) SN_eta(dT, dT_crit, dT_limit, zeta);  
+
   sp->omega_min = (float) min(sp->omega_min, omega);
   sp->omega_max = (float) max(sp->omega_max, omega);
 
