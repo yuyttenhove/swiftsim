@@ -223,7 +223,6 @@ void hydro_exact_density_compute_mapper(void *map_data, int nr_parts,
 #endif
 }
 
-
 /**
  * @brief Compute the exact interactions for a selection of gas particles
  * by running a brute force loop over all the particles in the simulation.
