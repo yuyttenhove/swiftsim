@@ -146,6 +146,9 @@ struct spart {
   /*! Star formation rate of the parent gas particle */
   float birth_star_formation_rate;
 
+  /*! Feedback efficiency factor at low birth SFR (<= 1) */
+  float f_SN_SF;
+
   /*! Total number of (expected) feedback heating events so far */
   float expected_number_of_heated_particles;
 
