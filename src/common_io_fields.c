@@ -34,6 +34,7 @@
 #include "fof_io.h"
 #include "gravity_io.h"
 #include "hydro_io.h"
+#include "particle_splitting.h"
 #include "rt_io.h"
 #include "sink_io.h"
 #include "star_formation_io.h"
@@ -91,6 +92,8 @@ int io_get_ptype_fields(const int ptype, struct io_props* list,
 
     case swift_type_gas:
       hydro_write_particles(NULL, NULL, list, &num_fields);
+      num_fields += particle_splitting_write_particles(
+          NULL, NULL, list + num_fields, with_cosmology);
       num_fields += chemistry_write_particles(NULL, NULL, list + num_fields,
                                               with_cosmology);
       num_fields +=
@@ -122,6 +125,8 @@ int io_get_ptype_fields(const int ptype, struct io_props* list,
 
     case swift_type_stars:
       stars_write_particles(NULL, list, &num_fields, with_cosmology);
+      num_fields +=
+          particle_splitting_write_sparticles(NULL, list + num_fields);
       num_fields += chemistry_write_sparticles(NULL, list + num_fields);
       num_fields +=
           tracers_write_sparticles(NULL, list + num_fields, with_cosmology);
@@ -138,6 +143,8 @@ int io_get_ptype_fields(const int ptype, struct io_props* list,
 
     case swift_type_black_hole:
       black_holes_write_particles(NULL, list, &num_fields, with_cosmology);
+      num_fields +=
+          particle_splitting_write_bparticles(NULL, list + num_fields);
       num_fields += chemistry_write_bparticles(NULL, list + num_fields);
       if (with_fof) num_fields += fof_write_bparts(NULL, list + num_fields);
       if (with_stf)
@@ -159,10 +166,11 @@ int io_get_ptype_fields(const int ptype, struct io_props* list,
  * @param with_cosmology Ran with cosmology?
  * @param with_fof Are we running with on-the-fly Fof?
  * @param with_stf Are we running with on-the-fly structure finder?
+ * @param verbose The verbose level
  */
 void io_prepare_output_fields(struct output_options* output_options,
                               const int with_cosmology, const int with_fof,
-                              const int with_stf) {
+                              const int with_stf, int verbose) {
 
   const int MAX_NUM_PTYPE_FIELDS = 100;
 
@@ -206,8 +214,8 @@ void io_prepare_output_fields(struct output_options* output_options,
 
       /* Internally also verifies that the default level is allowed */
       const enum lossy_compression_schemes compression_level_current_default =
-          output_options_get_ptype_default_compression(params, section_name,
-                                                       (enum part_type)ptype);
+          output_options_get_ptype_default_compression(
+              params, section_name, (enum part_type)ptype, verbose);
 
       if (compression_level_current_default == compression_do_not_write) {
         ptype_default_write_status[ptype] = 0;

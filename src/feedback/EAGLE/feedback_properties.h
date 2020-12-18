@@ -417,6 +417,12 @@ struct feedback_props {
    * feedback time? */
   int use_birth_Z_for_f_th;
 
+  /*! Switch to activate SFR-dependent SN feedback energy reduction */
+  int SNII_with_SFT_reduction;
+
+  /*! Star formation time scale below which feedback energy is reduced */
+  float SNII_threshold_SF_timescale;
+
   /* ------------ Enrichment sampling properties ------------ */
 
   /*! Star age above which the enrichment will be downsampled (in internal

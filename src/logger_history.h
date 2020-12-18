@@ -26,6 +26,7 @@
 
 /* Local include */
 #include "error.h"
+#include "lock.h"
 #include "part_type.h"
 
 #if defined(WITH_LOGGER)
@@ -65,6 +66,9 @@ struct logger_history {
 
   /* Buffer containing the particles */
   struct logger_index_data *data;
+
+  /*! Spin lock for logging events. */
+  swift_lock_type lock;
 };
 
 void logger_history_init(struct logger_history *hist);

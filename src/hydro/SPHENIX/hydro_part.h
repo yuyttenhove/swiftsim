@@ -30,6 +30,8 @@
 #include "chemistry_struct.h"
 #include "cooling_struct.h"
 #include "feedback_struct.h"
+#include "logger.h"
+#include "particle_splitting_struct.h"
 #include "pressure_floor_struct.h"
 #include "star_formation_struct.h"
 #include "timestep_limiter_struct.h"
@@ -59,6 +61,9 @@ struct xpart {
   /*! Internal energy at the last full step. */
   float u_full;
 
+  /*! Additional data used to record particle splits */
+  struct particle_splitting_data split_data;
+
   /*! Additional data used to record cooling information */
   struct cooling_xpart_data cooling_data;
 
@@ -70,6 +75,11 @@ struct xpart {
 
   /* Additional data used by the feedback */
   struct feedback_part_data feedback_data;
+
+#ifdef WITH_LOGGER
+  /* Additional data for the particle logger */
+  struct logger_part_data logger_data;
+#endif
 
 } SWIFT_STRUCT_ALIGN;
 

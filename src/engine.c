@@ -71,6 +71,7 @@
 #include "hydro.h"
 #include "line_of_sight.h"
 #include "logger.h"
+#include "logger_io.h"
 #include "map.h"
 #include "memuse.h"
 #include "minmax.h"
@@ -1349,7 +1350,7 @@ int engine_prepare(struct engine *e) {
   /* Perform FOF search to seed black holes. Only if there is a rebuild coming
    * and no repartitioing. */
   if (e->policy & engine_policy_fof && e->forcerebuild && !e->forcerepart &&
-      e->run_fof) {
+      e->run_fof && e->fof_properties->seed_black_holes_enabled) {
 
     /* Let's start by drifting everybody to the current time */
     engine_drift_all(e, /*drift_mpole=*/0);
@@ -1742,8 +1743,13 @@ void engine_init_particles(struct engine *e, int flag_entropy_ICs,
 #ifdef WITH_LOGGER
   if (e->policy & engine_policy_logger) {
     /* Mark the first time step in the particle logger file. */
-    logger_log_timestamp(e->logger, e->ti_current, e->time,
-                         &e->logger->timestamp_offset);
+    if (e->policy & engine_policy_cosmology) {
+      logger_log_timestamp(e->logger, e->ti_current, e->cosmology->a,
+                           &e->logger->timestamp_offset);
+    } else {
+      logger_log_timestamp(e->logger, e->ti_current, e->time,
+                           &e->logger->timestamp_offset);
+    }
     /* Make sure that we have enough space in the particle logger file
      * to store the particles in current time step. */
     logger_ensure_size(e->logger, s->nr_parts, s->nr_gparts, s->nr_sparts);
@@ -1818,8 +1824,8 @@ void engine_init_particles(struct engine *e, int flag_entropy_ICs,
     gravity_exact_force_compute(e->s, e);
 #endif
 
-  scheduler_write_dependencies(&e->sched, e->verbose);
-  if (e->nodeID == 0) scheduler_write_task_level(&e->sched);
+  scheduler_write_dependencies(&e->sched, e->verbose, e->step);
+  if (e->nodeID == 0) scheduler_write_task_level(&e->sched, e->step);
 
   /* Run the 0th time-step */
   TIMER_TIC2;
@@ -2117,8 +2123,13 @@ void engine_step(struct engine *e) {
 #ifdef WITH_LOGGER
   if (e->policy & engine_policy_logger) {
     /* Mark the current time step in the particle logger file. */
-    logger_log_timestamp(e->logger, e->ti_current, e->time,
-                         &e->logger->timestamp_offset);
+    if (e->policy & engine_policy_cosmology) {
+      logger_log_timestamp(e->logger, e->ti_current, e->cosmology->a,
+                           &e->logger->timestamp_offset);
+    } else {
+      logger_log_timestamp(e->logger, e->ti_current, e->time,
+                           &e->logger->timestamp_offset);
+    }
     /* Make sure that we have enough space in the particle logger file
      * to store the particles in current time step. */
     logger_ensure_size(e->logger, e->s->nr_parts, e->s->nr_gparts,
@@ -2226,6 +2237,16 @@ void engine_step(struct engine *e) {
   double start_systime = 0.0;
   clocks_get_cputimes_used(&start_usertime, &start_systime);
 #endif
+
+  /* Write the dependencies */
+  if (e->sched.frequency_dependency != 0 &&
+      e->step % e->sched.frequency_dependency == 0)
+    scheduler_write_dependencies(&e->sched, e->verbose, e->step);
+
+  /* Write the task levels */
+  if (e->sched.frequency_task_levels != 0 &&
+      e->step % e->sched.frequency_task_levels == 0)
+    scheduler_write_task_level(&e->sched, e->step);
 
   /* Start all the tasks. */
   TIMER_TIC;
@@ -2728,6 +2749,8 @@ void engine_init(struct engine *e, struct space *s, struct swift_params *params,
       parser_get_opt_param_int(params, "Snapshots:int_time_label_on", 0);
   e->snapshot_invoke_stf =
       parser_get_opt_param_int(params, "Snapshots:invoke_stf", 0);
+  e->snapshot_invoke_fof =
+      parser_get_opt_param_int(params, "Snapshots:invoke_fof", 0);
   e->snapshot_units = (struct unit_system *)malloc(sizeof(struct unit_system));
   units_init_default(e->snapshot_units, params, "Snapshots", internal_units);
   e->snapshot_output_count = 0;
@@ -2863,6 +2886,9 @@ void engine_init(struct engine *e, struct space *s, struct swift_params *params,
         parser_get_opt_param_double(params, "FOF:scale_factor_first", 0.1);
     e->delta_time_fof =
         parser_get_opt_param_double(params, "FOF:delta_time", -1.);
+  } else {
+    if (e->snapshot_invoke_fof)
+      error("Error: Must run with --fof if Snapshots::invoke_fof=1\n");
   }
 
   /* Initialize the star formation history structure */
@@ -2912,7 +2938,7 @@ void engine_recompute_displacement_constraint(struct engine *e) {
   /* Get the cosmological information */
   const int with_cosmology = e->policy & engine_policy_cosmology;
   const struct cosmology *cosmo = e->cosmology;
-  const float Om = cosmo->Omega_m;
+  const float Ocdm = cosmo->Omega_cdm;
   const float Ob = cosmo->Omega_b;
   const float H0 = cosmo->H0;
   const float a = cosmo->a;
@@ -2995,7 +3021,7 @@ void engine_recompute_displacement_constraint(struct engine *e) {
       const float min_mass_dm = min_mass[1];
 
       /* Inter-particle sepration for the DM */
-      const float d_dm = cbrtf(min_mass_dm / ((Om - Ob) * rho_crit0));
+      const float d_dm = cbrtf(min_mass_dm / (Ocdm * rho_crit0));
 
       /* RMS peculiar motion for the DM */
       const float rms_vel_dm = vel_norm_dm / N_dm;

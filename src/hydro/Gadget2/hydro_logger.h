@@ -19,6 +19,7 @@
 #ifndef SWIFT_GADGET2_HYDRO_LOGGER_H
 #define SWIFT_GADGET2_HYDRO_LOGGER_H
 
+#include "hydro.h"
 #include "logger_io.h"
 
 #ifdef WITH_LOGGER
@@ -40,9 +41,7 @@ enum hydro_logger_fields {
 };
 
 /* Name of each possible mask. */
-static const char *hydro_logger_field_names[hydro_logger_field_count] = {
-    "Coordinates",      "Velocities", "Accelerations", "Masses",
-    "SmoothingLengths", "Entropies",  "ParticleIDs",   "Densities"};
+extern const char *hydro_logger_field_names[hydro_logger_field_count];
 
 /**
  * @brief Initialize the logger.
@@ -180,9 +179,14 @@ INLINE static char *hydro_logger_write_particle(
 
     /* Compute the acceleration due to hydro and gravity */
     float *acc = (float *)buff;
-    acc[0] = p->a_hydro[0] + p->gpart->a_grav[0];
-    acc[1] = p->a_hydro[1] + p->gpart->a_grav[1];
-    acc[2] = p->a_hydro[2] + p->gpart->a_grav[2];
+    acc[0] = p->a_hydro[0];
+    acc[1] = p->a_hydro[1];
+    acc[2] = p->a_hydro[2];
+    if (p->gpart) {
+      acc[0] += p->gpart->a_grav[0];
+      acc[1] += p->gpart->a_grav[1];
+      acc[2] += p->gpart->a_grav[2];
+    }
 
     memcpy(buff, acc, 3 * sizeof(float));
     buff += 3 * sizeof(float);

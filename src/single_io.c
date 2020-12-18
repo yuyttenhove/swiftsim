@@ -55,6 +55,7 @@
 #include "output_options.h"
 #include "part.h"
 #include "part_type.h"
+#include "particle_splitting.h"
 #include "rt_io.h"
 #include "sink_io.h"
 #include "star_formation_io.h"
@@ -1013,6 +1014,8 @@ void write_output_single(struct engine* e,
           /* No inhibted particles: easy case */
           N = Ngas;
           hydro_write_particles(parts, xparts, list, &num_fields);
+          num_fields += particle_splitting_write_particles(
+              parts, xparts, list + num_fields, with_cosmology);
           num_fields += chemistry_write_particles(
               parts, xparts, list + num_fields, with_cosmology);
           if (with_cooling || with_temperature) {
@@ -1056,6 +1059,8 @@ void write_output_single(struct engine* e,
           /* Select the fields to write */
           hydro_write_particles(parts_written, xparts_written, list,
                                 &num_fields);
+          num_fields += particle_splitting_write_particles(
+              parts_written, xparts_written, list + num_fields, with_cosmology);
           num_fields += chemistry_write_particles(
               parts_written, xparts_written, list + num_fields, with_cosmology);
           if (with_cooling || with_temperature) {
@@ -1202,6 +1207,8 @@ void write_output_single(struct engine* e,
           /* No inhibited particles: easy case */
           N = Nstars;
           stars_write_particles(sparts, list, &num_fields, with_cosmology);
+          num_fields +=
+              particle_splitting_write_sparticles(sparts, list + num_fields);
           num_fields += chemistry_write_sparticles(sparts, list + num_fields);
           num_fields += tracers_write_sparticles(sparts, list + num_fields,
                                                  with_cosmology);
@@ -1234,6 +1241,8 @@ void write_output_single(struct engine* e,
           /* Select the fields to write */
           stars_write_particles(sparts_written, list, &num_fields,
                                 with_cosmology);
+          num_fields += particle_splitting_write_sparticles(sparts_written,
+                                                            list + num_fields);
           num_fields +=
               chemistry_write_sparticles(sparts_written, list + num_fields);
           num_fields += tracers_write_sparticles(
@@ -1260,6 +1269,8 @@ void write_output_single(struct engine* e,
           N = Nblackholes;
           black_holes_write_particles(bparts, list, &num_fields,
                                       with_cosmology);
+          num_fields +=
+              particle_splitting_write_bparticles(bparts, list + num_fields);
           num_fields += chemistry_write_bparticles(bparts, list + num_fields);
           if (with_fof) {
             num_fields += fof_write_bparts(bparts, list + num_fields);
@@ -1285,6 +1296,8 @@ void write_output_single(struct engine* e,
           /* Select the fields to write */
           black_holes_write_particles(bparts_written, list, &num_fields,
                                       with_cosmology);
+          num_fields += particle_splitting_write_bparticles(bparts_written,
+                                                            list + num_fields);
           num_fields +=
               chemistry_write_bparticles(bparts_written, list + num_fields);
           if (with_fof) {
@@ -1306,7 +1319,7 @@ void write_output_single(struct engine* e,
     const enum lossy_compression_schemes compression_level_current_default =
         output_options_get_ptype_default_compression(
             output_options->select_output, current_selection_name,
-            (enum part_type)ptype);
+            (enum part_type)ptype, e->verbose);
 
     /* Write everything that is not cancelled */
     int num_fields_written = 0;
@@ -1316,7 +1329,8 @@ void write_output_single(struct engine* e,
       const enum lossy_compression_schemes compression_level =
           output_options_get_field_compression(
               output_options, current_selection_name, list[i].name,
-              (enum part_type)ptype, compression_level_current_default);
+              (enum part_type)ptype, compression_level_current_default,
+              e->verbose);
 
       if (compression_level != compression_do_not_write) {
         write_array_single(e, h_grp, fileName, xmfFile, partTypeGroupName,

@@ -1089,11 +1089,20 @@ INLINE static void compute_SNII_feedback(
     /* Abort if there are no SNe exploding this step */
     if (N_SNe <= 0.) return;
 
+    /* Experimental feedback reduction factor for stars born at low SFR */
+    if (feedback_props->SNII_with_SFT_reduction) {
+      const double t_sf = sp->mass_init / sp->birth_star_formation_rate;
+      sp->f_SN_SF =
+          min(feedback_props->SNII_threshold_SF_timescale / t_sf, 1.0);
+    } else {
+      sp->f_SN_SF = 1.0;
+    }
+
     /* Conversion factor from T to internal energy */
     const double conv_factor = feedback_props->temp_to_u_factor;
 
     /* Heating temperature increase */
-    double SNe_energy = f_E * E_SNe * N_SNe;
+    double SNe_energy = f_E * E_SNe * N_SNe * sp->f_SN_SF;
     double critical_fraction = -FLT_MAX;
     double sampling_fraction = -FLT_MAX;
     double delta_T = -1;
@@ -1941,6 +1950,14 @@ void feedback_props_init(struct feedback_props* fp,
       parser_get_param_double(params, "EAGLEFeedback:SNII_min_mass_Msun");
   const double SNII_max_mass_msun =
       parser_get_param_double(params, "EAGLEFeedback:SNII_max_mass_Msun");
+
+  fp->SNII_with_SFT_reduction =
+      parser_get_param_int(params, "EAGLEFeedback:SNII_with_SFT_reduction");
+  if (fp->SNII_with_SFT_reduction) {
+      fp->SNII_threshold_SF_timescale = parser_get_param_float(
+          params, "EAGLEFeedback:SNII_threshold_SF_timescale_Myr")
+          * phys_const->const_year * 1e6;
+  }
 
   /* Heating temperature parameters */
   fp->SNII_use_variable_delta_T =

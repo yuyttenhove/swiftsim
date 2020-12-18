@@ -132,37 +132,6 @@ void scheduler_addunlock(struct scheduler *s, struct task *ta,
   atomic_inc(&s->completed_unlock_writes);
 }
 
-/**
- * @brief compute the number of similar dependencies
- *
- * @param s The #scheduler
- * @param ta The #task
- * @param tb The dependent #task
- *
- * @return Number of dependencies
- */
-int scheduler_get_number_relation(const struct scheduler *s,
-                                  const struct task *ta,
-                                  const struct task *tb) {
-  int count = 0;
-
-  /* loop over all tasks */
-  for (int i = 0; i < s->nr_tasks; i++) {
-    const struct task *ta_tmp = &s->tasks[i];
-
-    /* and their dependencies */
-    for (int j = 0; j < ta->nr_unlock_tasks; j++) {
-      const struct task *tb_tmp = ta->unlock_tasks[j];
-
-      if (ta->type == ta_tmp->type && ta->subtype == ta_tmp->subtype &&
-          tb->type == tb_tmp->type && tb->subtype == tb_tmp->subtype) {
-        count += 1;
-      }
-    }
-  }
-  return count;
-}
-
 /* Conservative number of dependencies per task type */
 #define MAX_NUMBER_DEP 128
 
@@ -400,13 +369,14 @@ void task_dependency_sum(void *in_p, void *out_p, int *len,
 /**
  * @brief Write a csv file with the task dependencies.
  *
- * Run plot_task_dependencies.sh for an example of how to use it
+ * Run plot_task_dependencies.py for an example of how to use it
  * to generate the figure.
  *
  * @param s The #scheduler we are working in.
  * @param verbose Are we verbose about this?
+ * @param step The current step number.
  */
-void scheduler_write_dependencies(struct scheduler *s, int verbose) {
+void scheduler_write_dependencies(struct scheduler *s, int verbose, int step) {
   const ticks tic = getticks();
 
   /* Number of possible relations between tasks */
@@ -443,6 +413,10 @@ void scheduler_write_dependencies(struct scheduler *s, int verbose) {
   /* loop over all tasks */
   for (int i = 0; i < s->nr_tasks; i++) {
     const struct task *ta = &s->tasks[i];
+
+    /* Are we using this task?
+     * For the 0-step, we wish to show all the tasks (even the inactives). */
+    if (step != 0 && ta->skip) continue;
 
     /* Current index */
     const int ind = ta->type * task_subtype_count + ta->subtype;
@@ -483,6 +457,10 @@ void scheduler_write_dependencies(struct scheduler *s, int verbose) {
     for (int j = 0; j < ta->nr_unlock_tasks; j++) {
       const struct task *tb = ta->unlock_tasks[j];
 
+      /* Are we using this task?
+       * For the 0-step, we wish to show all the tasks (even the inactive). */
+      if (step != 0 && tb->skip) continue;
+
       const struct cell *ci_b = tb->ci;
       const struct cell *cj_b = tb->cj;
       const int is_ci_b_top =
@@ -506,8 +484,7 @@ void scheduler_write_dependencies(struct scheduler *s, int verbose) {
           cur->implicit_out[k] = tb->implicit;
 
           /* statistics */
-          const int count = scheduler_get_number_relation(s, ta, tb);
-          cur->number_link[k] = count;
+          cur->number_link[k] = 1;
           cur->number_rank[k] = 1;
 
           /* Are we dealing with a task at the top level? */
@@ -529,6 +506,9 @@ void scheduler_write_dependencies(struct scheduler *s, int verbose) {
         /* already written */
         if (cur->type_out[k] == tb->type &&
             cur->subtype_out[k] == tb->subtype) {
+
+          /* Increase the number of link. */
+          cur->number_link[k] += 1;
 
           /* Are we dealing with a task at the top level? */
           if (!(is_ci_b_top && is_cj_b_top)) {
@@ -592,7 +572,8 @@ void scheduler_write_dependencies(struct scheduler *s, int verbose) {
 
   if (s->nodeID == 0) {
     /* Create file */
-    const char *filename = "dependency_graph.csv";
+    char filename[50];
+    sprintf(filename, "dependency_graph_%i.csv", step);
     FILE *f = fopen(filename, "w");
     if (f == NULL) error("Error opening dependency graph file.");
 
@@ -665,6 +646,31 @@ void scheduler_write_dependencies(struct scheduler *s, int verbose) {
     /* Close the file */
     fclose(f);
   }
+
+#if defined(SWIFT_DEBUG_CHECKS)
+  /* Check if we have the correct number of dependencies. */
+  if (step == 0) {
+    int count_total = 0;
+    for (int i = 0; i < nber_tasks; i++) {
+      for (int j = 0; j < MAX_NUMBER_DEP; j++) {
+        if (task_dep[i].number_link[j] != -1)
+          count_total += task_dep[i].number_link[j];
+      }
+    }
+
+    /* Get the number of unlocks from all the ranks */
+    int nr_unlocks = s->nr_unlocks;
+#ifdef WITH_MPI
+    MPI_Allreduce(MPI_IN_PLACE, &nr_unlocks, 1, MPI_INT, MPI_SUM,
+                  MPI_COMM_WORLD);
+#endif
+
+    if (s->nodeID == 0 && count_total != nr_unlocks) {
+      error("Not all the dependencies were found: %i != %i", count_total,
+            nr_unlocks);
+    }
+  }
+#endif
 
   /* Be clean */
   free(task_dep);
@@ -2483,9 +2489,16 @@ void scheduler_free_tasks(struct scheduler *s) {
 }
 
 /**
- * @brief write down each task level
+ * @brief write down the levels and the number of tasks at that level.
+ *
+ * Run plot_task_level.py for an example of how to use it
+ * to generate the figure.
+ *
+ * @param s The #scheduler we are working in.
+ * @param step The current step number.
  */
-void scheduler_write_task_level(const struct scheduler *s) {
+void scheduler_write_task_level(const struct scheduler *s, int step) {
+
   /* init */
   const int max_depth = 30;
   const struct task *tasks = s->tasks;
@@ -2513,8 +2526,18 @@ void scheduler_write_task_level(const struct scheduler *s) {
     }
   }
 
+  /* Generate filename */
+  char filename[200] = "task_level_\0";
+#ifdef WITH_MPI
+  char rankstr[6];
+  sprintf(rankstr, "%04d_", s->nodeID);
+  strcat(filename, rankstr);
+#endif
+  char stepstr[100];
+  sprintf(stepstr, "%d.txt", step);
+  strcat(filename, stepstr);
+
   /* Open file */
-  char filename[200] = "task_level.txt";
   FILE *f = fopen(filename, "w");
   if (f == NULL) error("Error opening task level file.");
 

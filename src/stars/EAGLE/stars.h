@@ -123,6 +123,7 @@ __attribute__((always_inline)) INLINE static void stars_first_init_spart(
   sp->number_of_heated_particles = 0;
   sp->expected_number_of_heated_particles = 0.;
   sp->number_of_SNII_events = 0;
+  sp->f_SN_SF = -1.f;
 
   if (stars_properties->overwrite_birth_time)
     sp->birth_time = stars_properties->spart_first_init_birth_time;
