@@ -63,6 +63,7 @@ include_HEADERS += feedback.h feedback_struct.h feedback_properties.h
 include_HEADERS += space_unique_id.h line_of_sight.h io_compression.h
 include_HEADERS += rays.h rays_struct.h
 include_HEADERS += logger_history.h
+include_HEADERS += particle_splitting.h particle_splitting_struct.h
 
 # source files for EAGLE cooling
 QLA_COOLING_SOURCES =
@@ -173,7 +174,7 @@ nobase_noinst_HEADERS += hydro/AnarchyPU/hydro.h hydro/AnarchyPU/hydro_iact.h hy
 nobase_noinst_HEADERS += hydro/AnarchyPU/hydro_debug.h hydro/AnarchyPU/hydro_part.h 
 nobase_noinst_HEADERS += hydro/AnarchyPU/hydro_parameters.h 
 nobase_noinst_HEADERS += hydro/SPHENIX/hydro.h hydro/SPHENIX/hydro_iact.h hydro/SPHENIX/hydro_io.h 
-nobase_noinst_HEADERS += hydro/SPHENIX/hydro_debug.h hydro/SPHENIX/hydro_part.h 
+nobase_noinst_HEADERS += hydro/SPHENIX/hydro_debug.h hydro/SPHENIX/hydro_part.h hydro/SPHENIX/hydro_logger.h
 nobase_noinst_HEADERS += hydro/SPHENIX/hydro_parameters.h 
 nobase_noinst_HEADERS += hydro/Gizmo/hydro_parameters.h 
 nobase_noinst_HEADERS += hydro/Gizmo/hydro_io.h hydro/Gizmo/hydro_debug.h 

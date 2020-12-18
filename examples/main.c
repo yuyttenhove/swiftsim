@@ -513,14 +513,6 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  if (with_fof && !with_black_holes) {
-    if (myrank == 0)
-      printf(
-          "Error: Cannot perform FOF seeding without black holes being in use, "
-          "-B must be chosen.\n");
-    return 1;
-  }
-
   if (!with_stars && with_star_formation) {
     if (myrank == 0) {
       argparse_usage(&argparse);
@@ -917,7 +909,7 @@ int main(int argc, char *argv[]) {
 
     /* Prepare and verify the selection of outputs */
     io_prepare_output_fields(output_options, with_cosmology, with_fof,
-                             with_structure_finding);
+                             with_structure_finding, e.verbose);
 
     /* Not restarting so look for the ICs. */
     /* Initialize unit system and constants */
@@ -1056,8 +1048,16 @@ int main(int argc, char *argv[]) {
     /* Initialise the FOF properties */
     bzero(&fof_properties, sizeof(struct fof_props));
 #ifdef WITH_FOF
-    if (with_fof)
+    if (with_fof) {
       fof_init(&fof_properties, params, &prog_const, &us, /*stand-alone=*/0);
+      if (fof_properties.seed_black_holes_enabled && !with_black_holes) {
+        if (myrank == 0)
+          printf(
+              "Error: Cannot perform FOF seeding without black holes being in "
+              "use\n");
+        return 1;
+      }
+    }
 #endif
 
     /* Be verbose about what happens next */
@@ -1189,13 +1189,17 @@ int main(int argc, char *argv[]) {
     const int with_DM_background_particles =
         N_total[swift_type_dark_matter_background] > 0;
 
+    /* Do we have neutrino particles? */
+    const int with_neutrinos = 0;  // no for now
+
     /* Initialize the space with these data. */
     if (myrank == 0) clocks_gettime(&tic);
     space_init(&s, params, &cosmo, dim, &hydro_properties, parts, gparts, sinks,
                sparts, bparts, Ngas, Ngpart, Nsink, Nspart, Nbpart, periodic,
                replicate, remap_ids, generate_gas_in_ics, with_hydro,
                with_self_gravity, with_star_formation,
-               with_DM_background_particles, talking, dry_run, nr_nodes);
+               with_DM_background_particles, with_neutrinos, talking, dry_run,
+               nr_nodes);
 
     /* Initialise the line of sight properties. */
     if (with_line_of_sight) los_init(s.dim, &los_properties, params);
@@ -1419,7 +1423,15 @@ int main(int argc, char *argv[]) {
     }
 #endif
     /* Dump initial state snapshot, if not working with an output list */
-    if (!e.output_list_snapshots) engine_dump_snapshot(&e);
+    if (!e.output_list_snapshots) {
+
+      /* Run FoF first, if we're adding FoF info to the snapshot */
+      if (with_fof && e.snapshot_invoke_fof) {
+        engine_fof(&e, /*dump_results=*/0, /*seed_black_holes=*/0);
+      }
+
+      engine_dump_snapshot(&e);
+    }
 
     /* Dump initial state statistics, if not working with an output list */
     if (!e.output_list_stats) engine_print_stats(&e);
@@ -1630,14 +1642,23 @@ int main(int argc, char *argv[]) {
       engine_dump_index(&e);
 
       /* Write a sentinel timestamp */
-      logger_log_timestamp(e.logger, e.ti_current, e.time,
-                           &e.logger->timestamp_offset);
+      if (e.policy & engine_policy_cosmology) {
+        logger_log_timestamp(e.logger, e.ti_current, e.cosmology->a,
+                             &e.logger->timestamp_offset);
+      } else {
+        logger_log_timestamp(e.logger, e.ti_current, e.time,
+                             &e.logger->timestamp_offset);
+      }
     }
 #endif
 
     /* Write final snapshot? */
     if ((e.output_list_snapshots && e.output_list_snapshots->final_step_dump) ||
         !e.output_list_snapshots) {
+
+      if (with_fof && e.snapshot_invoke_fof) {
+        engine_fof(&e, /*dump_results=*/0, /*seed_black_holes=*/0);
+      }
 
 #ifdef HAVE_VELOCIRAPTOR
       if (with_structure_finding && e.snapshot_invoke_stf &&

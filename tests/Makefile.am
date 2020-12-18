@@ -30,7 +30,7 @@ TESTS = testGreetings testMaths testReading.sh testKernel testKernelLongGrav \
 	testPotentialPair testEOS testUtilities testSelectOutput.sh \
 	testCbrt testCosmology testOutputList testFormat.sh \
 	test27cellsStars.sh test27cellsStarsPerturbed.sh testHydroMPIrules \
-        testAtomic testGravitySpeed
+        testAtomic testGravitySpeed testNeutrinoCosmology
 
 # List of test programs to compile
 check_PROGRAMS = testGreetings testReading testTimeIntegration testKernelLongGrav \
@@ -43,7 +43,7 @@ check_PROGRAMS = testGreetings testReading testTimeIntegration testKernelLongGra
 		 testGravityDerivatives testPotentialSelf testPotentialPair testEOS testUtilities \
 		 testSelectOutput testCbrt testCosmology testOutputList test27cellsStars \
 		 test27cellsStars_subset testCooling testComovingCooling testFeedback testHashmap \
-                 testAtomic testHydroMPIrules testGravitySpeed
+                 testAtomic testHydroMPIrules testGravitySpeed testNeutrinoCosmology
 
 # Rebuild tests when SWIFT is updated.
 $(check_PROGRAMS): ../src/.libs/libswiftsim.a
@@ -162,4 +162,5 @@ EXTRA_DIST = testReading.sh makeInput.py testActivePair.sh \
              output_list_params.yml output_list_time.txt output_list_redshift.txt \
              output_list_scale_factor.txt testEOS.sh testEOS_plot.sh \
 	     test27cellsStars.sh test27cellsStarsPerturbed.sh star_tolerance_27_normal.dat \
-	     star_tolerance_27_perturbed.dat star_tolerance_27_perturbed_h.dat star_tolerance_27_perturbed_h2.dat
+	     star_tolerance_27_perturbed.dat star_tolerance_27_perturbed_h.dat star_tolerance_27_perturbed_h2.dat \
+	     testNeutrinoCosmology.dat

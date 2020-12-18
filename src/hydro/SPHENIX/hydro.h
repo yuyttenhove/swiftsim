@@ -476,9 +476,10 @@ __attribute__((always_inline)) INLINE static void hydro_timestep_extra(
  *
  * @param p The particle.
  * @param xp The extended particle data.
+ * @param time The simulation time.
  */
 __attribute__((always_inline)) INLINE static void hydro_remove_part(
-    const struct part *p, const struct xpart *xp) {}
+    const struct part *p, const struct xpart *xp, const double time) {}
 
 /**
  * @brief Prepares a particle for the density calculation.
@@ -1077,6 +1078,7 @@ __attribute__((always_inline)) INLINE static void hydro_first_init_part(
     struct part *restrict p, struct xpart *restrict xp) {
 
   p->time_bin = 0;
+
   xp->v_full[0] = p->v[0];
   xp->v_full[1] = p->v[1];
   xp->v_full[2] = p->v[2];

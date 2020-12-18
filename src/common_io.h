@@ -56,6 +56,7 @@ enum IO_DATA_TYPE {
   INT,
   LONG,
   LONGLONG,
+  UINT8,
   UINT,
   UINT64,
   ULONG,
@@ -181,7 +182,7 @@ void io_duplicate_black_holes_gparts(struct threadpool* tp,
 
 void io_prepare_output_fields(struct output_options* output_options,
                               const int with_cosmology, const int with_fof,
-                              const int with_stf);
+                              const int with_stf, int verbose);
 
 void io_write_output_field_parameter(const char* filename, int with_cosmology);
 
