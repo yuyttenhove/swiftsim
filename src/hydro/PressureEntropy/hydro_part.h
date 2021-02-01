@@ -34,6 +34,8 @@
 #include "chemistry_struct.h"
 #include "cooling_struct.h"
 #include "feedback_struct.h"
+#include "particle_splitting_struct.h"
+#include "rt_struct.h"
 #include "star_formation_struct.h"
 #include "timestep_limiter_struct.h"
 #include "tracers_struct.h"
@@ -50,11 +52,14 @@ struct xpart {
   /*! Velocity at the last full step. */
   float v_full[3];
 
-  /*! Gravitational acceleration at the last full step. */
+  /*! Gravitational acceleration at the end of the last step */
   float a_grav[3];
 
   /*! Entropy at the last full step. */
   float entropy_full;
+
+  /*! Additional data used to record particle splits */
+  struct particle_splitting_data split_data;
 
   /*! Additional data used to record cooling information */
   struct cooling_xpart_data cooling_data;
@@ -164,6 +169,9 @@ struct part {
 
   /*! Black holes information (e.g. swallowing ID) */
   struct black_holes_part_data black_holes_data;
+
+  /*! Additional Radiative Transfer Data */
+  struct rt_part_data rt_data;
 
   /*! Time-step length */
   timebin_t time_bin;

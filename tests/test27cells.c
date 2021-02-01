@@ -183,6 +183,7 @@ struct cell *make_cell(size_t n, double *offset, double size, double h,
   /* Cell properties */
   cell->split = 0;
   cell->hydro.h_max = h_max;
+  cell->hydro.h_max_active = h_max;
   cell->hydro.count = count;
   cell->hydro.dx_max_part = 0.;
   cell->hydro.dx_max_sort = 0.;
@@ -288,7 +289,7 @@ void dump_particle_fields(char *fileName, struct cell *main_cell,
             main_cell->hydro.parts[pid].density.rot_v[0],
             main_cell->hydro.parts[pid].density.rot_v[1],
             main_cell->hydro.parts[pid].density.rot_v[2]
-#elif defined(ANARCHY_PU_SPH) || defined(SPHENIX_SPH) || defined(DEFAULT_SPH)
+#elif defined(ANARCHY_PU_SPH) || defined(SPHENIX_SPH) || defined(PHANTOM_SPH)
             /* this is required because of the variable AV scheme */
             main_cell->hydro.parts[pid].viscosity.div_v,
             main_cell->hydro.parts[pid].density.rot_v[0],
@@ -333,7 +334,7 @@ void dump_particle_fields(char *fileName, struct cell *main_cell,
               cj->hydro.parts[pjd].density.rot_v[0],
               cj->hydro.parts[pjd].density.rot_v[1],
               cj->hydro.parts[pjd].density.rot_v[2]
-#elif defined(ANARCHY_PU_SPH) || defined(SPHENIX_SPH) || defined(DEFAULT_SPH)
+#elif defined(ANARCHY_PU_SPH) || defined(SPHENIX_SPH) || defined(PHANTOM_SPH)
               /* this is required because of the variable AV scheme */
               cj->hydro.parts[pjd].viscosity.div_v,
               cj->hydro.parts[pjd].density.rot_v[0],

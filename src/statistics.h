@@ -77,6 +77,9 @@ struct statistics {
   /*! Total BH mass (internal units)*/
   double bh_mass;
 
+  /*! Total BH subgrid mass (internal units)*/
+  double bh_subgrid_mass;
+
   /*! Total metal mass in gas (internal units)*/
   double gas_Z_mass;
 
@@ -86,6 +89,12 @@ struct statistics {
   /*! Total metal mass in BH (internal units)*/
   double bh_Z_mass;
 
+  /*! Sum of instantaneous accretion rate of all BHs (internal units)*/
+  double bh_accretion_rate;
+
+  /*! Total accreted mass of all BHs (internal units)*/
+  double bh_accreted_mass;
+
   /*! Momentum (internal units)*/
   double mom[3];
 
@@ -94,6 +103,18 @@ struct statistics {
 
   /*! Centre of mass (internal units)*/
   double centre_of_mass[3];
+
+  /*! Total gas mass that is in Hydrogen (all species) */
+  double gas_H_mass;
+
+  /*! Total gas mass that is in Molecular Hydrogen */
+  double gas_H2_mass;
+
+  /*! Total gas mass that is in Atomic Hydrogen */
+  double gas_HI_mass;
+
+  /*! Total gas mass that is in Helium (all species) */
+  double gas_He_mass;
 
   /*! Lock for threaded access */
   swift_lock_type lock;

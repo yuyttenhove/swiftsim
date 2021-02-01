@@ -29,6 +29,8 @@
 #include "kernel_hydro.h"
 #include "minmax.h"
 #include "physical_constants.h"
+#include "random.h"
+#include "rays.h"
 
 /* Standard includes */
 #include <float.h>
@@ -43,7 +45,7 @@
  */
 __attribute__((always_inline)) INLINE static float black_holes_compute_timestep(
     const struct bpart* const bp, const struct black_holes_props* props,
-    const struct phys_const* constants) {
+    const struct phys_const* constants, const struct cosmology* cosmo) {
 
   /* Gather some physical constants (in internal units) */
   const double c = constants->const_speed_light_c;
@@ -61,15 +63,18 @@ __attribute__((always_inline)) INLINE static float black_holes_compute_timestep(
 
   /* Average particle mass in BH's kernel */
   const double mean_ngb_mass = bp->ngb_mass / ((double)bp->num_ngbs);
+
+  /* Get the AGN heating temperature that is tored in this BH */
+  const double AGN_delta_T = bp->AGN_delta_T;
+
   /* Without multiplying by mean_ngb_mass we'd get energy per unit mass */
-  const double E_heat =
-      props->AGN_delta_T_desired * props->temp_to_u_factor * mean_ngb_mass;
+  const double E_heat = AGN_delta_T * props->temp_to_u_factor * mean_ngb_mass;
 
   /* Compute average time between heating events for the given accretion
    * rate. The time is multiplied by the number of Ngbs to heat because
    * if more particles are heated at once then the time between different
    * AGN feedback events increases proportionally. */
-  const double dt_heat = E_heat * props->num_ngbs_to_heat / Energy_rate;
+  const double dt_heat = E_heat * bp->num_ngbs_to_heat / Energy_rate;
 
   /* The new timestep of the BH cannot be smaller than the miminum allowed
    * time-step */
@@ -125,6 +130,15 @@ __attribute__((always_inline)) INLINE static void black_holes_first_init_bpart(
   bp->accreted_angular_momentum[0] = 0.f;
   bp->accreted_angular_momentum[1] = 0.f;
   bp->accreted_angular_momentum[2] = 0.f;
+  bp->last_repos_vel = 0.f;
+  bp->num_ngbs_to_heat = props->num_ngbs_to_heat; /* Filler value */
+  bp->dt_heat = 0.f;
+  bp->AGN_number_of_AGN_events = 0;
+  bp->AGN_number_of_energy_injections = 0;
+
+  /* Set the initial targetted heating temperature, used for the
+   * BH time step determination */
+  bp->AGN_delta_T = props->AGN_delta_T_desired;
 
   black_holes_mark_bpart_as_not_swallowed(&bp->merger_data);
 }
@@ -165,7 +179,11 @@ __attribute__((always_inline)) INLINE static void black_holes_init_bpart(
   bp->reposition.potential = FLT_MAX;
   bp->accretion_rate = 0.f; /* Optionally accumulated ngb-by-ngb */
   bp->f_visc = FLT_MAX;
+  bp->accretion_boost_factor = -FLT_MAX;
   bp->mass_at_start_of_step = bp->mass; /* bp->mass may grow in nibbling mode */
+
+  /* Reset the rays carried by this BH */
+  ray_init(bp->rays, eagle_blackhole_number_of_rays);
 }
 
 /**
@@ -304,6 +322,38 @@ black_holes_bpart_has_no_neighbours(struct bpart* bp,
   bp->velocity_gas[0] = FLT_MAX;
   bp->velocity_gas[1] = FLT_MAX;
   bp->velocity_gas[2] = FLT_MAX;
+
+  bp->internal_energy_gas = -FLT_MAX;
+}
+
+/**
+ * @brief Return the current instantaneous accretion rate of the BH.
+ *
+ * @param bp the #bpart.
+ */
+__attribute__((always_inline)) INLINE static double
+black_holes_get_accretion_rate(const struct bpart* bp) {
+  return bp->accretion_rate;
+}
+
+/**
+ * @brief Return the total accreted gas mass of this BH.
+ *
+ * @param bp the #bpart.
+ */
+__attribute__((always_inline)) INLINE static double
+black_holes_get_accreted_mass(const struct bpart* bp) {
+  return bp->total_accreted_mass;
+}
+
+/**
+ * @brief Return the subgrid mass of this BH.
+ *
+ * @param bp the #bpart.
+ */
+__attribute__((always_inline)) INLINE static double
+black_holes_get_subgrid_mass(const struct bpart* bp) {
+  return bp->subgrid_mass;
 }
 
 /**
@@ -378,6 +428,9 @@ __attribute__((always_inline)) INLINE static void black_holes_swallow_part(
   /* This BH lost a neighbour */
   bp->num_ngbs--;
   bp->ngb_mass -= gas_mass;
+
+  /* The ray(s) should not point to the no-longer existing particle */
+  ray_reset_part_id(bp->rays, eagle_blackhole_number_of_rays, p->id);
 }
 
 /**
@@ -519,6 +572,37 @@ __attribute__((always_inline)) INLINE static double black_hole_feedback_delta_T(
 }
 
 /**
+ * @brief Computes the energy reservoir threshold for AGN feedback.
+ *
+ * If adaptive, this is proportional to the accretion rate, with an
+ * asymptotic upper limit.
+ *
+ * @param bp The #bpart.
+ * @param props The properties of the black hole model.
+ */
+__attribute__((always_inline)) INLINE static double
+black_hole_energy_reservoir_threshold(struct bpart* bp,
+                                      const struct black_holes_props* props) {
+
+  /* If we want a constant threshold, this is short and sweet. */
+  if (!props->use_adaptive_energy_reservoir_threshold)
+    return props->num_ngbs_to_heat;
+
+  double num_to_heat = props->nheat_alpha *
+                       (bp->accretion_rate / props->nheat_maccr_normalisation);
+
+  /* Impose smooth truncation of num_to_heat towards props->nheat_limit */
+  if (num_to_heat > props->nheat_alpha) {
+    const double coeff_b = 1. / (props->nheat_limit - props->nheat_alpha);
+    const double coeff_a = exp(coeff_b * props->nheat_alpha) / coeff_b;
+    num_to_heat = props->nheat_limit - coeff_a * exp(-coeff_b * num_to_heat);
+  }
+
+  bp->num_ngbs_to_heat = num_to_heat;
+  return num_to_heat;
+}
+
+/**
  * @brief Compute the accretion rate of the black hole and all the quantites
  * required for the feedback loop.
  *
@@ -537,7 +621,7 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
     const struct phys_const* constants, const struct cosmology* cosmo,
     const struct cooling_function_data* cooling,
     const struct entropy_floor_properties* floor_props, const double time,
-    const int with_cosmology, const double dt) {
+    const int with_cosmology, const double dt, const integertime_t ti_begin) {
 
   /* Record that the black hole has another active time step */
   bp->number_of_time_steps++;
@@ -579,7 +663,7 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
   /* We can now compute the Bondi accretion rate (internal units) */
   double Bondi_rate;
 
-  if (props->multi_phase_bondi) {
+  if (props->use_multi_phase_bondi) {
 
     /* In this case, we are in 'multi-phase-Bondi' mode -- otherwise,
      * the accretion_rate is still zero (was initialised to this) */
@@ -602,7 +686,7 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
                                gas_v_phys[1] * gas_v_phys[1] +
                                gas_v_phys[2] * gas_v_phys[2];
 
-    if (props->subgrid_bondi) {
+    if (props->use_subgrid_bondi) {
 
       /* Use subgrid rho and c for Bondi model */
 
@@ -700,8 +784,13 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
     const double n_H = gas_rho_phys * XH / proton_mass;
     const double boost_ratio = n_H / props->boost_n_h_star;
     const double boost_factor =
-        max(pow(boost_ratio, props->boost_beta), props->boost_alpha);
+        (props->boost_alpha_only)
+            ? max(pow(boost_ratio, props->boost_beta), props->boost_alpha)
+            : props->boost_alpha;
     Bondi_rate *= boost_factor;
+    bp->accretion_boost_factor = boost_factor;
+  } else {
+    bp->accretion_boost_factor = 1.;
   }
 
   /* Compute the reduction factor from Rosas-Guevara et al. (2015) */
@@ -740,6 +829,7 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
   /* Limit the accretion rate to a fraction of the Eddington rate */
   const double accr_rate = min(Bondi_rate, f_Edd * Eddington_rate);
   bp->accretion_rate = accr_rate;
+  bp->eddington_fraction = Bondi_rate / Eddington_rate;
 
   /* Factor in the radiative efficiency */
   const double mass_rate = (1. - epsilon_r) * accr_rate;
@@ -763,10 +853,9 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
   }
 
   /* Increase the subgrid angular momentum according to what we accreted
-   * Note that this is already in physical units, a factors from velocity and r
-   * adius cancel each others.
-   * Also, the circular velocity contains an extra smoothing length factor that
-   * we undo here. */
+   * Note that this is already in physical units, a factors from velocity and
+   * radius cancel each other. Also, the circular velocity contains an extra
+   * smoothing length factor that we undo here. */
   bp->accreted_angular_momentum[0] +=
       bp->circular_velocity_gas[0] * mass_rate * dt / bp->h;
   bp->accreted_angular_momentum[1] +=
@@ -774,56 +863,205 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
   bp->accreted_angular_momentum[2] +=
       bp->circular_velocity_gas[2] * mass_rate * dt / bp->h;
 
+  /* Below we compute energy required to have a feedback event(s)
+   * Note that we have subtracted the particles we swallowed from the ngb_mass
+   * and num_ngbs accumulators. */
+
   /* Now find the temperature increase for a possible feedback event */
   const double delta_T = black_hole_feedback_delta_T(bp, props, cosmo);
   bp->AGN_delta_T = delta_T;
-  const double delta_u = delta_T * props->temp_to_u_factor;
+  double delta_u = delta_T * props->temp_to_u_factor;
+  const double delta_u_ref =
+      props->AGN_use_nheat_with_fixed_dT
+          ? props->AGN_delta_T_desired * props->temp_to_u_factor
+          : delta_u;
 
   /* Energy required to have a feedback event
    * Note that we have subtracted the particles we swallowed from the ngb_mass
    * and num_ngbs accumulators. */
   const double mean_ngb_mass = bp->ngb_mass / ((double)bp->num_ngbs);
-  const double E_feedback_event = num_ngbs_to_heat * delta_u * mean_ngb_mass;
+  const double E_feedback_event =
+      num_ngbs_to_heat * delta_u_ref * mean_ngb_mass;
+
+  /* Compute and store BH accretion-limited time-step */
+  if (luminosity > 0.) {
+    const float dt_acc = delta_u * mean_ngb_mass * props->num_ngbs_to_heat /
+                         (luminosity * props->epsilon_f);
+    bp->dt_heat = max(dt_acc, props->time_step_min);
+  } else {
+    bp->dt_heat = FLT_MAX;
+  }
 
   /* Are we doing some feedback? */
   if (bp->energy_reservoir > E_feedback_event) {
 
-    /* Default probability of heating */
-    double target_prob = bp->energy_reservoir / (delta_u * bp->ngb_mass);
+    int number_of_energy_injections;
 
-    /* Calculate the change in internal energy of the gas particles that get
-     * heated. Adjust the prbability if needed. */
-    double gas_delta_u;
-    double prob;
-    if (target_prob <= 1.) {
+    /* How are we doing feedback? */
+    if (props->AGN_deterministic) {
 
-      /* Normal case */
-      prob = target_prob;
-      gas_delta_u = delta_u;
+      number_of_energy_injections =
+          (int)(bp->energy_reservoir / (delta_u * mean_ngb_mass));
 
     } else {
 
-      /* Special case: we need to adjust the energy irrespective of the
-       * desired deltaT to ensure we inject all the available energy. */
+      /* Probability of heating. */
+      const double prob = bp->energy_reservoir / (delta_u * bp->ngb_mass);
 
-      prob = 1.;
-      gas_delta_u = bp->energy_reservoir / bp->ngb_mass;
+      /* Compute the number of energy injections based on probability */
+      if (prob < 1.) {
+
+        /* Initialise counter of energy injections */
+        number_of_energy_injections = 0;
+
+        /* How many AGN energy injections will we get?
+         *
+         * Note that we use the particles here to draw random numbers. This does
+         * not mean that the 'lucky' particles here are the ones that will be
+         * heated. If we get N lucky particles, we will use the first N random
+         * ray directions in the isotropic case or the first N closest particles
+         * in the other modes. */
+        for (int i = 0; i < bp->num_ngbs; i++) {
+          const double rand = random_unit_interval_part_ID_and_ray_idx(
+              bp->id, i, ti_begin, random_number_BH_feedback);
+
+          /* Increase the counter if we are lucky */
+          if (rand < prob) number_of_energy_injections++;
+        }
+
+      } else {
+
+        /* We want to use up all energy avaliable in the reservoir. Therefore,
+         * number_of_energy_injections is > or = props->num_ngbs_to_heat */
+        number_of_energy_injections =
+            (int)(bp->energy_reservoir / (delta_u * mean_ngb_mass));
+      }
+    }
+
+    /* Maximum number of energy injections allowed */
+    const int N_energy_injections_allowed =
+        min(eagle_blackhole_number_of_rays, bp->num_ngbs);
+
+    /* If there are more energy-injection events than min(the number of Ngbs in
+     * the kernel, maximum number of rays) then lower the number of events &
+     * proportionally increase the energy per event */
+    if (number_of_energy_injections > N_energy_injections_allowed) {
+
+      /* Increase the thermal energy per event */
+      const double alpha_thermal = (double)number_of_energy_injections /
+                                   (double)N_energy_injections_allowed;
+
+      delta_u *= alpha_thermal;
+
+      /* Lower the maximum number of events to the max allowed value */
+      number_of_energy_injections = N_energy_injections_allowed;
+    }
+
+    /* Compute how much energy will be deposited onto the gas */
+    /* Note that it will in general be different from E_feedback_event if
+     * gas particles are of different mass. */
+    double Energy_deposited = 0.0;
+
+    /* Count the number of unsuccessful energy injections (e.g., if the particle
+     * that the BH wants to heat has been swallowed and thus no longer exists)
+     */
+    int N_unsuccessful_energy_injections = 0;
+
+    for (int i = 0; i < number_of_energy_injections; i++) {
+
+      /* If the gas particle that the BH wants to heat has just been swallowed
+       * by the same BH, increment the counter of unsuccessful injections. If
+       * the particle has not been swallowed by the BH, increase the energy that
+       * will later be subtracted from the BH's energy reservoir. */
+      if (bp->rays[i].id_min_length != -1)
+        Energy_deposited += delta_u * bp->rays[i].mass;
+      else
+        N_unsuccessful_energy_injections++;
     }
 
     /* Store all of this in the black hole for delivery onto the gas. */
-    bp->to_distribute.AGN_heating_probability = prob;
-    bp->to_distribute.AGN_delta_u = gas_delta_u;
+    bp->to_distribute.AGN_delta_u = delta_u;
+    bp->to_distribute.AGN_number_of_energy_injections =
+        number_of_energy_injections;
 
-    /* Decrement the energy in the reservoir by the mean expected energy */
-    const double energy_used = bp->energy_reservoir / max(prob, 1.);
-    bp->energy_reservoir -= energy_used;
+    /* Subtract the deposited energy from the BH energy reservoir. Note
+     * that in the stochastic case, the resulting value might be negative.
+     * This happens when (due to the probabilistic nature of the model) the
+     * BH injects more energy than it actually has in the reservoir. */
+    bp->energy_reservoir -= Energy_deposited;
+
+    /* Total number successful energy injections at this time-step. In each
+     * energy injection, a certain gas particle from the BH's kernel gets
+     * heated. (successful = the particle(s) that is going to get heated by
+     * this BH has not been swallowed by the same BH). */
+    const int N_successful_energy_injections =
+        number_of_energy_injections - N_unsuccessful_energy_injections;
+
+    /* Increase the number of energy injections the black hole has heated so
+     * far. Note that in the isotropic model, a gas particle may receive AGN
+     * energy several times at the same time-step. In this case, the number of
+     * particles heated at this time-step for this BH will be smaller than the
+     * total number of energy injections for this BH. */
+    bp->AGN_number_of_energy_injections += N_successful_energy_injections;
+
+    /* Increase the number of AGN events the black hole has had so far.
+     * If the BH does feedback, the number of AGN events is incremented by one.
+     */
+    bp->AGN_number_of_AGN_events += N_successful_energy_injections > 0;
+
+    /* Update the total (cumulative) energy used for gas heating in AGN feedback
+     * by this BH */
+    bp->AGN_cumulative_energy += Energy_deposited;
+
+    /* Store the time/scale factor when the BH last did AGN feedback */
+    if (N_successful_energy_injections) {
+      if (with_cosmology) {
+        bp->last_AGN_event_scale_factor = cosmo->a;
+      } else {
+        bp->last_AGN_event_time = time;
+      }
+    }
 
   } else {
 
     /* Flag that we don't want to heat anyone */
-    bp->to_distribute.AGN_heating_probability = 0.f;
+    bp->to_distribute.AGN_number_of_energy_injections = 0;
     bp->to_distribute.AGN_delta_u = 0.f;
   }
+}
+
+/**
+ * @brief Computes the (maximal) repositioning speed for a black hole.
+ *
+ * Calculated as upsilon * (m_BH / m_ref) ^ beta_m * (n_H_BH / n_ref) ^ beta_n
+ * where m_BH = BH subgrid mass, n_H_BH = physical gas density around BH
+ * and upsilon, m_ref, beta_m, n_ref, and beta_n are parameters.
+ *
+ * @param bp The #bpart.
+ * @param props The properties of the black hole model.
+ * @param cosmo The current cosmological model.
+ */
+__attribute__((always_inline)) INLINE static double
+black_holes_get_repositioning_speed(const struct bpart* restrict bp,
+                                    const struct black_holes_props* props,
+                                    const struct cosmology* cosmo) {
+
+  const double n_gas_phys = bp->rho_gas * cosmo->a3_inv * props->rho_to_n_cgs;
+  const double v_repos =
+      props->reposition_coefficient_upsilon *
+      pow(bp->subgrid_mass / props->reposition_reference_mass,
+          props->reposition_exponent_mass) *
+      pow(n_gas_phys / props->reposition_reference_n_H,
+          props->reposition_exponent_n_H);
+
+  /* Make sure the repositioning is not back-firing... */
+  if (v_repos < 0)
+    error(
+        "BH %lld wants to reposition at negative speed (%g U_V). Do you "
+        "think you are being funny? No-one is laughing.",
+        bp->id, v_repos);
+
+  return v_repos;
 }
 
 /**
@@ -863,20 +1101,16 @@ __attribute__((always_inline)) INLINE static void black_holes_end_reposition(
     } else if (props->set_reposition_speed) {
 
       /* If we are re-positioning, move the BH a fraction of delta_x, so
-       * that we have a well-defined re-positioning velocity. We have
-       * checked already that reposition_coefficient_upsilon is positive. */
-      const float repos_vel =
-          props->reposition_coefficient_upsilon *
-          pow(bp->subgrid_mass / constants->const_solar_mass,
-              props->reposition_exponent_xi);
+       * that we have a well-defined re-positioning velocity (repos_vel
+       * cannot be negative). */
+      double repos_vel = black_holes_get_repositioning_speed(bp, props, cosmo);
 
+      /* Convert target reposition velocity to a fractional reposition
+       * along reposition.delta_x */
       const double dx = bp->reposition.delta_x[0];
       const double dy = bp->reposition.delta_x[1];
       const double dz = bp->reposition.delta_x[2];
       const double d = sqrt(dx * dx + dy * dy + dz * dz);
-
-      /* Convert target reposition velocity to a fractional reposition
-       * along reposition.delta_x */
 
       /* Exclude the pathological case of repositioning by zero distance */
       if (d > 0) {
@@ -889,8 +1123,12 @@ __attribute__((always_inline)) INLINE static void black_holes_end_reposition(
         /* ... but fractions > 1 can occur if the target velocity is high.
          * We do not want this, because it could lead to overshooting the
          * actual potential minimum. */
-        if (repos_frac > 1) repos_frac = 1.;
+        if (repos_frac > 1) {
+          repos_frac = 1.;
+          repos_vel = repos_frac * d / dt;
+        }
 
+        bp->last_repos_vel = (float)repos_vel;
         bp->reposition.delta_x[0] *= repos_frac;
         bp->reposition.delta_x[1] *= repos_frac;
         bp->reposition.delta_x[2] *= repos_frac;
@@ -911,8 +1149,8 @@ __attribute__((always_inline)) INLINE static void black_holes_end_reposition(
 __attribute__((always_inline)) INLINE static void black_holes_reset_feedback(
     struct bpart* restrict bp) {
 
-  bp->to_distribute.AGN_heating_probability = 0.f;
   bp->to_distribute.AGN_delta_u = 0.f;
+  bp->to_distribute.AGN_number_of_energy_injections = 0;
 
 #ifdef DEBUG_INTERACTIONS_BLACK_HOLES
   for (int i = 0; i < MAX_NUM_OF_NEIGHBOURS_STARS; ++i)
@@ -959,11 +1197,12 @@ black_holes_store_potential_in_part(struct black_holes_part_data* p_data,
  * @param constants The physical constants in internal units.
  * @param cosmo The current cosmological model.
  * @param p The #part that became a black hole.
+ * @param xp The #xpart that became a black hole.
  */
 INLINE static void black_holes_create_from_gas(
     struct bpart* bp, const struct black_holes_props* props,
     const struct phys_const* constants, const struct cosmology* cosmo,
-    const struct part* p) {
+    const struct part* p, const struct xpart* xp) {
 
   /* All the non-basic properties of the black hole have been zeroed
    * in the FOF code. We update them here.
@@ -984,9 +1223,16 @@ INLINE static void black_holes_create_from_gas(
   bp->number_of_direct_gas_swallows = 0;
   bp->number_of_time_steps = 0;
 
+  /* Initialise the energy reservoir threshold to the constant default */
+  bp->num_ngbs_to_heat = props->num_ngbs_to_heat; /* Filler value */
+
   /* We haven't repositioned yet, nor attempted it */
   bp->number_of_repositions = 0;
   bp->number_of_reposition_attempts = 0;
+  bp->last_repos_vel = 0.f;
+
+  /* Copy over the splitting struct */
+  bp->split_data = xp->split_data;
 
   /* Initial metal masses */
   const float gas_mass = hydro_get_mass(p);
@@ -1005,6 +1251,10 @@ INLINE static void black_holes_create_from_gas(
   /* Last time of mergers */
   bp->last_minor_merger_time = -1.;
   bp->last_major_merger_time = -1.;
+
+  /* Set the initial targetted heating temperature, used for the
+   * BH time step determination */
+  bp->AGN_delta_T = props->AGN_delta_T_desired;
 
   /* First initialisation */
   black_holes_init_bpart(bp);

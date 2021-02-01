@@ -171,6 +171,31 @@ w_0 + w_a (1 - a)`. The two parameters in the YAML file are:
 If unspecified these parameters default to the default
 :math:`\Lambda\rm{CDM}` values of :math:`w_0 = -1` and :math:`w_a = 0`.
 
+The radiation density :math:`\Omega_r` can also be specified by setting
+an alternative optional parameter:
+
+* The number of ultra-relativistic degrees of freedom :math:`N_\rm{ur}`:
+  ``N_ur``.
+
+The radiation density :math:`\Omega_r` is then automatically inferred from
+:math:`N_\rm{ur}` and the present-day CMB temperature
+:math:`T_{\rm{CMB},0}=2.7255` Kelvin. This parametrization cannot
+be used together with :math:`\Omega_r`. If neither parameter is used, SWIFT
+defaults to :math:`\Omega_r = 0`. Note that :math:`N_\rm{ur}` differs from
+:math:`N_\rm{eff}`, the latter of which also includes massive neutrinos.
+
+Massive neutrinos can be included by specifying the optional parameters:
+
+* The number of massive neutrino species :math:`N_{\nu}`: ``N_nu``,
+* A comma-separated list of neutrino masses in eV: ``M_nu_eV``,
+* A comma-separated list of neutrino degeneracies: ``deg_nu``,
+* The present-day neutrino temperature :math:`T_{\nu,0}`: ``T_nu_0``.
+
+When including massive neutrinos, only ``N_nu`` and ``M_nu_eV`` are necessary.
+By default, SWIFT will assume non-degenerate species and
+:math:`T_{\nu,0}=(4/11)^{1/3}T_{\rm{CMB},0}`. Neutrinos do not contribute to
+:math:`\Omega_m = \Omega_\rm{cdm} + \Omega_b` in our conventions.
+
 For a Planck+13 cosmological model (ignoring radiation density as is
 commonly done) and running from :math:`z=127` to :math:`z=0`, one would hence
 use the following parameters:
@@ -217,7 +242,7 @@ to be supplied.
 In case of zoom simulations, the softening of the additional, more massive, background
 particles is specified via the parameter
 ``softening_ratio_background``. Since these particles will typically have
-different masses to degrade the resolution away from the zoom region, the
+different masses to degrade the resolution away from the zoom-in region, the
 particles won't have a single softening value. Instead, we specify the
 fraction of the mean inter-particle separation to use. The code will then
 derive the softening length of each particle assuming the mean density of
@@ -225,10 +250,21 @@ the Universe. That is :math:`\epsilon_{\rm background} =
 f\sqrt[3]{\frac{m}{\Omega_m\rho_{\rm crit}}}`, where :math:`f` is the
 user-defined value (typically of order 0.05).
 
-The accuracy of the gravity calculation is governed by the following two parameters:
+The accuracy of the gravity calculation is governed by the following four parameters:
 
-* The opening angle (multipole acceptance criterion) used in the FMM :math:`\theta`: ``theta``,
+* The multipole acceptance criterion: ``MAC``
+* The fixed opening angle used in the geometric MAC :math:`\theta_{\rm cr}`: ``theta_cr``,
+* The accuracy criterion used in the adaptive MAC:  :math:`\epsilon_{\rm fmm}`: ``epsilon_fmm``,
 * The time-step size pre-factor :math:`\eta`: ``eta``,
+
+The first three parameters govern the way the Fast-Multipole method
+tree-walk is done (see the theory documents for full details).  The ``MAC``
+parameter can take two values: ``adaptive`` or ``geometric``. In the first
+case, the tree recursion decision is based on the estimated accelerations
+that a given tree node will produce, trying to recurse to levels where the
+fractional contribution of the accelerations to the cell is less than
+:math:`\epsilon_{\rm fmm}`. In the second case, a fixed Barnes-Hut-like
+opening angle :math:`\theta_{\rm cr}` is used.
 
 The time-step of a given particle is given by :math:`\Delta t =
 \sqrt{2\eta\epsilon_i/|\overrightarrow{a}_i|}`, where
@@ -237,13 +273,20 @@ The time-step of a given particle is given by :math:`\Delta t =
 <http://adsabs.harvard.edu/abs/2003MNRAS.338...14P>`_ recommend using
 :math:`\eta=0.025`.
 
-The last tree-related parameter is
+The last tree-related parameters are:
 
 * The tree rebuild frequency: ``rebuild_frequency``.
+* Whether or not to use the approximate gravity from the FMM tree below the
+  softening scale: ``use_tree_below_softening`` (default: 0)
+* Whether or not the truncated force estimator in the adaptive tree-walk
+  considers the exponential mesh-related cut-off:
+  ``allow_truncation_in_MAC`` (default: 0)
 
 The tree rebuild frequency is an optional parameter defaulting to
-:math:`0.01`. It is used to trigger the re-construction of the tree every time a
-fraction of the particles have been integrated (kicked) forward in time.
+:math:`0.01`. It is used to trigger the re-construction of the tree every
+time a fraction of the particles have been integrated (kicked) forward in
+time.  The other two parameters default to good all-around choices. See the
+theory documentation about their exact effects.
 
 Simulations using periodic boundary conditions use additional parameters for the
 Particle-Mesh part of the calculation. The last five are optional:
@@ -257,17 +300,9 @@ Particle-Mesh part of the calculation. The last five are optional:
 * The scale below which the short-range forces are assumed to be exactly Newtonian (in units of
   the mesh cell-size multiplied by :math:`a_{\rm smooth}`) :math:`r_{\rm
   cut,min}`: ``r_cut_min`` (default: ``0.1``),
-* Whether or not to dither the particles randomly at each tree rebuild:
-  ``dithering`` (default: ``1``),
-* The magnitude of each component of the dithering vector to use in units of the
-  top-level cell sizes: ``dithering_ratio`` (default: ``1.0``).
 
 For most runs, the default values can be used. Only the number of cells along
-each axis needs to be specified. The mesh dithering is only used for simulations
-using periodic boundary conditions and in the absence of an external potential.
-At each tree rebuild time, all the particles are moved by a random vector (the
-same for all particles) and the periodic BCs are then applied. This reduces the
-correlation of erros across time. The remaining three values are best described
+each axis needs to be specified. The remaining three values are best described
 in the context of the full set of equations in the theory documents.
 
 As a summary, here are the values used for the EAGLE :math:`100^3~{\rm Mpc}^3`
@@ -278,7 +313,9 @@ simulation:
    # Parameters for the self-gravity scheme for the EAGLE-100 box
    Gravity:
      eta:                    0.025
-     theta:                  0.6
+     MAC:                    adaptive
+     theta_cr:               0.6
+     epsilon_fmm:            0.001
      mesh_side_length:       512
      comoving_DM_softening:         0.0026994  # 0.7 proper kpc at z=2.8.
      max_physical_DM_softening:     0.0007     # 0.7 proper kpc
@@ -288,8 +325,8 @@ simulation:
      a_smooth:          1.25        # Default optional value
      r_cut_max:         4.5         # Default optional value
      r_cut_min:         0.1         # Default optional value
-     dithering:         1           # Default optional value
-     dithering_ratio:   1.0         # Default optional value 
+     use_tree_below_softening: 0    # Default optional value
+     allow_truncation_in_MAC:  0    # Default optional value
 
 .. _Parameters_SPH:
 
@@ -551,7 +588,8 @@ the start and end times or scale factors from the parameter file.
 * Dimensionless pre-factor of the maximal allowed displacement:
   ``max_dt_RMS_factor`` (default: ``0.25``)
 
-This value rarely needs altering.
+This value rarely needs altering. See the theory documents for its
+precise meaning.
 
 A full time-step section for a non-cosmological run would be:
 
@@ -681,10 +719,8 @@ parameter is the base name that will be used for all the outputs in the run:
 This name will then be appended by an under-score and 4 digits followed by
 ``.hdf5`` (e.g. ``base_name_1234.hdf5``). The 4 digits are used to label the
 different outputs, starting at ``0000``. In the default setup the digits simply
-increase by one for each snapshot. However, if the optional parameter
-``int_time_label_on`` is switched on, then we use 6 digits and these will the
-physical time of the simulation rounded to the nearest integer
-(e.g. ``base_name_001234.hdf5``) [#f3]_.
+increase by one for each snapshot. (See :ref:`Output_list_label` to change that
+behaviour.)
 
 The time of the first snapshot is controlled by the two following options:
 
@@ -709,11 +745,13 @@ The location and naming of the snapshots is altered by the following options:
 * Directory in which to write snapshots: ``subdir``.
   (default: empty string).
 
-If this is set then the full path to the snapshot files will be generated by
-taking this value and appending a slash and then the snapshot file name
+If this is set then the full path to the snapshot files will be generated
+by taking this value and appending a slash and then the snapshot file name
 described above - e.g. ``subdir/base_name_1234.hdf5``. The directory is
-created if necessary. Any VELOCIraptor output produced by the run is also written
-to this directory.
+created if necessary. Note however, that the sub-directories are created
+when writing the first snapshot of a given category; the onus is hence on
+the user to ensure correct writing permissions ahead of that time. Any
+VELOCIraptor output produced by the run is also written to this directory.
 
 When running the code with structure finding activated, it is often
 useful to have a structure catalog written at the same simulation time
@@ -732,6 +770,13 @@ every dump is done additionally to the stand-alone dumps that can be specified
 in the corresponding section of the YAML parameter file. When running with
 _more_ calls to VELOCIraptor than snapshots, gaps between snapshot numbers will
 be created to accommodate for the intervening VELOCIraptor-only catalogs.
+
+It is also possible to run the FOF algorithm just before writing each snapshot.
+
+* Run FOF every time a snapshot is dumped: ``invoke_fof``
+  (default: ``0``).
+
+See the section :ref:`Parameters_fof` for details of the FOF parameters.
 
 When running over MPI, users have the option to split the snapshot over more
 than one file. This can be useful if the parallel-io on a given system is slow
@@ -760,6 +805,19 @@ time spent deflating and inflating the data.  When compression is switched on
 the SHUFFLE filter is also applied to get higher compression rates. Note that up
 until HDF5 1.10.x this option is not available when using the MPI-parallel
 version of the i/o routines.
+
+Users can run a program after a snapshot is dumped to disk using the following
+parameters:
+
+* Use the extra command after snapshot creation: ``run_on_dump`` (default :``0``)
+* Command to run after snapshot creation: ``dump_command`` (default: nothing)
+
+These are particularly useful should you wish to submit a job for postprocessing
+the snapshot after it has just been created. Your script will be invoked with
+two parameters, the snapshot base-name, and the snapshot number that was just
+output as a zero-padded integer. For example, if the base-name is "eagle" and
+snapshot 7 was just dumped, with ``dump_command`` set to ``./postprocess.sh``,
+then SWIFT will run ``./postprocess.sh eagle 0007``.
 
 Finally, it is possible to specify a different system of units for the snapshots
 than the one that was used internally by SWIFT. The format is identical to the
@@ -797,7 +855,6 @@ would have:
      time_first:          0.01
      delta_time:          0.005
      invoke_stf:          0
-     int_time_label_on:   0
      compression:         3
      distributed:         1
      UnitLength_in_cgs:   1.  # Use cm in outputs
@@ -809,7 +866,8 @@ would have:
 Some additional specific options for the snapshot outputs are described in the
 following pages:
 
-* :ref:`Output_list_label` (to have snapshots not evenly spaced in time),
+* :ref:`Output_list_label` (to have snapshots not evenly spaced in time or with
+  non-regular labels),
 * :ref:`Output_selection_label` (to select what particle fields to write).
 
 .. _Parameters_line_of_sight:
@@ -1428,10 +1486,3 @@ gparts are active after that snapshot output timestep.
 
 
 .. [#f2] which would translate into a constant :math:`G_N=1.5517771\times10^{-9}~cm^{3}\,g^{-1}\,s^{-2}` if expressed in the CGS system.
-
-.. [#f3] This feature only makes sense for non-cosmological runs for which the
-         internal time unit is such that when rounded to the nearest integer a
-	 sensible number is obtained. A use-case for this feature would be to
-	 compare runs over the same physical time but with different numbers of
-	 snapshots. Snapshots at a given time would always have the same set of
-	 digits irrespective of the number of snapshots produced before.

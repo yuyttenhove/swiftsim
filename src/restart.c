@@ -128,6 +128,8 @@ void restart_locate_free(int nfiles, char **files) {
  */
 void restart_write(struct engine *e, const char *filename) {
 
+  ticks tic = getticks();
+
   /* Save a backup the existing restart file, if requested. */
   if (e->restart_save) restart_save_previous(filename);
 
@@ -150,6 +152,10 @@ void restart_write(struct engine *e, const char *filename) {
                        "endsignature", "SWIFT end signature");
 
   fclose(stream);
+
+  if (e->verbose)
+    message("took %.3f %s.", clocks_from_ticks(getticks() - tic),
+            clocks_getunit());
 }
 
 /**
@@ -352,5 +358,7 @@ void restart_resubmit(const char *command) {
 
   /* Let's trust the user's command... */
   const int result = system(command);
-  if (result != 0) message("Command returned error code %d", result);
+  if (result != 0) {
+    message("Restart resubmit command returned error code %d", result);
+  }
 }

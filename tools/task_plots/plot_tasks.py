@@ -178,7 +178,6 @@ TASKTYPES = [
     "grav_mm",
     "grav_down_in",
     "grav_down",
-    "grav_mesh",
     "grav_end_force",
     "cooling",
     "cooling_in",
@@ -202,8 +201,15 @@ TASKTYPES = [
     "bh_swallow_ghost3",
     "fof_self",
     "fof_pair",
+    "sink_in",
+    "sink_out",
     "rt_in",
     "rt_out",
+    "sink_formation",
+    "rt_ghost1",
+    "rt_ghost2",
+    "rt_transport_out", 
+    "rt_tchem"
     "count",
 ]
 
@@ -240,6 +246,9 @@ SUBTYPES = [
     "bh_feedback",
     "sink",
     "rt_inject",
+    "sink_compute_formation",
+    "rt_gradient",
+    "rt_transport", 
     "count",
 ]
 

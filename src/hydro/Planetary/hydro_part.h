@@ -39,6 +39,8 @@
 #include "equation_of_state.h"  // For enum material_id
 #include "feedback_struct.h"
 #include "logger.h"
+#include "particle_splitting_struct.h"
+#include "rt_struct.h"
 #include "star_formation_struct.h"
 #include "timestep_limiter_struct.h"
 #include "tracers_struct.h"
@@ -61,11 +63,14 @@ struct xpart {
   /*! Velocity at the last full step. */
   float v_full[3];
 
-  /*! Gravitational acceleration at the last full step. */
+  /*! Gravitational acceleration at the end of the last step */
   float a_grav[3];
 
   /*! Internal energy at the last full step. */
   float u_full;
+
+  /*! Additional data used to record particle splits */
+  struct particle_splitting_data split_data;
 
   /*! Additional data used to record cooling information */
   struct cooling_xpart_data cooling_data;
@@ -195,6 +200,9 @@ struct part {
   /*! Material identifier flag */
   enum eos_planetary_material_id mat_id;
 
+  /*! Additional Radiative Transfer Data */
+  struct rt_part_data rt_data;
+
   /*! Time-step length */
   timebin_t time_bin;
 
@@ -209,6 +217,11 @@ struct part {
   /* Time of the last kick */
   integertime_t ti_kick;
 
+#endif
+
+#ifdef PLANETARY_FIXED_ENTROPY
+  /* Fixed specific entropy */
+  float s_fixed;
 #endif
 
 } SWIFT_STRUCT_ALIGN;

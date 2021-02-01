@@ -67,12 +67,12 @@ Adding it to the Cells
 Each cell contains a list to its tasks and therefore you need to provide a link
 for it.
 
-In ``cell.h``, add a pointer to a task in the structure.
-In order to stay clean, please put the new task in the same group than the other
-tasks.
+In ``cell_<particle_type>.h``, add a pointer to a task in the structure. For 
+example, cooling couples to the hydro particles, so we'll be adding our task
+to ``cell_hydro.h``.
 For example::
 
-  struct cell {
+  struct cell_hydro {
     /* Lot of stuff before. */
     
     /*! Task for the cooling */
@@ -232,12 +232,20 @@ and give the task an estimate of the computational cost that it will have in
         cost = wscale * count_i;
         break;
 
+This activates your tasks once they've been created.
+
 Initially, the engine will need to skip the task that updates the particles.
 It is the case for the cooling, therefore you will need to add it in 
-``engine_skip_force_and_kick``.
+``engine_skip_force_and_kick()``.
+Additionally, the tasks will be marked as 'to be skipped' once they've been
+executed during a time step, and then reactivated during the next time step if
+they need to be executed again. This way, all the created tasks can be kept and
+don't need to be recreated every time step. In order to be unskipped however, 
+you need to add the unskipping manually to ``engine_do_unskip_mapper()`` in 
+``engine_unskip.c``.
 
 Finally, you also need to initialize your new variables and pointers in 
-``space_rebuild_recycle_mapper`` in ``space.c``.
+``space_rebuild_recycle_mapper`` in ``space_recycle.c``.
 
 
 

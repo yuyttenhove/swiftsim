@@ -26,6 +26,8 @@
 /* Read additional aubgrid models */
 #include "chemistry_struct.h"
 #include "feedback_struct.h"
+#include "particle_splitting_struct.h"
+#include "rt_struct.h"
 #include "star_formation_struct.h"
 #include "tracers_struct.h"
 
@@ -98,6 +100,9 @@ struct spart {
   /*! The birth temperature */
   float birth_temperature;
 
+  /*! Total number of (expected) feedback heating events so far */
+  float number_of_heating_events;
+
   /*! Star formation struct */
   struct star_formation_spart_data sf_data;
 
@@ -108,7 +113,13 @@ struct spart {
   struct tracers_xpart_data tracers_data;
 
   /*! Chemistry structure */
-  struct chemistry_part_data chemistry_data;
+  struct chemistry_spart_data chemistry_data;
+
+  /*! Splitting structure */
+  struct particle_splitting_data split_data;
+
+  /*! Radiative Transfer data */
+  struct rt_spart_data rt_data;
 
   /*! Particle time bin */
   timebin_t time_bin;
@@ -129,6 +140,27 @@ struct spart {
   /* Time of the last kick */
   integertime_t ti_kick;
 
+#endif
+
+#ifdef SWIFT_STARS_DENSITY_CHECKS
+
+  /* Integer number of neighbours in the density loop */
+  int N_density;
+
+  /* Exact integer number of neighbours in the density loop */
+  int N_density_exact;
+
+  /*! Has this particle interacted with any unhibited neighbour? */
+  char inhibited_exact;
+
+  float n;
+
+  float n_exact;
+
+  float rho;
+
+  /*! Exact value of the density field obtained via brute-force loop */
+  float rho_exact;
 #endif
 
 #ifdef DEBUG_INTERACTIONS_STARS

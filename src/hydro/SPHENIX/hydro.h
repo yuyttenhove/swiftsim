@@ -273,27 +273,6 @@ __attribute__((always_inline)) INLINE static void hydro_set_mass(
 }
 
 /**
- * @brief Returns the velocities drifted to the current time of a particle.
- *
- * @param p The particle of interest
- * @param xp The extended data of the particle.
- * @param dt_kick_hydro The time (for hydro accelerations) since the last kick.
- * @param dt_kick_grav The time (for gravity accelerations) since the last kick.
- * @param v (return) The velocities at the current time.
- */
-__attribute__((always_inline)) INLINE static void hydro_get_drifted_velocities(
-    const struct part *restrict p, const struct xpart *xp, float dt_kick_hydro,
-    float dt_kick_grav, float v[3]) {
-
-  v[0] = xp->v_full[0] + p->a_hydro[0] * dt_kick_hydro +
-         xp->a_grav[0] * dt_kick_grav;
-  v[1] = xp->v_full[1] + p->a_hydro[1] * dt_kick_hydro +
-         xp->a_grav[1] * dt_kick_grav;
-  v[2] = xp->v_full[2] + p->a_hydro[2] * dt_kick_hydro +
-         xp->a_grav[2] * dt_kick_grav;
-}
-
-/**
  * @brief Returns the time derivative of internal energy of a particle
  *
  * We assume a constant density.
@@ -486,9 +465,10 @@ __attribute__((always_inline)) INLINE static void hydro_timestep_extra(
  *
  * @param p The particle.
  * @param xp The extended particle data.
+ * @param time The simulation time.
  */
 __attribute__((always_inline)) INLINE static void hydro_remove_part(
-    const struct part *p, const struct xpart *xp) {}
+    const struct part *p, const struct xpart *xp, const double time) {}
 
 /**
  * @brief Prepares a particle for the density calculation.
@@ -514,6 +494,23 @@ __attribute__((always_inline)) INLINE static void hydro_init_part(
 
   p->viscosity.div_v = 0.f;
   p->diffusion.laplace_u = 0.f;
+
+#ifdef SWIFT_HYDRO_DENSITY_CHECKS
+  p->N_density = 1; /* Self contribution */
+  p->N_force = 0;
+  p->N_gradient = 1;
+  p->N_density_exact = 0;
+  p->N_force_exact = 0;
+  p->rho_exact = 0.f;
+  p->n_gradient = 0.f;
+  p->n_gradient_exact = 0.f;
+  p->n_density = 0.f;
+  p->n_density_exact = 0.f;
+  p->n_force = 0.f;
+  p->n_force_exact = 0.f;
+  p->inhibited_exact = 0;
+  p->limited_part = 0;
+#endif
 }
 
 /**
@@ -561,6 +558,11 @@ __attribute__((always_inline)) INLINE static void hydro_end_density(
   /* Finish calculation of the velocity divergence */
   p->viscosity.div_v *= h_inv_dim_plus_one * rho_inv * a_inv2;
   p->viscosity.div_v += cosmo->H * hydro_dimension;
+
+#ifdef SWIFT_HYDRO_DENSITY_CHECKS
+  p->n_density += kernel_root;
+  p->n_density *= h_inv_dim;
+#endif
 }
 
 /**
@@ -663,6 +665,10 @@ __attribute__((always_inline)) INLINE static void hydro_end_gradient(
   /* Include the extra factors in the del^2 u */
 
   p->diffusion.laplace_u *= 2.f * h_inv_dim_plus_one;
+
+#ifdef SWIFT_HYDRO_DENSITY_CHECKS
+  p->n_gradient += kernel_root;
+#endif
 }
 
 /**
@@ -1087,12 +1093,10 @@ __attribute__((always_inline)) INLINE static void hydro_first_init_part(
     struct part *restrict p, struct xpart *restrict xp) {
 
   p->time_bin = 0;
+
   xp->v_full[0] = p->v[0];
   xp->v_full[1] = p->v[1];
   xp->v_full[2] = p->v[2];
-  xp->a_grav[0] = 0.f;
-  xp->a_grav[1] = 0.f;
-  xp->a_grav[2] = 0.f;
   xp->u_full = p->u;
 
   hydro_reset_acceleration(p);

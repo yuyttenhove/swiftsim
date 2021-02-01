@@ -77,6 +77,7 @@ void runner_do_stars_ghost(struct runner *r, struct cell *c, int timer) {
   const struct unit_system *us = e->internal_units;
   const struct phys_const *phys_const = e->physical_constants;
   const int with_cosmology = (e->policy & engine_policy_cosmology);
+  const int with_rt = (e->policy & engine_policy_rt);
   const struct cosmology *cosmo = e->cosmology;
   const struct feedback_props *feedback_props = e->feedback_props;
   const float stars_h_max = e->hydro_properties->h_max;
@@ -88,7 +89,8 @@ void runner_do_stars_ghost(struct runner *r, struct cell *c, int timer) {
   int redo = 0, scount = 0;
 
   /* Running value of the maximal smoothing length */
-  double h_max = c->stars.h_max;
+  float h_max = c->stars.h_max;
+  float h_max_active = c->stars.h_max_active;
 
   TIMER_TIC;
 
@@ -109,6 +111,7 @@ void runner_do_stars_ghost(struct runner *r, struct cell *c, int timer) {
 
         /* Update h_max */
         h_max = max(h_max, c->progeny[k]->stars.h_max);
+        h_max_active = max(h_max_active, c->progeny[k]->stars.h_max_active);
       }
     }
   } else {
@@ -222,14 +225,8 @@ void runner_do_stars_ghost(struct runner *r, struct cell *c, int timer) {
               }
 
               /* Calculate age of the star at current time */
-              double star_age_end_of_step;
-              if (with_cosmology) {
-                star_age_end_of_step =
-                    cosmology_get_delta_time_from_scale_factors(
-                        cosmo, (double)sp->birth_scale_factor, cosmo->a);
-              } else {
-                star_age_end_of_step = e->time - (double)sp->birth_time;
-              }
+              const double star_age_end_of_step =
+                  stars_compute_age(sp, e->cosmology, e->time, with_cosmology);
 
               /* Has this star been around for a while ? */
               if (star_age_end_of_step > 0.) {
@@ -241,9 +238,10 @@ void runner_do_stars_ghost(struct runner *r, struct cell *c, int timer) {
                     star_age_end_of_step - dt_enrichment;
 
                 /* Compute the stellar evolution  */
-                feedback_evolve_spart(sp, feedback_props, cosmo, us, phys_const,
-                                      star_age_beg_of_step, dt_enrichment,
-                                      e->time, ti_begin, with_cosmology);
+                feedback_prepare_feedback(sp, feedback_props, cosmo, us,
+                                          phys_const, star_age_beg_of_step,
+                                          dt_enrichment, e->time, ti_begin,
+                                          with_cosmology);
               } else {
 
                 /* Reset the feedback fields of the star particle */
@@ -347,6 +345,7 @@ void runner_do_stars_ghost(struct runner *r, struct cell *c, int timer) {
 
         /* Check if h_max has increased */
         h_max = max(h_max, sp->h);
+        h_max_active = max(h_max_active, sp->h);
 
         stars_reset_feedback(sp);
 
@@ -367,13 +366,8 @@ void runner_do_stars_ghost(struct runner *r, struct cell *c, int timer) {
           }
 
           /* Calculate age of the star at current time */
-          double star_age_end_of_step;
-          if (with_cosmology) {
-            star_age_end_of_step = cosmology_get_delta_time_from_scale_factors(
-                cosmo, (double)sp->birth_scale_factor, cosmo->a);
-          } else {
-            star_age_end_of_step = e->time - (double)sp->birth_time;
-          }
+          const double star_age_end_of_step =
+              stars_compute_age(sp, e->cosmology, e->time, with_cosmology);
 
           /* Has this star been around for a while ? */
           if (star_age_end_of_step > 0.) {
@@ -385,9 +379,9 @@ void runner_do_stars_ghost(struct runner *r, struct cell *c, int timer) {
                 star_age_end_of_step - dt_enrichment;
 
             /* Compute the stellar evolution  */
-            feedback_evolve_spart(sp, feedback_props, cosmo, us, phys_const,
-                                  star_age_beg_of_step, dt_enrichment, e->time,
-                                  ti_begin, with_cosmology);
+            feedback_prepare_feedback(sp, feedback_props, cosmo, us, phys_const,
+                                      star_age_beg_of_step, dt_enrichment,
+                                      e->time, ti_begin, with_cosmology);
           } else {
 
             /* Reset the feedback fields of the star particle */
@@ -397,6 +391,30 @@ void runner_do_stars_ghost(struct runner *r, struct cell *c, int timer) {
 
           /* Reset the feedback fields of the star particle */
           feedback_reset_feedback(sp, feedback_props);
+        }
+
+        if (with_rt) {
+
+          /* get star's age and time step for stellar emission rates */
+          const integertime_t ti_begin =
+              get_integer_time_begin(e->ti_current - 1, sp->time_bin);
+          const integertime_t ti_step = get_integer_timestep(sp->time_bin);
+
+          /* Get particle time-step */
+          double dt_star;
+          if (with_cosmology) {
+            dt_star = cosmology_get_delta_time(e->cosmology, ti_begin,
+                                               ti_begin + ti_step);
+          } else {
+            dt_star = get_timestep(sp->time_bin, e->time_base);
+          }
+
+          /* Calculate age of the star at current time */
+          const double star_age_end_of_step =
+              stars_compute_age(sp, e->cosmology, e->time, with_cosmology);
+
+          rt_compute_stellar_emission_rate(sp, e->time, star_age_end_of_step,
+                                           dt_star);
         }
       }
 
@@ -469,12 +487,27 @@ void runner_do_stars_ghost(struct runner *r, struct cell *c, int timer) {
 
   /* Update h_max */
   c->stars.h_max = h_max;
+  c->stars.h_max_active = h_max_active;
+
+#ifdef SWIFT_DEBUG_CHECKS
+  for (int i = 0; i < c->stars.count; ++i) {
+    const struct spart *sp = &c->stars.parts[i];
+    const float h = c->stars.parts[i].h;
+    if (spart_is_inhibited(sp, e)) continue;
+
+    if (h > c->stars.h_max)
+      error("Particle has h larger than h_max (id=%lld)", sp->id);
+    if (spart_is_active(sp, e) && h > c->stars.h_max_active)
+      error("Active particle has h larger than h_max_active (id=%lld)", sp->id);
+  }
+#endif
 
   /* The ghost may not always be at the top level.
    * Therefore we need to update h_max between the super- and top-levels */
   if (c->stars.ghost) {
     for (struct cell *tmp = c->parent; tmp != NULL; tmp = tmp->parent) {
       atomic_max_f(&tmp->stars.h_max, h_max);
+      atomic_max_f(&tmp->stars.h_max_active, h_max_active);
     }
   }
 
@@ -504,7 +537,8 @@ void runner_do_black_holes_density_ghost(struct runner *r, struct cell *c,
   int redo = 0, bcount = 0;
 
   /* Running value of the maximal smoothing length */
-  double h_max = c->black_holes.h_max;
+  float h_max = c->black_holes.h_max;
+  float h_max_active = c->black_holes.h_max_active;
 
   TIMER_TIC;
 
@@ -520,6 +554,8 @@ void runner_do_black_holes_density_ghost(struct runner *r, struct cell *c,
 
         /* Update h_max */
         h_max = max(h_max, c->progeny[k]->black_holes.h_max);
+        h_max_active =
+            max(h_max_active, c->progeny[k]->black_holes.h_max_active);
       }
     }
   } else {
@@ -708,6 +744,7 @@ void runner_do_black_holes_density_ghost(struct runner *r, struct cell *c,
 
         /* Check if h_max has increased */
         h_max = max(h_max, bp->h);
+        h_max_active = max(h_max_active, bp->h);
       }
 
       /* We now need to treat the particles whose smoothing length had not
@@ -780,12 +817,27 @@ void runner_do_black_holes_density_ghost(struct runner *r, struct cell *c,
 
   /* Update h_max */
   c->black_holes.h_max = h_max;
+  c->black_holes.h_max_active = h_max_active;
+
+#ifdef SWIFT_DEBUG_CHECKS
+  for (int i = 0; i < c->black_holes.count; ++i) {
+    const struct bpart *bp = &c->black_holes.parts[i];
+    const float h = c->black_holes.parts[i].h;
+    if (bpart_is_inhibited(bp, e)) continue;
+
+    if (h > c->black_holes.h_max)
+      error("Particle has h larger than h_max (id=%lld)", bp->id);
+    if (bpart_is_active(bp, e) && h > c->black_holes.h_max_active)
+      error("Active particle has h larger than h_max_active (id=%lld)", bp->id);
+  }
+#endif
 
   /* The ghost may not always be at the top level.
    * Therefore we need to update h_max between the super- and top-levels */
   if (c->black_holes.density_ghost) {
     for (struct cell *tmp = c->parent; tmp != NULL; tmp = tmp->parent) {
       atomic_max_f(&tmp->black_holes.h_max, h_max);
+      atomic_max_f(&tmp->black_holes.h_max_active, h_max_active);
     }
   }
 
@@ -847,9 +899,10 @@ void runner_do_black_holes_swallow_ghost(struct runner *r, struct cell *c,
                                    e->physical_constants, e->cosmology, dt);
 
         /* Compute variables required for the feedback loop */
-        black_holes_prepare_feedback(
-            bp, e->black_holes_properties, e->physical_constants, e->cosmology,
-            e->cooling_func, e->entropy_floor, e->time, with_cosmology, dt);
+        black_holes_prepare_feedback(bp, e->black_holes_properties,
+                                     e->physical_constants, e->cosmology,
+                                     e->cooling_func, e->entropy_floor, e->time,
+                                     with_cosmology, dt, e->ti_current);
       }
     }
   }
@@ -973,7 +1026,8 @@ void runner_do_ghost(struct runner *r, struct cell *c, int timer) {
   int redo = 0, count = 0;
 
   /* Running value of the maximal smoothing length */
-  double h_max = c->hydro.h_max;
+  float h_max = c->hydro.h_max;
+  float h_max_active = c->hydro.h_max_active;
 
   TIMER_TIC;
 
@@ -989,6 +1043,7 @@ void runner_do_ghost(struct runner *r, struct cell *c, int timer) {
 
         /* Update h_max */
         h_max = max(h_max, c->progeny[k]->hydro.h_max);
+        h_max_active = max(h_max_active, c->progeny[k]->hydro.h_max_active);
       }
     }
   } else {
@@ -1224,6 +1279,7 @@ void runner_do_ghost(struct runner *r, struct cell *c, int timer) {
             tracers_after_init(p, xp, e->internal_units, e->physical_constants,
                                with_cosmology, e->cosmology,
                                e->hydro_properties, e->cooling_func, e->time);
+            rt_init_part(p);
 
             /* Off we go ! */
             continue;
@@ -1256,8 +1312,9 @@ void runner_do_ghost(struct runner *r, struct cell *c, int timer) {
 
         /* We now have a particle whose smoothing length has converged */
 
-        /* Check if h_max is increased */
+        /* Check if h_max has increased */
         h_max = max(h_max, p->h);
+        h_max_active = max(h_max_active, p->h);
 
 #ifdef EXTRA_HYDRO_LOOP
 
@@ -1376,14 +1433,97 @@ void runner_do_ghost(struct runner *r, struct cell *c, int timer) {
 
   /* Update h_max */
   c->hydro.h_max = h_max;
+  c->hydro.h_max_active = h_max_active;
+
+#ifdef SWIFT_DEBUG_CHECKS
+  for (int i = 0; i < c->hydro.count; ++i) {
+    const struct part *p = &c->hydro.parts[i];
+    const float h = c->hydro.parts[i].h;
+    if (part_is_inhibited(p, e)) continue;
+
+    if (h > c->hydro.h_max)
+      error("Particle has h larger than h_max (id=%lld)", p->id);
+    if (part_is_active(p, e) && h > c->hydro.h_max_active)
+      error("Active particle has h larger than h_max_active (id=%lld)", p->id);
+  }
+#endif
 
   /* The ghost may not always be at the top level.
    * Therefore we need to update h_max between the super- and top-levels */
   if (c->hydro.ghost) {
     for (struct cell *tmp = c->parent; tmp != NULL; tmp = tmp->parent) {
       atomic_max_f(&tmp->hydro.h_max, h_max);
+      atomic_max_f(&tmp->hydro.h_max_active, h_max_active);
     }
   }
 
   if (timer) TIMER_TOC(timer_do_ghost);
+}
+
+/**
+ * @brief Intermediate task after the injection to compute the total
+ * photon emission rates experienced by the hydro particles.
+ *
+ * @param r The runner thread.
+ * @param c The cell.
+ * @param timer Are we timing this ?
+ */
+void runner_do_rt_ghost1(struct runner *r, struct cell *c, int timer) {
+  /* const struct engine *e = r->e; */
+  int count = c->hydro.count;
+
+  /* Anything to do here? */
+  if (count == 0) return;
+
+  TIMER_TIC;
+
+  /* Recurse? */
+  if (c->split) {
+    for (int k = 0; k < 8; k++) {
+      if (c->progeny[k] != NULL) {
+        runner_do_rt_ghost1(r, c->progeny[k], 0);
+      }
+    }
+  }
+
+  for (int pid = 0; pid < count; pid++) {
+    struct part *restrict p = &(c->hydro.parts[pid]);
+    rt_injection_update_photon_density(p);
+  }
+
+  if (timer) TIMER_TOC(timer_do_rt_ghost1);
+}
+
+/**
+ * @brief Intermediate task after the gradient computation to finish
+ *        up the gradients and prepare for the transport step
+ *
+ * @param r The runner thread.
+ * @param c The cell.
+ * @param timer Are we timing this ?
+ */
+void runner_do_rt_ghost2(struct runner *r, struct cell *c, int timer) {
+  /* const struct engine *e = r->e; */
+  int count = c->hydro.count;
+
+  /* Anything to do here? */
+  if (count == 0) return;
+
+  TIMER_TIC;
+
+  /* Recurse? */
+  if (c->split) {
+    for (int k = 0; k < 8; k++) {
+      if (c->progeny[k] != NULL) {
+        runner_do_rt_ghost2(r, c->progeny[k], 0);
+      }
+    }
+  }
+
+  for (int pid = 0; pid < count; pid++) {
+    struct part *restrict p = &(c->hydro.parts[pid]);
+    rt_finalise_gradient(p);
+  }
+
+  if (timer) TIMER_TOC(timer_do_rt_ghost2);
 }

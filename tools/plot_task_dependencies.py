@@ -4,7 +4,7 @@ description = """
 This file generates a graphviz file that represents the SWIFT tasks
 dependencies.
 
-Example: ./plot_task_dependencies.py dependency_graph_*.csv
+Example: ./plot_task_dependencies.py dependency_graph.csv
 """
 from pandas import read_csv
 import numpy as np
@@ -19,6 +19,7 @@ task_colours = {
     "hydro": "blue3",
     "gravity": "red3",
     "RT": "springgreen",
+    "sink": "lightseagreen",
 }
 
 
@@ -55,6 +56,14 @@ def parse_args():
     )
 
     parser.add_argument(
+        "-l",
+        "--with-levels",
+        dest="with_levels",
+        help="Write the number of each task at each level for each task individually",
+        action="store_true",
+    )
+
+    parser.add_argument(
         "files",
         nargs="+",
         type=str,
@@ -68,6 +77,12 @@ def parse_args():
     for f in files:
         if not path.exists(f):
             raise FileNotFoundError("You need to provide one file")
+
+    if args.with_calls and args.with_levels:
+        raise ValueError(
+            "I can't run with --with-calls and",
+            " --with-levels simultaneously. Pick one!",
+        )
 
     return args, files
 
@@ -109,81 +124,6 @@ def get_git_version(f, git):
     return new_git
 
 
-def append_single_data(data0, datai):
-    """
-    Append two DataFrame together
-
-    Parameters
-    ----------
-
-    data0: DataFrame
-        One of the dataframe
-
-    datai: DataFrame
-        The second dataframe
-
-    Returns
-    -------
-
-    data0: DataFrame
-        The updated dataframe
-    """
-
-    # loop over all rows in datai
-    for i, row in datai.iterrows():
-        # get data
-        ta = datai["task_in"][i]
-        tb = datai["task_out"][i]
-        ind = np.logical_and(data0["task_in"] == ta, data0["task_out"] == tb)
-
-        # check number of ta->tb
-        N = np.sum(ind)
-        if N > 1:
-            raise Exception(
-                "Same dependency written multiple times %s->%s" % (ta, tb))
-        # if not present in data0
-        if N == 0:
-            data0.append(row)
-        else:
-            # otherwise just update the number of link
-            ind = ind[ind].index[0]
-            tmp = data0["number_link"][ind] + datai["number_link"][i]
-            data0.at[ind, "number_link"] = tmp
-
-    return data0
-
-
-def append_data(data):
-    """
-    Append all the dataframe together, and add a column for colour type
-
-    Parameters
-    ----------
-
-    data: list
-        List containing all the dataframe to append together
-
-    Returns
-    -------
-
-    data: DataFrame
-        The complete dataframe
-    """
-    N = len(data)
-    if N == 1:
-        data[0]["task_colour"] = "black"
-        return data[0]
-
-    # add number link to data[0]
-    for i in range(N - 1):
-        i += 1
-        data[0] = append_single_data(data[0], data[i])
-
-    data[0]["task_colour"] = "black"
-
-    return data[0]
-
-
 def get_task_colour(taskname):
     """
     Get the task colour based on its name.
@@ -215,6 +155,8 @@ def get_task_colour(taskname):
         colour = task_colours["gravity"]
     elif task_is_RT(taskname):
         colour = task_colours["RT"]
+    elif task_is_sink(taskname):
+        colour = task_colours["sink"]
 
     return colour
 
@@ -268,7 +210,7 @@ def task_is_hydro(name):
         return True
     if "rho" in name and "bpart" not in name:
         return True
-    if "gradient" in name:
+    if "gradient" in name and "rt_gradient" not in name:
         return True
     if "force" in name and "grav" not in name:
         return True
@@ -282,6 +224,8 @@ def task_is_hydro(name):
         "ghost_out",
         "extra_ghost",
         "cooling",
+        "cooling_in",
+        "cooling_out",
         "star_formation",
     ]
     if name in task_name:
@@ -394,7 +338,17 @@ def get_function_calls(name):
         return pre + txt + app
 
 
-def write_task(f, name, implicit, mpi, with_calls):
+def write_task(
+    f,
+    name,
+    implicit,
+    mpi,
+    task_is_in_top,
+    task_is_in_hydro_super,
+    task_is_in_grav_super,
+    with_calls,
+    with_levels,
+):
     """
     Write the special task (e.g. implicit and mpi)
 
@@ -413,8 +367,20 @@ def write_task(f, name, implicit, mpi, with_calls):
     mpi: int
         Is the task MPI related
 
+    task_is_in_hydro_super: bool
+        whether task is in top level cell
+
+    task_is_in_hydro_super: bool
+        whether task is in hydro super cell
+    
+    task_is_in_grav_super: bool
+        whether task is in grav super cell
+
     with_calls: bool
-        if true, write down the function calls
+        if True, write down the function calls
+
+    with_levels: bool
+        if True, write down level at which tasks are called
     """
     # generate text
     txt = "\t " + name + "["
@@ -423,13 +389,48 @@ def write_task(f, name, implicit, mpi, with_calls):
         txt += "style=filled,fillcolor=grey90,"
     if mpi:
         txt += "shape=diamond,style=filled,fillcolor=azure,"
+    if with_levels:
+        levelstr = ""
+        if task_is_in_top:
+            levelstr = "top"
+        if task_is_in_hydro_super and not task_is_in_grav_super:
+            if len(levelstr) > 0:
+                levelstr += " / "
+            levelstr += "hydro super"
+        if task_is_in_grav_super and not task_is_in_hydro_super:
+            if len(levelstr) > 0:
+                levelstr += " / "
+            levelstr += "grav super"
+        if task_is_in_grav_super and task_is_in_hydro_super:
+            if len(levelstr) > 0:
+                levelstr += " / "
+            levelstr += "super"
+
+        if (
+            (not task_is_in_top)
+            and (not task_is_in_grav_super)
+            and (not task_is_in_hydro_super)
+        ):
+            levelstr = "below super"
+
+        txt += "\n\t\tlabel=<\n"
+        txt += '\t\t\t<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0">\n'
+        txt += (
+            '\t\t\t\t<TR> <TD> <B> <FONT POINT-SIZE="18">'
+            + name
+            + " </FONT> </B> </TD> </TR> <!-- task name -->\n"
+        )
+        txt += (
+            '\t\t\t\t<TR> <TD> <FONT POINT-SIZE="18">'
+            + levelstr
+            + "</FONT> </TD> </TR> <!-- task level -->\n"
+        )
+        txt += "\t\t\t</TABLE>\n"
+        txt += "\t\t\t>,\n\t\t"
 
     col = get_task_colour(name)
 
     txt += "color=%s," % col
-
-    if task_is_sink(name):
-        txt += "color=lightseagreen,"
 
     if with_calls:
         func = get_function_calls(name)
@@ -470,8 +471,9 @@ def write_header(f, data, git, opt):
     f.write('\t label="Task dependencies for SWIFT %s";\n' % git)
     f.write("\t compound=true;\n")
     f.write("\t ratio=0.66;\n")
-    f.write("\t node[nodesep=0.15, fontsize=30, penwidth=5.];\n")
-    f.write("\t ranksep=1.2;\n")
+    f.write("\t node[nodesep=0.15, fontsize=18, penwidth=3.];\n")
+    f.write("\t edge[fontsize=12, penwidth=0.5];\n")
+    f.write("\t ranksep=0.8;\n")
     f.write("\n")
 
     # write the special task
@@ -485,8 +487,17 @@ def write_header(f, data, git, opt):
             continue
 
         written.append(ta)
-        write_task(f, ta, data["implicit_in"][i],
-                   data["mpi_in"][i], opt.with_calls)
+        write_task(
+            f,
+            ta,
+            data["implicit_in"][i],
+            data["mpi_in"][i],
+            data["task_in_is_top"][i] == 1,
+            data["task_in_is_hydro_super"][i] == 1,
+            data["task_in_is_grav_super"][i] == 1,
+            opt.with_calls,
+            opt.with_levels,
+        )
 
     # do task out
     for i in range(N):
@@ -495,8 +506,17 @@ def write_header(f, data, git, opt):
             continue
 
         written.append(tb)
-        write_task(f, tb, data["implicit_out"][i],
-                   data["mpi_out"][i], opt.with_calls)
+        write_task(
+            f,
+            tb,
+            data["implicit_out"][i],
+            data["mpi_out"][i],
+            data["task_out_is_top"][i] == 1,
+            data["task_out_is_hydro_super"][i] == 1,
+            data["task_out_is_grav_super"][i] == 1,
+            opt.with_calls,
+            opt.with_levels,
+        )
 
     f.write("\n")
 
@@ -585,11 +605,12 @@ def write_dependencies(f, data):
     N = len(data)
     written = []
     max_rank = data["number_rank"].max()
-    for i in range(N):
+    #  for i in range(N):
+    for i, l in data.iterrows():
         # get data
-        ta = data["task_in"][i]
-        tb = data["task_out"][i]
-        number_link = data["number_link"][i]
+        ta = l["task_in"]
+        tb = l["task_out"]
+        number_link = l["number_link"]
 
         # check if already done
         name = "%s_%s" % (ta, tb)
@@ -599,12 +620,12 @@ def write_dependencies(f, data):
         written.append(name)
 
         # write relation
-        arrow = ",color=%s" % data["task_colour"][i]
-        if data["number_rank"][i] != max_rank:
+        arrow = ",color=%s" % l["task_colour"]
+        if l["number_rank"] != max_rank:
             arrow += ",style=dashed"
         f.write(
             "\t %s->%s[label=%i%s,fontcolor=%s]\n"
-            % (ta, tb, number_link, arrow, data["task_colour"][i])
+            % (ta, tb, number_link, arrow, l["task_colour"])
         )
 
 
@@ -657,35 +678,34 @@ if __name__ == "__main__":
 
     args, files = parse_args()
 
-    # output
-    dot_output = "dependency_graph.dot"
-    png_output = "dependency_graph.png"
-
-    # read files
-    data = []
-    git = None
     for f in files:
-        tmp = read_csv(f, delimiter=",", comment="#")
+        # output
+        basename = path.splitext(f)[0]
+        dot_output = basename + ".dot"
+        png_output = basename + ".png"
+
+        # read file
+        data = []
+        git = None
+        data = read_csv(f, delimiter=",", comment="#")
         git = get_git_version(f, git)
-        data.append(tmp)
 
-    data = append_data(data)
-    data = set_task_colours(data)
+        data = set_task_colours(data)
 
-    # write output
-    with open(dot_output, "w") as f:
-        write_header(f, data, git, args)
+        # write output
+        with open(dot_output, "w") as f:
+            write_header(f, data, git, args)
 
-        write_clusters(f, data)
+            write_clusters(f, data)
 
-        write_dependencies(f, data)
+            write_dependencies(f, data)
 
-        write_footer(f)
+            write_footer(f)
 
-    call(["dot", "-Tpng", dot_output, "-o", png_output])
+        call(["dot", "-Tpng", dot_output, "-o", png_output])
 
-    print("You will find the graph in %s" % png_output)
+        print("You will find the graph in %s" % png_output)
 
-    if args.with_calls:
-        print("We recommand to use the python package xdot available on pypi:")
-        print("  python -m xdot %s" % dot_output)
+        if args.with_calls:
+            print("We recommand to use the python package xdot available on pypi:")
+            print("  python -m xdot %s" % dot_output)

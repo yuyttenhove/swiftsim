@@ -294,9 +294,13 @@ static INLINE void chemistry_print_backend(
  *
  * @param p The particle to act upon.
  * @param cosmo The current cosmological model.
+ * @param with_cosmology Are we running with the cosmology?
+ * @param time Current time of the simulation.
+ * @param dt Time step (in physical units).
  */
 __attribute__((always_inline)) INLINE static void chemistry_end_force(
-    struct part* restrict p, const struct cosmology* cosmo) {}
+    struct part* restrict p, const struct cosmology* cosmo,
+    const int with_cosmology, const double time, const double dt) {}
 
 /**
  * @brief Computes the chemistry-related time-step constraint.
@@ -603,7 +607,7 @@ chemistry_get_total_metal_mass_for_stats(const struct part* restrict p) {
  * @brief Returns the total metallicity (metal mass fraction) of the
  * star particle to be used in the stats related routines.
  *
- * @param p Pointer to the particle data.
+ * @param sp Pointer to the star particle data.
  */
 __attribute__((always_inline)) INLINE static float
 chemistry_get_star_total_metal_mass_for_stats(const struct spart* restrict sp) {
@@ -615,7 +619,7 @@ chemistry_get_star_total_metal_mass_for_stats(const struct spart* restrict sp) {
  * @brief Returns the total metallicity (metal mass fraction) of the
  * black hole particle to be used in the stats related routines.
  *
- * @param p Pointer to the particle data.
+ * @param bp Pointer to the BH particle data.
  */
 __attribute__((always_inline)) INLINE static float
 chemistry_get_bh_total_metal_mass_for_stats(const struct bpart* restrict bp) {

@@ -513,14 +513,6 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  if (with_fof && !with_black_holes) {
-    if (myrank == 0)
-      printf(
-          "Error: Cannot perform FOF seeding without black holes being in use, "
-          "-B must be chosen.\n");
-    return 1;
-  }
-
   if (!with_stars && with_star_formation) {
     if (myrank == 0) {
       argparse_usage(&argparse);
@@ -587,10 +579,6 @@ int main(int argc, char *argv[]) {
         "chosen\n");
   }
 
-#ifndef GADGET2_SPH
-  /* Temporary, this dependency will be removed later */
-  error("Error: Cannot use radiative transfer without gadget2-sph for now\n");
-#endif
 #ifndef STARS_GEAR
   /* Temporary, this dependency will be removed later */
   error(
@@ -657,6 +645,15 @@ int main(int argc, char *argv[]) {
         "WARNING: Checking 1/%d of all gpart for gravity accuracy. Code will "
         "be slower !",
         SWIFT_GRAVITY_FORCE_CHECKS);
+#endif
+
+/* Do we have hydro accuracy checks ? */
+#ifdef SWIFT_HYDRO_DENSITY_CHECKS
+  if (myrank == 0)
+    message(
+        "WARNING: Checking 1/%d of all part for hydro accuracy. Code will be "
+        "slower !",
+        SWIFT_HYDRO_DENSITY_CHECKS);
 #endif
 
   /* Do we choke on FP-exceptions ? */
@@ -898,6 +895,31 @@ int main(int argc, char *argv[]) {
     /* Now read it. */
     restart_read(&e, restart_file);
 
+#ifdef WITH_MPI
+    integertime_t min_ti_current = e.ti_current;
+    integertime_t max_ti_current = e.ti_current;
+
+    /* Verify that everyone agrees on the current time */
+    MPI_Allreduce(&e.ti_current, &min_ti_current, 1, MPI_LONG_LONG_INT, MPI_MIN,
+                  MPI_COMM_WORLD);
+    MPI_Allreduce(&e.ti_current, &max_ti_current, 1, MPI_LONG_LONG_INT, MPI_MAX,
+                  MPI_COMM_WORLD);
+
+    if (min_ti_current != max_ti_current) {
+      if (myrank == 0)
+        message("The restart files don't all contain the same ti_current!");
+
+      for (int i = 0; i < myrank; ++i) {
+        if (myrank == i)
+          message("MPI rank %d reading file '%s' found an integer time= %lld",
+                  myrank, restart_file, e.ti_current);
+        MPI_Barrier(MPI_COMM_WORLD);
+      }
+
+      if (myrank == 0) error("Aborting");
+    }
+#endif
+
     /* And initialize the engine with the space and policies. */
     if (myrank == 0) clocks_gettime(&tic);
     engine_config(/*restart=*/1, /*fof=*/0, &e, params, nr_nodes, myrank,
@@ -917,7 +939,7 @@ int main(int argc, char *argv[]) {
 
     /* Prepare and verify the selection of outputs */
     io_prepare_output_fields(output_options, with_cosmology, with_fof,
-                             with_structure_finding);
+                             with_structure_finding, e.verbose);
 
     /* Not restarting so look for the ICs. */
     /* Initialize unit system and constants */
@@ -957,6 +979,24 @@ int main(int argc, char *argv[]) {
       cosmology_init_no_cosmo(&cosmo);
     if (myrank == 0 && with_cosmology) cosmology_print(&cosmo);
 
+    if (with_hydro) {
+#ifdef NONE_SPH
+      error("Can't run with hydro when compiled without a hydro model!");
+#endif
+    }
+    if (with_stars) {
+#ifdef STARS_NONE
+      error("Can't run with stars when compiled without a stellar model!");
+#endif
+    }
+    if (with_black_holes) {
+#ifdef BLACK_HOLES_NONE
+      error(
+          "Can't run with black holes when compiled without a black hole "
+          "model!");
+#endif
+    }
+
     /* Initialise the hydro properties */
     if (with_hydro)
       hydro_props_init(&hydro_properties, &prog_const, &us, params);
@@ -993,7 +1033,8 @@ int main(int argc, char *argv[]) {
     /* Initialise the feedback properties */
     if (with_feedback) {
 #ifdef FEEDBACK_NONE
-      error("ERROR: Running with feedback but compiled without it.");
+      if (!with_rt)
+        error("ERROR: Running with feedback but compiled without it.");
 #endif
       feedback_props_init(&feedback_properties, &prog_const, &us, params,
                           &hydro_properties, &cosmo);
@@ -1042,8 +1083,8 @@ int main(int argc, char *argv[]) {
 #ifdef STAR_FORMATION_NONE
       error("ERROR: Running with star formation but compiled without it!");
 #endif
-      starformation_init(params, &prog_const, &us, &hydro_properties,
-                         &starform);
+      starformation_init(params, &prog_const, &us, &hydro_properties, &cosmo,
+                         &entropy_floor, &starform);
     }
     if (with_star_formation && myrank == 0) starformation_print(&starform);
 
@@ -1055,8 +1096,16 @@ int main(int argc, char *argv[]) {
     /* Initialise the FOF properties */
     bzero(&fof_properties, sizeof(struct fof_props));
 #ifdef WITH_FOF
-    if (with_fof)
+    if (with_fof) {
       fof_init(&fof_properties, params, &prog_const, &us, /*stand-alone=*/0);
+      if (fof_properties.seed_black_holes_enabled && !with_black_holes) {
+        if (myrank == 0)
+          printf(
+              "Error: Cannot perform FOF seeding without black holes being in "
+              "use\n");
+        return 1;
+      }
+    }
 #endif
 
     /* Be verbose about what happens next */
@@ -1188,13 +1237,17 @@ int main(int argc, char *argv[]) {
     const int with_DM_background_particles =
         N_total[swift_type_dark_matter_background] > 0;
 
+    /* Do we have neutrino particles? */
+    const int with_neutrinos = 0;  // no for now
+
     /* Initialize the space with these data. */
     if (myrank == 0) clocks_gettime(&tic);
     space_init(&s, params, &cosmo, dim, &hydro_properties, parts, gparts, sinks,
                sparts, bparts, Ngas, Ngpart, Nsink, Nspart, Nbpart, periodic,
                replicate, remap_ids, generate_gas_in_ics, with_hydro,
                with_self_gravity, with_star_formation,
-               with_DM_background_particles, talking, dry_run, nr_nodes);
+               with_DM_background_particles, with_neutrinos, talking, dry_run,
+               nr_nodes);
 
     /* Initialise the line of sight properties. */
     if (with_line_of_sight) los_init(s.dim, &los_properties, params);
@@ -1418,7 +1471,15 @@ int main(int argc, char *argv[]) {
     }
 #endif
     /* Dump initial state snapshot, if not working with an output list */
-    if (!e.output_list_snapshots) engine_dump_snapshot(&e);
+    if (!e.output_list_snapshots) {
+
+      /* Run FoF first, if we're adding FoF info to the snapshot */
+      if (with_fof && e.snapshot_invoke_fof) {
+        engine_fof(&e, /*dump_results=*/0, /*seed_black_holes=*/0);
+      }
+
+      engine_dump_snapshot(&e);
+    }
 
     /* Dump initial state statistics, if not working with an output list */
     if (!e.output_list_stats) engine_print_stats(&e);
@@ -1549,8 +1610,8 @@ int main(int argc, char *argv[]) {
     /* Dump MPI requests if collected. */
 #if defined(SWIFT_MPIUSE_REPORTS) && defined(WITH_MPI)
     {
-      char dumpfile[40];
-      snprintf(dumpfile, 40, "mpiuse_report-rank%d-step%d.dat", engine_rank,
+      char dumpfile[80];
+      snprintf(dumpfile, 80, "mpiuse_report-rank%d-step%d.dat", engine_rank,
                j + 1);
       mpiuse_log_dump(dumpfile, e.tic_step);
     }
@@ -1559,12 +1620,12 @@ int main(int argc, char *argv[]) {
 #ifdef SWIFT_DEBUG_THREADPOOL
     /* Dump the task data using the given frequency. */
     if (dump_threadpool && (dump_threadpool == 1 || j % dump_threadpool == 1)) {
-      char dumpfile[40];
+      char dumpfile[80];
 #ifdef WITH_MPI
-      snprintf(dumpfile, 40, "threadpool_info-rank%d-step%d.dat", engine_rank,
+      snprintf(dumpfile, 80, "threadpool_info-rank%d-step%d.dat", engine_rank,
                j + 1);
 #else
-      snprintf(dumpfile, 40, "threadpool_info-step%d.dat", j + 1);
+      snprintf(dumpfile, 80, "threadpool_info-step%d.dat", j + 1);
 #endif  // WITH_MPI
       threadpool_dump_log(&e.threadpool, dumpfile, 1);
     } else {
@@ -1603,7 +1664,7 @@ int main(int argc, char *argv[]) {
   }
 
   /* Write final output. */
-  if (!force_stop) {
+  if (!force_stop && nsteps == -2) {
 
     /* Move forward in time */
     e.ti_old = e.ti_current;
@@ -1629,14 +1690,24 @@ int main(int argc, char *argv[]) {
       engine_dump_index(&e);
 
       /* Write a sentinel timestamp */
-      logger_log_timestamp(e.logger, e.ti_current, e.time,
-                           &e.logger->timestamp_offset);
+      if (e.policy & engine_policy_cosmology) {
+        logger_log_timestamp(e.logger, e.ti_current, e.cosmology->a,
+                             &e.logger->timestamp_offset);
+      } else {
+        logger_log_timestamp(e.logger, e.ti_current, e.time,
+                             &e.logger->timestamp_offset);
+      }
     }
 #endif
 
     /* Write final snapshot? */
     if ((e.output_list_snapshots && e.output_list_snapshots->final_step_dump) ||
         !e.output_list_snapshots) {
+
+      if (with_fof && e.snapshot_invoke_fof) {
+        engine_fof(&e, /*dump_results=*/0, /*seed_black_holes=*/0);
+      }
+
 #ifdef HAVE_VELOCIRAPTOR
       if (with_structure_finding && e.snapshot_invoke_stf &&
           !e.stf_this_timestep)

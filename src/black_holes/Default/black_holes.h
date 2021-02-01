@@ -38,7 +38,7 @@
  */
 __attribute__((always_inline)) INLINE static float black_holes_compute_timestep(
     const struct bpart* const bp, const struct black_holes_props* props,
-    const struct phys_const* constants) {
+    const struct phys_const* constants, const struct cosmology* cosmo) {
 
   return FLT_MAX;
 }
@@ -145,6 +145,42 @@ black_holes_bpart_has_no_neighbours(struct bpart* restrict bp,
 }
 
 /**
+ * @brief Return the current instantaneous accretion rate of the BH.
+ *
+ * Empty BH model --> return 0.
+ *
+ * @param bp the #bpart.
+ */
+__attribute__((always_inline)) INLINE static double
+black_holes_get_accretion_rate(const struct bpart* bp) {
+  return 0.;
+}
+
+/**
+ * @brief Return the total accreted gas mass of this BH.
+ *
+ * Empty BH model --> return 0.
+ *
+ * @param bp the #bpart.
+ */
+__attribute__((always_inline)) INLINE static double
+black_holes_get_accreted_mass(const struct bpart* bp) {
+  return 0.;
+}
+
+/**
+ * @brief Return the subgrid mass of this BH.
+ *
+ * Empty BH model --> return 0.
+ *
+ * @param bp the #bpart.
+ */
+__attribute__((always_inline)) INLINE static double
+black_holes_get_subgrid_mass(const struct bpart* bp) {
+  return 0.;
+}
+
+/**
  * @brief Update the properties of a black hole particles by swallowing
  * a gas particle.
  *
@@ -200,7 +236,7 @@ __attribute__((always_inline)) INLINE static void black_holes_prepare_feedback(
     const struct phys_const* constants, const struct cosmology* cosmo,
     const struct cooling_function_data* cooling,
     const struct entropy_floor_properties* floor_props, const double time,
-    const int with_cosmology, const double dt) {}
+    const int with_cosmology, const double dt, const integertime_t ti_begin) {}
 
 /**
  * @brief Finish the calculation of the new BH position.
@@ -271,11 +307,12 @@ black_holes_store_potential_in_part(struct black_holes_part_data* p_data,
  * @param constants The physical constants in internal units.
  * @param cosmo The current cosmological model.
  * @param p The #part that became a black hole.
+ * @param xp The #xpart that became a black hole.
  */
 INLINE static void black_holes_create_from_gas(
     struct bpart* bp, const struct black_holes_props* props,
     const struct phys_const* constants, const struct cosmology* cosmo,
-    const struct part* p) {
+    const struct part* p, const struct xpart* xp) {
 
   /* First initialisation */
   black_holes_init_bpart(bp);

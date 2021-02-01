@@ -35,7 +35,9 @@
 #include "chemistry_struct.h"
 #include "cooling_struct.h"
 #include "feedback_struct.h"
+#include "particle_splitting_struct.h"
 #include "pressure_floor_struct.h"
+#include "rt_struct.h"
 #include "star_formation_struct.h"
 #include "timestep_limiter_struct.h"
 #include "tracers_struct.h"
@@ -58,11 +60,14 @@ struct xpart {
   /*! Velocity at the last full step. */
   float v_full[3];
 
-  /*! Gravitational acceleration at the last full step. */
+  /*! Gravitational acceleration at the end of the last step */
   float a_grav[3];
 
   /*! Internal energy at the last full step. */
   float u_full;
+
+  /*! Additional data used to record particle splits */
+  struct particle_splitting_data split_data;
 
   /*! Additional data used to record cooling information */
   struct cooling_xpart_data cooling_data;
@@ -191,6 +196,9 @@ struct part {
 
   /*! Additional data used by the pressure floor */
   struct pressure_floor_part_data pressure_floor_data;
+
+  /*! Additional Radiative Transfer Data */
+  struct rt_part_data rt_data;
 
   /*! Time-step length */
   timebin_t time_bin;

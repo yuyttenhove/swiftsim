@@ -26,6 +26,129 @@
 #include <stdio.h>
 
 /**
+ * @brief Compute the number of fields for a given particle type.
+ *
+ * @param type The type of particles.
+ *
+ * @return The number of fields.
+ */
+int tools_get_number_fields(enum part_type type) {
+  int number_fields = 0;
+  switch (type) {
+    case swift_type_gas:
+      number_fields = hydro_logger_field_count;
+      number_fields += chemistry_logger_field_part_count;
+      return number_fields;
+
+    case swift_type_dark_matter:
+    case swift_type_dark_matter_background:
+      number_fields = gravity_logger_field_count;
+      return number_fields;
+
+    case swift_type_stars:
+      number_fields = stars_logger_field_count;
+      number_fields += chemistry_logger_field_spart_count;
+      number_fields += star_formation_logger_field_count;
+      return number_fields;
+
+    default:
+      message("Particle type %i not implemented, skipping it", type);
+      return 0;
+  }
+}
+
+#define copy_field_to_struct_internal(MODULE, PART, TYPE)             \
+  for (int j = 0; j < MODULE##_logger_field##PART##_count; j++) {     \
+                                                                      \
+    /* Save the main properties */                                    \
+    fields[i].module = TYPE;                                          \
+    fields[i].name = MODULE##_logger_field_names##PART[j];            \
+                                                                      \
+    /* Get the indexes */                                             \
+    const int global = MODULE##_logger_local_to_global##PART[j];      \
+    int first = h->masks[global].reader.first_deriv;                  \
+    int second = h->masks[global].reader.second_deriv;                \
+                                                                      \
+    /* Save the global indexes */                                     \
+    fields[i].global_index = global;                                  \
+    fields[i].global_index_first = first;                             \
+    fields[i].global_index_second = second;                           \
+                                                                      \
+    /* Convert the first derivatives into local index */              \
+    if (first != -1) {                                                \
+      for (int k = 0; k < MODULE##_logger_field##PART##_count; k++) { \
+        if (MODULE##_logger_local_to_global##PART[k] == first) {      \
+          first = k;                                                  \
+          break;                                                      \
+        }                                                             \
+      }                                                               \
+    }                                                                 \
+                                                                      \
+    /* Convert the second derivatives into local index */             \
+    if (second != -1) {                                               \
+      for (int k = 0; k < MODULE##_logger_field##PART##_count; k++) { \
+        if (MODULE##_logger_local_to_global##PART[k] == second) {     \
+          second = k;                                                 \
+          break;                                                      \
+        }                                                             \
+      }                                                               \
+    }                                                                 \
+                                                                      \
+    /* Initialize the structure */                                    \
+    fields[i].local_index = j;                                        \
+    fields[i].local_index_first = first;                              \
+    fields[i].local_index_second = second;                            \
+    i++;                                                              \
+  }
+
+/**
+ * Same function as set_links_local_global_internal before but with only two
+ * arguments.
+ */
+#define copy_field_to_struct_single_particle_type(MODULE, TYPE) \
+  copy_field_to_struct_internal(MODULE, , TYPE)
+
+/**
+ * Same function as set_links_local_global_internal before but with a cleaner
+ * argument.
+ */
+#define copy_field_to_struct(MODULE, PART, TYPE) \
+  copy_field_to_struct_internal(MODULE, _##PART, TYPE)
+
+/**
+ * @brief Construct the list of fields for a given particle type.
+ *
+ * @param fields (output) The list of fields (need to be already allocated).
+ * @param type The type of particle.
+ * @param h The #header
+ */
+void tools_get_list_fields(struct field_information *fields,
+                           enum part_type type, const struct header *h) {
+  int i = 0;
+  switch (type) {
+    case swift_type_gas:
+      copy_field_to_struct_single_particle_type(hydro, field_module_default);
+      copy_field_to_struct(chemistry, part, field_module_chemistry);
+      break;
+
+    case swift_type_dark_matter:
+    case swift_type_dark_matter_background:
+      copy_field_to_struct_single_particle_type(gravity, field_module_default);
+      break;
+
+    case swift_type_stars:
+      copy_field_to_struct_single_particle_type(stars, field_module_default);
+      copy_field_to_struct(chemistry, spart, field_module_chemistry);
+      copy_field_to_struct_single_particle_type(star_formation,
+                                                field_module_star_formation);
+      break;
+
+    default:
+      error("Particle type %i not implemented", type);
+  }
+}
+
+/**
  * @brief get the offset of the next corresponding record.
  *
  * @param h #header structure of the file
@@ -139,7 +262,6 @@ size_t tools_reverse_offset(const struct header *h, void *file_map,
 
   /* first records do not have a previous partner. */
   if (prev_offset == cur_offset) return after_current_record;
-
   if (prev_offset > cur_offset)
     error_python("Unexpected offset: header %lu, current %lu.", prev_offset,
                  cur_offset);
@@ -187,8 +309,20 @@ size_t tools_check_record_consistency(const struct logger_reader *reader,
   size_t mask;
   size_t pointed_offset;
 
+  const size_t mask_special_flag =
+      h->masks[header_get_field_index(h, "SpecialFlags")].mask;
+
   /* read mask + offset. */
   map = logger_loader_io_read_mask(h, map, &mask, &pointed_offset);
+
+  /* set offset after current record. */
+  map = (char *)map + header_get_record_size_from_mask(h, mask);
+  const size_t offset_ret = (size_t)((char *)map - (char *)file_init);
+
+  /* If something happened, skip the check. */
+  if (mask & mask_special_flag) {
+    return offset_ret;
+  }
 
   /* get absolute offset. */
   if (header_is_forward(h))
@@ -202,11 +336,7 @@ size_t tools_check_record_consistency(const struct logger_reader *reader,
     error_python("Offset are corrupted.");
   }
 
-  /* set offset after current record. */
-  map = (char *)map + header_get_record_size_from_mask(h, mask);
-
-  if (pointed_offset == offset || pointed_offset == 0)
-    return (size_t)((char *)map - (char *)file_init);
+  if (pointed_offset == offset || pointed_offset == 0) return offset_ret;
 
   /* read mask of the pointed record. */
   size_t pointed_mask = 0;
@@ -219,103 +349,49 @@ size_t tools_check_record_consistency(const struct logger_reader *reader,
     error_python("Error in the offset (mask %lu at %lu != %lu at %lu).", mask,
                  offset, pointed_mask, pointed_offset);
 
-  return (size_t)((char *)map - (char *)file_init);
+  return offset_ret;
 }
 
 /**
- * @brief Compute the quintic hermite spline interpolation.
+ * @brief Remove the previous text and print the progress of current task.
  *
- * @param t0 The time at the left of the interval.
- * @param x0 The function at the left of the interval.
- * @param v0 The first derivative at the left of the interval.
- * @param a0 The second derivative at the left of the interval.
- * @param t1 The time at the right of the interval.
- * @param x1 The function at the right of the interval.
- * @param v1 The first derivative at the right of the interval.
- * @param a1 The second derivative at the right of the interval.
- * @param t The time of the interpolation.
- *
- * @return The function evaluated at t.
+ * @param percentage The current progress.
+ * @param remaining_time The remaining time of the process (in seconds)
+ * @param message The message to display before the progress message.
  */
-double logger_tools_quintic_hermite_spline(double t0, double x0, float v0,
-                                           float a0, double t1, double x1,
-                                           float v1, float a1, double t) {
+void tools_print_progress(float percentage, int remaining_time,
+                          const char *message) {
 
-  /* Generates recurring variables  */
-  /* Time differences */
-  const double dt = t1 - t0;
-  const double dt2 = dt * dt;
-  const double dt3 = dt2 * dt;
-  const double dt4 = dt3 * dt;
-  const double dt5 = dt4 * dt;
+  /* Compute the time */
+  int hour = remaining_time / (60 * 60);
+  remaining_time -= hour * 60 * 60;
+  int min = remaining_time / 60;
+  int sec = remaining_time - min * 60;
 
-  const double t_t0 = t - t0;
-  const double t_t0_2 = t_t0 * t_t0;
-  const double t_t0_3 = t_t0_2 * t_t0;
-  const double t_t1 = t - t1;
-  const double t_t1_2 = t_t1 * t_t1;
+  /* Allocate the output string */
+  char output[300];
 
-  /* Derivatives */
-  const double v0_dt = v0 * dt;
-  const double a0_dt2 = 0.5 * a0 * dt2;
-  const double v1_dt = v1 * dt;
-  const double a1_dt2 = 0.5 * a1 * dt2;
+  /* Write the message */
+  char *current =
+      output + sprintf(output, "%s: %2.1f%% done, Remaining time: ", message,
+                       percentage);
 
-  /* Do the first 3 terms of the hermite spline */
-  double x = x0 + v0 * t_t0 + 0.5 * a0 * t_t0_2;
+  /* Write the hour */
+  if (hour == 0)
+    current += sprintf(current, "    ");
+  else
+    current += sprintf(current, "%.2ih ", hour);
 
-  /* Cubic term */
-  x += (x1 - x0 - v0_dt - a0_dt2) * t_t0_3 / dt3;
+  /* Write the minutes */
+  if (hour == 0 && min == 0)
+    current += sprintf(current, "      ");
+  else
+    current += sprintf(current, "%.2imin ", min);
 
-  /* Quartic term */
-  x += (3. * x0 - 3. * x1 + v1_dt + 2. * v0_dt + a0_dt2) * t_t0_3 * t_t1 / dt4;
+  /* Write the seconds */
+  current += sprintf(current, "%.2is", sec);
 
-  /* Quintic term */
-  x += (6. * x1 - 6. * x0 - 3. * v0_dt - 3. * v1_dt + a1_dt2 - a0_dt2) *
-       t_t0_3 * t_t1_2 / dt5;
-
-  return x;
-}
-
-/**
- * @brief Compute the cubic hermite spline interpolation.
- *
- * @param t0 The time at the left of the interval.
- * @param v0 The first derivative at the left of the interval.
- * @param a0 The second derivative at the left of the interval.
- * @param t1 The time at the right of the interval.
- * @param v1 The first derivative at the right of the interval.
- * @param a1 The second derivative at the right of the interval.
- * @param t The time of the interpolation.
- *
- * @return The function evaluated at t.
- */
-float logger_tools_cubic_hermite_spline(double t0, float v0, float a0,
-                                        double t1, float v1, float a1,
-                                        double t) {
-
-  /* Generates recurring variables  */
-  /* Time differences */
-  const float dt = t1 - t0;
-  const float dt2 = dt * dt;
-  const float dt3 = dt2 * dt;
-
-  const float t_t0 = t - t0;
-  const float t_t0_2 = t_t0 * t_t0;
-  const float t_t1 = t - t1;
-
-  /* Derivatives */
-  const float a0_dt = a0 * dt;
-  const float a1_dt = a1 * dt;
-
-  /* Do the first 2 terms of the hermite spline */
-  float x = v0 + a0 * t_t0;
-
-  /* Square term */
-  x += (v1 - v0 - a0_dt) * t_t0_2 / dt2;
-
-  /* Cubic term */
-  x += (2. * v0 - 2. * v1 + a1_dt + a0_dt) * t_t0_2 * t_t1 / dt3;
-
-  return x;
+  /* Print the string */
+  printf("\r%s", output);
+  fflush(stdout);
 }

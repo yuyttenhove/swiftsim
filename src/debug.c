@@ -40,7 +40,9 @@
 #include "space.h"
 
 /* Import the right hydro definition */
-#if defined(MINIMAL_SPH)
+#if defined(NONE_SPH)
+#include "./hydro/None/hydro_debug.h"
+#elif defined(MINIMAL_SPH)
 #include "./hydro/Minimal/hydro_debug.h"
 #elif defined(GADGET2_SPH)
 #include "./hydro/Gadget2/hydro_debug.h"
@@ -50,8 +52,8 @@
 #include "./hydro/PressureEnergy/hydro_debug.h"
 #elif defined(HOPKINS_PU_SPH_MONAGHAN)
 #include "./hydro/PressureEnergyMorrisMonaghanAV/hydro_debug.h"
-#elif defined(DEFAULT_SPH)
-#include "./hydro/Default/hydro_debug.h"
+#elif defined(PHANTOM_SPH)
+#include "./hydro/Phantom/hydro_debug.h"
 #elif defined(GIZMO_MFV_SPH) || defined(GIZMO_MFM_SPH)
 #include "./hydro/Gizmo/hydro_debug.h"
 #elif defined(SHADOWFAX_SPH)

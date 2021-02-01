@@ -100,8 +100,9 @@ enum engine_step_properties {
   engine_step_prop_restarts = (1 << 5),
   engine_step_prop_stf = (1 << 6),
   engine_step_prop_fof = (1 << 7),
-  engine_step_prop_logger_index = (1 << 8),
-  engine_step_prop_done = (1 << 9)
+  engine_step_prop_mesh = (1 << 8),
+  engine_step_prop_logger_index = (1 << 9),
+  engine_step_prop_done = (1 << 10),
 };
 
 /* Some constants */
@@ -310,10 +311,12 @@ struct engine {
 
   char snapshot_base_name[PARSER_MAX_LINE_SIZE];
   char snapshot_subdir[PARSER_MAX_LINE_SIZE];
+  char snapshot_dump_command[PARSER_MAX_LINE_SIZE];
+  int snapshot_run_on_dump;
   int snapshot_distributed;
   int snapshot_compression;
-  int snapshot_int_time_label_on;
   int snapshot_invoke_stf;
+  int snapshot_invoke_fof;
   struct unit_system *snapshot_units;
   int snapshot_output_count;
 
@@ -508,6 +511,10 @@ struct engine {
   /* The globally agreed runtime, in hours. */
   float runtime;
 
+  /* Time-integration mesh kick to apply to the particle velocities for
+   * snapshots */
+  float dt_kick_grav_mesh_for_io;
+
   /* Label of the run */
   char run_name[PARSER_MAX_LINE_SIZE];
 
@@ -560,6 +567,7 @@ void engine_check_for_dumps(struct engine *e);
 void engine_check_for_index_dump(struct engine *e);
 void engine_collect_end_of_step(struct engine *e, int apply);
 void engine_dump_snapshot(struct engine *e);
+void engine_run_on_dump(struct engine *e);
 void engine_init_output_lists(struct engine *e, struct swift_params *params);
 void engine_init(struct engine *e, struct space *s, struct swift_params *params,
                  struct output_options *output_options, long long Ngas,
@@ -586,7 +594,7 @@ void engine_config(int restart, int fof, struct engine *e,
                    const char *restart_file);
 void engine_dump_index(struct engine *e);
 void engine_launch(struct engine *e, const char *call);
-void engine_prepare(struct engine *e);
+int engine_prepare(struct engine *e);
 void engine_init_particles(struct engine *e, int flag_entropy_ICs,
                            int clean_h_values);
 void engine_step(struct engine *e);

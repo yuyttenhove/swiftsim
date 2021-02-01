@@ -32,7 +32,9 @@
 #include "parser.h"
 
 /* Import the right hydro header */
-#if defined(MINIMAL_SPH)
+#if defined(NONE_SPH)
+#include "./hydro/None/hydro_parameters.h"
+#elif defined(MINIMAL_SPH)
 #include "./hydro/Minimal/hydro_parameters.h"
 #elif defined(GADGET2_SPH)
 #include "./hydro/Gadget2/hydro_parameters.h"
@@ -42,8 +44,8 @@
 #include "./hydro/PressureEnergy/hydro_parameters.h"
 #elif defined(HOPKINS_PU_SPH_MONAGHAN)
 #include "./hydro/PressureEnergyMorrisMonaghanAV/hydro_parameters.h"
-#elif defined(DEFAULT_SPH)
-#include "./hydro/Default/hydro_parameters.h"
+#elif defined(PHANTOM_SPH)
+#include "./hydro/Phantom/hydro_parameters.h"
 #elif defined(GIZMO_MFV_SPH) || defined(GIZMO_MFM_SPH)
 #include "./hydro/Gizmo/hydro_parameters.h"
 #elif defined(SHADOWFAX_SPH)

@@ -80,7 +80,6 @@ const char *taskID_names[task_type_count] = {
     "grav_mm",
     "grav_down_in",
     "grav_down",
-    "grav_mesh",
     "grav_end_force",
     "cooling",
     "cooling_in",
@@ -109,6 +108,10 @@ const char *taskID_names[task_type_count] = {
     "rt_in",
     "rt_out",
     "sink_formation",
+    "rt_ghost1",
+    "rt_ghost2",
+    "rt_transport_out",
+    "rt_tchem",
 };
 
 /* Sub-task type names. */
@@ -146,12 +149,17 @@ const char *subtaskID_names[task_subtype_count] = {
     "sink",
     "rt_inject",
     "sink_compute_formation",
+    "rt_gradient",
+    "rt_transport",
 };
 
 const char *task_category_names[task_category_count] = {
-    "drift",       "sort",    "hydro",          "gravity", "feedback",
-    "black holes", "cooling", "star formation", "limiter", "time integration",
-    "mpi",         "fof",     "others",         "sink"};
+    "drift",       "sorts",   "resort",
+    "hydro",       "gravity", "feedback",
+    "black holes", "cooling", "star formation",
+    "limiter",     "sync",    "time integration",
+    "mpi",         "fof",     "others",
+    "sink"};
 
 #ifdef WITH_MPI
 /* MPI communicators for the subtypes. */
@@ -309,7 +317,6 @@ __attribute__((always_inline)) INLINE static enum task_actions task_acts_on(
     case task_type_drift_gpart:
     case task_type_grav_down:
     case task_type_end_grav_force:
-    case task_type_grav_mesh:
       return task_action_gpart;
       break;
 
@@ -602,12 +609,6 @@ void task_unlock(struct task *t) {
 #endif
       break;
 
-    case task_type_grav_mesh:
-#ifdef SWIFT_TASKS_WITHOUT_ATOMICS
-      cell_gunlocktree(ci);
-#endif
-      break;
-
     case task_type_star_formation:
       cell_unlocktree(ci);
       cell_sunlocktree(ci);
@@ -875,14 +876,6 @@ int task_lock(struct task *t) {
 #endif
       break;
 
-    case task_type_grav_mesh:
-#ifdef SWIFT_TASKS_WITHOUT_ATOMICS
-      /* Lock the gparts */
-      if (ci->grav.phold) return 0;
-      if (cell_glocktree(ci) != 0) return 0;
-#endif
-      break;
-
     case task_type_star_formation:
       /* Lock the gas, gravity and star particles */
       if (ci->hydro.hold || ci->stars.hold || ci->grav.phold) return 0;
@@ -945,8 +938,7 @@ void task_print(const struct task *t) {
  */
 void task_get_group_name(int type, int subtype, char *cluster) {
 
-  if (type == task_type_grav_long_range || type == task_type_grav_mm ||
-      type == task_type_grav_mesh) {
+  if (type == task_type_grav_long_range || type == task_type_grav_mm) {
 
     strcpy(cluster, "Gravity");
     return;
@@ -999,6 +991,15 @@ void task_get_group_name(int type, int subtype, char *cluster) {
       break;
     case task_subtype_rt_inject:
       strcpy(cluster, "RTinject");
+      break;
+    case task_subtype_rt_gradient:
+      strcpy(cluster, "RTgradient");
+      break;
+    case task_subtype_rt_transport:
+      strcpy(cluster, "RTtransport");
+      break;
+    case task_subtype_sink_compute_formation:
+      strcpy(cluster, "SinkFormation");
       break;
     default:
       strcpy(cluster, "None");
@@ -1452,8 +1453,10 @@ enum task_categories task_get_category(const struct task *t) {
 
     case task_type_sort:
     case task_type_stars_sort:
-    case task_type_stars_resort:
       return task_category_sort;
+
+    case task_type_stars_resort:
+      return task_category_resort;
 
     case task_type_send:
     case task_type_recv:
@@ -1465,8 +1468,10 @@ enum task_categories task_get_category(const struct task *t) {
       return task_category_time_integration;
 
     case task_type_timestep_limiter:
-    case task_type_timestep_sync:
       return task_category_limiter;
+
+    case task_type_timestep_sync:
+      return task_category_sync;
 
     case task_type_ghost:
     case task_type_extra_ghost:
@@ -1484,7 +1489,6 @@ enum task_categories task_get_category(const struct task *t) {
     case task_type_grav_long_range:
     case task_type_grav_mm:
     case task_type_grav_down:
-    case task_type_grav_mesh:
     case task_type_end_grav_force:
       return task_category_gravity;
 

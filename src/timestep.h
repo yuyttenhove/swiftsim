@@ -256,10 +256,9 @@ __attribute__((always_inline)) INLINE static integertime_t get_spart_timestep(
 __attribute__((always_inline)) INLINE static integertime_t get_bpart_timestep(
     const struct bpart *restrict bp, const struct engine *restrict e) {
 
-  /* Stellar time-step */
   /* Black hole internal time-step */
   float new_dt_black_holes = black_holes_compute_timestep(
-      bp, e->black_holes_properties, e->physical_constants);
+      bp, e->black_holes_properties, e->physical_constants, e->cosmology);
 
   /* Gravity time-step */
   float new_dt_self = FLT_MAX, new_dt_ext = FLT_MAX;

@@ -27,19 +27,12 @@
 #endif
 
 #include "atomic.h"
-#include "chemistry_io.h"
-#include "cooling_io.h"
 #include "engine.h"
-#include "fof_io.h"
 #include "hydro_io.h"
 #include "io_properties.h"
 #include "kernel_hydro.h"
 #include "line_of_sight.h"
 #include "periodic.h"
-#include "rt_io.h"
-#include "star_formation_io.h"
-#include "tracers_io.h"
-#include "velociraptor_io.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -439,26 +432,9 @@ void write_los_hdf5_datasets(hid_t grp, const int j, const size_t N,
   struct io_props list[100];
 
   /* Find all the gas output fields */
-  hydro_write_particles(parts, xparts, list, &num_fields);
-  num_fields += chemistry_write_particles(parts, xparts, list + num_fields,
-                                          with_cosmology);
-  if (with_cooling || with_temperature) {
-    num_fields += cooling_write_particles(parts, xparts, list + num_fields,
-                                          e->cooling_func);
-  }
-  if (with_fof) {
-    num_fields += fof_write_parts(parts, xparts, list + num_fields);
-  }
-  if (with_stf) {
-    num_fields += velociraptor_write_parts(parts, xparts, list + num_fields);
-  }
-  num_fields +=
-      tracers_write_particles(parts, xparts, list + num_fields, with_cosmology);
-  num_fields +=
-      star_formation_write_particles(parts, xparts, list + num_fields);
-  if (with_rt) {
-    num_fields += rt_write_particles(parts, list + num_fields);
-  }
+  io_select_hydro_fields(parts, xparts, with_cosmology, with_cooling,
+                         with_temperature, with_fof, with_stf, with_rt, e,
+                         &num_fields, list);
 
   /* Loop over each output field */
   for (int i = 0; i < num_fields; i++) {
@@ -508,6 +484,9 @@ void write_hdf5_header(hid_t h_file, const struct engine *e,
   io_write_attribute_s(h_grp, "Code", "SWIFT");
   io_write_attribute_s(h_grp, "RunName", e->run_name);
 
+  /* Write out the particle types */
+  io_write_part_type_names(h_grp);
+
   /* Store the time at which the snapshot was written */
   time_t tm = time(NULL);
   struct tm *timeinfo = localtime(&tm);
@@ -531,6 +510,14 @@ void write_hdf5_header(hid_t h_file, const struct engine *e,
                      swift_type_count);
   io_write_attribute(h_grp, "NumPart_Total_HighWord", UINT,
                      numParticlesHighWord, swift_type_count);
+  double MassTable[swift_type_count] = {0};
+  io_write_attribute(h_grp, "MassTable", DOUBLE, MassTable, swift_type_count);
+  io_write_attribute(h_grp, "InitialMassTable", DOUBLE,
+                     e->s->initial_mean_mass_particles, swift_type_count);
+  unsigned int flagEntropy[swift_type_count] = {0};
+  flagEntropy[0] = writeEntropyFlag();
+  io_write_attribute(h_grp, "Flag_Entropy_ICs", UINT, flagEntropy,
+                     swift_type_count);
   io_write_attribute_i(h_grp, "NumFilesPerSnapshot", 1);
   io_write_attribute_i(h_grp, "ThisFile", 0);
   io_write_attribute_s(h_grp, "OutputType", "LineOfSight");

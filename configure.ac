@@ -16,7 +16,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 # Init the project.
-AC_INIT([SWIFT],[0.8.5],[https://gitlab.cosma.dur.ac.uk/swift/swiftsim])
+AC_INIT([SWIFT],[0.9.0],[https://gitlab.cosma.dur.ac.uk/swift/swiftsim])
 swift_config_flags="$*"
 
 #  We want to stop when given unrecognised options. No subdirs so this is safe.
@@ -130,10 +130,8 @@ if test "$enable_ipo" = "yes"; then
                           ], [:] )
       AC_MSG_RESULT([added GCC interprocedural optimization support])
    elif test "$ax_cv_c_compiler_vendor" = "clang"; then
-      CFLAGS="$CFLAGS -flto -fuse-ld=gold"
-      LDFLAGS="$LDFLAGS -XCClinker -fuse-ld=gold"
-      : ${AR="llvm-ar"}
-      : ${LD="ld.gold"}
+      CFLAGS="$CFLAGS -flto=thin"
+      LDFLAGS="$LDFLAGS -flto=thin"
       : ${RANLIB="llvm-ranlib"}
       AC_MSG_RESULT([added LLVM interprocedural optimization support])
    else
@@ -368,6 +366,34 @@ elif test "$gravity_force_checks" != "no"; then
    AC_DEFINE_UNQUOTED([SWIFT_GRAVITY_FORCE_CHECKS], [$enableval] ,[Enable gravity brute-force checks])
 fi
 
+# Check if hydro density checks are on for some particles.
+AC_ARG_ENABLE([hydro-density-checks],
+   [AS_HELP_STRING([--enable-hydro-density-checks],
+     [Activate expensive brute-force hydro density checks for a fraction 1/N of all particles @<:@N@:>@]
+   )],
+   [hydro_density_checks="$enableval"],
+   [hydro_density_checks="no"]
+)
+if test "$hydro_density_checks" == "yes"; then
+   AC_MSG_ERROR(Need to specify the fraction of particles to check when using --enable-hydro-density-checks!)
+elif test "$hydro_density_checks" != "no"; then
+   AC_DEFINE_UNQUOTED([SWIFT_HYDRO_DENSITY_CHECKS], [$enableval] ,[Enable hydro density brute-force checks])
+fi
+
+# Check if stars density checks are on for some particles.
+AC_ARG_ENABLE([stars-density-checks],
+   [AS_HELP_STRING([--enable-stars-density-checks],
+     [Activate expensive brute-force stars density checks for a fraction 1/N of all particles @<:@N@:>@]
+   )],
+   [stars_density_checks="$enableval"],
+   [stars_density_checks="no"]
+)
+if test "$stars_density_checks" == "yes"; then
+   AC_MSG_ERROR(Need to specify the fraction of particles to check when using --enable-stars-density-checks!)
+elif test "$stars_density_checks" != "no"; then
+   AC_DEFINE_UNQUOTED([SWIFT_STARS_DENSITY_CHECKS], [$enableval] ,[Enable stars density brute-force checks])
+fi
+
 # Check whether we want to switch on glass making
 AC_ARG_ENABLE([glass-making],
    [AS_HELP_STRING([--enable-glass-making],
@@ -423,6 +449,18 @@ elif test "$fixed_boundary_particles" != "no"; then
    AC_DEFINE_UNQUOTED([SWIFT_NO_GRAVITY_BELOW_ID], [$enableval] ,[Particles with smaller ID than this will have zero gravity forces])
    AC_DEFINE_UNQUOTED([SWIFT_BOUNDARY_PARTICLES], [$enableval] ,[Particles with smaller ID than this will be considered as boundaries.])
    AC_DEFINE_UNQUOTED([SWIFT_FIXED_BOUNDARY_PARTICLES], [$enableval] ,[Particles with smaller ID than this will be considered as boundaries.])
+fi
+
+# Check if fixed entropy is on for settling planetary initial conditions
+AC_ARG_ENABLE([planetary-fixed-entropy],
+   [AS_HELP_STRING([--enable-planetary-fixed-entropy],
+     [Force entropies to stay fixed for settling planetary initial conditions @<:@yes/no@:>@]
+   )],
+   [planetary_fixed_entropy="$enableval"],
+   [planetary_fixed_entropy="no"]
+)
+if test "$planetary_fixed_entropy" = "yes"; then
+   AC_DEFINE([PLANETARY_FIXED_ENTROPY],1,[Enable planetary fixed entropy])
 fi
 
 # Check whether we have any of the ARM v8.1 tick timers
@@ -1283,8 +1321,6 @@ AC_ARG_WITH([velociraptor],
     [with_velociraptor="no"]
 )
 if test "x$with_velociraptor" != "xno"; then
-   AC_PROG_FC
-   AC_FC_LIBRARY_LDFLAGS
    if test "x$with_velociraptor" != "xyes" -a "x$with_velociraptor" != "x"; then
       VELOCIRAPTOR_LIBS="-L$with_velociraptor -lvelociraptor -lmpi -lstdc++ -lhdf5"
       CFLAGS="$CFLAGS -fopenmp"
@@ -1651,7 +1687,7 @@ AM_CONDITIONAL([HAVESTANDALONEFOF],[test $enable_standalone_fof = "yes"])
 # Gravity scheme.
 AC_ARG_WITH([gravity],
    [AS_HELP_STRING([--with-gravity=<scheme>],
-      [Gravity scheme to use @<:@basic, with-potential, with-multi-softening default: with-multi-softening@:>@]
+      [Gravity scheme to use @<:@basic, with-multi-softening default: with-multi-softening@:>@]
    )],
    [with_gravity="$withval"],
    [with_gravity="with-multi-softening"]
@@ -1659,7 +1695,7 @@ AC_ARG_WITH([gravity],
 
 case "$with_gravity" in
    with-potential)
-      AC_DEFINE([POTENTIAL_GRAVITY], [1], [Basic gravity scheme with potential calculation])
+      AC_MSG_ERROR([The gravity 'with-potential' scheme does not exist anymore. Please use the basic scheme which now contains potentials.])
    ;;
    with-multi-softening)
       AC_DEFINE([MULTI_SOFTENING_GRAVITY], [1], [Gravity scheme with per-particle type softening value and background particles])
@@ -1672,16 +1708,30 @@ case "$with_gravity" in
    ;;
 esac
 
+AC_ARG_ENABLE([gravitational-potential],
+   [AS_HELP_STRING([--disable-gravitational-potential],
+     [Disable calculation of the gravitational potential.]
+   )],
+   [enable_gravitational_potential="$enableval"],
+   [enable_gravitational_potential="yes"]
+)
+if test "$enable_gravitational_potential" = "no"; then
+   AC_DEFINE([SWIFT_GRAVITY_NO_POTENTIAL],1,[Disable calculation of the gravitational potential])
+fi
+
 # Hydro scheme.
 AC_ARG_WITH([hydro],
    [AS_HELP_STRING([--with-hydro=<scheme>],
-      [Hydro dynamics to use @<:@gadget2, minimal, pressure-entropy, pressure-energy, pressure-energy-monaghan, default, gizmo-mfv, gizmo-mfm, shadowfax, planetary, sphenix, anarchy-pu default: gadget2@:>@]
+      [Hydro dynamics to use @<:@gadget2, minimal, pressure-entropy, pressure-energy, pressure-energy-monaghan, phantom, gizmo-mfv, gizmo-mfm, shadowfax, planetary, sphenix, anarchy-pu default: sphenix@:>@]
    )],
    [with_hydro="$withval"],
-   [with_hydro="gadget2"]
+   [with_hydro="sphenix"]
 )
 
 case "$with_hydro" in
+   none)
+      AC_DEFINE([NONE_SPH], [1], [No hydro])
+   ;;
    gadget2)
       AC_DEFINE([GADGET2_SPH], [1], [Gadget-2 SPH])
    ;;
@@ -1697,8 +1747,8 @@ case "$with_hydro" in
    pressure-energy-monaghan)
       AC_DEFINE([HOPKINS_PU_SPH_MONAGHAN], [1], [Pressure-Energy SPH with M&M Variable A.V.])
    ;;
-   default)
-      AC_DEFINE([DEFAULT_SPH], [1], [Default SPH])
+   phantom)
+      AC_DEFINE([PHANTOM_SPH], [1], [Phantom SPH])
    ;;
    gizmo-mfv)
       AC_DEFINE([GIZMO_MFV_SPH], [1], [GIZMO MFV SPH])
@@ -1770,6 +1820,24 @@ if test "$enable_debug_interactions" != "no"; then
   fi
 fi
 
+# Check if debugging interactions sinks is switched on.
+AC_ARG_ENABLE([debug-interactions-sinks],
+   [AS_HELP_STRING([--enable-debug-interactions-sinks],
+     [Activate interaction debugging for sinks, logging a maximum of @<:@N@:>@ neighbours. Defaults to 256 if no value set.]
+   )],
+   [enable_debug_interactions_sinks="$enableval"],
+   [enable_debug_interactions_sinks="no"]
+)
+if test "$enable_debug_interactions_sinks" != "no"; then
+    AC_DEFINE([DEBUG_INTERACTIONS_SINKS],1,[Enable interaction debugging for sinks])
+    if test "$enable_debug_interactions_sinks" == "yes"; then
+      AC_DEFINE([MAX_NUM_OF_NEIGHBOURS_SINKS],256,[The maximum number of particle neighbours to be logged for sinks])
+      [enable_debug_interactions_sinks="yes (Logging up to 256 neighbours)"]
+    else
+      AC_DEFINE_UNQUOTED([MAX_NUM_OF_NEIGHBOURS_SINKS], [$enableval] ,[The maximum number of particle neighbours to be logged for sinks])
+      [enable_debug_interactions_sinks="yes (Logging up to $enableval neighbours)"]
+    fi
+fi
 
 # SPH Kernel function
 AC_ARG_WITH([kernel],
@@ -1900,60 +1968,11 @@ case "$with_riemann" in
       AC_MSG_ERROR([Unknown Riemann solver: $with_riemann])
    ;;
 esac
-#  Cooling function
-AC_ARG_WITH([cooling],
-   [AS_HELP_STRING([--with-cooling=<model>],
-      [cooling function @<:@none, const-du, const-lambda, QLA, EAGLE, grackle_* default: none@:>@.
-      For Grackle, you need to provide the primordial chemistry parameter (e.g. grackle_0)]
-   )],
-   [with_cooling="$withval"],
-   [with_cooling="none"]
-)
-
-if test "$with_subgrid" != "none"; then
-   if test "$with_cooling" != "none"; then
-      AC_MSG_ERROR([Cannot provide with-subgrid and with-cooling together])
-   else
-      with_cooling="$with_subgrid_cooling"
-   fi
-fi
-
-case "$with_cooling" in
-   none)
-      AC_DEFINE([COOLING_NONE], [1], [No cooling function])
-   ;;
-   const-du)
-      AC_DEFINE([COOLING_CONST_DU], [1], [Const du/dt cooling function])
-   ;;
-   const-lambda)
-      AC_DEFINE([COOLING_CONST_LAMBDA], [1], [Const Lambda cooling function])
-   ;;
-   compton)
-      AC_DEFINE([COOLING_COMPTON], [1], [Compton cooling off the CMB])
-   ;;
-   grackle_*)
-      AC_DEFINE([COOLING_GRACKLE], [1], [Cooling via the grackle library])
-      primordial_chemistry=${with_cooling:8}
-      AC_DEFINE_UNQUOTED([COOLING_GRACKLE_MODE], [$primordial_chemistry], [Grackle chemistry network])
-   ;;
-   QLA)
-      AC_DEFINE([COOLING_QLA], [1], [Cooling following the Quick-Lyman-alpha model])
-   ;;
-   EAGLE)
-      AC_DEFINE([COOLING_EAGLE], [1], [Cooling following the EAGLE model])
-   ;;
-   COLIBRE)
-      AC_DEFINE([COOLING_COLIBRE], [1], [Cooling following the COLIBRE model])
-   ;;
-   *)
-      AC_MSG_ERROR([Unknown cooling function: $with_cooling])
-   ;;
-esac
 
 #  chemistry function
 AC_ARG_WITH([chemistry],
    [AS_HELP_STRING([--with-chemistry=<function>],
-      [chemistry function @<:@none, GEAR_*, QLA, EAGLE default: none@:>@
+      [chemistry function @<:@none, GEAR_*, GEAR_DIFFUSION_*, QLA, EAGLE default: none@:>@
       For GEAR, you need to provide the number of elements (e.g. GEAR_10)]
    )],
    [with_chemistry="$withval"],
@@ -1971,6 +1990,11 @@ fi
 case "$with_chemistry" in
    none)
       AC_DEFINE([CHEMISTRY_NONE], [1], [No chemistry function])
+   ;;
+   GEAR_DIFFUSION_*)
+      AC_DEFINE([CHEMISTRY_GEAR_DIFFUSION], [1], [Chemistry taken from the GEAR model including the metal diffusion])
+      number_element=${with_chemistry:15}
+      AC_DEFINE_UNQUOTED([GEAR_CHEMISTRY_ELEMENT_COUNT], [$number_element], [Number of element to follow])
    ;;
    GEAR_*)
       AC_DEFINE([CHEMISTRY_GEAR], [1], [Chemistry taken from the GEAR model])
@@ -1995,6 +2019,70 @@ if test "$with_chemistry" != "none"; then
             AC_MSG_ERROR([Cannot run with hand vectorisation and chemistry yet. Please use --disable-hand-vec])
          fi
       fi
+   fi
+fi
+
+#  Cooling function
+AC_ARG_WITH([cooling],
+   [AS_HELP_STRING([--with-cooling=<model>],
+      [cooling function @<:@none, const-du, const-lambda, QLA, EAGLE, COLIBRE, Wiersma, Ploeckinger, grackle_* default: none@:>@.
+      For Grackle, you need to provide the primordial chemistry parameter (e.g. grackle_0)]
+   )],
+   [with_cooling="$withval"],
+   [with_cooling="none"]
+)
+
+if test "$with_subgrid" != "none"; then
+   if test "$with_cooling" != "none"; then
+      AC_MSG_ERROR([Cannot provide with-subgrid and with-cooling together])
+   else
+      with_cooling="$with_subgrid_cooling"
+   fi
+fi
+
+case "$with_cooling" in
+   none)
+      AC_DEFINE([COOLING_NONE], [1], [No cooling function])
+   ;;
+   const-du)
+      AC_DEFINE([COOLING_CONST_DU], [1], [Const du/dt cooling function])
+   ;;
+   const-lambda)
+      AC_DEFINE([COOLING_CONST_LAMBDA], [1], [Const Lambda cooling function])
+   ;;
+   grackle_*)
+      AC_DEFINE([COOLING_GRACKLE], [1], [Cooling via the grackle library])
+      primordial_chemistry=${with_cooling:8}
+      AC_DEFINE_UNQUOTED([COOLING_GRACKLE_MODE], [$primordial_chemistry], [Grackle chemistry network])
+   ;;
+   QLA)
+      AC_DEFINE([COOLING_QLA], [1], [Cooling following the Quick-Lyman-alpha model])
+      with_cooling="QLA (Ploeckinger+20 tables) with constant primordial Z"
+   ;;
+   EAGLE)
+      AC_DEFINE([COOLING_EAGLE], [1], [Cooling following the EAGLE model (Wiersma+09 tables)])
+      with_cooling="EAGLE (Wiersma+09 tables)"
+   ;;
+   Wiersma)
+      AC_DEFINE([COOLING_EAGLE], [1], [Cooling following the EAGLE model (Wiersma+09 tables)])
+      with_cooling="EAGLE (Wiersma+09 tables)"
+   ;;
+   COLIBRE)
+      AC_DEFINE([COOLING_COLIBRE], [1], [Cooling following the COLIBRE model (Ploeckinger+20 tables)])
+      with_cooling="COLIBRE (Ploeckinger+20 tables)"
+   ;;
+   Ploeckinger)
+      AC_DEFINE([COOLING_COLIBRE], [1], [Cooling following the COLIBRE model (Ploeckinger+20 tables)])
+      with_cooling="COLIBRE (Ploeckinger+20 tables)"
+   ;;
+   *)
+      AC_MSG_ERROR([Unknown cooling function: $with_cooling])
+   ;;
+esac
+
+if test "${with_cooling:0:5}" = "EAGLE" || test "${with_cooling:0:7}" = "COLIBRE"; then
+   if test "$with_chemistry" = "none"; then
+      AC_MSG_ERROR([Cannot run with EAGLE or COLIBRE cooling without chemistry. Please pick a chemistry model])
    fi
 fi
 
@@ -2030,14 +2118,14 @@ esac
 # Stellar model.
 AC_ARG_WITH([stars],
    [AS_HELP_STRING([--with-stars=<model>],
-      [Stellar model to use @<:@none, EAGLE, GEAR, debug default: none@:>@]
+      [Stellar model to use @<:@none, basic, EAGLE, GEAR, default: basic@:>@]
    )],
    [with_stars="$withval"],
-   [with_stars="none"]
+   [with_stars="basic"]
 )
 
 if test "$with_subgrid" != "none"; then
-   if test "$with_stars" != "none"; then
+   if test "$with_stars" != "basic"; then
       AC_MSG_ERROR([Cannot provide with-subgrid and with-stars together])
    else
       with_stars="$with_subgrid_stars"
@@ -2051,10 +2139,12 @@ case "$with_stars" in
    GEAR)
       AC_DEFINE([STARS_GEAR], [1], [GEAR stellar model])
    ;;
-   none)
-      AC_DEFINE([STARS_NONE], [1], [Basic stellar model])
+   basic)
+      AC_DEFINE([STARS_BASIC], [1], [Basic stellar model])
    ;;
-
+   none)
+      AC_DEFINE([STARS_NONE], [1], [No stellar model])
+   ;;
    *)
       AC_MSG_ERROR([Unknown stellar model: $with_stars])
    ;;
@@ -2345,22 +2435,49 @@ DX_INIT_DOXYGEN(SWIFT, doc/Doxyfile, doc/)
 AM_CONDITIONAL([HAVE_DOXYGEN], [test "$ac_cv_path_ac_pt_DX_DOXYGEN" != ""])
 
 # Check if using QLA cooling
-AM_CONDITIONAL([HAVEQLACOOLING], [test $with_cooling = "QLA"])
+AM_CONDITIONAL([HAVEQLACOOLING], [test "${with_cooling:0:3}" = "QLA"])
 
 # Check if using EAGLE cooling
-AM_CONDITIONAL([HAVEEAGLECOOLING], [test $with_cooling = "EAGLE"])
+AM_CONDITIONAL([HAVEEAGLECOOLING], [test "${with_cooling:0:5}" = "EAGLE"])
 
 # Check if using COLIBRE cooling
-AM_CONDITIONAL([HAVECOLIBRECOOLING], [test $with_cooling = "COLIBRE"])
+AM_CONDITIONAL([HAVECOLIBRECOOLING], [test "${with_cooling:0:7}" = "COLIBRE"])
 
 # Check if using EAGLE feedback
-AM_CONDITIONAL([HAVEEAGLEFEEDBACK], [test $with_feedback = "EAGLE"])
+AM_CONDITIONAL([HAVEEAGLEFEEDBACK], [test "$with_feedback" = "EAGLE"])
 
 # check if using grackle cooling
-AM_CONDITIONAL([HAVEGRACKLECOOLING], [test ${with_cooling:0:7} == "grackle"])
+AM_CONDITIONAL([HAVEGRACKLECOOLING], [test "${with_cooling:0:7}" = "grackle"])
 
 # check if using gear feedback
-AM_CONDITIONAL([HAVEGEARFEEDBACK], [test $with_feedback == "GEAR"])
+AM_CONDITIONAL([HAVEGEARFEEDBACK], [test "$with_feedback" = "GEAR"])
+
+# check if using SPHENIX
+AM_CONDITIONAL([HAVE_SPHENIX], [test "$with_hydro" = "sphenix"])
+
+# check if using GADGET2 SPH
+AM_CONDITIONAL([HAVE_GADGET2], [test "$with_hydro" = "gadget2"])
+
+# check if using none chemistry
+AM_CONDITIONAL([HAVE_CHEMISTRY_NONE], [test "$with_chemistry" = "none"])
+
+# check if using GEAR chemistry
+AM_CONDITIONAL([HAVE_CHEMISTRY_GEAR], [test "${with_chemistry:0:5}" = "GEAR_"])
+
+# check if using default stars
+AM_CONDITIONAL([HAVE_STARS_BASIC], [test "$with_stars" = "basic"])
+
+# check if using GEAR stars
+AM_CONDITIONAL([HAVE_STARS_GEAR], [test "$with_stars" = "GEAR"])
+
+# check if using default star formation
+AM_CONDITIONAL([HAVE_STAR_FORMATION_DEFAULT], [test "$with_star_formation" = "none"])
+
+# check if using GEAR star formation
+AM_CONDITIONAL([HAVE_STAR_FORMATION_GEAR], [test "$with_star_formation" = "GEAR"])
+
+# check if using multi softening gravity
+AM_CONDITIONAL([HAVE_GRAVITY_MULTISOFTENING], [test "$with_gravity" = "with-multi-softening"])
 
 # Handle .in files.
 AC_CONFIG_FILES([Makefile src/Makefile examples/Makefile examples/Cooling/CoolingRates/Makefile doc/Makefile doc/Doxyfile tests/Makefile])
@@ -2431,6 +2548,7 @@ AC_MSG_RESULT([
 
    Gravity scheme      : $with_gravity
    Multipole order     : $with_multipole_order
+   Compute potential   : $enable_gravitational_potential
    No gravity below ID : $no_gravity_below_id
    Make gravity glass  : $gravity_glass_making
    External potential  : $with_potential
@@ -2460,6 +2578,7 @@ AC_MSG_RESULT([
    Custom icbrtf               : $enable_custom_icbrtf
    Boundary particles          : $boundary_particles
    Fixed boundary particles    : $fixed_boundary_particles
+   Planetary fixed entropy     : $planetary_fixed_entropy
 
    Particle Logger      : $with_logger
    Python enabled       : $have_python

@@ -111,6 +111,12 @@ struct scheduler {
 
   /* Total ticks spent running the tasks */
   ticks total_ticks;
+
+  /* Frequency of the dependency graph dumping. */
+  int frequency_dependency;
+
+  /* Frequency of the task levels dumping. */
+  int frequency_task_levels;
 };
 
 /* Inlined functions (for speed). */
@@ -203,8 +209,8 @@ void scheduler_dump_queue(struct scheduler *s);
 void scheduler_print_tasks(const struct scheduler *s, const char *fileName);
 void scheduler_clean(struct scheduler *s);
 void scheduler_free_tasks(struct scheduler *s);
-void scheduler_write_dependencies(struct scheduler *s, int verbose);
-void scheduler_write_task_level(const struct scheduler *s);
+void scheduler_write_dependencies(struct scheduler *s, int verbose, int step);
+void scheduler_write_task_level(const struct scheduler *s, int step);
 void scheduler_dump_queues(struct engine *e);
 void scheduler_report_task_times(const struct scheduler *s,
                                  const int nr_threads);

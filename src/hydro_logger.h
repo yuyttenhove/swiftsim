@@ -28,7 +28,7 @@
 #include "part_type.h"
 #include "timeline.h"
 
-/* Import the right functloggerns */
+/* Import the right function */
 #if defined(MINIMAL_SPH)
 #error TODO
 #elif defined(GADGET2_SPH)
@@ -39,7 +39,7 @@
 #error TODO
 #elif defined(HOPKINS_PU_SPH_MONAGHAN)
 #error TODO
-#elif defined(DEFAULT_SPH)
+#elif defined(PHANTOM_SPH)
 #error TODO
 #elif defined(GIZMO_MFV_SPH) || defined(GIZMO_MFM_SPH)
 #error TODO
@@ -48,7 +48,7 @@
 #elif defined(PLANETARY_SPH)
 #error TODO
 #elif defined(SPHENIX_SPH)
-#error TODO
+#include "./hydro/SPHENIX/hydro_logger.h"
 #elif defined(ANARCHY_PU_SPH)
 #error TODO
 #else

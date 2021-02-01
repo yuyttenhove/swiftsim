@@ -132,39 +132,21 @@ void scheduler_addunlock(struct scheduler *s, struct task *ta,
   atomic_inc(&s->completed_unlock_writes);
 }
 
-/**
- * @brief compute the number of similar dependencies
- *
- * @param s The #scheduler
- * @param ta The #task
- * @param tb The dependent #task
- *
- * @return Number of dependencies
- */
-int scheduler_get_number_relation(const struct scheduler *s,
-                                  const struct task *ta,
-                                  const struct task *tb) {
-  int count = 0;
-
-  /* loop over all tasks */
-  for (int i = 0; i < s->nr_tasks; i++) {
-    const struct task *ta_tmp = &s->tasks[i];
-
-    /* and their dependencies */
-    for (int j = 0; j < ta->nr_unlock_tasks; j++) {
-      const struct task *tb_tmp = ta->unlock_tasks[j];
-
-      if (ta->type == ta_tmp->type && ta->subtype == ta_tmp->subtype &&
-          tb->type == tb_tmp->type && tb->subtype == tb_tmp->subtype) {
-        count += 1;
-      }
-    }
-  }
-  return count;
-}
-
 /* Conservative number of dependencies per task type */
 #define MAX_NUMBER_DEP 128
+
+/**
+ * @brief Describe the level at which the task are done.
+ * WARNING: the order is supposed to be sorted from the root
+ * to the leaf.
+ */
+enum task_dependency_level {
+  task_dependency_level_top = 0,
+  task_dependency_level_super,
+  task_dependency_level_super_hydro,
+  task_dependency_level_super_grav,
+  task_dependency_level_none,
+};
 
 /**
  * @brief Informations about all the task dependencies of
@@ -181,6 +163,15 @@ struct task_dependency {
   /* Is the task implicit */
   int implicit_in;
 
+  /* Is the taks_in at the top level? */
+  int task_in_is_top;
+
+  /* Is the taks_in at the grav.super level? */
+  int task_in_is_grav_super;
+
+  /* Is the taks_in at the hydro.super level? */
+  int task_in_is_hydro_super;
+
   /* Dependent task */
   /* ID of the dependent task */
   int type_out[MAX_NUMBER_DEP];
@@ -190,6 +181,15 @@ struct task_dependency {
 
   /* Is the dependent task implicit */
   int implicit_out[MAX_NUMBER_DEP];
+
+  /* Is the taks_out at the top level? */
+  int task_out_is_top[MAX_NUMBER_DEP];
+
+  /* Is the taks_out at the grav.super level? */
+  int task_out_is_grav_super[MAX_NUMBER_DEP];
+
+  /* Is the taks_out at the hydro.super level? */
+  int task_out_is_hydro_super[MAX_NUMBER_DEP];
 
   /* Statistics */
   /* number of link between the two task type */
@@ -208,7 +208,7 @@ struct task_dependency {
  */
 void task_dependency_define(MPI_Datatype *tstype) {
   /* Define the variables */
-  const int count = 8;
+  const int count = 14;
   int blocklens[count];
   MPI_Datatype types[count];
   MPI_Aint disps[count];
@@ -225,20 +225,32 @@ void task_dependency_define(MPI_Datatype *tstype) {
   blocklens[1] = 1;
   disps[2] = offsetof(struct task_dependency, implicit_in);
   blocklens[2] = 1;
+  disps[3] = offsetof(struct task_dependency, task_in_is_top);
+  blocklens[3] = 1;
+  disps[4] = offsetof(struct task_dependency, task_in_is_hydro_super);
+  blocklens[4] = 1;
+  disps[5] = offsetof(struct task_dependency, task_in_is_grav_super);
+  blocklens[5] = 1;
 
   /* Task out */
-  disps[3] = offsetof(struct task_dependency, type_out);
-  blocklens[3] = MAX_NUMBER_DEP;
-  disps[4] = offsetof(struct task_dependency, subtype_out);
-  blocklens[4] = MAX_NUMBER_DEP;
-  disps[5] = offsetof(struct task_dependency, implicit_out);
-  blocklens[5] = MAX_NUMBER_DEP;
+  disps[6] = offsetof(struct task_dependency, type_out);
+  blocklens[6] = MAX_NUMBER_DEP;
+  disps[7] = offsetof(struct task_dependency, subtype_out);
+  blocklens[7] = MAX_NUMBER_DEP;
+  disps[8] = offsetof(struct task_dependency, implicit_out);
+  blocklens[8] = MAX_NUMBER_DEP;
+  disps[9] = offsetof(struct task_dependency, task_out_is_top);
+  blocklens[9] = MAX_NUMBER_DEP;
+  disps[10] = offsetof(struct task_dependency, task_out_is_hydro_super);
+  blocklens[10] = MAX_NUMBER_DEP;
+  disps[11] = offsetof(struct task_dependency, task_out_is_grav_super);
+  blocklens[11] = MAX_NUMBER_DEP;
 
   /* statistics */
-  disps[6] = offsetof(struct task_dependency, number_link);
-  blocklens[6] = MAX_NUMBER_DEP;
-  disps[7] = offsetof(struct task_dependency, number_rank);
-  blocklens[7] = MAX_NUMBER_DEP;
+  disps[12] = offsetof(struct task_dependency, number_link);
+  blocklens[12] = MAX_NUMBER_DEP;
+  disps[13] = offsetof(struct task_dependency, number_rank);
+  blocklens[13] = MAX_NUMBER_DEP;
 
   /* define it for MPI */
   MPI_Type_create_struct(count, blocklens, disps, types, tstype);
@@ -328,10 +340,24 @@ void task_dependency_sum(void *in_p, void *out_p, int *len,
         error("Tasks do not correspond");
       }
 #endif
-
       /* sum the contributions */
       out[i].number_link[k] += in[i].number_link[j];
       out[i].number_rank[k] += in[i].number_rank[j];
+
+      /* Get the task in level */
+      out[i].task_in_is_top = min(out[i].task_in_is_top, in[i].task_in_is_top);
+      out[i].task_in_is_hydro_super =
+          min(out[i].task_in_is_hydro_super, in[i].task_in_is_hydro_super);
+      out[i].task_in_is_grav_super =
+          min(out[i].task_in_is_grav_super, in[i].task_in_is_grav_super);
+
+      /* Get the task out level */
+      out[i].task_out_is_top[j] =
+          min(out[i].task_out_is_top[j], in[i].task_out_is_top[j]);
+      out[i].task_out_is_hydro_super[j] = min(out[i].task_out_is_hydro_super[j],
+                                              in[i].task_out_is_hydro_super[j]);
+      out[i].task_out_is_grav_super[j] = min(out[i].task_out_is_grav_super[j],
+                                             in[i].task_out_is_grav_super[j]);
     }
   }
 
@@ -341,15 +367,16 @@ void task_dependency_sum(void *in_p, void *out_p, int *len,
 #endif  // WITH_MPI
 
 /**
- * @brief Write a dot file with the task dependencies.
+ * @brief Write a csv file with the task dependencies.
  *
- * Run plot_task_dependencies.sh for an example of how to use it
+ * Run plot_task_dependencies.py for an example of how to use it
  * to generate the figure.
  *
  * @param s The #scheduler we are working in.
  * @param verbose Are we verbose about this?
+ * @param step The current step number.
  */
-void scheduler_write_dependencies(struct scheduler *s, int verbose) {
+void scheduler_write_dependencies(struct scheduler *s, int verbose, int step) {
   const ticks tic = getticks();
 
   /* Number of possible relations between tasks */
@@ -367,15 +394,29 @@ void scheduler_write_dependencies(struct scheduler *s, int verbose) {
 
   /* Reset counter */
   for (int i = 0; i < nber_tasks; i++) {
+    /* Assume that the tasks are at all levels and correct later. */
+    task_dep[i].task_in_is_top = 1;
+    task_dep[i].task_in_is_grav_super = 1;
+    task_dep[i].task_in_is_hydro_super = 1;
+
     for (int j = 0; j < MAX_NUMBER_DEP; j++) {
       /* Use number_link as indicator of the existance of a relation */
       task_dep[i].number_link[j] = -1;
+
+      /* Assume that the tasks are at all levels and correct later. */
+      task_dep[i].task_out_is_top[j] = 1;
+      task_dep[i].task_out_is_grav_super[j] = 1;
+      task_dep[i].task_out_is_hydro_super[j] = 1;
     }
   }
 
   /* loop over all tasks */
   for (int i = 0; i < s->nr_tasks; i++) {
     const struct task *ta = &s->tasks[i];
+
+    /* Are we using this task?
+     * For the 0-step, we wish to show all the tasks (even the inactives). */
+    if (step != 0 && ta->skip) continue;
 
     /* Current index */
     const int ind = ta->type * task_subtype_count + ta->subtype;
@@ -387,9 +428,51 @@ void scheduler_write_dependencies(struct scheduler *s, int verbose) {
     cur->subtype_in = ta->subtype;
     cur->implicit_in = ta->implicit;
 
+    /* Set the task level. */
+    const struct cell *ci = ta->ci;
+    const struct cell *cj = ta->cj;
+    const int is_ci_top = ci == NULL || (ci != NULL && ci == ci->top);
+    const int is_cj_top = cj == NULL || (cj != NULL && cj == cj->top);
+    const int is_hydro_super =
+        (cj == NULL || (cj != NULL && cj == cj->hydro.super)) &&
+        (ci == NULL || (ci != NULL && ci == ci->hydro.super));
+    const int is_grav_super =
+        (cj == NULL || (cj != NULL && cj == cj->grav.super)) &&
+        (ci == NULL || (ci != NULL && ci == ci->grav.super));
+
+    /* Are we dealing with a task at the top level? */
+    if (!(is_ci_top && is_cj_top)) {
+      cur->task_in_is_top = 0;
+    }
+    /* At the hydro level? */
+    if (!is_hydro_super) {
+      cur->task_in_is_hydro_super = 0;
+    }
+    /* At the gravity level? */
+    if (!is_grav_super) {
+      cur->task_in_is_grav_super = 0;
+    }
+
     /* and their dependencies */
     for (int j = 0; j < ta->nr_unlock_tasks; j++) {
       const struct task *tb = ta->unlock_tasks[j];
+
+      /* Are we using this task?
+       * For the 0-step, we wish to show all the tasks (even the inactive). */
+      if (step != 0 && tb->skip) continue;
+
+      const struct cell *ci_b = tb->ci;
+      const struct cell *cj_b = tb->cj;
+      const int is_ci_b_top =
+          ci_b == NULL || (ci_b != NULL && ci_b == ci_b->top);
+      const int is_cj_b_top =
+          cj_b == NULL || (cj_b != NULL && cj_b == cj_b->top);
+      const int is_b_hydro_super =
+          (cj_b == NULL || (cj_b != NULL && cj_b == cj_b->hydro.super)) &&
+          (ci_b == NULL || (ci_b != NULL && ci_b == ci_b->hydro.super));
+      const int is_b_grav_super =
+          (cj_b == NULL || (cj_b != NULL && cj_b == cj_b->grav.super)) &&
+          (ci_b == NULL || (ci_b != NULL && ci_b == ci_b->grav.super));
 
       int k = 0;
       while (k < MAX_NUMBER_DEP) {
@@ -401,9 +484,21 @@ void scheduler_write_dependencies(struct scheduler *s, int verbose) {
           cur->implicit_out[k] = tb->implicit;
 
           /* statistics */
-          const int count = scheduler_get_number_relation(s, ta, tb);
-          cur->number_link[k] = count;
+          cur->number_link[k] = 1;
           cur->number_rank[k] = 1;
+
+          /* Are we dealing with a task at the top level? */
+          if (!(is_ci_b_top && is_cj_b_top)) {
+            cur->task_out_is_top[k] = 0;
+          }
+          /* At the hydro level? */
+          if (!is_b_hydro_super) {
+            cur->task_out_is_hydro_super[k] = 0;
+          }
+          /* At the gravity level? */
+          if (!is_b_grav_super) {
+            cur->task_out_is_grav_super[k] = 0;
+          }
 
           break;
         }
@@ -411,6 +506,22 @@ void scheduler_write_dependencies(struct scheduler *s, int verbose) {
         /* already written */
         if (cur->type_out[k] == tb->type &&
             cur->subtype_out[k] == tb->subtype) {
+
+          /* Increase the number of link. */
+          cur->number_link[k] += 1;
+
+          /* Are we dealing with a task at the top level? */
+          if (!(is_ci_b_top && is_cj_b_top)) {
+            cur->task_out_is_top[k] = 0;
+          }
+          /* At the hydro level? */
+          if (!is_b_hydro_super) {
+            cur->task_out_is_hydro_super[k] = 0;
+          }
+          /* At the gravity level? */
+          if (!is_b_grav_super) {
+            cur->task_out_is_grav_super[k] = 0;
+          }
           break;
         }
 
@@ -461,7 +572,8 @@ void scheduler_write_dependencies(struct scheduler *s, int verbose) {
 
   if (s->nodeID == 0) {
     /* Create file */
-    const char *filename = "dependency_graph.csv";
+    char filename[50];
+    sprintf(filename, "dependency_graph_%i.csv", step);
     FILE *f = fopen(filename, "w");
     if (f == NULL) error("Error opening dependency graph file.");
 
@@ -470,7 +582,9 @@ void scheduler_write_dependencies(struct scheduler *s, int verbose) {
     fprintf(
         f,
         "task_in,task_out,implicit_in,implicit_out,mpi_in,mpi_out,cluster_in,"
-        "cluster_out,number_link,number_rank\n");
+        "cluster_out,number_link,number_rank,task_in_is_top,task_in_is_hydro_"
+        "super,task_in_is_grav_super,task_out_is_top,task_out_is_hydro_super,"
+        "task_out_is_grav_super\n");
 
     for (int i = 0; i < nber_tasks; i++) {
       for (int j = 0; j < MAX_NUMBER_DEP; j++) {
@@ -490,6 +604,16 @@ void scheduler_write_dependencies(struct scheduler *s, int verbose) {
 
         const int count = task_dep[i].number_link[j];
         const int number_rank = task_dep[i].number_rank[j];
+
+        const int task_in_is_top = task_dep[i].task_in_is_top;
+        const int task_in_is_grav_super = task_dep[i].task_in_is_grav_super;
+        const int task_in_is_hydro_super = task_dep[i].task_in_is_hydro_super;
+
+        const int task_out_is_top = task_dep[i].task_out_is_top[j];
+        const int task_out_is_grav_super =
+            task_dep[i].task_out_is_grav_super[j];
+        const int task_out_is_hydro_super =
+            task_dep[i].task_out_is_hydro_super[j];
 
         /* text to write */
         char ta_name[200];
@@ -512,14 +636,41 @@ void scheduler_write_dependencies(struct scheduler *s, int verbose) {
         task_get_group_name(ta_type, ta_subtype, ta_cluster);
         task_get_group_name(tb_type, tb_subtype, tb_cluster);
 
-        fprintf(f, "%s,%s,%d,%d,%d,%d,%s,%s,%d,%d\n", ta_name, tb_name,
-                ta_implicit, tb_implicit, ta_mpi, tb_mpi, ta_cluster,
-                tb_cluster, count, number_rank);
+        fprintf(f, "%s,%s,%d,%d,%d,%d,%s,%s,%d,%d,%d,%d,%d,%d,%d,%d\n", ta_name,
+                tb_name, ta_implicit, tb_implicit, ta_mpi, tb_mpi, ta_cluster,
+                tb_cluster, count, number_rank, task_in_is_top,
+                task_in_is_hydro_super, task_in_is_grav_super, task_out_is_top,
+                task_out_is_hydro_super, task_out_is_grav_super);
       }
     }
     /* Close the file */
     fclose(f);
   }
+
+#if defined(SWIFT_DEBUG_CHECKS)
+  /* Check if we have the correct number of dependencies. */
+  if (step == 0) {
+    int count_total = 0;
+    for (int i = 0; i < nber_tasks; i++) {
+      for (int j = 0; j < MAX_NUMBER_DEP; j++) {
+        if (task_dep[i].number_link[j] != -1)
+          count_total += task_dep[i].number_link[j];
+      }
+    }
+
+    /* Get the number of unlocks from all the ranks */
+    int nr_unlocks = s->nr_unlocks;
+#ifdef WITH_MPI
+    MPI_Allreduce(MPI_IN_PLACE, &nr_unlocks, 1, MPI_INT, MPI_SUM,
+                  MPI_COMM_WORLD);
+#endif
+
+    if (s->nodeID == 0 && count_total != nr_unlocks) {
+      error("Not all the dependencies were found: %i != %i", count_total,
+            nr_unlocks);
+    }
+  }
+#endif
 
   /* Be clean */
   free(task_dep);
@@ -1032,8 +1183,6 @@ void scheduler_splittasks_mapper(void *map_data, int num_elements,
       scheduler_splittask_gravity(t, s);
     } else if (t->subtype == task_subtype_grav) {
       scheduler_splittask_gravity(t, s);
-    } else if (t->type == task_type_grav_mesh) {
-      /* For future use */
     } else {
 #ifdef SWIFT_DEBUG_CHECKS
       error("Unexpected task sub-type %s/%s", taskID_names[t->type],
@@ -1361,6 +1510,7 @@ void scheduler_reweight(struct scheduler *s, int verbose) {
     const float scount_i = (t->ci != NULL) ? t->ci->stars.count : 0.f;
     const float scount_j = (t->cj != NULL) ? t->cj->stars.count : 0.f;
     const float sink_count_i = (t->ci != NULL) ? t->ci->sinks.count : 0.f;
+    const float sink_count_j = (t->cj != NULL) ? t->cj->sinks.count : 0.f;
     const float bcount_i = (t->ci != NULL) ? t->ci->black_holes.count : 0.f;
     const float bcount_j = (t->cj != NULL) ? t->cj->black_holes.count : 0.f;
 
@@ -1388,6 +1538,8 @@ void scheduler_reweight(struct scheduler *s, int verbose) {
         else if (t->subtype == task_subtype_stars_density ||
                  t->subtype == task_subtype_stars_feedback)
           cost = 1.f * wscale * scount_i * count_i;
+        else if (t->subtype == task_subtype_sink_compute_formation)
+          cost = 1.f * wscale * count_i * sink_count_i;
         else if (t->subtype == task_subtype_bh_density ||
                  t->subtype == task_subtype_bh_swallow ||
                  t->subtype == task_subtype_bh_feedback)
@@ -1401,9 +1553,13 @@ void scheduler_reweight(struct scheduler *s, int verbose) {
                  t->subtype == task_subtype_force ||
                  t->subtype == task_subtype_limiter)
           cost = 1.f * (wscale * count_i) * count_i;
-        else if (t->subtype == task_subtype_rt_inject) {
+        else if (t->subtype == task_subtype_rt_inject)
           cost = 1.f * wscale * scount_i * count_i;
-        } else
+        else if (t->subtype == task_subtype_rt_gradient)
+          cost = 1.f * wscale * count_i * count_i;
+        else if (t->subtype == task_subtype_rt_transport)
+          cost = 1.f * wscale * count_i * count_i;
+        else
           error("Untreated sub-type for selfs: %s",
                 subtaskID_names[t->subtype]);
         break;
@@ -1423,6 +1579,16 @@ void scheduler_reweight(struct scheduler *s, int verbose) {
             cost = 3.f * wscale * scount_i * count_j * sid_scale[t->flags];
           else
             cost = 2.f * wscale * (scount_i * count_j + scount_j * count_i) *
+                   sid_scale[t->flags];
+
+        } else if (t->subtype == task_subtype_sink_compute_formation) {
+          if (t->ci->nodeID != nodeID)
+            cost = 3.f * wscale * count_i * sink_count_j * sid_scale[t->flags];
+          else if (t->cj->nodeID != nodeID)
+            cost = 3.f * wscale * sink_count_i * count_j * sid_scale[t->flags];
+          else
+            cost = 2.f * wscale *
+                   (sink_count_i * count_j + sink_count_j * count_i) *
                    sid_scale[t->flags];
 
         } else if (t->subtype == task_subtype_bh_density ||
@@ -1453,6 +1619,10 @@ void scheduler_reweight(struct scheduler *s, int verbose) {
 
         } else if (t->subtype == task_subtype_rt_inject) {
           cost = 1.f * wscale * scount_i * count_j;
+        } else if (t->subtype == task_subtype_rt_gradient) {
+          cost = 1.f * wscale * count_i * count_j;
+        } else if (t->subtype == task_subtype_rt_transport) {
+          cost = 1.f * wscale * count_i * count_j;
         } else {
           error("Untreated sub-type for pairs: %s",
                 subtaskID_names[t->subtype]);
@@ -1474,6 +1644,18 @@ void scheduler_reweight(struct scheduler *s, int verbose) {
                    sid_scale[t->flags];
           }
 
+        } else if (t->subtype == task_subtype_sink_compute_formation) {
+          if (t->ci->nodeID != nodeID) {
+            cost =
+                3.f * (wscale * count_i) * sink_count_j * sid_scale[t->flags];
+          } else if (t->cj->nodeID != nodeID) {
+            cost =
+                3.f * (wscale * sink_count_i) * count_j * sid_scale[t->flags];
+          } else {
+            cost = 2.f * wscale *
+                   (sink_count_i * count_j + sink_count_j * count_i) *
+                   sid_scale[t->flags];
+          }
         } else if (t->subtype == task_subtype_bh_density ||
                    t->subtype == task_subtype_bh_swallow ||
                    t->subtype == task_subtype_bh_feedback) {
@@ -1503,6 +1685,10 @@ void scheduler_reweight(struct scheduler *s, int verbose) {
           }
         } else if (t->subtype == task_subtype_rt_inject) {
           cost = 1.f * wscale * scount_i * count_j;
+        } else if (t->subtype == task_subtype_rt_gradient) {
+          cost = 1.f * wscale * count_i * count_j;
+        } else if (t->subtype == task_subtype_rt_transport) {
+          cost = 1.f * wscale * count_i * count_j;
         } else {
           error("Untreated sub-type for sub-pairs: %s",
                 subtaskID_names[t->subtype]);
@@ -1513,6 +1699,8 @@ void scheduler_reweight(struct scheduler *s, int verbose) {
         if (t->subtype == task_subtype_stars_density ||
             t->subtype == task_subtype_stars_feedback) {
           cost = 1.f * (wscale * scount_i) * count_i;
+        } else if (t->subtype == task_subtype_sink_compute_formation) {
+          cost = 1.f * (wscale * sink_count_i) * count_i;
         } else if (t->subtype == task_subtype_bh_density ||
                    t->subtype == task_subtype_bh_swallow ||
                    t->subtype == task_subtype_bh_feedback) {
@@ -1527,6 +1715,10 @@ void scheduler_reweight(struct scheduler *s, int verbose) {
                    t->subtype == task_subtype_limiter) {
           cost = 1.f * (wscale * count_i) * count_i;
         } else if (t->subtype == task_subtype_rt_inject) {
+          cost = 1.f * wscale * scount_i * count_i;
+        } else if (t->subtype == task_subtype_rt_gradient) {
+          cost = 1.f * wscale * scount_i * count_i;
+        } else if (t->subtype == task_subtype_rt_transport) {
           cost = 1.f * wscale * scount_i * count_i;
         } else {
           error("Untreated sub-type for sub-selfs: %s",
@@ -1572,9 +1764,6 @@ void scheduler_reweight(struct scheduler *s, int verbose) {
       case task_type_grav_long_range:
         cost = wscale * gcount_i;
         break;
-      case task_type_grav_mesh:
-        cost = wscale * gcount_i;
-        break;
       case task_type_grav_mm:
         cost = wscale * (gcount_i + gcount_j);
         break;
@@ -1592,6 +1781,15 @@ void scheduler_reweight(struct scheduler *s, int verbose) {
         break;
       case task_type_sink_formation:
         cost = wscale * (count_i + sink_count_i);
+        break;
+      case task_type_rt_ghost1:
+        cost = wscale * count_i;
+        break;
+      case task_type_rt_ghost2:
+        cost = wscale * count_i;
+        break;
+      case task_type_rt_tchem:
+        cost = wscale * count_i;
         break;
       case task_type_kick1:
         cost =
@@ -2313,9 +2511,16 @@ void scheduler_free_tasks(struct scheduler *s) {
 }
 
 /**
- * @brief write down each task level
+ * @brief write down the levels and the number of tasks at that level.
+ *
+ * Run plot_task_level.py for an example of how to use it
+ * to generate the figure.
+ *
+ * @param s The #scheduler we are working in.
+ * @param step The current step number.
  */
-void scheduler_write_task_level(const struct scheduler *s) {
+void scheduler_write_task_level(const struct scheduler *s, int step) {
+
   /* init */
   const int max_depth = 30;
   const struct task *tasks = s->tasks;
@@ -2343,8 +2548,18 @@ void scheduler_write_task_level(const struct scheduler *s) {
     }
   }
 
+  /* Generate filename */
+  char filename[200] = "task_level_\0";
+#ifdef WITH_MPI
+  char rankstr[6];
+  sprintf(rankstr, "%04d_", s->nodeID);
+  strcat(filename, rankstr);
+#endif
+  char stepstr[100];
+  sprintf(stepstr, "%d.txt", step);
+  strcat(filename, stepstr);
+
   /* Open file */
-  char filename[200] = "task_level.txt";
   FILE *f = fopen(filename, "w");
   if (f == NULL) error("Error opening task level file.");
 

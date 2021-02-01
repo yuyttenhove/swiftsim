@@ -30,14 +30,14 @@
 #include "timeline.h"
 
 /* Load the correct star type */
-#if defined(FEEDBACK_CONST)
+#if defined(STARS_NONE)
 #error TODO
-#elif defined(STARS_NONE)
-#include "./stars/Default/stars_logger.h"
+#elif defined(STARS_BASIC)
+#include "./stars/Basic/stars_logger.h"
 #elif defined(STARS_EAGLE)
 #error TODO
 #elif defined(STARS_GEAR)
-#error TODO
+#include "./stars/GEAR/stars_logger.h"
 #else
 #error "Invalid choice of star model"
 #endif

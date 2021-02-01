@@ -49,6 +49,7 @@
 #include "part.h"
 #include "physical_constants.h"
 #include "space.h"
+#include "star_formation.h"
 #include "units.h"
 
 /* Maximum number of iterations for
@@ -1073,6 +1074,30 @@ void cooling_set_particle_subgrid_properties(
 }
 
 /**
+ * @brief Returns the subgrid temperature of a particle.
+ *
+ * @param p The particle.
+ * @param xp The extended particle data.
+ * @return The subgrid temperature in internal units.
+ */
+float cooling_get_subgrid_temperature(const struct part *p,
+                                      const struct xpart *xp) {
+  return p->cooling_data.subgrid_temp;
+}
+
+/**
+ * @brief Returns the subgrid density of a particle.
+ *
+ * @param p The particle.
+ * @param xp The extended particle data.
+ * @return The subgrid density in physical internal units.
+ */
+float cooling_get_subgrid_density(const struct part *p,
+                                  const struct xpart *xp) {
+  return p->cooling_data.subgrid_dens;
+}
+
+/**
  * @brief Returns the total radiated energy by this particle.
  *
  * @param xp #xpart data struct
@@ -1124,7 +1149,7 @@ void cooling_Hydrogen_reionization(const struct cooling_function_data *cooling,
 
     if (part_is_inhibited(p, s->e)) continue;
 
-    if (xp->sf_data.SFR <= 0.) {
+    if (star_formation_get_SFR(p, xp) == 0.f) {
       const float old_u = hydro_get_physical_internal_energy(p, xp, cosmo);
       const float new_u = old_u + extra_heat;
 

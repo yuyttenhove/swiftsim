@@ -19,8 +19,26 @@
 #ifndef SWIFT_EAGLE_BLACK_HOLES_PROPERTIES_H
 #define SWIFT_EAGLE_BLACK_HOLES_PROPERTIES_H
 
+/* Config parameters. */
+#include "../config.h"
+
+/* Local includes. */
 #include "chemistry.h"
+#include "exp10.h"
 #include "hydro_properties.h"
+
+/* Includes. */
+#include <string.h>
+
+/**
+ * @brief Modes of energy injection for AGN feedback
+ */
+enum AGN_feedback_models {
+  AGN_random_ngb_model,       /*< Random neighbour model for AGN feedback */
+  AGN_isotropic_model,        /*< Isotropic model of AGN feedback */
+  AGN_minimum_distance_model, /*< Minimum-distance model of AGN feedback */
+  AGN_minimum_density_model   /*< Minimum-density model of AGN feedback */
+};
 
 /**
  * @brief Properties of black holes and AGN feedback in the EAGEL model.
@@ -61,10 +79,10 @@ struct black_holes_props {
   /* ----- Properties of the accretion model ------ */
 
   /*! Calculate Bondi accretion rate for individual neighbours? */
-  int multi_phase_bondi;
+  int use_multi_phase_bondi;
 
   /*! Are we using the subgrid gas properties in the Bondi model? */
-  int subgrid_bondi;
+  int use_subgrid_bondi;
 
   /*! Are we applying the angular-momentum-based multiplicative term from
    * Rosas-Guevara et al. (2015)? */
@@ -85,6 +103,9 @@ struct black_holes_props {
   /*! Switch for the Booth & Schaye 2009 model */
   int with_boost_factor;
 
+  /*! Use constant-alpha version of Booth & Schaye (2009) model? */
+  int boost_alpha_only;
+
   /*! Lowest value of the boost of the Booth & Schaye 2009 model */
   float boost_alpha;
 
@@ -101,12 +122,29 @@ struct black_holes_props {
   /*! Minimum gas particle mass in nibbling mode */
   float min_gas_mass_for_nibbling;
 
+  /*! Switch to calculate the sound speed with a fixed T near the EoS */
+  int with_fixed_T_near_EoS;
+
+  /*! Factor above EoS below which fixed T applies for sound speed */
+  float fixed_T_above_EoS_factor;
+
+  /*! Fixed T (expressed as internal energy) for sound speed near EoS */
+  float fixed_u_for_soundspeed;
+
   /* ---- Properties of the feedback model ------- */
+
+  /*! AGN feedback model: random, isotropic or minimum distance */
+  enum AGN_feedback_models feedback_model;
+
+  /*! Is the AGN feedback model deterministic or stochastic? */
+  int AGN_deterministic;
 
   /*! Feedback coupling efficiency of the black holes. */
   float epsilon_f;
 
-  /*! (Constant) temperature increase induced by AGN feedback [Kelvin] */
+  /*! (Constant) temperature increase induced by AGN feedback [Kelvin], if we
+   * use a model with a variable temperature increase than we use this value
+   * to initialize a BH that just has formed */
   float AGN_delta_T_desired;
 
   /*! Switch on adaptive heating temperature scheme? */
@@ -135,8 +173,23 @@ struct black_holes_props {
   float AGN_delta_T_max;
   float AGN_delta_T_min;
 
+  /*! Vary the energy reservoir according to the BH accretion rate? */
+  int use_adaptive_energy_reservoir_threshold;
+
+  /*! Normalisation for energy reservoir threshold, at upper end */
+  float nheat_alpha;
+
+  /*! Reference max accretion rate for energy reservoir variation */
+  float nheat_maccr_normalisation;
+
+  /*! Hard limit to the energy reservoir threshold */
+  float nheat_limit;
+
   /*! Number of gas neighbours to heat in a feedback event */
   float num_ngbs_to_heat;
+
+  /*! Switch to make nheat use the constant dT as basis, not actual dT */
+  int AGN_use_nheat_with_fixed_dT;
 
   /* ---- Properties of the repositioning model --- */
 
@@ -163,8 +216,17 @@ struct black_holes_props {
   /*! Normalisation factor for repositioning velocity */
   float reposition_coefficient_upsilon;
 
+  /*! Reference black hole mass for repositioning scaling */
+  float reposition_reference_mass;
+
   /*! Repositioning velocity scaling with black hole mass */
-  float reposition_exponent_xi;
+  float reposition_exponent_mass;
+
+  /*! Reference gas density for repositioning scaling */
+  float reposition_reference_n_H;
+
+  /*! Repositioning velocity scaling with gas density */
+  float reposition_exponent_n_H;
 
   /* ---- Properties of the merger model ---------- */
 
@@ -218,6 +280,13 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
                                           const struct hydro_props *hydro_props,
                                           const struct cosmology *cosmo) {
 
+  /* Calculate temperature to internal energy conversion factor (all internal
+   * units) */
+  const double k_B = phys_const->const_boltzmann_k;
+  const double m_p = phys_const->const_proton_mass;
+  const double mu = hydro_props->mu_ionised;
+  bp->temp_to_u_factor = k_B / (mu * hydro_gamma_minus_one * m_p);
+
   /* Read in the basic neighbour search properties or default to the hydro
      ones if the user did not provide any different values */
 
@@ -265,12 +334,13 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
 
   /* Accretion parameters ---------------------------------- */
 
-  bp->multi_phase_bondi =
-      parser_get_param_int(params, "EAGLEAGN:multi_phase_bondi");
+  bp->use_multi_phase_bondi =
+      parser_get_param_int(params, "EAGLEAGN:use_multi_phase_bondi");
 
-  bp->subgrid_bondi = parser_get_param_int(params, "EAGLEAGN:subgrid_bondi");
+  bp->use_subgrid_bondi =
+      parser_get_param_int(params, "EAGLEAGN:use_subgrid_bondi");
 
-  if (bp->multi_phase_bondi && bp->subgrid_bondi)
+  if (bp->use_multi_phase_bondi && bp->use_subgrid_bondi)
     error(
         "Cannot run with both the multi-phase Bondi and subgrid Bondi models "
         "at the same time!");
@@ -295,14 +365,18 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
       parser_get_param_int(params, "EAGLEAGN:with_boost_factor");
 
   if (bp->with_boost_factor) {
+    bp->boost_alpha_only =
+        parser_get_param_int(params, "EAGLEAGN:boost_alpha_only");
     bp->boost_alpha = parser_get_param_float(params, "EAGLEAGN:boost_alpha");
 
-    bp->boost_beta = parser_get_param_float(params, "EAGLEAGN:boost_beta");
+    if (!bp->boost_alpha_only) {
+      bp->boost_beta = parser_get_param_float(params, "EAGLEAGN:boost_beta");
 
-    /* Load the density in cgs and convert to internal units */
-    bp->boost_n_h_star =
-        parser_get_param_float(params, "EAGLEAGN:boost_n_h_star_H_p_cm3") /
-        units_cgs_conversion_factor(us, UNIT_CONV_NUMBER_DENSITY);
+      /* Load the density in cgs and convert to internal units */
+      bp->boost_n_h_star =
+          parser_get_param_float(params, "EAGLEAGN:boost_n_h_star_H_p_cm3") /
+          units_cgs_conversion_factor(us, UNIT_CONV_NUMBER_DENSITY);
+    }
   }
 
   bp->use_nibbling = parser_get_param_int(params, "EAGLEAGN:use_nibbling");
@@ -312,7 +386,37 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
     bp->min_gas_mass_for_nibbling *= phys_const->const_solar_mass;
   }
 
+  bp->with_fixed_T_near_EoS =
+      parser_get_param_int(params, "EAGLEAGN:with_fixed_T_near_EoS");
+  if (bp->with_fixed_T_near_EoS) {
+    bp->fixed_T_above_EoS_factor =
+        exp10(parser_get_param_float(params, "EAGLEAGN:fixed_T_above_EoS_dex"));
+    bp->fixed_u_for_soundspeed =
+        parser_get_param_float(params, "EAGLEAGN:fixed_T_near_EoS_K") /
+        units_cgs_conversion_factor(us, UNIT_CONV_TEMPERATURE);
+    bp->fixed_u_for_soundspeed *= bp->temp_to_u_factor;
+  }
+
   /* Feedback parameters ---------------------------------- */
+
+  char temp[40];
+  parser_get_param_string(params, "EAGLEAGN:AGN_feedback_model", temp);
+  if (strcmp(temp, "Random") == 0)
+    bp->feedback_model = AGN_random_ngb_model;
+  else if (strcmp(temp, "Isotropic") == 0)
+    bp->feedback_model = AGN_isotropic_model;
+  else if (strcmp(temp, "MinimumDistance") == 0)
+    bp->feedback_model = AGN_minimum_distance_model;
+  else if (strcmp(temp, "MinimumDensity") == 0)
+    bp->feedback_model = AGN_minimum_density_model;
+  else
+    error(
+        "The AGN feedback model must be either 'Random', 'MinimumDistance', "
+        "'MinimumDensity' or 'Isotropic', not %s",
+        temp);
+
+  bp->AGN_deterministic =
+      parser_get_param_int(params, "EAGLEAGN:AGN_use_deterministic_feedback");
 
   bp->epsilon_f =
       parser_get_param_float(params, "EAGLEAGN:coupling_efficiency");
@@ -320,6 +424,12 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
   const double T_K_to_int =
       1. / units_cgs_conversion_factor(us, UNIT_CONV_TEMPERATURE);
 
+  /* Read the constant AGN heating temperature or the the initial value
+   * for the IC or new BH that formed from gas */
+  bp->AGN_delta_T_desired =
+      parser_get_param_float(params, "EAGLEAGN:AGN_delta_T_K");
+
+  /* Read the properties of the variable heating temperature model */
   bp->use_variable_delta_T =
       parser_get_param_int(params, "EAGLEAGN:use_variable_delta_T");
   if (bp->use_variable_delta_T) {
@@ -345,20 +455,31 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
         parser_get_param_float(params, "EAGLEAGN:AGN_delta_T_max") * T_K_to_int;
     bp->AGN_delta_T_min =
         parser_get_param_float(params, "EAGLEAGN:AGN_delta_T_min") * T_K_to_int;
-  } else {
-    bp->AGN_delta_T_desired =
-        parser_get_param_float(params, "EAGLEAGN:AGN_delta_T_K");
+    bp->AGN_use_nheat_with_fixed_dT =
+        parser_get_param_int(params, "EAGLEAGN:AGN_use_nheat_with_fixed_dT");
+  }
+  bp->use_adaptive_energy_reservoir_threshold = parser_get_param_int(
+      params, "EAGLEAGN:AGN_use_adaptive_energy_reservoir_threshold");
+  if (bp->use_adaptive_energy_reservoir_threshold) {
+    bp->nheat_alpha =
+        parser_get_param_float(params, "EAGLEAGN:AGN_nheat_alpha");
+    bp->nheat_maccr_normalisation =
+        parser_get_param_float(params,
+                               "EAGLEAGN:AGN_nheat_maccr_normalisation") *
+        phys_const->const_solar_mass / phys_const->const_year;
+    bp->nheat_limit =
+        parser_get_param_float(params, "EAGLEAGN:AGN_nheat_limit");
   }
 
+  /* We must always read a default value to initialize BHs to */
   bp->num_ngbs_to_heat =
       parser_get_param_float(params, "EAGLEAGN:AGN_num_ngb_to_heat");
 
   /* Reposition parameters --------------------------------- */
 
   bp->max_reposition_mass =
-      parser_get_param_float(params, "EAGLEAGN:max_reposition_mass");
-  /* Convert to internal units */
-  bp->max_reposition_mass *= phys_const->const_solar_mass;
+      parser_get_param_float(params, "EAGLEAGN:max_reposition_mass") *
+      phys_const->const_solar_mass;
   bp->max_reposition_distance_ratio =
       parser_get_param_float(params, "EAGLEAGN:max_reposition_distance_ratio");
 
@@ -399,8 +520,16 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
     bp->reposition_coefficient_upsilon *=
         (1e5 / (us->UnitLength_in_cgs / us->UnitTime_in_cgs));
 
-    bp->reposition_exponent_xi = parser_get_opt_param_float(
-        params, "EAGLEAGN:reposition_exponent_xi", 1.0);
+    /* Scaling parameters with BH mass and gas density */
+    bp->reposition_reference_mass =
+        parser_get_param_float(params, "EAGLEAGN:reposition_reference_mass") *
+        phys_const->const_solar_mass;
+    bp->reposition_exponent_mass = parser_get_opt_param_float(
+        params, "EAGLEAGN:reposition_exponent_mass", 2.0);
+    bp->reposition_reference_n_H =
+        parser_get_param_float(params, "EAGLEAGN:reposition_reference_n_H");
+    bp->reposition_exponent_n_H = parser_get_opt_param_float(
+        params, "EAGLEAGN:reposition_exponent_n_H", 1.0);
   }
 
   /* Merger parameters ------------------------------------- */
@@ -428,13 +557,6 @@ INLINE static void black_holes_props_init(struct black_holes_props *bp,
                       units_cgs_conversion_factor(us, UNIT_CONV_TIME);
 
   /* Common conversion factors ----------------------------- */
-
-  /* Calculate temperature to internal energy conversion factor (all internal
-   * units) */
-  const double k_B = phys_const->const_boltzmann_k;
-  const double m_p = phys_const->const_proton_mass;
-  const double mu = hydro_props->mu_ionised;
-  bp->temp_to_u_factor = k_B / (mu * hydro_gamma_minus_one * m_p);
 
   /* Calculate conversion factor from rho to n_H.
    * Note this assumes primoridal abundance */
