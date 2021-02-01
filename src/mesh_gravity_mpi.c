@@ -743,16 +743,10 @@ void mesh_patch_to_gparts_CIC(struct gpart *gp, const struct pm_mesh_patch *patc
   a[2] -= (1. / 12.) * pm_mesh_patch_CIC_get(patch, ii, jj, kk - 2, tx, ty, tz, dx, dy, dz);
 
   /* Store things back */
-  accumulate_add_f(&gp->a_grav[0], fac * a[0]);
-  accumulate_add_f(&gp->a_grav[1], fac * a[1]);
-  accumulate_add_f(&gp->a_grav[2], fac * a[2]);
-  gravity_add_comoving_potential(gp, p);
-#ifdef SWIFT_GRAVITY_FORCE_CHECKS
-  gp->potential_PM = p;
-  gp->a_grav_PM[0] = fac * a[0];
-  gp->a_grav_PM[1] = fac * a[1];
-  gp->a_grav_PM[2] = fac * a[2];
-#endif
+  gp->a_grav_mesh[0] = fac * a[0];
+  gp->a_grav_mesh[1] = fac * a[1];
+  gp->a_grav_mesh[2] = fac * a[2];
+  gravity_add_comoving_mesh_potential(gp, p);
 }
 #endif
 
@@ -760,56 +754,57 @@ void mesh_patch_to_gparts_CIC(struct gpart *gp, const struct pm_mesh_patch *patc
 /**
  * @brief Interpolate the forces and potential from the mesh to the #gpart.
  *
- * We use CIC interpolation. The resulting accelerations and potential must
- * be multiplied by G_newton.
+ * This is for the case where the mesh is distributed between MPI ranks
+ * and stored in the form of a hashmap. This function updates the particles
+ * in one #cell.
  *
- * This version is for the case where the mesh is distributed between
- * MPI ranks and stored in the form of a hashmap.
- *
+ * @param c The #cell containing the #gpart to update
  * @param potential Hashmap containing the potential to interpolate from.
  * @param N Size of the full mesh
  * @param fac Inverse of the FFT mesh cell size
- * @param e The #engine (to check active status).
- * @param cell The #cell containing the #gpart
+ * @param const_G Gravitional constant
+ * @param dim Dimensions of the #space
  */
-void mpi_mesh_interpolate_forces(hashmap_t *potential, const int N,
-                                 const double fac, const struct engine *e,
-                                 const struct cell *cell) {
+void cell_distributed_mesh_to_gpart_CIC(const struct cell *c, hashmap_t *potential, 
+					const int N, const double fac, const float const_G,
+					const double dim[3]) {
 
 #if defined(WITH_MPI) && defined(HAVE_MPI_FFTW)
 
-  const int gcount = cell->grav.count;
-  struct gpart* gparts = cell->grav.parts;
-  const double dim[3] = {e->s->dim[0], e->s->dim[1], e->s->dim[2]};
+  const int gcount = c->grav.count;
+  struct gpart* gparts = c->grav.parts;
 
   /* Check for empty cell as this would cause problems finding the extent */
   if(gcount==0)return;
 
   /* Allocate the local mesh patch */
   struct pm_mesh_patch patch;
-  pm_mesh_patch_init(&patch, cell, N, fac, dim, /*boundary_size=*/2);
+  pm_mesh_patch_init(&patch, c, N, fac, dim, /*boundary_size=*/2);
   
   /* Populate the mesh patch with values from the potential hashmap */
   pm_mesh_patch_set_values_from_hashmap(&patch, potential);
 
-  /* Get the potential from the mesh to the active gparts using CIC */
+  /* Get the potential from the mesh patch to the active gparts using CIC */
   for (int i = 0; i < gcount; ++i) {
     struct gpart* gp = &gparts[i];
 
-    if (gpart_is_active(gp, e)) {
+    if (gp->time_bin == time_bin_inhibited) continue;
 
-#ifdef SWIFT_DEBUG_CHECKS
-      /* Check that particles have been drifted to the current time */
-      if (gp->ti_drift != e->ti_current)
-        error("gpart not drifted to current time");
-      
-      /* Check that the particle was initialised */
-      if (gp->initialised == 0)
-        error("Adding forces to an un-initialised gpart.");
+    gp->a_grav_mesh[0] = 0.f;
+    gp->a_grav_mesh[1] = 0.f;
+    gp->a_grav_mesh[2] = 0.f;
+#ifndef SWIFT_GRAVITY_NO_POTENTIAL
+    gp->potential_mesh = 0.f;
 #endif
-      /* Evaluate the potential and acceleration for this gpart */
-      mesh_patch_to_gparts_CIC(gp, &patch);
-    }
+
+    mesh_patch_to_gparts_CIC(gp, &patch);
+
+    gp->a_grav_mesh[0] *= const_G;
+    gp->a_grav_mesh[1] *= const_G;
+    gp->a_grav_mesh[2] *= const_G;
+#ifndef SWIFT_GRAVITY_NO_POTENTIAL
+    gp->potential_mesh *= const_G;
+#endif
   }
 
   /* Discard the temporary mesh patch */
@@ -821,4 +816,88 @@ void mpi_mesh_interpolate_forces(hashmap_t *potential, const int N,
 }
 
 
+/**
+ * @brief Shared information about the mesh to be used by all the threads in the
+ * pool.
+ */
+struct distributed_cic_mapper_data {
+  const struct cell* cells;
+  hashmap_t* potential;
+  int N;
+  double fac;
+  double dim[3];
+  float const_G;
+};
 
+/**
+ * @brief Threadpool mapper function for the mesh CIC assignment of a cell.
+ *
+ * @param map_data A chunk of the list of local cells.
+ * @param num The number of cells in the chunk.
+ * @param extra The information about the mesh and cells.
+ */
+void cell_distributed_mesh_to_gpart_CIC_mapper(void* map_data, int num, void* extra) {
+
+#if defined(WITH_MPI) && defined(HAVE_MPI_FFTW)
+
+  /* Unpack the shared information */
+  const struct distributed_cic_mapper_data* data = (struct distributed_cic_mapper_data*)extra;
+  const struct cell* cells = data->cells;
+  hashmap_t* potential = data->potential;
+  const int N = data->N;
+  const double fac = data->fac;
+  const double dim[3] = {data->dim[0], data->dim[1], data->dim[2]};
+  const float const_G = data->const_G;
+
+  /* Pointer to the chunk to be processed */
+  int* local_cells = (int*)map_data;
+
+  /* Loop over the elements assigned to this thread */
+  for (int i = 0; i < num; ++i) {
+
+    /* Pointer to local cell */
+    const struct cell* c = &cells[local_cells[i]];
+
+    /* Update acceleration and potential for gparts in this cell */
+    cell_distributed_mesh_to_gpart_CIC(c, potential, N, fac, const_G, dim);
+  }
+
+#else
+  error("FFTW MPI not found - unable to use distributed mesh");
+#endif
+}
+
+
+
+ void mpi_mesh_update_gparts(struct pm_mesh* mesh, const struct space* s,
+			     struct threadpool* tp, const int N, 
+			     const double cell_fac) {
+
+#if defined(WITH_MPI) && defined(HAVE_MPI_FFTW)
+
+   const int* local_cells = s->local_cells_top;
+   const int nr_local_cells = s->nr_local_cells;
+
+   /* Gather the mesh shared information to be used by the threads */
+   struct distributed_cic_mapper_data data;
+   data.cells = s->cells_top;
+   data.potential = mesh->potential_local;
+   data.N = N;
+   data.fac = cell_fac;
+   data.dim[0] = s->dim[0];
+   data.dim[1] = s->dim[1];
+   data.dim[2] = s->dim[2];
+   data.const_G = s->e->physical_constants->const_newton_G;
+
+   if (nr_local_cells == 0) {
+     error("Distributed mesh not implemented without cells");
+   } else {
+     /* Evaluate acceleration and potential for each gpart */
+     threadpool_map(tp, cell_distributed_mesh_to_gpart_CIC_mapper, 
+		    (void*)local_cells, nr_local_cells, sizeof(int),
+		    threadpool_auto_chunk_size, (void*)&data);
+   }
+#else
+   error("FFTW MPI not found - unable to use distributed mesh");
+#endif
+ }

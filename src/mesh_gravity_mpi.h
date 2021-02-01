@@ -32,6 +32,7 @@ struct gpart;
 struct threadpool;
 struct engine;
 struct cell;
+struct pm_mesh;
 
 void mpi_mesh_accumulate_gparts_to_hashmap(struct threadpool* tp,
                                            const int N, const double fac,
@@ -46,8 +47,7 @@ void mpi_mesh_fetch_potential(const int N, const double fac,
                               double *potential_slice,
                               hashmap_t *potential_map);
 
-void mpi_mesh_interpolate_forces(hashmap_t *potential, const int N,
-                                 const double fac, const struct engine *e,
-                                 const struct cell *cell);
-
+void mpi_mesh_update_gparts(struct pm_mesh* mesh, const struct space* s,
+			    struct threadpool* tp, const int N, 
+			    const double cell_fac);
 #endif
