@@ -505,10 +505,7 @@ void mpi_mesh_hashmaps_to_slices(const int N, const int local_n0, hashmap_t *map
  *
  * We need all cells containing points -2 and +3 mesh cell widths
  * away from each particle along each axis to compute the
- * potential gradient. We also need to allow for the movement
- * of the particles between calculation of the mesh at rebuild time
- * and evaluation of the forces on each timestep. Particles can move
- * up to half of a top level cell size between updates of the mesh.
+ * potential gradient.
  *
  * @param N The size of the mesh
  * @param fac Inverse of the FFT mesh cell size
@@ -545,8 +542,7 @@ void mpi_mesh_fetch_potential(const int N, const double fac,
     if(cell->grav.count > 0) {
 
       /* Determine range of FFT mesh cells we need for particles in this top
-         level cell. Particles can wander up to half a cell width outside
-         their cell, the 5 point stencil used for accelerations requires
+         level cell. The 5 point stencil used for accelerations requires
          2 neighbouring FFT mesh cells in each direction and for CIC
          evaluation of the accelerations we need one extra FFT mesh cell
          in the +ve direction.
@@ -554,8 +550,8 @@ void mpi_mesh_fetch_potential(const int N, const double fac,
       int ixmin[3];
       int ixmax[3];
       for(int idim=0;idim<3;idim+=1) {
-        const double xmin = cell->loc[idim] - 0.5*cell->width[idim] - 2.0/fac;
-        const double xmax = cell->loc[idim] + 1.5*cell->width[idim] + 3.0/fac;
+        const double xmin = cell->loc[idim] - 2.0/fac;
+        const double xmax = cell->loc[idim] + cell->width[idim] + 3.0/fac;
         ixmin[idim] = (int) floor(xmin*fac);
         ixmax[idim] = (int) floor(xmax*fac);
       }
