@@ -710,10 +710,12 @@ void mesh_patch_to_gparts_CIC(struct gpart *gp, const struct pm_mesh_patch *patc
   const double tz = 1. - dz;
 
 #ifdef SWIFT_GRAVITY_FORCE_CHECKS
-  if (gp->a_grav_PM[0] != 0. || gp->potential_PM != 0.)
-    error("Particle with non-initalised stuff");
+  if (gp->a_grav_mesh[0] != 0.) error("Particle with non-initalised stuff");
+#ifndef SWIFT_GRAVITY_NO_POTENTIAL
+  if (gp->potential_mesh != 0.) error("Particle with non-initalised stuff");
 #endif
-  
+#endif
+
   /* Some local accumulators */
   double p = 0.;
   double a[3] = {0.};
