@@ -546,12 +546,19 @@ void mpi_mesh_fetch_potential(const int N, const double fac,
          2 neighbouring FFT mesh cells in each direction and for CIC
          evaluation of the accelerations we need one extra FFT mesh cell
          in the +ve direction.
+
+	 We also have to add a small buffer to avoid problems with rounding
+	 (e.g. if we decide a cell isn't needed here but then try to look
+	 up its value in the hashmap later).
+
+	 TODO: can we calculate exactly how big the rounding error can be?
+	       Will just assume that 1% of a mesh cell is enough for now.
       */
       int ixmin[3];
       int ixmax[3];
       for(int idim=0;idim<3;idim+=1) {
-        const double xmin = cell->loc[idim] - 2.0/fac;
-        const double xmax = cell->loc[idim] + cell->width[idim] + 3.0/fac;
+        const double xmin = cell->loc[idim] - 2.01/fac;
+        const double xmax = cell->loc[idim] + cell->width[idim] + 3.01/fac;
         ixmin[idim] = (int) floor(xmin*fac);
         ixmax[idim] = (int) floor(xmax*fac);
       }
