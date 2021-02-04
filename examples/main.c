@@ -1219,7 +1219,7 @@ int main(int argc, char *argv[]) {
     long long N_neutrino = 0;
     engine_count_neutrinos(gparts, Ngpart, &N_neutrino, /*verbose=*/1);
 #if defined(WITH_MPI)
-    MPI_Allreduce(&N_neutrino, &N_neutrino, 1, MPI_LONG_LONG_INT, MPI_SUM,
+    MPI_Allreduce(MPI_IN_PLACE, &N_neutrino, 1, MPI_LONG_LONG_INT, MPI_SUM,
                   MPI_COMM_WORLD);
 #endif
 
@@ -1321,9 +1321,9 @@ int main(int argc, char *argv[]) {
 #endif
 
     /* Get the updated total number of neutrinos across all nodes */
-    engine_count_neutrinos(gparts, Ngpart, &N_neutrino, /*verbose=*/1);
+    engine_count_neutrinos(s.gparts, Ngpart, &N_neutrino, /*verbose=*/1);
 #if defined(WITH_MPI)
-    MPI_Allreduce(&N_neutrino, &N_neutrino, 1, MPI_LONG_LONG_INT, MPI_SUM,
+    MPI_Allreduce(MPI_IN_PLACE, &N_neutrino, 1, MPI_LONG_LONG_INT, MPI_SUM,
                   MPI_COMM_WORLD);
 #endif
 
