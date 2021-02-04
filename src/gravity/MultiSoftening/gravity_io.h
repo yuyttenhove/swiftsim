@@ -142,7 +142,7 @@ INLINE static void darkmatter_write_particles(const struct gpart* gparts,
       "Co-moving Plummer-equivalent softening lengths of the particles.");
 
   list[5] = io_make_output_field(
-      "NeutrinoFlags", ULONGLONG, 1, CHAR, 0, gparts, neutrino_flag,
+      "NeutrinoFlags", CHAR, 1, UNIT_CONV_NO_UNITS, 0, gparts, neutrino_flag,
       "Flag that indicates whether particle is hot dark matter");
 }
 
