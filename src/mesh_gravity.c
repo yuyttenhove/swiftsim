@@ -601,17 +601,17 @@ void mesh_apply_Green_function(struct threadpool* tp, fftw_complex* frho,
 
 
 /**
- * @brief Compute the potential, including periodic correction on the mesh.
+ * @brief Compute the mesh forces and potential, including periodic correction
  *
  * Interpolates the top-level multipoles on-to a mesh, move to Fourier space,
  * compute the potential including short-range correction and move back
  * to real space. We use CIC for the interpolation.
  *
- * Note that there is no multiplication by G_newton at this stage.
+ * The potential is stored as a hashmap containing the potential mesh cells
+ * which will be needed on this MPI rank. This is stored in 
+ * mesh->potential_local. The FFTW MPI library is used to do the FFTs.
  *
- * The output from this version is a hashmap containing the potential
- * in mesh cells which will be needed on this MPI rank. This is stored
- * in mesh->potential_local. The FFTW MPI library is used to do the FFTs.
+ * The particles mesh accelerations and potentials are also updated.
  *
  * @param mesh The #pm_mesh used to store the potential.
  * @param s The #space containing the particles.
@@ -749,16 +749,16 @@ void compute_potential_distributed(struct pm_mesh* mesh, const struct space* s,
 
 
 /**
- * @brief Compute the potential, including periodic correction on the mesh.
+ * @brief Compute the mesh forces and potential, including periodic correction.
  *
  * Interpolates the top-level multipoles on-to a mesh, move to Fourier space,
  * compute the potential including short-range correction and move back
  * to real space. We use CIC for the interpolation.
  *
- * Note that there is no multiplication by G_newton at this stage.
- *
  * This version stores the full N*N*N mesh on each MPI rank and uses the
  * non-MPI version of FFTW.
+ *
+ * The particles mesh accelerations and potentials are also updated.
  *
  * @param mesh The #pm_mesh used to store the potential.
  * @param s The #space containing the particles.
@@ -943,13 +943,14 @@ void compute_potential_global(struct pm_mesh* mesh, const struct space* s,
 }
 
 /**
- * @brief Compute the potential, including periodic correction on the mesh.
+ * @brief Compute the mesh forces and potential, including periodic correction.
  *
  * Interpolates the top-level multipoles on-to a mesh, move to Fourier space,
  * compute the potential including short-range correction and move back
  * to real space. We use CIC for the interpolation.
  *
- * Note that there is no multiplication by G_newton at this stage.
+ * This function calls the appropriate implementation depending on whether
+ * we're using the MPI version of FFTW.
  *
  * @param mesh The #pm_mesh used to store the potential.
  * @param s The #space containing the particles.
