@@ -579,10 +579,6 @@ int main(int argc, char *argv[]) {
         "chosen\n");
   }
 
-#ifndef GADGET2_SPH
-  /* Temporary, this dependency will be removed later */
-  error("Error: Cannot use radiative transfer without gadget2-sph for now\n");
-#endif
 #ifndef STARS_GEAR
   /* Temporary, this dependency will be removed later */
   error(
@@ -649,6 +645,15 @@ int main(int argc, char *argv[]) {
         "WARNING: Checking 1/%d of all gpart for gravity accuracy. Code will "
         "be slower !",
         SWIFT_GRAVITY_FORCE_CHECKS);
+#endif
+
+/* Do we have hydro accuracy checks ? */
+#ifdef SWIFT_HYDRO_DENSITY_CHECKS
+  if (myrank == 0)
+    message(
+        "WARNING: Checking 1/%d of all part for hydro accuracy. Code will be "
+        "slower !",
+        SWIFT_HYDRO_DENSITY_CHECKS);
 #endif
 
   /* Do we choke on FP-exceptions ? */
@@ -890,6 +895,31 @@ int main(int argc, char *argv[]) {
     /* Now read it. */
     restart_read(&e, restart_file);
 
+#ifdef WITH_MPI
+    integertime_t min_ti_current = e.ti_current;
+    integertime_t max_ti_current = e.ti_current;
+
+    /* Verify that everyone agrees on the current time */
+    MPI_Allreduce(&e.ti_current, &min_ti_current, 1, MPI_LONG_LONG_INT, MPI_MIN,
+                  MPI_COMM_WORLD);
+    MPI_Allreduce(&e.ti_current, &max_ti_current, 1, MPI_LONG_LONG_INT, MPI_MAX,
+                  MPI_COMM_WORLD);
+
+    if (min_ti_current != max_ti_current) {
+      if (myrank == 0)
+        message("The restart files don't all contain the same ti_current!");
+
+      for (int i = 0; i < myrank; ++i) {
+        if (myrank == i)
+          message("MPI rank %d reading file '%s' found an integer time= %lld",
+                  myrank, restart_file, e.ti_current);
+        MPI_Barrier(MPI_COMM_WORLD);
+      }
+
+      if (myrank == 0) error("Aborting");
+    }
+#endif
+
     /* And initialize the engine with the space and policies. */
     if (myrank == 0) clocks_gettime(&tic);
     engine_config(/*restart=*/1, /*fof=*/0, &e, params, nr_nodes, myrank,
@@ -948,6 +978,24 @@ int main(int argc, char *argv[]) {
     else
       cosmology_init_no_cosmo(&cosmo);
     if (myrank == 0 && with_cosmology) cosmology_print(&cosmo);
+
+    if (with_hydro) {
+#ifdef NONE_SPH
+      error("Can't run with hydro when compiled without a hydro model!");
+#endif
+    }
+    if (with_stars) {
+#ifdef STARS_NONE
+      error("Can't run with stars when compiled without a stellar model!");
+#endif
+    }
+    if (with_black_holes) {
+#ifdef BLACK_HOLES_NONE
+      error(
+          "Can't run with black holes when compiled without a black hole "
+          "model!");
+#endif
+    }
 
     /* Initialise the hydro properties */
     if (with_hydro)

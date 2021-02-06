@@ -21,6 +21,8 @@
 
 /* Local includes */
 #include "black_holes_parameters.h"
+#include "entropy_floor.h"
+#include "equation_of_state.h"
 #include "gravity.h"
 #include "hydro.h"
 #include "random.h"
@@ -57,8 +59,7 @@ runner_iact_nonsym_bh_gas_density(
     const struct gravity_props *grav_props,
     const struct black_holes_props *bh_props,
     const struct entropy_floor_properties *floor_props,
-    const integertime_t ti_current,
-    const double time) {
+    const integertime_t ti_current, const double time) {
 
   float wi, wi_dx;
 
@@ -93,18 +94,13 @@ runner_iact_nonsym_bh_gas_density(
 
     /* Check whether we are close to the entropy floor. If we are, we
      * re-calculate the sound speed using the fixed internal energy */
-    const float u_EoS = entropy_floor_temperature(pj, cosmo, floor_props)
-        * bh_props->temp_to_u_factor;
-    if (pj->u < u_EoS * bh_props->fixed_T_above_EoS_factor &&
-        pj->u > bh_props->fixed_u_for_soundspeed) {
-      /*const float cj_old = cj; */
+    const float u_EoS = entropy_floor_temperature(pj, cosmo, floor_props) *
+                        bh_props->temp_to_u_factor;
+    const float u = hydro_get_drifted_comoving_internal_energy(pj);
+    if (u < u_EoS * bh_props->fixed_T_above_EoS_factor &&
+        u > bh_props->fixed_u_for_soundspeed) {
       cj = gas_soundspeed_from_internal_energy(
           pj->rho, bh_props->fixed_u_for_soundspeed);
-      /*message("Changing cj=%g to %g for p ID=%lld. u=%g (T=%g); "
-              "rho=%g (nH=%g); u_EoS=%g (T_EoS=%g).",
-              cj_old, cj, pj->id, pj->u, pj->u / bh_props->temp_to_u_factor,
-              pj->rho, pj->rho * cosmo->a3_inv * bh_props->rho_to_n_cgs,
-              u_EoS, u_EoS / bh_props->temp_to_u_factor); */
     }
   }
   bi->sound_speed_gas += mj * wi * cj;

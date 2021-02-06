@@ -54,6 +54,7 @@
 #include "sort_part.h"
 #include "space_unique_id.h"
 #include "star_formation.h"
+#include "stars.h"
 #include "threadpool.h"
 #include "tools.h"
 
@@ -96,7 +97,8 @@ int space_expected_max_nr_strays = space_expected_max_nr_strays_default;
 
 /*! Counter for cell IDs (when debugging + max vals for unique IDs exceeded) */
 #if defined(SWIFT_DEBUG_CHECKS) || defined(SWIFT_CELL_GRAPH)
-long long last_cell_id;
+unsigned long long last_cell_id;
+unsigned long long last_leaf_cell_id;
 #endif
 
 /**
@@ -770,13 +772,8 @@ void space_convert_rt_quantities_mapper(void *restrict map_data, int scount,
     }
 
     /* Calculate age of the star at current time */
-    double star_age_end_of_step;
-    if (with_cosmology) {
-      star_age_end_of_step = cosmology_get_delta_time_from_scale_factors(
-          e->cosmology, (double)sp->birth_scale_factor, e->cosmology->a);
-    } else {
-      star_age_end_of_step = e->time - (double)sp->birth_time;
-    }
+    const double star_age_end_of_step =
+        stars_compute_age(sp, e->cosmology, e->time, with_cosmology);
 
     rt_compute_stellar_emission_rate(sp, e->time, star_age_end_of_step,
                                      dt_star);
@@ -1347,7 +1344,8 @@ void space_init(struct space *s, struct swift_params *params,
   if (lock_init(&s->lock) != 0) error("Failed to create space spin-lock.");
 
 #if defined(SWIFT_DEBUG_CHECKS) || defined(SWIFT_CELL_GRAPH)
-  last_cell_id = 1;
+  last_cell_id = 1ULL;
+  last_leaf_cell_id = 1ULL;
 #endif
 
   /* Do we want any spare particles for on the fly creation? */
@@ -2505,5 +2503,53 @@ void space_write_cell_hierarchy(const struct space *s, int j) {
 
   /* Cleanup */
   fclose(f);
+#endif
+}
+
+/**
+ * @brief Check the unskip flags for the cell and its progenies.
+ *
+ * @param c The current #cell.
+ */
+void space_recurse_check_unskip_flag(const struct cell *c) {
+
+#ifdef SWIFT_DEBUG_CHECKS
+
+  /* Check the current cell. */
+  if (cell_get_flag(c, cell_flag_unskip_self_grav_processed)) {
+    error(
+        "A cell is still containing a self unskip flag for the gravity "
+        "depth=%d node=%d cellID=%lld",
+        c->depth, c->nodeID, c->cellID);
+  }
+  if (cell_get_flag(c, cell_flag_unskip_pair_grav_processed)) {
+    error(
+        "A cell is still containing a pair unskip flag for the gravity "
+        "depth=%d node=%d cellID=%lld",
+        c->depth, c->nodeID, c->cellID);
+  }
+
+  /* Recurse */
+  for (int i = 0; i < 8; i++) {
+    if (c->progeny[i] != NULL) space_recurse_check_unskip_flag(c->progeny[i]);
+  }
+#endif
+}
+
+/**
+ * @brief Loop over all the cells and ensure that the unskip
+ * flag have been cleared.
+ *
+ * @param s The #space
+ */
+void space_check_unskip_flags(const struct space *s) {
+#ifdef SWIFT_DEBUG_CHECKS
+
+  for (int i = 0; i < s->nr_cells; i++) {
+    const struct cell *c = &s->cells_top[i];
+    space_recurse_check_unskip_flag(c);
+  }
+#else
+  error("This function should not be called without the debugging checks.");
 #endif
 }

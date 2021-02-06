@@ -1120,20 +1120,30 @@ void cell_activate_subcell_sinks_tasks(struct cell *ci, struct cell *cj,
  * @param ci The first #cell we recurse in.
  * @param cj The second #cell we recurse in.
  * @param s The task #scheduler.
+ *
+ * @return 1 if the cell and its progeny have fully been treated.
  */
-void cell_activate_subcell_grav_tasks(struct cell *ci, struct cell *cj,
-                                      struct scheduler *s) {
+int cell_activate_subcell_grav_tasks(struct cell *restrict ci,
+                                     struct cell *restrict cj,
+                                     struct scheduler *s) {
+
   /* Some constants */
   const struct space *sp = s->space;
   const struct engine *e = sp->e;
+  const int nodeID = e->nodeID;
 
   /* Self interaction? */
   if (cj == NULL) {
+
     /* Do anything? */
-    if (ci->grav.count == 0 || !cell_is_active_gravity(ci, e)) return;
+    if (ci->grav.count == 0 || !cell_is_active_gravity(ci, e)) return 1;
+
+    /* Has it already been processed? */
+    if (cell_get_flag(ci, cell_flag_unskip_self_grav_processed)) return 1;
 
     /* Recurse? */
     if (ci->split) {
+
       /* Loop over all progenies and pairs of progenies */
       for (int j = 0; j < 8; j++) {
         if (ci->progeny[j] != NULL) {
@@ -1145,17 +1155,33 @@ void cell_activate_subcell_grav_tasks(struct cell *ci, struct cell *cj,
         }
       }
     } else {
+
       /* We have reached the bottom of the tree: activate gpart drift */
       cell_activate_drift_gpart(ci, s);
     }
+
+    /* Flag the cell has having been treated */
+    cell_set_flag(ci, cell_flag_unskip_self_grav_processed);
+
+    /* And also return that information */
+    return 1;
   }
 
   /* Pair interaction */
   else {
-    /* Anything to do here? */
-    if (!cell_is_active_gravity(ci, e) && !cell_is_active_gravity(cj, e))
-      return;
-    if (ci->grav.count == 0 || cj->grav.count == 0) return;
+
+    /* Has it already been processed? */
+    if (cell_get_flag(ci, cell_flag_unskip_pair_grav_processed) &&
+        cell_get_flag(cj, cell_flag_unskip_pair_grav_processed))
+      return 1;
+
+    /* Anything to do here?
+     * Note that Here we return 0 as another pair direction for either of
+     * the two cells could pass the tests. */
+    const int do_ci = cell_is_active_gravity(ci, e) && ci->nodeID == nodeID;
+    const int do_cj = cell_is_active_gravity(cj, e) && cj->nodeID == nodeID;
+    if (!do_ci && !do_cj) return 0;
+    if (ci->grav.count == 0 || cj->grav.count == 0) return 0;
 
     /* Atomically drift the multipole in ci */
     lock_lock(&ci->grav.mlock);
@@ -1172,63 +1198,149 @@ void cell_activate_subcell_grav_tasks(struct cell *ci, struct cell *cj,
                              /*is_tree_walk=*/1)) {
 
       /* Ok, no need to drift anything */
-      return;
+      return 0;
     }
-    /* Otherwise, activate the gpart drifts if we are at the bottom. */
+
+    /* Otherwise, if we are at the bottom, activate the gpart drifts. */
     else if (!ci->split && !cj->split) {
+
       /* Activate the drifts if the cells are local. */
       if (cell_is_active_gravity(ci, e) || cell_is_active_gravity(cj, e)) {
-        if (ci->nodeID == engine_rank) cell_activate_drift_gpart(ci, s);
-        if (cj->nodeID == engine_rank) cell_activate_drift_gpart(cj, s);
+
+        cell_set_flag(ci, cell_flag_unskip_pair_grav_processed);
+        cell_set_flag(cj, cell_flag_unskip_pair_grav_processed);
+
+        if (ci->nodeID == nodeID) cell_activate_drift_gpart(ci, s);
+        if (cj->nodeID == nodeID) cell_activate_drift_gpart(cj, s);
       }
+
+      /* And return that information */
+      return 1;
+
     }
-    /* Ok, we can still recurse */
+
+    /* Ok, we can still recurse at least on one side. */
     else {
+
       /* Recover the multipole information */
       const struct gravity_tensors *const multi_i = ci->grav.multipole;
       const struct gravity_tensors *const multi_j = cj->grav.multipole;
       const double ri_max = multi_i->r_max;
       const double rj_max = multi_j->r_max;
 
+      int ci_number_children = 0, cj_number_children = 0;
+      int progenies_all_processed = 0;
+
+      /* Let's open up the largest of the two cells,
+       * provided it is split into smaller cells. */
+
       if (ri_max > rj_max) {
+
         if (ci->split) {
-          /* Loop over ci's children */
+
+          /* Loop over ci's children, activate what is needed and
+           * collect the number of cells that have been fully processed */
           for (int k = 0; k < 8; k++) {
-            if (ci->progeny[k] != NULL)
-              cell_activate_subcell_grav_tasks(ci->progeny[k], cj, s);
+            if (ci->progeny[k] != NULL) {
+              ci_number_children++;
+              progenies_all_processed +=
+                  cell_activate_subcell_grav_tasks(ci->progeny[k], cj, s);
+            }
           }
+
+          const int cell_done = (progenies_all_processed == ci_number_children);
+
+          /* Flag the cells as being fully processed. */
+          if (cell_done) {
+            cell_set_flag(ci, cell_flag_unskip_pair_grav_processed);
+          }
+
+          return cell_done;
 
         } else if (cj->split) {
-          /* Loop over cj's children */
+
+          /* Loop over cj's children, activate what is needed and
+           * collect the number of cells that have been fully processed */
           for (int k = 0; k < 8; k++) {
-            if (cj->progeny[k] != NULL)
-              cell_activate_subcell_grav_tasks(ci, cj->progeny[k], s);
+            if (cj->progeny[k] != NULL) {
+              cj_number_children++;
+              progenies_all_processed +=
+                  cell_activate_subcell_grav_tasks(ci, cj->progeny[k], s);
+            }
           }
 
-        } else {
-          error("Fundamental error in the logic");
-        }
-      } else if (rj_max >= ri_max) {
-        if (cj->split) {
-          /* Loop over cj's children */
-          for (int k = 0; k < 8; k++) {
-            if (cj->progeny[k] != NULL)
-              cell_activate_subcell_grav_tasks(ci, cj->progeny[k], s);
+          const int cell_done = (progenies_all_processed == cj_number_children);
+
+          /* Flag the cells as being fully processed. */
+          if (cell_done) {
+            cell_set_flag(cj, cell_flag_unskip_pair_grav_processed);
           }
+
+          return cell_done;
+
+        } else {
+
+#ifdef SWIFT_DEBUG_CHECKS
+          error("Fundamental error in the logic");
+#endif
+        }
+
+      } else if (rj_max >= ri_max) {
+
+        if (cj->split) {
+
+          /* Loop over cj's children, activate what is needed and
+           * collect the number of cells that have been fully processed */
+          for (int k = 0; k < 8; k++) {
+            if (cj->progeny[k] != NULL) {
+              cj_number_children++;
+              progenies_all_processed +=
+                  cell_activate_subcell_grav_tasks(ci, cj->progeny[k], s);
+            }
+          }
+
+          const int cell_done = (progenies_all_processed == cj_number_children);
+
+          /* Flag the cells as being fully processed. */
+          if (cell_done) {
+            cell_set_flag(cj, cell_flag_unskip_pair_grav_processed);
+          }
+
+          return cell_done;
 
         } else if (ci->split) {
-          /* Loop over ci's children */
+
+          /* Loop over ci's children, activate what is needed and
+           * collect the number of cells that have been fully processed */
           for (int k = 0; k < 8; k++) {
-            if (ci->progeny[k] != NULL)
-              cell_activate_subcell_grav_tasks(ci->progeny[k], cj, s);
+            if (ci->progeny[k] != NULL) {
+              ci_number_children++;
+              progenies_all_processed +=
+                  cell_activate_subcell_grav_tasks(ci->progeny[k], cj, s);
+            }
           }
 
+          const int cell_done = (progenies_all_processed == ci_number_children);
+
+          /* Flag the cells as being done. */
+          if (cell_done) {
+            cell_set_flag(ci, cell_flag_unskip_pair_grav_processed);
+          }
+
+          return cell_done;
+
         } else {
+#ifdef SWIFT_DEBUG_CHECKS
           error("Fundamental error in the logic");
+#endif
         }
       }
     }
   }
+#ifdef SWIFT_DEBUG_CHECKS
+  error("Fundamental error in the logic");
+#endif
+  return -1;
 }
 
 /**
@@ -1258,99 +1370,6 @@ void cell_activate_subcell_external_grav_tasks(struct cell *ci,
   } else {
     /* We have reached the bottom of the tree: activate gpart drift */
     cell_activate_drift_gpart(ci, s);
-  }
-}
-
-/**
- * @brief Traverse a sub-cell task and activate the radiative transfer tasks
- *
- * @param ci The first #cell we recurse in.
- * @param cj The second #cell we recurse in.
- * @param s The task #scheduler.
- */
-void cell_activate_subcell_rt_tasks(struct cell *ci, struct cell *cj,
-                                    struct scheduler *s) {
-  const struct engine *e = s->space->e;
-
-  /* Self interaction? */
-  if (cj == NULL) {
-    /* Do anything? */
-    if (ci->hydro.count == 0 || !cell_is_active_hydro(ci, e)) return;
-
-    /* Recurse? */
-    if (cell_can_recurse_in_self_hydro_task(ci)) {
-      /* Loop over all progenies and pairs of progenies */
-      for (int j = 0; j < 8; j++) {
-        if (ci->progeny[j] != NULL) {
-          cell_activate_subcell_rt_tasks(ci->progeny[j], NULL, s);
-          for (int k = j + 1; k < 8; k++)
-            if (ci->progeny[k] != NULL)
-              cell_activate_subcell_rt_tasks(ci->progeny[j], ci->progeny[k], s);
-        }
-      }
-    } else {
-      /* We have reached the bottom of the tree: activate tasks */
-      for (struct link *l = ci->hydro.rt_inject; l != NULL; l = l->next) {
-        struct task *t = l->t;
-        const int ci_active = cell_is_active_hydro(ci, e);
-#ifdef WITH_MPI
-        const int ci_nodeID = ci->nodeID;
-#else
-        const int ci_nodeID = e->nodeID;
-#endif
-        /* Only activate tasks that involve a local active cell. */
-        if (ci_active && ci_nodeID == e->nodeID) {
-          scheduler_activate(s, t);
-        }
-      }
-    }
-  }
-
-  /* Otherwise, pair interaction */
-  else {
-    /* Should we even bother? */
-    if (!cell_is_active_hydro(ci, e) && !cell_is_active_hydro(cj, e)) return;
-    if (ci->hydro.count == 0 || cj->hydro.count == 0) return;
-
-    /* Get the orientation of the pair. */
-    double shift[3];
-    const int sid = space_getsid(s->space, &ci, &cj, shift);
-
-    /* recurse? */
-    if (cell_can_recurse_in_pair_hydro_task(ci) &&
-        cell_can_recurse_in_pair_hydro_task(cj)) {
-      const struct cell_split_pair *csp = &cell_split_pairs[sid];
-      for (int k = 0; k < csp->count; k++) {
-        const int pid = csp->pairs[k].pid;
-        const int pjd = csp->pairs[k].pjd;
-        if (ci->progeny[pid] != NULL && cj->progeny[pjd] != NULL)
-          cell_activate_subcell_rt_tasks(ci->progeny[pid], cj->progeny[pjd], s);
-      }
-    }
-
-    /* Otherwise, activate the RT tasks. */
-    else if (cell_is_active_hydro(ci, e) || cell_is_active_hydro(cj, e)) {
-
-      /* Activate the drifts if the cells are local. */
-      for (struct link *l = ci->hydro.rt_inject; l != NULL; l = l->next) {
-        struct task *t = l->t;
-        const int ci_active = cell_is_active_hydro(ci, e);
-        const int cj_active = (cj != NULL) ? cell_is_active_hydro(cj, e) : 0;
-#ifdef WITH_MPI
-        const int ci_nodeID = ci->nodeID;
-        const int cj_nodeID = (cj != NULL) ? cj->nodeID : -1;
-#else
-        const int ci_nodeID = e->nodeID;
-        const int cj_nodeID = e->nodeID;
-#endif
-
-        /* Only activate tasks that involve a local active cell. */
-        if ((ci_active && ci_nodeID == e->nodeID) ||
-            (cj_active && cj_nodeID == e->nodeID)) {
-          scheduler_activate(s, t);
-        }
-      }
-    }
   }
 }
 
@@ -1587,10 +1606,13 @@ int cell_unskip_hydro_tasks(struct cell *c, struct scheduler *s) {
 
   /* Unskip all the other task types. */
   if (c->nodeID == nodeID && cell_is_active_hydro(c, e)) {
-    for (struct link *l = c->hydro.gradient; l != NULL; l = l->next)
+    for (struct link *l = c->hydro.gradient; l != NULL; l = l->next) {
       scheduler_activate(s, l->t);
-    for (struct link *l = c->hydro.force; l != NULL; l = l->next)
+    }
+    for (struct link *l = c->hydro.force; l != NULL; l = l->next) {
       scheduler_activate(s, l->t);
+    }
+
     for (struct link *l = c->hydro.limiter; l != NULL; l = l->next)
       scheduler_activate(s, l->t);
 
@@ -2100,8 +2122,8 @@ int cell_unskip_black_holes_tasks(struct cell *c, struct scheduler *s) {
       if (cell_need_rebuild_for_black_holes_pair(ci, cj)) rebuild = 1;
       if (cell_need_rebuild_for_black_holes_pair(cj, ci)) rebuild = 1;
 
-      scheduler_activate(s, ci->hydro.super->black_holes.swallow_ghost[0]);
-      scheduler_activate(s, cj->hydro.super->black_holes.swallow_ghost[0]);
+      scheduler_activate(s, ci->hydro.super->black_holes.swallow_ghost_0);
+      scheduler_activate(s, cj->hydro.super->black_holes.swallow_ghost_0);
 
 #ifdef WITH_MPI
       /* Activate the send/recv tasks. */
@@ -2282,12 +2304,12 @@ int cell_unskip_black_holes_tasks(struct cell *c, struct scheduler *s) {
 
     if (c->black_holes.density_ghost != NULL)
       scheduler_activate(s, c->black_holes.density_ghost);
-    if (c->black_holes.swallow_ghost[0] != NULL)
-      scheduler_activate(s, c->black_holes.swallow_ghost[0]);
-    if (c->black_holes.swallow_ghost[1] != NULL)
-      scheduler_activate(s, c->black_holes.swallow_ghost[1]);
-    if (c->black_holes.swallow_ghost[2] != NULL)
-      scheduler_activate(s, c->black_holes.swallow_ghost[2]);
+    if (c->black_holes.swallow_ghost_0 != NULL)
+      scheduler_activate(s, c->black_holes.swallow_ghost_0);
+    if (c->black_holes.swallow_ghost_1 != NULL)
+      scheduler_activate(s, c->black_holes.swallow_ghost_1);
+    if (c->black_holes.swallow_ghost_2 != NULL)
+      scheduler_activate(s, c->black_holes.swallow_ghost_2);
     if (c->black_holes.black_holes_in != NULL)
       scheduler_activate(s, c->black_holes.black_holes_in);
     if (c->black_holes.black_holes_out != NULL)
@@ -2352,46 +2374,28 @@ int cell_unskip_rt_tasks(struct cell *c, struct scheduler *s) {
   struct engine *e = s->space->e;
   const int nodeID = e->nodeID;
 
-  /* TODO: implement rebuild conditions */
+  /* TODO: implement rebuild conditions? */
   int rebuild = 0;
 
-  for (struct link *l = c->hydro.rt_inject; l != NULL; l = l->next) {
-    struct task *t = l->t;
-    struct cell *ci = t->ci;
-    struct cell *cj = t->cj;
-    const int ci_active = cell_is_active_hydro(ci, e);
-    const int cj_active = (cj != NULL) ? cell_is_active_hydro(cj, e) : 0;
-#ifdef WITH_MPI
-    const int ci_nodeID = ci->nodeID;
-    const int cj_nodeID = (cj != NULL) ? cj->nodeID : -1;
-#else
-    const int ci_nodeID = nodeID;
-    const int cj_nodeID = nodeID;
-#endif
+  if (c->nodeID == nodeID && cell_is_active_hydro(c, e)) {
+    for (struct link *l = c->hydro.rt_inject; l != NULL; l = l->next)
+      scheduler_activate(s, l->t);
 
-    /* Only activate tasks that involve a local active cell. */
-    if ((ci_active && ci_nodeID == nodeID) ||
-        (cj_active && cj_nodeID == nodeID)) {
-
-      scheduler_activate(s, t);
-
-      if (t->type == task_type_sub_self) {
-        cell_activate_subcell_rt_tasks(ci, NULL, s);
-      }
-
-      else if (t->type == task_type_sub_pair) {
-        cell_activate_subcell_rt_tasks(ci, cj, s);
-      }
+    for (struct link *l = c->hydro.rt_gradient; l != NULL; l = l->next) {
+      scheduler_activate(s, l->t);
     }
-  }
-
-  /* Unskip all the other task types */
-  if (c->nodeID == nodeID) {
-    if (cell_is_active_hydro(c, e)) {
-      if (c->hydro.rt_in != NULL) scheduler_activate(s, c->hydro.rt_in);
-      if (c->hydro.rt_ghost1 != NULL) scheduler_activate(s, c->hydro.rt_ghost1);
-      if (c->hydro.rt_out != NULL) scheduler_activate(s, c->hydro.rt_out);
+    for (struct link *l = c->hydro.rt_transport; l != NULL; l = l->next) {
+      scheduler_activate(s, l->t);
     }
+
+    /* Unskip all the other task types */
+    if (c->hydro.rt_in != NULL) scheduler_activate(s, c->hydro.rt_in);
+    if (c->hydro.rt_ghost1 != NULL) scheduler_activate(s, c->hydro.rt_ghost1);
+    if (c->hydro.rt_ghost2 != NULL) scheduler_activate(s, c->hydro.rt_ghost2);
+    if (c->hydro.rt_transport_out != NULL)
+      scheduler_activate(s, c->hydro.rt_transport_out);
+    if (c->hydro.rt_tchem != NULL) scheduler_activate(s, c->hydro.rt_tchem);
+    if (c->hydro.rt_out != NULL) scheduler_activate(s, c->hydro.rt_out);
   }
 
   return rebuild;

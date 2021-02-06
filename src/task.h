@@ -98,10 +98,13 @@ enum task_types {
   task_type_fof_pair,
   task_type_sink_in,  /* Implicit */
   task_type_sink_out, /* Implicit */
-  task_type_rt_in,
-  task_type_rt_out,
+  task_type_rt_in,    /* Implicit */
+  task_type_rt_out,   /* Implicit */
   task_type_sink_formation,
   task_type_rt_ghost1,
+  task_type_rt_ghost2,
+  task_type_rt_transport_out, /* Implicit */
+  task_type_rt_tchem,
   task_type_count
 } __attribute__((packed));
 
@@ -142,6 +145,8 @@ enum task_subtypes {
   task_subtype_sink,
   task_subtype_rt_inject,
   task_subtype_sink_compute_formation,
+  task_subtype_rt_gradient,
+  task_subtype_rt_transport,
   task_subtype_count
 } __attribute__((packed));
 
@@ -166,6 +171,7 @@ enum task_actions {
 enum task_categories {
   task_category_drift,
   task_category_sort,
+  task_category_resort,
   task_category_hydro,
   task_category_gravity,
   task_category_feedback,
@@ -173,6 +179,7 @@ enum task_categories {
   task_category_cooling,
   task_category_star_formation,
   task_category_limiter,
+  task_category_sync,
   task_category_time_integration,
   task_category_mpi,
   task_category_fof,

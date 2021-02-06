@@ -135,6 +135,41 @@ static PyObject *getTimeLimits(PyObject *self, PyObject *Py_UNUSED(ignored)) {
   return (PyObject *)out;
 }
 
+#define find_field_in_module_internal(MODULE, PART)                           \
+  for (int local = 0; local < MODULE##_logger_field##PART##_count; local++) { \
+    const int global = MODULE##_logger_local_to_global##PART[local];          \
+    const int local_shifted = local + total_number_fields;                    \
+    if (field_indices[i] == global) {                                         \
+      /* Check if we have the same fields for the different modules */        \
+      if (current_field != NULL) {                                            \
+        if (current_field->dimension !=                                       \
+                python_fields[local_shifted].dimension ||                     \
+            current_field->typenum != python_fields[local_shifted].typenum) { \
+          error_python(                                                       \
+              "The python definition of the field %s does not correspond "    \
+              "between the modules.",                                         \
+              MODULE##_logger_field_names##PART[local]);                      \
+        }                                                                     \
+      }                                                                       \
+      current_field = &python_fields[local_shifted];                          \
+      break;                                                                  \
+    }                                                                         \
+  }                                                                           \
+  total_number_fields += MODULE##_logger_field##PART##_count;
+
+/**
+ * Same function as find_field_in_module_internal before but with a single
+ * argument.
+ */
+#define find_field_in_module_single_particle_type(MODULE) \
+  find_field_in_module_internal(MODULE, )
+
+/**
+ * Same function as find_field_in_module_internal but with a cleaner argument.
+ */
+#define find_field_in_module(MODULE, PART) \
+  find_field_in_module_internal(MODULE, _##PART)
+
 /**
  * @brief Create a list of numpy array containing the fields.
  *
@@ -166,6 +201,15 @@ logger_loader_create_output(void **output, const int *field_indices,
   /* Get the stars fields */
   stars_logger_generate_python(python_fields + total_number_fields);
   total_number_fields += stars_logger_field_count;
+  /* Get the chemistry (part) fields */
+  chemistry_logger_generate_python_part(python_fields + total_number_fields);
+  total_number_fields += chemistry_logger_field_part_count;
+  /* Get the chemistry (spart) fields */
+  chemistry_logger_generate_python_spart(python_fields + total_number_fields);
+  total_number_fields += chemistry_logger_field_spart_count;
+  /* Get the star formation fields */
+  star_formation_logger_generate_python(python_fields + total_number_fields);
+  total_number_fields += star_formation_logger_field_count;
 
   /* Get all the requested fields */
   for (int i = 0; i < n_fields; i++) {
@@ -173,60 +217,13 @@ logger_loader_create_output(void **output, const int *field_indices,
     current_field = NULL;
     total_number_fields = 0;
 
-    /* Find in the hydro the field. */
-    for (int local = 0; local < hydro_logger_field_count; local++) {
-      const int global = hydro_logger_local_to_global[local];
-      if (field_indices[i] == global) {
-        current_field = &python_fields[local];
-      }
-    }
-    total_number_fields += hydro_logger_field_count;
-
-    /* Find in the gravity the field. */
-    for (int local = 0; local < gravity_logger_field_count; local++) {
-      const int global = gravity_logger_local_to_global[local];
-      const int local_shifted = local + total_number_fields;
-      if (field_indices[i] == global) {
-        /* Check if we have the same fields for gravity + hydro */
-        if (current_field != NULL) {
-          if (current_field->dimension !=
-                  python_fields[local_shifted].dimension ||
-              current_field->typenum != python_fields[local_shifted].typenum) {
-            error_python(
-                "The python definition of the field %s does not correspond "
-                "between"
-                " the modules.",
-                gravity_logger_field_names[local]);
-          }
-        }
-        current_field = &python_fields[local_shifted];
-        break;
-      }
-    }
-    total_number_fields += gravity_logger_field_count;
-
-    /* Find in the stars the field. */
-    for (int local = 0; local < stars_logger_field_count; local++) {
-      const int global = stars_logger_local_to_global[local];
-      const int local_shifted = local + total_number_fields;
-      if (field_indices[i] == global) {
-        /* Check if we have the same fields for gravity + hydro + stars. */
-        if (current_field != NULL) {
-          if (current_field->dimension !=
-                  python_fields[local_shifted].dimension ||
-              current_field->typenum != python_fields[local_shifted].typenum) {
-            error_python(
-                "The python definition of the field %s does not correspond "
-                "between"
-                " the modules.",
-                stars_logger_field_names[local]);
-          }
-        }
-        current_field = &python_fields[local_shifted];
-        break;
-      }
-    }
-    total_number_fields += stars_logger_field_count;
+    /* Find the fields in the different modules. */
+    find_field_in_module_single_particle_type(hydro);
+    find_field_in_module_single_particle_type(gravity);
+    find_field_in_module_single_particle_type(stars);
+    find_field_in_module(chemistry, part);
+    find_field_in_module(chemistry, spart);
+    find_field_in_module_single_particle_type(star_formation);
 
     /* Check if we got a field */
     if (current_field == NULL) {
@@ -274,7 +271,7 @@ static PyObject *pyExit(__attribute__((unused)) PyObject *self,
 }
 
 static PyObject *pyGetListFields(__attribute__((unused)) PyObject *self,
-                                 PyObject *args) {
+                                 PyObject *args, PyObject *kwds) {
   PyObjectReader *self_reader = (PyObjectReader *)self;
   if (!self_reader->ready) {
     error_python(
@@ -285,8 +282,12 @@ static PyObject *pyGetListFields(__attribute__((unused)) PyObject *self,
   /* input variables. */
   PyObject *types = Py_None;
 
+  /* List of keyword arguments. */
+  static char *kwlist[] = {"part_type", NULL};
+
   /* parse the arguments. */
-  if (!PyArg_ParseTuple(args, "|O", &types)) return NULL;
+  if (!PyArg_ParseTupleAndKeywords(args, kwds, "|O", kwlist, &types))
+    return NULL;
 
   /* Get the type of particles to read. */
   int read_types[swift_type_count] = {0};
@@ -337,30 +338,17 @@ static PyObject *pyGetListFields(__attribute__((unused)) PyObject *self,
     /* Skip the types that are not required */
     if (read_types[i] == 0) continue;
 
-    /* Get the list of fields for each particle types. */
-    const char **field_names = NULL;
-    int number_fields = -1;
-    switch (i) {
-      case swift_type_gas:
-        number_fields = hydro_logger_field_count;
-        field_names = hydro_logger_field_names;
-        break;
-
-      case swift_type_dark_matter:
-      case swift_type_dark_matter_background:
-        number_fields = gravity_logger_field_count;
-        field_names = gravity_logger_field_names;
-        break;
-
-      case swift_type_stars:
-        number_fields = stars_logger_field_count;
-        field_names = stars_logger_field_names;
-        break;
-
-      default:
-        message("Particle type %i not implemented, skipping it", i);
-        continue;
+    /* Get the number of fields for the current particle type. */
+    int number_fields = tools_get_number_fields(i);
+    if (number_fields == 0) {
+      continue;
     }
+
+    /* Get the list of fields for the current particle type. */
+    struct field_information *fields = (struct field_information *)malloc(
+        number_fields * sizeof(struct field_information));
+    if (fields == NULL) error("Failed to initialize the field information");
+    tools_get_list_fields(fields, i, h);
 
     for (int j = 0; j < h->masks_count; j++) {
       /* Skip the fields not found in previous type. */
@@ -369,7 +357,7 @@ static PyObject *pyGetListFields(__attribute__((unused)) PyObject *self,
       /* Check if the field is present */
       int found = 0;
       for (int k = 0; k < number_fields; k++) {
-        if (strcmp(h->masks[j].name, field_names[k]) == 0) {
+        if (strcmp(h->masks[j].name, fields[k].name) == 0) {
           found = 1;
           break;
         }
@@ -378,6 +366,9 @@ static PyObject *pyGetListFields(__attribute__((unused)) PyObject *self,
       /* Set the field as not found */
       if (!found) field_present[j] = 0;
     }
+
+    /* Free the memory */
+    free(fields);
   }
 
   /* Count the number of fields found */
@@ -417,7 +408,7 @@ static PyObject *pyGetListFields(__attribute__((unused)) PyObject *self,
  * order).
  */
 static PyObject *pyGetParticleData(__attribute__((unused)) PyObject *self,
-                                   PyObject *args) {
+                                   PyObject *args, PyObject *kwds) {
   PyObjectReader *self_reader = (PyObjectReader *)self;
   if (!self_reader->ready) {
     error_python(
@@ -430,8 +421,13 @@ static PyObject *pyGetParticleData(__attribute__((unused)) PyObject *self,
   double time = 0;
   PyObject *types = Py_None;
 
+  /* List of keyword arguments. */
+  static char *kwlist[] = {"fields", "time", "part_type", NULL};
+
   /* parse the arguments. */
-  if (!PyArg_ParseTuple(args, "Od|O", &fields, &time, &types)) return NULL;
+  if (!PyArg_ParseTupleAndKeywords(args, kwds, "Od|O", kwlist, &fields, &time,
+                                   &types))
+    return NULL;
 
   /* Check the inputs. */
   if (!PyList_Check(fields)) {
@@ -546,7 +542,8 @@ static PyMethodDef libloggerReaderMethods[] = {
      "-------\n\n"
      "times: tuple\n"
      "  time min, time max\n"},
-    {"get_particle_data", pyGetParticleData, METH_VARARGS,
+    {"get_particle_data", (PyCFunction)pyGetParticleData,
+     METH_VARARGS | METH_KEYWORDS,
      "Read some fields from the logfile at a given time.\n\n"
      "Parameters\n"
      "----------\n\n"
@@ -558,7 +555,8 @@ static PyMethodDef libloggerReaderMethods[] = {
      "-------\n\n"
      "list_of_fields: list\n"
      "  Each element is a numpy array containing the corresponding field.\n"},
-    {"get_list_fields", pyGetListFields, METH_VARARGS,
+    {"get_list_fields", (PyCFunction)pyGetListFields,
+     METH_VARARGS | METH_KEYWORDS,
      "Read the list of available fields in the logfile.\n\n"
      "Parameters\n"
      "----------\n\n"

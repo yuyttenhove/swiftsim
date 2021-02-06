@@ -1089,9 +1089,12 @@ int engine_estimate_nr_tasks(const struct engine *e) {
   }
 #endif
   if (e->policy & engine_policy_rt) {
-    /* inject: 1 self + (3^3-1)/2 = 26/2 = 13 pairs  |  14
-     * ghosts: in + out, ghost1,                     | + 3 */
-    n1 += 17;
+    /* inject: 1 self + (3^3-1)/2 = 26/2 = 13 pairs  |   14
+     * gradient: 1 self + 13 pairs                   | + 14
+     * transport: 1 self + 13 pairs                  | + 14
+     * implicits: in + out, transport_out            | +  3
+     * others: ghost1, ghost2, thermochemistry       | +  3 */
+    n1 += 48;
   }
 
 #ifdef WITH_MPI
@@ -1253,9 +1256,11 @@ void engine_rebuild(struct engine *e, const int repartitioned,
   if (clean_smoothing_length_values) space_sanitize(e->s);
 
 /* If in parallel, exchange the cell structure, top-level and neighbouring
- * multipoles. */
+ * multipoles. To achieve this, free the foreign particle buffers first. */
 #ifdef WITH_MPI
   if (e->policy & engine_policy_self_gravity) engine_exchange_top_multipoles(e);
+
+  space_free_foreign_parts(e->s, /*clear_cell_pointers=*/1);
 
   engine_exchange_cells(e);
 #endif
@@ -1294,6 +1299,9 @@ void engine_rebuild(struct engine *e, const int repartitioned,
   }
 
   space_check_sort_flags(e->s);
+
+  /* Check whether all the unskip recursion flags are not set */
+  space_check_unskip_flags(e->s);
 #endif
 
   /* Run through the tasks and mark as skip or not. */
@@ -1544,6 +1552,7 @@ void engine_skip_force_and_kick(struct engine *e) {
         t->type == task_type_bh_swallow_ghost2 ||
         t->type == task_type_bh_swallow_ghost3 || t->type == task_type_bh_in ||
         t->type == task_type_bh_out || t->type == task_type_rt_ghost1 ||
+        t->type == task_type_rt_ghost2 || t->type == task_type_rt_tchem ||
         t->subtype == task_subtype_force ||
         t->subtype == task_subtype_limiter ||
         t->subtype == task_subtype_gradient ||
@@ -1564,7 +1573,9 @@ void engine_skip_force_and_kick(struct engine *e) {
         t->subtype == task_subtype_tend_bpart ||
         t->subtype == task_subtype_rho ||
         t->subtype == task_subtype_sf_counts ||
-        t->subtype == task_subtype_rt_inject)
+        t->subtype == task_subtype_rt_inject ||
+        t->subtype == task_subtype_rt_gradient ||
+        t->subtype == task_subtype_rt_transport)
       t->skip = 1;
   }
 
@@ -1762,6 +1773,16 @@ void engine_init_particles(struct engine *e, int flag_entropy_ICs,
   engine_launch(e, "tasks");
   TIMER_TOC(timer_runners);
 
+#ifdef SWIFT_HYDRO_DENSITY_CHECKS
+  /* Run the brute-force hydro calculation for some parts */
+  if (e->policy & engine_policy_hydro)
+    hydro_exact_density_compute(e->s, e, /*check_force=*/0);
+
+  /* Check the accuracy of the hydro calculation */
+  if (e->policy & engine_policy_hydro)
+    hydro_exact_density_check(e->s, e, /*rel_tol=*/1e-3, /*check_force=*/0);
+#endif
+
   /* Apply some conversions (e.g. internal energy -> entropy) */
   if (!flag_entropy_ICs) {
 
@@ -1846,6 +1867,25 @@ void engine_init_particles(struct engine *e, int flag_entropy_ICs,
     engine_launch(e, "timesteps");
 #endif
   }
+
+#ifdef SWIFT_HYDRO_DENSITY_CHECKS
+  /* Run the brute-force hydro calculation for some parts */
+  if (e->policy & engine_policy_hydro)
+    hydro_exact_density_compute(e->s, e, /*check_force=*/1);
+
+  /* Check the accuracy of the hydro calculation */
+  if (e->policy & engine_policy_hydro)
+    hydro_exact_density_check(e->s, e, /*rel_tol=*/1e-3, /*check_force=*/1);
+#endif
+
+#ifdef SWIFT_STARS_DENSITY_CHECKS
+  /* Run the brute-force stars calculation for some parts */
+  if (e->policy & engine_policy_stars) stars_exact_density_compute(e->s, e);
+
+  /* Check the accuracy of the stars calculation */
+  if (e->policy & engine_policy_stars)
+    stars_exact_density_check(e->s, e, /*rel_tol=*/1e-3);
+#endif
 
 #ifdef SWIFT_GRAVITY_FORCE_CHECKS
   /* Check the accuracy of the gravity calculation */
@@ -2272,6 +2312,25 @@ void engine_step(struct engine *e) {
 #endif
   }
 
+#ifdef SWIFT_HYDRO_DENSITY_CHECKS
+  /* Run the brute-force hydro calculation for some parts */
+  if (e->policy & engine_policy_hydro)
+    hydro_exact_density_compute(e->s, e, /*check_force=*/1);
+
+  /* Check the accuracy of the hydro calculation */
+  if (e->policy & engine_policy_hydro)
+    hydro_exact_density_check(e->s, e, /*rel_tol=*/1e-3, /*check_force=*/1);
+#endif
+
+#ifdef SWIFT_STARS_DENSITY_CHECKS
+  /* Run the brute-force stars calculation for some parts */
+  if (e->policy & engine_policy_stars) stars_exact_density_compute(e->s, e);
+
+  /* Check the accuracy of the stars calculation */
+  if (e->policy & engine_policy_stars)
+    stars_exact_density_check(e->s, e, /*rel_tol=*/1e-2);
+#endif
+
 #ifdef SWIFT_GRAVITY_FORCE_CHECKS
   /* Check if we want to run force checks this timestep. */
   if (e->policy & engine_policy_self_gravity) {
@@ -2298,6 +2357,9 @@ void engine_step(struct engine *e) {
   space_check_limiter(e->s);
   space_check_sort_flags(e->s);
   space_check_swallow(e->s);
+
+  /* Verify that all the unskip flags for the gravity have been cleaned */
+  space_check_unskip_flags(e->s);
 #endif
 
   /* Collect information about the next time-step */
@@ -2745,8 +2807,6 @@ void engine_init(struct engine *e, struct space *s, struct swift_params *params,
       parser_get_opt_param_int(params, "Snapshots:compression", 0);
   e->snapshot_distributed =
       parser_get_opt_param_int(params, "Snapshots:distributed", 0);
-  e->snapshot_int_time_label_on =
-      parser_get_opt_param_int(params, "Snapshots:int_time_label_on", 0);
   e->snapshot_invoke_stf =
       parser_get_opt_param_int(params, "Snapshots:invoke_stf", 0);
   e->snapshot_invoke_fof =
@@ -2895,8 +2955,6 @@ void engine_init(struct engine *e, struct space *s, struct swift_params *params,
   if (e->policy & engine_policy_star_formation) {
     star_formation_logger_accumulator_init(&e->sfh);
   }
-
-  engine_init_output_lists(e, params);
 }
 
 /**
@@ -3256,12 +3314,10 @@ void engine_struct_dump(struct engine *e, FILE *stream) {
   los_struct_dump(e->los_properties, stream);
   parser_struct_dump(e->parameter_file, stream);
   output_options_struct_dump(e->output_options, stream);
-  if (e->output_list_snapshots)
-    output_list_struct_dump(e->output_list_snapshots, stream);
-  if (e->output_list_stats)
-    output_list_struct_dump(e->output_list_stats, stream);
-  if (e->output_list_stf) output_list_struct_dump(e->output_list_stf, stream);
-  if (e->output_list_los) output_list_struct_dump(e->output_list_los, stream);
+  if (e->output_list_snapshots) output_list_clean(&e->output_list_snapshots);
+  if (e->output_list_stats) output_list_clean(&e->output_list_stats);
+  if (e->output_list_stf) output_list_clean(&e->output_list_stf);
+  if (e->output_list_los) output_list_clean(&e->output_list_los);
 
 #ifdef WITH_LOGGER
   if (e->policy & engine_policy_logger) {
@@ -3406,34 +3462,6 @@ void engine_struct_restore(struct engine *e, FILE *stream) {
       (struct output_options *)malloc(sizeof(struct output_options));
   output_options_struct_restore(output_options, stream);
   e->output_options = output_options;
-
-  if (e->output_list_snapshots) {
-    struct output_list *output_list_snapshots =
-        (struct output_list *)malloc(sizeof(struct output_list));
-    output_list_struct_restore(output_list_snapshots, stream);
-    e->output_list_snapshots = output_list_snapshots;
-  }
-
-  if (e->output_list_stats) {
-    struct output_list *output_list_stats =
-        (struct output_list *)malloc(sizeof(struct output_list));
-    output_list_struct_restore(output_list_stats, stream);
-    e->output_list_stats = output_list_stats;
-  }
-
-  if (e->output_list_stf) {
-    struct output_list *output_list_stf =
-        (struct output_list *)malloc(sizeof(struct output_list));
-    output_list_struct_restore(output_list_stf, stream);
-    e->output_list_stf = output_list_stf;
-  }
-
-  if (e->output_list_los) {
-    struct output_list *output_list_los =
-        (struct output_list *)malloc(sizeof(struct output_list));
-    output_list_struct_restore(output_list_los, stream);
-    e->output_list_los = output_list_los;
-  }
 
 #ifdef WITH_LOGGER
   if (e->policy & engine_policy_logger) {

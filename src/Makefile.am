@@ -122,8 +122,8 @@ endif
 
 # source files for the logger (stars)
 STARS_LOGGER =
-if HAVE_STARS_DEFAULT
-STARS_LOGGER += stars/Default/stars_logger.c
+if HAVE_STARS_BASIC
+STARS_LOGGER += stars/Basic/stars_logger.c
 endif
 if HAVE_STARS_GEAR
 STARS_LOGGER += stars/GEAR/stars_logger.c
@@ -165,6 +165,7 @@ AM_SOURCES += output_options.c line_of_sight.c restart.c parser.c xmf.c
 AM_SOURCES += kernel_hydro.c tools.c map.c part.c partition.c clocks.c  
 AM_SOURCES += physical_constants.c units.c potential.c hydro_properties.c 
 AM_SOURCES += threadpool.c cooling.c star_formation.c 
+AM_SOURCES += hydro.c stars.c
 AM_SOURCES += statistics.c profiler.c dump.c logger.c part_type.c 
 AM_SOURCES += gravity_properties.c gravity.c multipole.c 
 AM_SOURCES += collectgroup.c hydro_space.c equation_of_state.c io_compression.c 
@@ -196,6 +197,9 @@ nobase_noinst_HEADERS += gravity/MultiSoftening/gravity_logger.h
 nobase_noinst_HEADERS += equation_of_state.h 
 nobase_noinst_HEADERS += equation_of_state/ideal_gas/equation_of_state.h equation_of_state/isothermal/equation_of_state.h 
 nobase_noinst_HEADERS += hydro.h hydro_io.h hydro_logger.h hydro_parameters.h 
+nobase_noinst_HEADERS += hydro/None/hydro.h hydro/None/hydro_iact.h hydro/None/hydro_io.h 
+nobase_noinst_HEADERS += hydro/None/hydro_debug.h hydro/None/hydro_part.h 
+nobase_noinst_HEADERS += hydro/None/hydro_parameters.h 
 nobase_noinst_HEADERS += hydro/Minimal/hydro.h hydro/Minimal/hydro_iact.h hydro/Minimal/hydro_io.h 
 nobase_noinst_HEADERS += hydro/Minimal/hydro_debug.h hydro/Minimal/hydro_part.h 
 nobase_noinst_HEADERS += hydro/Minimal/hydro_parameters.h 
@@ -268,20 +272,28 @@ nobase_noinst_HEADERS += rt.h
 nobase_noinst_HEADERS += rt_io.h 
 nobase_noinst_HEADERS += rt_struct.h 
 nobase_noinst_HEADERS += rt/none/rt.h  
+nobase_noinst_HEADERS += rt/none/rt_gradients.h 
 nobase_noinst_HEADERS += rt/none/rt_iact.h 
 nobase_noinst_HEADERS += rt/none/rt_io.h 
 nobase_noinst_HEADERS += rt/none/rt_struct.h
+nobase_noinst_HEADERS += rt/none/rt_thermochemistry.h
 nobase_noinst_HEADERS += rt/debug/rt.h  
+nobase_noinst_HEADERS += rt/debug/rt_gradients.h 
 nobase_noinst_HEADERS += rt/debug/rt_iact.h 
 nobase_noinst_HEADERS += rt/debug/rt_io.h 
 nobase_noinst_HEADERS += rt/debug/rt_struct.h
+nobase_noinst_HEADERS += rt/debug/rt_thermochemistry.h
 nobase_noinst_HEADERS += rt/M1closure/rt.h  
+nobase_noinst_HEADERS += rt/M1closure/rt_gradients.h
 nobase_noinst_HEADERS += rt/M1closure/rt_iact.h 
 nobase_noinst_HEADERS += rt/M1closure/rt_io.h 
 nobase_noinst_HEADERS += rt/M1closure/rt_struct.h
+nobase_noinst_HEADERS += rt/M1closure/rt_thermochemistry.h
 nobase_noinst_HEADERS += stars.h stars_io.h stars_logger.h 
-nobase_noinst_HEADERS += stars/Default/stars.h stars/Default/stars_iact.h stars/Default/stars_io.h 
-nobase_noinst_HEADERS += stars/Default/stars_debug.h stars/Default/stars_part.h stars/Default/stars_logger.h  
+nobase_noinst_HEADERS += stars/None/stars.h stars/None/stars_iact.h stars/None/stars_io.h 
+nobase_noinst_HEADERS += stars/None/stars_debug.h stars/None/stars_part.h stars/None/stars_logger.h  
+nobase_noinst_HEADERS += stars/Basic/stars.h stars/Basic/stars_iact.h stars/Basic/stars_io.h 
+nobase_noinst_HEADERS += stars/Basic/stars_debug.h stars/Basic/stars_part.h stars/Basic/stars_logger.h  
 nobase_noinst_HEADERS += stars/EAGLE/stars.h stars/EAGLE/stars_iact.h stars/EAGLE/stars_io.h 
 nobase_noinst_HEADERS += stars/EAGLE/stars_debug.h stars/EAGLE/stars_part.h 
 nobase_noinst_HEADERS += stars/GEAR/stars.h stars/GEAR/stars_iact.h stars/GEAR/stars_io.h 

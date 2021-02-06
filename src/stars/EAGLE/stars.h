@@ -68,6 +68,26 @@ __attribute__((always_inline)) INLINE static float stars_compute_timestep(
 }
 
 /**
+ * @brief Returns the age of a star in internal units
+ *
+ * @param sp The star particle.
+ * @param cosmo The cosmological model.
+ * @param time The current time (in internal units).
+ * @param with_cosmology Are we running with cosmological integration?
+ */
+__attribute__((always_inline)) INLINE static double stars_compute_age(
+    const struct spart* sp, const struct cosmology* cosmo, double time,
+    const int with_cosmology) {
+
+  if (with_cosmology) {
+    return cosmology_get_delta_time_from_scale_factors(
+        cosmo, (double)sp->birth_scale_factor, cosmo->a);
+  } else {
+    return time - (double)sp->birth_time;
+  }
+}
+
+/**
  * @brief Prepares a s-particle for its interactions
  *
  * @param sp The particle to act upon
@@ -83,6 +103,16 @@ __attribute__((always_inline)) INLINE static void stars_init_spart(
 
   sp->density.wcount = 0.f;
   sp->density.wcount_dh = 0.f;
+
+#ifdef SWIFT_STARS_DENSITY_CHECKS
+  sp->N_density = 0;
+  sp->N_density_exact = 0;
+  sp->rho = 0.f;
+  sp->rho_exact = 0.f;
+  sp->n = 0.f;
+  sp->n_exact = 0.f;
+  sp->inhibited_exact = 0;
+#endif
 }
 
 /**
@@ -196,6 +226,11 @@ __attribute__((always_inline)) INLINE static void stars_end_density(
   /* Finish the calculation by inserting the missing h-factors */
   sp->density.wcount *= h_inv_dim;
   sp->density.wcount_dh *= h_inv_dim_plus_one;
+
+#ifdef SWIFT_STARS_DENSITY_CHECKS
+  sp->rho *= h_inv_dim;
+  sp->n *= h_inv_dim;
+#endif
 }
 
 /**
