@@ -53,6 +53,14 @@ enum SNII_oversampling_criterion {
   eagle_SNII_timescale_freefall     /*<! Free-fall timescale */
 };
 
+/**
+ * @brief Form of SNII energy scaling with density and metallicity
+ */
+enum SNII_energy_scalings {
+  SNII_scaling_EAGLE,          /*< Energy scaling as in EAGLE-Ref */
+  SNII_scaling_separable,      /*< Separable Z and n dependence */
+  SNII_scaling_independent     /*< Independent Z and n dependence */
+};
 
 /**
  * @brief Stores AGB and SNII yield tables
@@ -416,6 +424,21 @@ struct feedback_props {
   /*! Are we using the birth metallicity to compute f_th or the properties at
    * feedback time? */
   int use_birth_Z_for_f_th;
+
+  /*! Which model are we using for the SNII energy scaling? */
+  enum SNII_energy_scalings SNII_energy_scaling;
+
+  /*! Pivot density for the high-density scaling of feedback energy */
+  double SNII_n_0_high_cgs;
+
+  /*! Slope of the high-density scaling of feedback energy */
+  double SNII_n_n_high;
+
+  /*! Maximum energy increase due to density */
+  double SNII_delta_E_n;
+
+  /*! Maximum (high) energy increase due to density */
+  double SNII_delta_E_n_high;
 
   /*! Switch to activate SFR-dependent SN feedback energy reduction */
   int SNII_with_SFT_reduction;

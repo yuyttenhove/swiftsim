@@ -238,9 +238,9 @@ double compute_SNII_dT_min(const struct spart* sp,
 
   /* Calculate dT_min */
   const double Z_term = pow(max(Z_star, 1e-6) / Z_pivot, Z_scale);
-  const double denonimator = 1. + Z_term;
+  const double denominator = 1. + Z_term;
 
-  return (dT_min_low + (dT_min_high - dT_min_low) / denonimator);
+  return (dT_min_low + (dT_min_high - dT_min_low) / denominator);
 }
 
 /**
@@ -997,7 +997,7 @@ double eagle_feedback_energy_fraction(struct spart* sp,
   /* Calculate f_E */
   const double Z_term = pow(max(Z, 1e-6) / Z_0, n_Z);
   const double n_term = pow(nH / n_0, -n_n);
-  const double denonimator = 1. + Z_term * n_term;
+  const double denominator = 1. + Z_term * n_term;
 
   double divergence_boost = 1.0;
   if (props->with_SNII_divergence_boost && sp->birth_div_v < 0)
@@ -1006,7 +1006,101 @@ double eagle_feedback_energy_fraction(struct spart* sp,
             props->SNII_divergence_exponent);
 
   sp->f_E_divergence_boost = divergence_boost;
-  return (f_E_min + (f_E_max - f_E_min) / denonimator) * divergence_boost;
+  return (f_E_min + (f_E_max - f_E_min) / denominator) * divergence_boost;
+}
+
+/**
+ * @brief Computes the fraction of the available super-novae energy to
+ * inject for a given event.
+ *
+ * Note that the fraction can be > 1.
+ *
+ * This allows a choice of different f_th scaling functions.
+ *
+ * @param sp The #spart.
+ * @param props The properties of the feedback model.
+ * @param ngb_nH_cgs Hydrogen number density of the gas surrounding the star
+ * (physical cgs units).
+ * @param ngb_Z Metallicity (metal mass fraction) of the gas surrounding the
+ * star.
+ */
+double eagle_feedback_energy_fraction_choice(struct spart* sp,
+                                      const struct feedback_props* props,
+                                      const double ngb_nH_cgs,
+                                      const double ngb_Z) {
+
+  /* Model parameters */
+  const double f_E_max = props->f_E_max;
+  const double f_E_min = props->f_E_min;
+  const double Z_0 = props->Z_0;
+  const double n_0 = props->n_0_cgs;
+  const double n_Z = props->n_Z;
+  const double n_n = props->n_n;
+
+  /* Metallicity (metal mass fraction) at birth time of the star */
+  const double Z_birth =
+      chemistry_get_star_total_metal_mass_fraction_for_feedback(sp);
+
+  /* Physical density of the gas at the star's birth time */
+  const double rho_birth = sp->birth_density;
+  const double n_birth_cgs = rho_birth * props->rho_to_n_cgs;
+
+  /* Choose either the birth properties or current properties */
+  const double nH =
+      props->use_birth_density_for_f_th ? n_birth_cgs : ngb_nH_cgs;
+  const double Z = props->use_birth_Z_for_f_th ? Z_birth : ngb_Z;
+
+  /* Calculate f_E */
+  const double Z_term = pow(max(Z, 1e-6) / Z_0, -n_Z);
+  const double n_term = pow(nH / n_0, n_n);
+
+  /* Different behaviour for different scaling functions ahead */
+  double f_th;
+  if (props->SNII_energy_scaling == SNII_scaling_independent) {
+
+    /* Independent scaling of f_th with Z and n, including an (experimental)
+     * second density scaling. */
+    const double delta_E_n = props->SNII_delta_E_n;
+    const double delta_E_n_high = props->SNII_delta_E_n_high;
+
+    f_th = (f_E_max - (f_E_max - f_E_min) / (1. + Z_term)) *
+           (delta_E_n - (delta_E_n - 1.) / (1. + n_term));
+
+    if (delta_E_n_high > 1.) {
+      const double n_0_high = props->SNII_n_0_high_cgs;
+      const double n_n_high = props->SNII_n_n_high;
+      const double n_term_high = pow(nH / n_0_high, n_n_high);
+      f_th *= (delta_E_n_high - (delta_E_n_high - 1.) / (1. + n_term_high));
+    }
+
+  } else {
+
+    /* Scalings in which f_th varies between a fixed fE_min and fE_max */
+    double denominator;
+    if (props->SNII_energy_scaling == SNII_scaling_EAGLE) 
+      /* EAGLE model with a direct coupling between the Z and n scalings*/
+      denominator = 1. + Z_term * n_term;
+ 
+    else if (props->SNII_energy_scaling == SNII_scaling_separable)
+      /* Alternative model where the variations are separable */
+      denominator = (1. + Z_term) * (1. + n_term);
+
+    else
+      error("Invalid SNII energy scaling model!");
+
+    f_th = f_E_max - (f_E_max - f_E_min) / denominator;
+  }
+
+  /* Highly experimental option of a birth-divergence-based energy boost */
+  double divergence_boost = 1.0;
+  if (props->with_SNII_divergence_boost && sp->birth_div_v < 0)
+    divergence_boost =
+        1.0 + pow(-sp->birth_div_v / props->SNII_divergence_norm,
+            props->SNII_divergence_exponent);
+
+  sp->f_E_divergence_boost = divergence_boost;
+
+  return f_th * divergence_boost;
 }
 
 /**
@@ -1071,7 +1165,8 @@ INLINE static void compute_SNII_feedback(
     /* Properties of the model (all in internal units) */
     const double E_SNe = feedback_props->E_SNII;
     const double f_E =
-        eagle_feedback_energy_fraction(sp, feedback_props, ngb_nH_cgs, ngb_Z);
+        eagle_feedback_energy_fraction_choice(
+          sp, feedback_props, ngb_nH_cgs, ngb_Z);
 
     /* Number of SNe at this time-step */
     double N_SNe;
@@ -2112,6 +2207,34 @@ void feedback_props_init(struct feedback_props* fp,
       parser_get_param_double(params, "EAGLEFeedback:SNII_energy_fraction_n_n");
   fp->n_Z =
       parser_get_param_double(params, "EAGLEFeedback:SNII_energy_fraction_n_Z");
+
+  char temp_var[32];
+  parser_get_param_string(
+      params, "EAGLEFeedback:SNII_energy_scaling_function", temp_var);
+
+  if (strcmp(temp_var, "EAGLE") == 0)
+    fp->SNII_energy_scaling = SNII_scaling_EAGLE;
+  else if (strcmp(temp_var, "Separable") == 0)
+    fp->SNII_energy_scaling = SNII_scaling_separable;
+  else if (strcmp(temp_var, "Independent") == 0) {
+    fp->SNII_energy_scaling = SNII_scaling_independent;
+    fp->SNII_delta_E_n =
+        parser_get_param_double(params, "EAGLEFeedback:SNII_delta_E_n");
+    fp->SNII_delta_E_n_high =
+        parser_get_param_double(params, "EAGLEFeedback:SNII_delta_E_n_high");        
+    if (fp->SNII_delta_E_n_high > 1.) {
+      fp->SNII_n_0_high_cgs =
+          parser_get_param_double(
+            params, "EAGLEFeedback:SNII_energy_fraction_n_0_high_H_p_cm3");
+      fp->SNII_n_n_high =
+          parser_get_param_double(
+            params, "EAGLEFeedback:SNII_energy_fraction_n_n_high");
+    }
+  }
+  else
+    error("Invalid value of "
+          "EAGLEFeedback:SNII_energy_scaling_function: '%s'",
+          temp_var);
 
   /* Check that it makes sense. */
   if (fp->f_E_max < fp->f_E_min) {
