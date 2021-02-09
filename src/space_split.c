@@ -184,8 +184,7 @@ void space_split_recursive(struct space *s, struct cell *c,
     error(
         "Exceeded maximum depth (%d) when splitting cells, aborting. This is "
         "most likely due to having too many particles at the exact same "
-        "position, making the construction of a tree impossible. Possibly due "
-        "to not setting SPH:initial_temperature.",
+        "position, making the construction of a tree impossible.",
         space_cell_maxdepth);
   }
 
