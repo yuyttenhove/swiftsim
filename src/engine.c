@@ -3192,6 +3192,7 @@ void engine_clean(struct engine *e, const int fof, const int restart) {
   output_list_clean(&e->output_list_snapshots);
   output_list_clean(&e->output_list_stats);
   output_list_clean(&e->output_list_stf);
+  output_list_clean(&e->output_list_los);
 
   output_options_clean(e->output_options);
 
