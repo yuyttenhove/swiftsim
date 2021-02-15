@@ -74,7 +74,7 @@
  */
 void write_index_array(const struct engine* e, FILE* f, struct io_props* props,
                        size_t n_props, size_t N) {
-
+  return;
   /* Check that the assumptions are corrects */
   if (n_props != 2)
     error("Not implemented: The index file can only write two props.");
@@ -134,7 +134,7 @@ void write_index_array(const struct engine* e, FILE* f, struct io_props* props,
  */
 void logger_write_history(struct logger_history* history, struct engine* e,
                           FILE* f) {
-
+  return;
   /* Write the number of particles. */
   uint64_t size[swift_type_count];
   for (int i = 0; i < swift_type_count; i++) {
@@ -166,7 +166,7 @@ void logger_write_history(struct logger_history* history, struct engine* e,
  *
  */
 void logger_write_index_file(struct logger_writer* log, struct engine* e) {
-
+  return;
   const int with_DM_background = e->s->with_DM_background;
 
   struct part* parts = e->s->parts;

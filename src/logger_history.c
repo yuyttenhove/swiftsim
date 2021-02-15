@@ -37,7 +37,7 @@
  * @param hist The #logger_history.
  */
 void logger_history_init(struct logger_history *hist) {
-
+  return;
   /* Set the counters to their initial value */
   hist->size = 0;
   hist->capacity = LOGGER_HISTORY_INIT_SIZE;
@@ -59,7 +59,7 @@ void logger_history_init(struct logger_history *hist) {
  * @param already_allocated Are the data already allocated? (Need to free it?)
  */
 void logger_history_reset(struct logger_history *hist) {
-
+  return;
   swift_free("logger_history", hist->data);
 
   logger_history_init(hist);
@@ -71,6 +71,7 @@ void logger_history_reset(struct logger_history *hist) {
  * @param hist The #logger_history.
  */
 void logger_history_free(struct logger_history *hist) {
+  return;
   /* Set the counters to 0 */
   hist->size = 0;
   hist->capacity = 0;
@@ -91,6 +92,7 @@ void logger_history_free(struct logger_history *hist) {
  */
 void logger_history_log(struct logger_history *hist, const long long id,
                         const uint64_t last_offset) {
+  return;
 
 #ifdef SWIFT_DEBUG_CHECKS
   if (id < 0) {
@@ -143,6 +145,7 @@ void logger_history_log(struct logger_history *hist, const long long id,
  */
 void logger_history_write(struct logger_history *hist, struct engine *e,
                           FILE *f) {
+  return;
   /* Generate the structures for writing the index file */
   const int num_fields = 2;
   struct io_props list[2];
@@ -159,6 +162,7 @@ void logger_history_write(struct logger_history *hist, struct engine *e,
 }
 
 void logger_history_dump(const struct logger_history *hist, FILE *stream) {
+  return;
   restart_write_blocks((void *)hist, sizeof(struct logger_history), 1, stream,
                        "logger_history", "logger_history");
 
@@ -169,6 +173,7 @@ void logger_history_dump(const struct logger_history *hist, FILE *stream) {
 }
 
 void logger_history_restore(struct logger_history *hist, FILE *stream) {
+  return;
   restart_read_blocks((void *)hist, sizeof(struct logger_history), 1, stream,
                       NULL, "logger_history");
 
