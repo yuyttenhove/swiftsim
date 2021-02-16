@@ -3458,7 +3458,7 @@ void engine_struct_restore(struct engine *e, FILE *stream) {
   struct output_options *output_options =
       (struct output_options *)malloc(sizeof(struct output_options));
   output_options_struct_restore(output_options, stream);
-  e->output_options = output_options;
+  e->output_options = NULL;
 
 #ifdef WITH_LOGGER
   if (e->policy & engine_policy_logger) {

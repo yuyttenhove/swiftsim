@@ -837,6 +837,10 @@ int main(int argc, char *argv[]) {
     parser_get_param_string(params, "Restarts:resubmit_command",
                             resubmit_command);
 
+  /* Prepare and verify the selection of outputs */
+  io_prepare_output_fields(output_options, with_cosmology, with_fof,
+                           with_structure_finding, e.verbose);
+
   /* If restarting, look for the restart files. */
   if (restart) {
 
@@ -895,6 +899,9 @@ int main(int argc, char *argv[]) {
     /* Now read it. */
     restart_read(&e, restart_file);
 
+    /* Temporary fix: apply output options scheme constructed from file. */
+    e.output_options = output_options;
+
 #ifdef WITH_MPI
     integertime_t min_ti_current = e.ti_current;
     integertime_t max_ti_current = e.ti_current;
@@ -937,9 +944,7 @@ int main(int argc, char *argv[]) {
 
   } else {
 
-    /* Prepare and verify the selection of outputs */
-    io_prepare_output_fields(output_options, with_cosmology, with_fof,
-                             with_structure_finding, e.verbose);
+
 
     /* Not restarting so look for the ICs. */
     /* Initialize unit system and constants */
