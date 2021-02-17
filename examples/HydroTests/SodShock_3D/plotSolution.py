@@ -308,8 +308,8 @@ xlabel("${\\rm{Position}}~x$", labelpad=0)
 
 if plot_diffusion or plot_viscosity:
     if plot_diffusion:
-        plot(x, diffusion * 100, ".", color='r', ms=0.5, alpha=0.2)
-        errorbar(x_bin, alpha_diff_bin * 100, yerr=alpha_diff_sigma_bin * 100, fmt=".", ms=8.0, color='b', lw=1.2, label="Diffusion (100x)")
+        plot(x, diffusion, ".", color='r', ms=0.5, alpha=0.2)
+        errorbar(x_bin, alpha_diff_bin, yerr=alpha_diff_sigma_bin, fmt=".", ms=8.0, color='b', lw=1.2, label="Diffusion (100x)")
 
     if plot_viscosity:
         plot(x, viscosity, ".", color='g', ms=0.5, alpha=0.2)

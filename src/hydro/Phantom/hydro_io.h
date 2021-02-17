@@ -1,6 +1,7 @@
 /*******************************************************************************
  * This file is part of SWIFT.
- * Coypright (c) 2019 Josh Borrow (joshua.borrow@durham.ac.uk) &
+ * Coypright (c) 2020 Loic Hausammann (loic.hausammann@epfl.ch)
+ *                    Josh Borrow (joshua.borrow@durham.ac.uk) &
  *                    Matthieu Schaller (matthieu.schaller@durham.ac.uk)
  *
  * This program is free software: you can redistribute it and/or modify
@@ -161,12 +162,6 @@ INLINE static void convert_viscosity(const struct engine* e,
   ret[0] = p->viscosity.alpha;
 }
 
-INLINE static void convert_diffusion(const struct engine* e,
-                                     const struct part* p,
-                                     const struct xpart* xp, float* ret) {
-  ret[0] = p->diffusion.alpha;
-}
-
 /**
  * @brief Specifies which particle fields to write to a dataset
  *
@@ -230,17 +225,20 @@ INLINE static void hydro_write_particles(const struct part* parts,
       convert_viscosity, "Visosity coefficient (alpha_visc) of the particles");
 
   list[11] = io_make_output_field_convert_part(
-      "DiffusionParameters", FLOAT, 1, UNIT_CONV_NO_UNITS, 0.f, parts, xparts,
-      convert_diffusion, "Diffusion coefficient (alpha_diff) of the particles");
-
-  list[12] = io_make_output_field_convert_part(
       "MagneticFields", FLOAT, 3, UNIT_CONV_MAGNETIC_FIELD, -2.f, parts,
       xparts, convert_magnetic_field, "Co-moving magnetic field of the particles");
 
-  list[13] = io_make_output_field_convert_part(
+  // TODO deal correctly with units
+  list[12] = io_make_output_field(
       "DivergenceMagneticFields", FLOAT, 1, UNIT_CONV_MAGNETIC_LINEAR_DENSITY, -3.f,
-      parts, xparts, convert_psi,
+      parts, mhd.divB,
       "Co-moving divergence of the magnetic field.");
+
+  // TODO same
+  list[13] = io_make_output_field_convert_part(
+      "DivergenceCleaning", FLOAT, 1, UNIT_CONV_MAGNETIC_LINEAR_DENSITY, -3.f,
+      parts, xparts, convert_psi,
+      "Co-moving value of the divergence cleaning variable (psi).");
 }
 
 /**
@@ -250,11 +248,10 @@ INLINE static void hydro_write_particles(const struct part* parts,
 INLINE static void hydro_write_flavour(hid_t h_grpsph) {
 
   /* Viscosity and thermal conduction */
-  /* Nothing in this minimal model... */
   io_write_attribute_s(h_grpsph, "Thermal Conductivity Model",
                        "Simple treatment as in Price (2017)");
   io_write_attribute_s(h_grpsph, "Viscosity Model",
-                       "Simplified version of Cullen & Denhen (2011)");
+                       "Phantom (Price 2017)");
   io_write_attribute_s(h_grpsph, "MHD Model",
                        "Phantom with hyperbolic divergence cleaning (Price 2017)");
 

@@ -115,6 +115,9 @@ nobase_noinst_HEADERS = align.h approx_math.h atomic.h barrier.h cycle.h error.h
 		 hydro/Default/hydro.h hydro/Default/hydro_iact.h hydro/Default/hydro_io.h \
                  hydro/Default/hydro_debug.h hydro/Default/hydro_part.h \
 		 hydro/Default/hydro_parameters.h \
+		 hydro/Phantom/hydro.h hydro/Phantom/hydro_iact.h hydro/Phantom/hydro_io.h \
+		 hydro/Phantom/hydro_debug.h hydro/Phantom/hydro_part.h \
+		 hydro/Phantom/hydro_parameters.h \
 		 hydro/Gadget2/hydro.h hydro/Gadget2/hydro_iact.h hydro/Gadget2/hydro_io.h \
                  hydro/Gadget2/hydro_debug.h hydro/Gadget2/hydro_part.h \
 		 hydro/Gadget2/hydro_parameters.h \

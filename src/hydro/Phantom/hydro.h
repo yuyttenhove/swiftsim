@@ -1,6 +1,7 @@
 /*******************************************************************************
  * This file is part of SWIFT.
- * Coypright (c) 2019 Josh Borrow (joshua.borrow@durham.ac.uk) &
+ * Coypright (c) 2020 Loic Hausammann (loic.hausammann@epfl.ch)
+ *                    Josh Borrow (joshua.borrow@durham.ac.uk) &
  *                    Matthieu Schaller (matthieu.schaller@durham.ac.uk)
  *
  * This program is free software: you can redistribute it and/or modify
@@ -22,9 +23,8 @@
 
 /**
  * @file Phantom/hydro.h
- * @brief Density-Energy conservative implementation of SPH,
- *        with added diffusive physics (Cullen & Denhen 2011 AV,
- *        Price 2017 (PHANTOM) diffusion)  (Non-neighbour loop
+ * @brief Density-Energy conservative implementation of SPH based on
+ *        Price 2017 (PHANTOM)  (Non-neighbour loop
  *        equations)
  */
 
@@ -548,7 +548,6 @@ __attribute__((always_inline)) INLINE static float hydro_compute_timestep(
   const float dt_cfl = 2.f * kernel_gamma * CFL_condition * cosmo->a * p->h /
                        (cosmo->a_factor_sound_speed * p->viscosity.v_sig);
 
-  // TODO add criterion for B
   /* Criterion on the evolution of psi */
   const float v_clean = magnetic_get_physical_magnetosonic_speed(p, cosmo)
     * over_clean_fac;
@@ -601,6 +600,10 @@ __attribute__((always_inline)) INLINE static void hydro_init_part(
   p->density.rot_v[2] = 0.f;
 
   p->viscosity.div_v = 0.f;
+
+  /* Reset the divergence */
+  p->mhd.divB = 0;
+
 }
 
 /**
@@ -669,23 +672,10 @@ __attribute__((always_inline)) INLINE static void hydro_prepare_gradient(
     struct part *restrict p, struct xpart *restrict xp,
     const struct cosmology *cosmo, const struct hydro_props *hydro_props) {
 
-  const float fac_B = cosmo->a_factor_Balsara_eps;
-
-  /* Compute the norm of the curl */
-  const float curl_v = sqrtf(p->density.rot_v[0] * p->density.rot_v[0] +
-                             p->density.rot_v[1] * p->density.rot_v[1] +
-                             p->density.rot_v[2] * p->density.rot_v[2]);
-
-  /* Compute the norm of div v */
-  const float abs_div_v = fabsf(p->viscosity.div_v);
-
   /* Compute the sound speed -- see theory section for justification */
   const float soundspeed = hydro_get_comoving_soundspeed(p);
   const float pressure = hydro_get_comoving_pressure(p);
 
-  /* Compute the Balsara switch */
-  const float balsara =
-      abs_div_v / (abs_div_v + curl_v + 0.0001f * soundspeed * fac_B / p->h);
 
   /* Compute the "grad h" term */
   const float rho_inv = 1.f / p->rho;
@@ -702,7 +692,17 @@ __attribute__((always_inline)) INLINE static void hydro_prepare_gradient(
   p->force.f = grad_h_term;
   p->force.pressure = pressure;
   p->force.soundspeed = soundspeed;
-  p->force.balsara = balsara;
+
+  /* Finish the computation of the magnetic field divergence */
+  const float h_inv = 1.0f / p->h;                    /* 1/h */
+  const float h_inv_dim = pow_dimension(h_inv);       /* 1/h^d */
+  const float h_inv_dim_plus_one = h_inv_dim * h_inv; /* 1/h^(d+1) */
+  p->mhd.divB *= rho_inv * p->force.f * h_inv_dim_plus_one;
+
+  /* Compute the sound speed */
+  p->mhd.force.soundspeed =
+    magnetic_get_physical_magnetosonic_speed(p, cosmo);
+
 }
 
 /**
@@ -717,7 +717,7 @@ __attribute__((always_inline)) INLINE static void hydro_prepare_gradient(
 __attribute__((always_inline)) INLINE static void hydro_reset_gradient(
     struct part *restrict p) {
 
-  p->viscosity.v_sig = 2.f * p->mhd.force.soundspeed;
+  // p->viscosity.v_sig = 2.f * p->mhd.force.soundspeed;
 }
 
 /**
@@ -766,6 +766,7 @@ __attribute__((always_inline)) INLINE static void hydro_part_has_no_neighbours(
 
   /* Probably not shocking, so this is safe to do */
   p->viscosity.div_v = 0.f;
+  p->viscosity.v_sig = hydro_get_physical_soundspeed(p, cosmo) * p->viscosity.alpha;
 }
 
 /**
@@ -791,6 +792,15 @@ __attribute__((always_inline)) INLINE static void magnetic_prepare_force(
     const struct hydro_props *hydro_props,
     const float dt_alpha) {
 
+  /* Compute the pressure due to B */
+  float B2 = 0.;
+  for(int i = 0; i < 3; i++) {
+    const float Bi = p->mhd.B_pred[i];
+    B2 += Bi * Bi;
+  }
+
+  const float mag_P = 0.5f * B2 / eos.magnetic_constant;
+
   /* Compute the maxwell tensor */
   for(int i = 0; i < 3; i++) {
     const float Bi = p->mhd.B_pred[i];
@@ -800,12 +810,8 @@ __attribute__((always_inline)) INLINE static void magnetic_prepare_force(
       p->mhd.maxwell_stress[i][j] = - Bi * Bj / eos.magnetic_constant;
     }
 
-    p->mhd.maxwell_stress[i][i] += p->force.pressure + 0.5f * Bi * Bi;
+    p->mhd.maxwell_stress[i][i] += p->force.pressure + mag_P;
   }
-
-  /* Compute the sound speed */
-  p->mhd.force.soundspeed =
-    magnetic_get_physical_magnetosonic_speed(p, cosmo);
 
   /* Compute the beta plasma parameter */
   p->mhd.force.beta = magnetic_get_physical_beta(p, cosmo);
@@ -836,15 +842,6 @@ __attribute__((always_inline)) INLINE static void hydro_prepare_force(
 
   /* Here we need to update the artificial viscosity */
 
-  /* We use in this function that h is the radius of support */
-  const float kernel_support_physical = p->h * cosmo->a * kernel_gamma;
-  const float kernel_support_physical_inv = 1.f / kernel_support_physical;
-  const float v_sig_physical = p->viscosity.v_sig * cosmo->a_factor_sound_speed;
-  const float soundspeed_physical = hydro_get_physical_soundspeed(p, cosmo);
-
-  const float sound_crossing_time_inverse =
-      soundspeed_physical * kernel_support_physical_inv;
-
   /* Construct time differential of div.v implicitly following the ANARCHY spec
    */
 
@@ -853,28 +850,36 @@ __attribute__((always_inline)) INLINE static void hydro_prepare_force(
           ? 0.f
           : (p->viscosity.div_v - p->viscosity.div_v_previous_step) / dt_alpha;
 
+
+  /* Compute the norm of the curl */
+  const float curl_v2 = p->density.rot_v[0] * p->density.rot_v[0] +
+    p->density.rot_v[1] * p->density.rot_v[1] +
+    p->density.rot_v[2] * p->density.rot_v[2];
+
+  /* Compute the square of div v */
+  const float div_v2 = p->viscosity.div_v * p->viscosity.div_v;
+
+  /* Compute Balsara */
+  const float div = div_v2 + curl_v2;
+  const float balsara = div == 0? 0: div_v2 / div;
+
   /* Construct the source term for the AV; if shock detected this is _positive_
    * as div_v_dt should be _negative_ before the shock hits */
-  const float S = kernel_support_physical * kernel_support_physical *
-                  max(0.f, -1.f * div_v_dt);
-  /* 0.25 factor comes from our definition of v_sig (sum of soundspeeds rather
-   * than mean). */
-  /* Note this is v_sig_physical squared, not comoving */
-  const float v_sig_square = 0.25 * v_sig_physical * v_sig_physical;
+  const float A = balsara * max(0.f, - div_v_dt);
 
   /* Calculate the current appropriate value of the AV based on the above */
-  const float alpha_loc =
-      hydro_props->viscosity.alpha_max * S / (v_sig_square + S);
+  const float h = p->h * kernel_gamma;
+  const float alpha_loc = min(hydro_props->viscosity.alpha_max,
+    10.f * h * h * A / (p->force.soundspeed * p->force.soundspeed));
 
   if (alpha_loc > p->viscosity.alpha) {
     /* Reset the value of alpha to the appropriate value */
     p->viscosity.alpha = alpha_loc;
   } else {
     /* Integrate the alpha forward in time to decay back to alpha = alpha_loc */
-    p->viscosity.alpha =
-      alpha_loc + (p->viscosity.alpha - alpha_loc) *
-                        expf(-dt_alpha * sound_crossing_time_inverse *
-                             hydro_props->viscosity.length);
+    const float tau = h / (hydro_props->viscosity.length * p->force.soundspeed);
+    const float t_ratio = dt_alpha / tau;
+    p->viscosity.alpha = (p->viscosity.alpha + alpha_loc * t_ratio) / (1 + t_ratio);
   }
 
   /* Check that we did not hit the minimum */
@@ -884,10 +889,8 @@ __attribute__((always_inline)) INLINE static void hydro_prepare_force(
   /* Set our old div_v to the one for the next loop */
   p->viscosity.div_v_previous_step = p->viscosity.div_v;
 
-  /* Multiply the alpha value in here, as we want to limit on an individual
-   * basis! */
-  p->force.balsara *= p->viscosity.alpha;
-
+  /* Reset the signal velocity for the time step computation */
+  p->viscosity.v_sig = 0;
 
   /* Prepare the magnetic field */
   magnetic_prepare_force(p, xp, cosmo, hydro_props, dt_alpha);
@@ -912,8 +915,6 @@ __attribute__((always_inline)) INLINE static void magnetic_reset_acceleration(
   /* Reset the divergence cleaning field */
   p->mhd.force.psi_c_dt = 0.f;
 
-  /* Reset the divergence */
-  p->mhd.divB = 0;
 }
 
 /**
@@ -952,18 +953,17 @@ __attribute__((always_inline)) INLINE static void magnetic_reset_predicted_value
     struct part *restrict p, const struct xpart *restrict xp,
     const struct cosmology *cosmo) {
 
-  /* Re-set the magnetic field */
-  for(int i = 0; i < 3; i++) {
-    p->mhd.B_pred[i] = xp->mhd.B_full[i];
-  }
+  /* /\* Re-set the magnetic field *\/ */
+  /* for(int i = 0; i < 3; i++) { */
+  /*   p->mhd.B_pred[i] = xp->mhd.B_full[i]; */
+  /* } */
 
-  /* Re-set the divergence cleaning */
-  p->mhd.psi_pred = xp->mhd.psi_full;
+  /* /\* Re-set the divergence cleaning *\/ */
+  /* p->mhd.psi_pred = xp->mhd.psi_full; */
 
   /* Compute the sound speed */
   p->mhd.force.soundspeed =
     magnetic_get_physical_magnetosonic_speed(p, cosmo);
-
 
   /* Compute the beta plasma parameter */
   p->mhd.force.beta = magnetic_get_physical_beta(p, cosmo);
@@ -1104,12 +1104,9 @@ __attribute__((always_inline)) INLINE static void hydro_predict_extra(
   /* Compute the new sound speed */
   const float pressure = gas_pressure_from_internal_energy(p->rho, p->u);
   const float soundspeed = gas_soundspeed_from_pressure(p->rho, pressure);
-  const float magnetospeed = magnetic_get_physical_magnetosonic_speed(p, cosmo);
 
   p->force.pressure = pressure;
   p->force.soundspeed = soundspeed;
-
-  p->viscosity.v_sig = max(p->viscosity.v_sig, 2.f * magnetospeed);
 
   magnetic_drift_part(p, xp, dt_drift, dt_therm, cosmo, hydro_props, floor_props);
 }
@@ -1129,12 +1126,16 @@ __attribute__((always_inline)) INLINE static void hydro_predict_extra(
 __attribute__((always_inline)) INLINE static void hydro_end_force(
     struct part *restrict p, const struct cosmology *cosmo) {
 
-  /* if (p->mhd.force.psi_c_dt != 0.f) { */
-  /*   message("%g %g %g %g", p->mhd.force.B_rho_dt[0], p->mhd.force.B_rho_dt[1], */
-  /*           p->mhd.force.B_rho_dt[2], p->mhd.force.psi_c_dt); */
-  /*   message("%g %g", p->mhd.force.soundspeed, p->rho); */
-  /* } */
   p->force.h_dt *= p->h * hydro_dimension_inv;
+
+  /* /\* Compute the divergence damping *\/ */
+  /* const float c_mag_i = over_clean_fac * p->mhd.force.soundspeed; */
+
+  /* const float sigma_c = 1; */
+  /* const float tau_i = p->h / (c_mag_i * sigma_c); */
+  /* p->mhd.force.psi_c_dt -= p->mhd.psi_pred / (c_mag_i * tau_i); */
+
+  /* p->mhd.force.psi_c_dt -= c_mag_i * p->mhd.divB; */
 }
 
 /**
@@ -1281,9 +1282,6 @@ __attribute__((always_inline)) INLINE static void hydro_convert_quantities(
   p->viscosity.alpha = hydro_props->viscosity.alpha;
   /* Initialise this here to keep all the AV variables together */
   p->viscosity.div_v_previous_step = 0.f;
-
-  /* Set the initial values for the thermal diffusion */
-  p->diffusion.alpha = hydro_props->diffusion.alpha;
 
   const float pressure = gas_pressure_from_internal_energy(p->rho, p->u);
   const float soundspeed = gas_soundspeed_from_internal_energy(p->rho, p->u);

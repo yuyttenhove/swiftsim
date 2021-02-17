@@ -1,6 +1,7 @@
 /*******************************************************************************
  * This file is part of SWIFT.
- * Coypright (c) 2019 Josh Borrow (joshua.borrow@durham.ac.uk) &
+ * Coypright (c) 2020 Loic Hausammann (loic.hausammann@epfl.ch)
+ *                    Josh Borrow (joshua.borrow@durham.ac.uk) &
  *                    Matthieu Schaller (matthieu.schaller@durham.ac.uk)
  *
  * This program is free software: you can redistribute it and/or modify
@@ -22,9 +23,8 @@
 
 /**
  * @file Phantom/hydro_iact.h
- * @brief Density-Energy conservative implementation of SPH,
- *        with added diffusive physics (Cullen & Denhen 2011 AV,
- *        Price 2017 (PHANTOM) diffusion) (interaction routines)
+ * @brief Density-Energy conservative implementation of SPH based
+ *        on Price 2017 (PHANTOM) (interaction routines)
  */
 
 #include "adiabatic_index.h"
@@ -109,6 +109,19 @@ __attribute__((always_inline)) INLINE static void runner_iact_density(
   pj->density.rot_v[0] += facj * curlvr[0];
   pj->density.rot_v[1] += facj * curlvr[1];
   pj->density.rot_v[2] += facj * curlvr[2];
+
+  /* Compute the magnetic field divergence */
+  const float dB[3] = {
+                       pi->mhd.B_pred[0] - pj->mhd.B_pred[0],
+                       pi->mhd.B_pred[1] - pj->mhd.B_pred[1],
+                       pi->mhd.B_pred[2] - pj->mhd.B_pred[2],
+  };
+  const float dBdx = dB[0] * dx[0]
+    + dB[1] * dx[1]
+    + dB[2] * dx[2];
+
+  pi->mhd.divB -= mj * dBdx * wi_dx * r_inv;
+  pj->mhd.divB -= mi * dBdx * wj_dx * r_inv;
 }
 
 /**
@@ -165,6 +178,18 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_density(
   pi->density.rot_v[0] += faci * curlvr[0];
   pi->density.rot_v[1] += faci * curlvr[1];
   pi->density.rot_v[2] += faci * curlvr[2];
+
+  /* Compute the magnetic field divergence */
+  const float dB[3] = {
+                       pi->mhd.B_pred[0] - pj->mhd.B_pred[0],
+                       pi->mhd.B_pred[1] - pj->mhd.B_pred[1],
+                       pi->mhd.B_pred[2] - pj->mhd.B_pred[2],
+  };
+  const float dBdx = dB[0] * dx[0]
+    + dB[1] * dx[1]
+    + dB[2] * dx[2];
+
+  pi->mhd.divB -= mj * dBdx * wi_dx * r_inv;
 }
 
 /**
@@ -187,35 +212,35 @@ __attribute__((always_inline)) INLINE static void runner_iact_gradient(
     float r2, const float* dx, float hi, float hj, struct part* restrict pi,
     struct part* restrict pj, float a, float H) {
 
-  /* We need to construct the maximal signal velocity between our particle
-   * and all of it's neighbours */
+  /* /\* We need to construct the maximal signal velocity between our particle */
+  /*  * and all of it's neighbours *\/ */
 
-  const float r = sqrtf(r2);
-  const float r_inv = 1.f / r;
-  const float ci = pi->mhd.force.soundspeed;
-  const float cj = pj->mhd.force.soundspeed;
+  /* const float r = sqrtf(r2); */
+  /* const float r_inv = 1.f / r; */
+  /* const float ci = pi->mhd.force.soundspeed; */
+  /* const float cj = pj->mhd.force.soundspeed; */
 
-  /* Cosmology terms for the signal velocity */
-  const float fac_mu = pow_three_gamma_minus_five_over_two(a);
-  const float a2_Hubble = a * a * H;
+  /* /\* Cosmology terms for the signal velocity *\/ */
+  /* const float fac_mu = pow_three_gamma_minus_five_over_two(a); */
+  /* const float a2_Hubble = a * a * H; */
 
-  const float dvdr = (pi->v[0] - pj->v[0]) * dx[0] +
-                     (pi->v[1] - pj->v[1]) * dx[1] +
-                     (pi->v[2] - pj->v[2]) * dx[2];
+  /* const float dvdr = (pi->v[0] - pj->v[0]) * dx[0] + */
+  /*                    (pi->v[1] - pj->v[1]) * dx[1] + */
+  /*                    (pi->v[2] - pj->v[2]) * dx[2]; */
 
-  /* Add Hubble flow */
+  /* /\* Add Hubble flow *\/ */
 
-  const float dvdr_Hubble = dvdr + a2_Hubble * r2;
-  /* Are the particles moving towards each others ? */
-  const float omega_ij = min(dvdr_Hubble, 0.f);
-  const float mu_ij = fac_mu * r_inv * omega_ij; /* This is 0 or negative */
+  /* const float dvdr_Hubble = dvdr + a2_Hubble * r2; */
+  /* /\* Are the particles moving towards each others ? *\/ */
+  /* const float omega_ij = min(dvdr_Hubble, 0.f); */
+  /* const float mu_ij = fac_mu * r_inv * omega_ij; /\* This is 0 or negative *\/ */
 
-  /* Signal velocity */
-  const float new_v_sig = ci + cj - const_viscosity_beta * mu_ij;
+  /* /\* Signal velocity *\/ */
+  /* const float new_v_sig = ci + cj - const_viscosity_beta * mu_ij; */
 
-  /* Update if we need to */
-  pi->viscosity.v_sig = max(pi->viscosity.v_sig, new_v_sig);
-  pj->viscosity.v_sig = max(pj->viscosity.v_sig, new_v_sig);
+  /* /\* Update if we need to *\/ */
+  /* pi->viscosity.v_sig = max(pi->viscosity.v_sig, new_v_sig); */
+  /* pj->viscosity.v_sig = max(pj->viscosity.v_sig, new_v_sig); */
 }
 
 /**
@@ -239,34 +264,34 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_gradient(
     float r2, const float* dx, float hi, float hj, struct part* restrict pi,
     struct part* restrict pj, float a, float H) {
 
-  /* We need to construct the maximal signal velocity between our particle
-   * and all of it's neighbours */
+  /* /\* We need to construct the maximal signal velocity between our particle */
+  /*  * and all of it's neighbours *\/ */
 
-  const float r = sqrtf(r2);
-  const float r_inv = 1.f / r;
-  const float ci = pi->mhd.force.soundspeed;
-  const float cj = pj->mhd.force.soundspeed;
+  /* const float r = sqrtf(r2); */
+  /* const float r_inv = 1.f / r; */
+  /* const float ci = pi->mhd.force.soundspeed; */
+  /* const float cj = pj->mhd.force.soundspeed; */
 
-  /* Cosmology terms for the signal velocity */
-  const float fac_mu = pow_three_gamma_minus_five_over_two(a);
-  const float a2_Hubble = a * a * H;
+  /* /\* Cosmology terms for the signal velocity *\/ */
+  /* const float fac_mu = pow_three_gamma_minus_five_over_two(a); */
+  /* const float a2_Hubble = a * a * H; */
 
-  const float dvdr = (pi->v[0] - pj->v[0]) * dx[0] +
-                     (pi->v[1] - pj->v[1]) * dx[1] +
-                     (pi->v[2] - pj->v[2]) * dx[2];
+  /* const float dvdr = (pi->v[0] - pj->v[0]) * dx[0] + */
+  /*                    (pi->v[1] - pj->v[1]) * dx[1] + */
+  /*                    (pi->v[2] - pj->v[2]) * dx[2]; */
 
-  /* Add Hubble flow */
+  /* /\* Add Hubble flow *\/ */
 
-  const float dvdr_Hubble = dvdr + a2_Hubble * r2;
-  /* Are the particles moving towards each others ? */
-  const float omega_ij = min(dvdr_Hubble, 0.f);
-  const float mu_ij = fac_mu * r_inv * omega_ij; /* This is 0 or negative */
+  /* const float dvdr_Hubble = dvdr + a2_Hubble * r2; */
+  /* /\* Are the particles moving towards each others ? *\/ */
+  /* const float omega_ij = min(dvdr_Hubble, 0.f); */
+  /* const float mu_ij = fac_mu * r_inv * omega_ij; /\* This is 0 or negative *\/ */
 
-  /* Signal velocity */
-  const float new_v_sig = ci + cj - const_viscosity_beta * mu_ij;
+  /* /\* Signal velocity *\/ */
+  /* const float new_v_sig = ci + cj - const_viscosity_beta * mu_ij; */
 
-  /* Update if we need to */
-  pi->viscosity.v_sig = max(pi->viscosity.v_sig, new_v_sig);
+  /* /\* Update if we need to *\/ */
+  /* pi->viscosity.v_sig = max(pi->viscosity.v_sig, new_v_sig); */
 }
 
 __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force(
@@ -522,7 +547,6 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force(
     const struct part* pj, float a, float H) {
 
   /* Cosmological factors entering the EoMs */
-  const float fac_mu = pow_three_gamma_minus_five_over_two(a);
   const float a2_Hubble = a * a * H;
 
   const float r = sqrtf(r2);
@@ -575,82 +599,77 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force(
   /* Includes the hubble flow term; not used for du/dt */
   const float dvdr_Hubble = dvdr + a2_Hubble * r2;
 
-  /* Are the particles moving towards each others ? */
-  const float omega_ij = min(dvdr_Hubble, 0.f);
-  const float mu_ij = fac_mu * r_inv * omega_ij; /* This is 0 or negative */
-
   /* Compute sound speeds and signal velocity */
-  const float v_sig = pi->force.soundspeed + pj->force.soundspeed -
-                      const_viscosity_beta * mu_ij;
+  const float v_sig_i = pi->viscosity.alpha * pi->force.soundspeed +
+    const_viscosity_beta * fabs(dvdr_Hubble) * r_inv;
 
-  /* Balsara term */
-  const float balsara_i = pi->force.balsara;
-  const float balsara_j = pj->force.balsara;
+  /* Update the velocity signal */
+  pi->viscosity.v_sig = max(pi->viscosity.v_sig, v_sig_i);
 
   /* Construct the full viscosity term */
   /* Balsara includes the alphas */
-  const float visc = -0.125f * v_sig * mu_ij * (balsara_i + balsara_j);
-
-  /* Convolve with the kernel */
-  const float visc_acc_term =
-      0.5f * visc * (wi_dr * pi->force.f / rhoi + wj_dr * pj->force.f / rhoj) *
-      r_inv;
+  const float q_i = -0.5f * rhoi * v_sig_i * max(dvdr_Hubble, 0.f) * r_inv;
 
   /* Compute gradient terms */
-  const float one_over_rho2_i = 1.f / (rhoi * rhoi) * pi->force.f;
-  const float one_over_rho2_j = 1.f / (rhoj * rhoj) * pj->force.f;
   const float f_over_rho2_i = pi->force.f / (rhoi * rhoi);
   const float f_over_rho2_j = pj->force.f / (rhoj * rhoj);
 
   /* SPH acceleration term */
-  const float sph_acc_term_i = one_over_rho2_i * wi_dr * r_inv;
-  const float sph_acc_term_j = one_over_rho2_j * wj_dr * r_inv;
+  const float sph_acc_term_i = f_over_rho2_i * wi_dr * r_inv;
+  const float sph_acc_term_j = f_over_rho2_j * wj_dr * r_inv;
 
+  /* Loop over the dimensions */
   for(int i = 0; i < 3; i++) {
     /* Compute the matrix product between the maxwell tensor and dx  */
-    float Mdx_i = 0.f;
-    float Mdx_j = 0.f;
+    float Mdx_i = 0;
+    float Mdx_j = 0;
 
     for(int j = 0; j < 3; j++) {
       Mdx_i += pi->mhd.maxwell_stress[i][j] * dx[j];
       Mdx_j += pj->mhd.maxwell_stress[i][j] * dx[j];
     }
+    // TODO remove
+    Mdx_i = pi->force.pressure * dx[i];
+    Mdx_j = pj->force.pressure * dx[i];
 
     /* Compute the stabilizing term of the magnetic divergence */
     const float beta_i = pi->mhd.force.beta;
     const float B_hat_i = beta_i > 10.f ? 0 :
-    (beta_i > 2.f ? (10.f - beta_i) * pi->mhd.B_pred[i]: pi->mhd.B_pred[i]);
+      (beta_i > 2.f ? 0.125 * (10.f - beta_i) * pi->mhd.B_pred[i] :
+       pi->mhd.B_pred[i]);
 
     /* Compute the acceleration due to the magnetic divergence */
-    const float div_b_acc = B_gradW_i * pi->force.f / (rhoi * rhoi) +
-      B_gradW_j * pj->force.f / (rhoj * rhoj);
+    const float div_b_acc = B_gradW_i * f_over_rho2_i +
+      B_gradW_j * f_over_rho2_j;
+
+    /* Compute the viscosity term */
+    const float visc_term = q_i * dx[i];
 
     /* Assemble the acceleration */
-    const float acc = sph_acc_term_i * Mdx_i +
-      sph_acc_term_j * Mdx_j + visc_acc_term * dx[i];
+    const float acc = sph_acc_term_i * (Mdx_i + visc_term) +
+      sph_acc_term_j * (Mdx_j + visc_term);
 
 
     /* Use the force Luke ! */
-    pi->a_hydro[i] -= mj * (acc + B_hat_i * div_b_acc);
+    pi->a_hydro[i] -= mj * (acc + 0 * B_hat_i * div_b_acc);
   }
 
   /* Get the time derivative for u. */
-  const float sph_du_term_i = pressurei * one_over_rho2_i * dvdr * r_inv * wi_dr
-    ;
-
-  /* Viscosity term */
-  const float visc_du_term = 0.5f * visc_acc_term * dvdr_Hubble;
+  const float sph_du_term_i = pressurei * f_over_rho2_i * dvdr * r_inv * wi_dr;
 
   /* Diffusion term */
   const float v_diff =
       sqrtf(2.0 * fabsf(pressurei - pressurej) / (rhoi + rhoj)) +
       dvdr_Hubble * r_inv;
 
-  const float alpha_diff = 0.5f * (pi->diffusion.alpha + pj->diffusion.alpha);
   /* wi_dx + wj_dx / 2 is F_ij */
+  const float alpha = 1.0f;
   const float diff_du_term =
-      alpha_diff * v_diff * (pi->u - pj->u) * 0.5f *
-      (wi_dr * pi->force.f / pi->rho + wj_dr * pi->force.f / pi->rho);
+    alpha * v_diff * (pi->u - pj->u) * 0.5f *
+    (wi_dr * pi->force.f / pi->rho + wj_dr * pi->force.f / pi->rho);
+
+  /* Viscosity term */
+  const float visc_du_term = - v_sig_i * 0.5 * dvdr_Hubble * dvdr_Hubble * r_inv * r_inv * wi_dr;
 
   /* Get the B artificial resistivity contribution to u */
   const float dv[3] = {
@@ -671,11 +690,11 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force(
   const float res_j = v_sig_B * f_over_rho2_j * wj_dr;
   const float dB2 = dB[0] * dB[0] + dB[1] * dB[1] + dB[2] * dB[2];
 
-  const float res_du_term = 0.25 * mj * (res_i + res_j) * dB2;
+  const float res_du_term = 0.25 * (res_i + res_j) * dB2;
 
   /* Assemble the energy equation term */
-  const float du_dt_i = sph_du_term_i + visc_du_term + diff_du_term
-    - res_du_term;
+  const float du_dt_i = sph_du_term_i + diff_du_term + visc_du_term
+    - 0 * res_du_term;
 
   /* Internal energy time derivative */
   pi->u_dt += du_dt_i * mj;
@@ -683,61 +702,47 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_force(
   /* Get the time derivative for h. */
   pi->force.h_dt -= mj * dvdr * pi->force.f * r_inv / rhoj * wi_dr;
 
-  /* Compute the evolution of the magnetic field */
-  const float c_mag_i = over_clean_fac * pi->mhd.force.soundspeed;
+  /* /\* Compute the evolution of the magnetic field *\/ */
+  /* const float c_mag_i = over_clean_fac * pi->mhd.force.soundspeed; */
 
-  const float psi_i = pi->mhd.psi_pred;
-  const float psi_j = pj->mhd.psi_pred;
+  /* const float psi_i = pi->mhd.psi_pred; */
+  /* const float psi_j = pj->mhd.psi_pred; */
 
-  /* Compute part of the magnetic field evolution */
-  const float B_term_i = mj * f_over_rho2_i * B_gradW_i;
+  /* /\* Compute part of the magnetic field evolution *\/ */
+  /* const float B_term_i = mj * f_over_rho2_i * B_gradW_i; */
 
-  /* Magnetic field evolution */
-  pi->mhd.force.B_rho_dt[0] -= B_term_i * dv[0];
-  pi->mhd.force.B_rho_dt[1] -= B_term_i * dv[1];
-  pi->mhd.force.B_rho_dt[2] -= B_term_i * dv[2];
+  /* /\* Magnetic field evolution *\/ */
+  /* pi->mhd.force.B_rho_dt[0] -= B_term_i * dv[0]; */
+  /* pi->mhd.force.B_rho_dt[1] -= B_term_i * dv[1]; */
+  /* pi->mhd.force.B_rho_dt[2] -= B_term_i * dv[2]; */
 
-  /* Magnetic field evolution due to the divergence cleaning */
-  // TODO change name
-  const float divB_term = (psi_i * f_over_rho2_i * wi_dr + psi_j * f_over_rho2_j * wj_dr) * r_inv;
+  /* /\* Magnetic field evolution due to the divergence cleaning *\/ */
+  /* // TODO change name */
+  /* const float divB_term = 0 * (psi_i * f_over_rho2_i * wi_dr + psi_j * f_over_rho2_j * wj_dr) * r_inv; */
 
-  pi->mhd.force.B_rho_dt[0] -= mj * divB_term * dx[0];
-  pi->mhd.force.B_rho_dt[1] -= mj * divB_term * dx[1];
-  pi->mhd.force.B_rho_dt[2] -= mj * divB_term * dx[2];
+  /* pi->mhd.force.B_rho_dt[0] -= mj * divB_term * dx[0]; */
+  /* pi->mhd.force.B_rho_dt[1] -= mj * divB_term * dx[1]; */
+  /* pi->mhd.force.B_rho_dt[2] -= mj * divB_term * dx[2]; */
 
-  /* Magnetic field evolution due to the dissipation (shock capture) */
-  const float res = 0.5 * mj * (res_i + res_j);
-  pi->mhd.force.B_rho_dt[0] +=  res * dB[0];
-  pi->mhd.force.B_rho_dt[1] +=  res * dB[1];
-  pi->mhd.force.B_rho_dt[2] +=  res * dB[2];
+  /* /\* Magnetic field evolution due to the dissipation (shock capture) *\/ */
+  /* const float res = 0 * 0.5 * mj * (res_i + res_j); */
+  /* pi->mhd.force.B_rho_dt[0] += res * dB[0]; */
+  /* pi->mhd.force.B_rho_dt[1] += res * dB[1]; */
+  /* pi->mhd.force.B_rho_dt[2] += res * dB[2]; */
 
-  /* Compute the evolution of the divergence cleaning field */
+  /* /\* Compute the evolution of the divergence cleaning field *\/ */
 
-  const float dBdx = (dB[0] * dx[0] +
-                      dB[1] * dx[1] +
-                      dB[2] * dx[2]);
+  /* /\* Velocity divergence contribution *\/ */
+  /* pi->mhd.force.psi_c_dt += 0.5f * psi_i * f_over_rho2_i * rhoi * mj * dvdr * wi_dr * r_inv / c_mag_i; */
 
-  /* div B contribution */
-  pi->mhd.force.psi_c_dt += c_mag_i * f_over_rho2_i * rhoi * mj * dBdx * wi_dr * r_inv;
-
-  /* Velocity divergence contribution */
-  pi->mhd.force.psi_c_dt += 0.5f * psi_i * f_over_rho2_i * rhoi * mj * dvdr * wi_dr * r_inv / c_mag_i;
-
-  /* divergence damping */
-  const float sigma_c = 1;
-  const float tau_i = hi / (c_mag_i * sigma_c);
-  pi->mhd.force.psi_c_dt -= psi_i / (c_mag_i * tau_i);
-
-  /* Compute the divergence of B */
-  pi->mhd.divB -= f_over_rho2_i * rhoi * mj * dBdx * wi_dr * r_inv;
-
+  /* /\* div B contribution done in density and hydro.h *\/ */
 }
 
 /**
  * @brief Timestep limiter loop
  *
  * @param r2 Comoving square distance between the two particles.
- * @param dx Comoving vector separating both particles (pi - pj).
+   * @param dx Comoving vector separating both particles (pi - pj).
  * @param hi Comoving smoothing-length of part*icle i.
  * @param hj Comoving smoothing-length of part*icle j.
  * @param pi First part*icle.

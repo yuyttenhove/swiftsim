@@ -1,6 +1,7 @@
 /*******************************************************************************
  * This file is part of SWIFT.
- * Coypright (c) 2019 Josh Borrow (joshua.borrow@durham.ac.uk)
+ * Coypright (c) 2020 Loic Hausammann (loic.hausammann@epfl.ch)
+ *                    Josh Borrow (joshua.borrow@durham.ac.uk)
  *
  *
  * This program is free software: you can redistribute it and/or modify
@@ -37,10 +38,8 @@
 
 /**
  * @file Phantom/hydro_parameters.h
- * @brief Density-Energy conservative implementation of SPH,
- *        with added diffusive physics (Cullen & Denhen 2011 AV,
- *        Price 2017 (PHANTOM) diffusion) (default compile-time
- *        parameters).
+ * @brief Density-Energy conservative implementation of SPH based
+ *        on Price 2017 (PHANTOM).
  *
  *        This file defines a number of things that are used in
  *        hydro_properties.c as defaults for run-time parameters
@@ -52,16 +51,15 @@
 
 /*! Viscosity parameters -- FIXED -- MUST BE DEFINED AT COMPILE-TIME */
 
-/*! Cosmology default beta=3.0.
- * Alpha can be set in the parameter file.
- * Beta is defined as in e.g. Price (2010) Eqn (103) */
-#define const_viscosity_beta 3.0f
+/*! Cosmology default beta=2.0.
+ * Beta is defined as in e.g. Price (2017) Eqn (179) */
+#define const_viscosity_beta 2.0f
 
 /*! The viscosity that the particles are reset to after being hit by a
  * feedback event. This should be set to the same value as the
  * hydro_props_default_viscosity_alpha in fixed schemes, and likely
  * to hydro_props_default_viscosity_alpha_max in variable schemes. */
-#define hydro_props_default_viscosity_alpha_feedback_reset 2.0f
+#define hydro_props_default_viscosity_alpha_feedback_reset 1.0f
 
 /* Viscosity paramaters -- Defaults; can be changed at run-time */
 
@@ -73,12 +71,12 @@
 #define hydro_props_default_viscosity_alpha_min 0.0f
 
 /*! Maximal value for the viscosity alpha in variable schemes. */
-#define hydro_props_default_viscosity_alpha_max 2.0f
+#define hydro_props_default_viscosity_alpha_max 1.0f
 
 /*! Decay length for the viscosity scheme. This is scheme dependent. In
  * non-variable schemes this must be defined but is not used. This also
  * sets the decay length for the diffusion. */
-#define hydro_props_default_viscosity_length 0.25f
+#define hydro_props_default_viscosity_length 0.1f
 
 /* Diffusion parameters -- Defaults; can be changed at run-time */
 

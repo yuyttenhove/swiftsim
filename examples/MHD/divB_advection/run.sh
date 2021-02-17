@@ -8,6 +8,6 @@ then
 fi
 
 # Run SWIFT
-../../swift  --hydro --threads=4 divB.yml 2>&1 | tee output.log
+../../swift  --drift-all --hydro --threads=4 divB.yml 2>&1 | tee output.log
 
 python3 plotSolution.py 11

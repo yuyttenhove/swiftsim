@@ -1,6 +1,7 @@
 /*******************************************************************************
  * This file is part of SWIFT.
- * Coypright (c) 2019 Josh Borrow (joshua.borrow@durham.ac.uk) &
+ * Coypright (c) 2020 Loic Hausammann (loic.hausammann@epfl.ch)
+ *                    Josh Borrow (joshua.borrow@durham.ac.uk) &
  *                    Matthieu Schaller (matthieu.schaller@durham.ac.uk)
  *
  * This program is free software: you can redistribute it and/or modify
@@ -22,9 +23,8 @@
 
 /**
  * @file Phantom/hydro_part.h
- * @brief Density-Energy conservative implementation of SPH,
- *        with added diffusive physics (Cullen & Denhen 2011 AV,
- *        Price 2017 (PHANTOM) diffusion) (particle definition)
+ * @brief Density-Energy conservative implementation of SPH based on
+ *        Price 2017 (PHANTOM) (particle definition)
  */
 
 #include "align.h"
@@ -137,14 +137,6 @@ struct part {
     float v_sig;
 
   } viscosity;
-
-  /* Store thermal diffusion information in a separate struct. */
-  struct {
-
-    /*! Thermal diffusion coefficient */
-    float alpha;
-
-  } diffusion;
 
   /* Store density/force specific stuff. */
   union {

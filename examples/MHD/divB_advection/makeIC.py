@@ -45,7 +45,7 @@ r0 = 1. / np.sqrt(8.)  # radius of the initial perturbation
 def getB(x):
     r2 = np.sum(x**2, axis=1) / r0**2
     B = np.zeros(x.shape)
-    ind = r2 < r0**2
+    ind = r2 < 1
     B[ind, 0] = Bx * (r2[ind]**4 - r2[ind]**2 + 1)
     B[~ind, 0] = 0.
     B[:, 1] = By
@@ -74,7 +74,7 @@ def generate_square(num_on_side, side_length=1.0):
 
             positions[index, 0] = values[x]
             positions[index, 1] = values[y]
-            positions[index, 2] = 0.
+            positions[index, 2] = 0.5
 
     return positions
 
