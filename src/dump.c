@@ -67,6 +67,8 @@ void dump_ensure(struct dump *d, size_t required_size, size_t increase_size) {
   /* If we have enough space already, just bail. */
   if (d->size - d->count > required_size) return;
 
+  message("Requested size: %zi; Increase size: %zi", required_size, increase_size);
+
   /* Unmap the current data. */
   if (munmap(d->data, d->size) != 0) {
     error("Failed to unmap %zi bytes of dump data (%s).", d->size,
