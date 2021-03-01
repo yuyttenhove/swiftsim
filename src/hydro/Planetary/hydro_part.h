@@ -183,6 +183,12 @@ struct part {
   		/*! New density computation*/
   		float rho_new;
 
+      /*! Number of neighbours with same material and I_flag == 0 */
+      float N_neig_rho_new;
+
+      /*! Sum of W_ij for rho_new */
+      float sum_wij_rho_new;
+
     } imbalance;
 
     /**
