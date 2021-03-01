@@ -56,4 +56,19 @@ INLINE static int find_value_in_monot_incr_array(const float x,
     return index_low;
 }
 
+INLINE static float imbalance_statistic_q99(const float N) {
+
+  float a = -30.61304167f;
+  float b = 5.03816109f;
+  float c = 0.05391999f;
+  float q99 = 0.f;
+
+  q99 = a/N/N + b/N + c/N;
+
+  return q99;
+
+}
+
+
+
 #endif /* SWIFT_UTILITIES_H */

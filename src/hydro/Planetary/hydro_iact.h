@@ -117,6 +117,19 @@ __attribute__((always_inline)) INLINE static void runner_iact_density(
   pj->density.rot_v[0] += facj * curlvr[0];
   pj->density.rot_v[1] += facj * curlvr[1];
   pj->density.rot_v[2] += facj * curlvr[2];
+
+  /* Imbalance factor */
+  pi->imbalance.N_neig += 1.f;
+  pi->imbalance.rij_max = max(pi->imbalance.rij_max, r);
+  pi->imbalance.sum_rij[0] = pj->x[0] - pi->x[0];
+  pi->imbalance.sum_rij[1] = pj->x[1] - pi->x[1];
+  pi->imbalance.sum_rij[2] = pj->x[2] - pi->x[2];
+
+  pj->imbalance.N_neig += 1.f;
+  pj->imbalance.rij_max = max(pj->imbalance.rij_max, r);
+  pj->imbalance.sum_rij[0] = pi->x[0] - pj->x[0];
+  pj->imbalance.sum_rij[1] = pi->x[1] - pj->x[1];
+  pj->imbalance.sum_rij[2] = pi->x[2] - pj->x[2];
 }
 
 /**
@@ -180,6 +193,13 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_density(
   pi->density.rot_v[0] += faci * curlvr[0];
   pi->density.rot_v[1] += faci * curlvr[1];
   pi->density.rot_v[2] += faci * curlvr[2];
+
+  /* Imbalance factor */
+  pi->imbalance.N_neig += 1.f;
+  pi->imbalance.rij_max = max(pi->imbalance.rij_max, r);
+  pi->imbalance.sum_rij[0] = pj->x[0] - pi->x[0];
+  pi->imbalance.sum_rij[1] = pj->x[1] - pi->x[1];
+  pi->imbalance.sum_rij[2] = pj->x[2] - pi->x[2];
 }
 
 /**

@@ -46,6 +46,7 @@
 #include "hydro_space.h"
 #include "kernel_hydro.h"
 #include "minmax.h"
+#include "utilities.h"
 
 /*
  * Note: Define PLANETARY_SPH_NO_BALSARA to disable the Balsara (1995) switch
@@ -481,6 +482,15 @@ __attribute__((always_inline)) INLINE static void hydro_init_part(
   p->density.rot_v[0] = 0.f;
   p->density.rot_v[1] = 0.f;
   p->density.rot_v[2] = 0.f;
+
+  p->imbalance.N_neig = 0.f;
+  p->imbalance.rij_max = 0.f;
+  p->imbalance.I = 0.f;
+  p->imbalance.I_flag = 0;
+  p->imbalance.sum_rij[0] = 0.f;
+  p->imbalance.sum_rij[1] = 0.f;
+  p->imbalance.sum_rij[2] = 0.f;
+  p->imbalance.rho_new = 0.f;
 }
 
 /**
@@ -527,6 +537,25 @@ __attribute__((always_inline)) INLINE static void hydro_end_density(
 
   /* Finish calculation of the (physical) velocity divergence */
   p->density.div_v *= h_inv_dim_plus_one * a_inv2 * rho_inv;
+
+  /* Determine Imbalance flag*/
+  const float N_neig_min = 20.f; 
+  p->imbalance.N_neig += 1.f;
+
+  if (p->imbalance.N_neig > N_neig_min && p->imbalance.rij_max > 0.f){
+    /* Compute imbalance statistic*/
+    float sum_rij_norm = 0.f;
+    sum_rij_norm += p->imbalance.sum_rij[0]*p->imbalance.sum_rij[0];
+    sum_rij_norm += p->imbalance.sum_rij[1]*p->imbalance.sum_rij[1];
+    sum_rij_norm += p->imbalance.sum_rij[2]*p->imbalance.sum_rij[2];
+    p->imbalance.I = sqrtf(sum_rij_norm);
+    p->imbalance.I /= p->imbalance.N_neig;
+    p->imbalance.I /= p->imbalance.rij_max;
+    if (p->imbalance.I > imbalance_statistic_q99(p->imbalance.N_neig)){
+      p->imbalance.I_flag = 1;
+    }
+  }
+  
 }
 
 /**

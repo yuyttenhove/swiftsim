@@ -159,6 +159,33 @@ struct part {
     } density;
 
     /**
+     * @brief Structure for the variables only used for the imbalance statistic
+     * 
+     *
+     */
+    struct {
+
+      /*! Number of neighbours*/
+      float N_neig;
+
+  		/*! Maximum neighbour distance*/
+  		float rij_max;
+
+  		/*! Imbalance statistic*/
+  		float I;
+
+  		/*! Imbalance flag */
+  		int I_flag;
+
+  		/*! Sum of r_ij (used to compute imbalance statistic)*/
+  		float sum_rij[3];
+
+  		/*! New density computation*/
+  		float rho_new;
+
+    } imbalance;
+
+    /**
      * @brief Structure for the variables only used in the force loop over
      * neighbours.
      *
