@@ -554,15 +554,15 @@ __attribute__((always_inline)) INLINE static void hydro_end_density(
       p->imbalance.I_flag = 1;
     }
   }
-  if (p->imbalance.I_flag == 1){
-  printf(
-      "## I particle: "
-      "id, x, y, z, vx, vy, vz, m, u, P, rho, h, mat_id \n"
-      "%lld, %.7g, %.7g, %.7g, %.7g, %.7g, %.7g, "
-      "%.7g, %.7g, %.7g, %.7g, %.7g, %d \n",
-      p->id, p->x[0], p->x[1], p->x[2], p->v[0], p->v[1], p->v[2], p->mass,
-      p->u, p->force.pressure, p->rho, p->h, p->mat_id);
-  }
+  //if (p->imbalance.I_flag == 1){
+  //printf(
+  //    "## I particle: "
+  //    "id, x, y, z, vx, vy, vz, m, u, P, rho, h, mat_id \n"
+  //    "%lld, %.7g, %.7g, %.7g, %.7g, %.7g, %.7g, "
+  //    "%.7g, %.7g, %.7g, %.7g, %.7g, %d \n",
+  //    p->id, p->x[0], p->x[1], p->x[2], p->v[0], p->v[1], p->v[2], p->mass,
+  //    p->u, p->force.pressure, p->rho, p->h, p->mat_id);
+  //}
   
 }
 
