@@ -129,6 +129,31 @@ struct part {
   /*! Particle density. */
   float rho;
 
+  // Next variables fail when inside struct imbalance
+  /*! Number of neighbours*/ // error with imbalance.N_neig
+  float N_neig;
+
+  /*! Maximum neighbour distance*/
+  float rij_max;
+
+  /*! Sum of r_ij (used to compute imbalance statistic)*/
+  float sum_rij[3];
+
+  /*! Imbalance statistic*/
+  float I;
+
+  /*! Imbalance flag */
+  int I_flag;
+
+  /*! New density computation*/
+  float rho_new;
+
+  /*! Number of neighbours with same material and I_flag == 0 */
+  float N_neig_rho_new;
+
+  /*! Sum of W_ij for rho_new */
+  float sum_wij_rho_new;
+
   /* Store density/force specific stuff. */
   union {
 

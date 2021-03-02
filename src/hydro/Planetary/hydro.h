@@ -490,6 +490,14 @@ __attribute__((always_inline)) INLINE static void hydro_init_part(
   p->imbalance.sum_rij[0] = 0.f;
   p->imbalance.sum_rij[1] = 0.f;
   p->imbalance.sum_rij[2] = 0.f;
+
+  p->N_neig = 0.f;
+  p->rij_max = 0.f;
+  p->sum_rij[0] = 0.f;
+  p->sum_rij[1] = 0.f;
+  p->sum_rij[2] = 0.f;
+  p->I = 0.f;
+  p->I_flag = 0;
 }
 
 /**
@@ -538,31 +546,54 @@ __attribute__((always_inline)) INLINE static void hydro_end_density(
   p->density.div_v *= h_inv_dim_plus_one * a_inv2 * rho_inv;
 
   /* Determine Imbalance flag*/
-  const float N_neig_min = 20.f; 
-  p->imbalance.N_neig += 1.f;
-
-  if (p->imbalance.N_neig > N_neig_min && p->imbalance.rij_max > 0.f){
-    /* Compute imbalance statistic*/
+  //p->imbalance.N_neig += 1.f;
+  p->N_neig += 1.f; // self contribution to number of neighbours
+  const float N_neig_min = 20.f; //arbitrary choice?
+  if (p->N_neig > N_neig_min && p->rij_max > 0.f){
     float sum_rij_norm = 0.f;
-    sum_rij_norm += p->imbalance.sum_rij[0]*p->imbalance.sum_rij[0];
-    sum_rij_norm += p->imbalance.sum_rij[1]*p->imbalance.sum_rij[1];
-    sum_rij_norm += p->imbalance.sum_rij[2]*p->imbalance.sum_rij[2];
-    p->imbalance.I = sqrtf(sum_rij_norm);
-    p->imbalance.I /= p->imbalance.N_neig;
-    p->imbalance.I /= p->imbalance.rij_max;
-    if (p->imbalance.I > imbalance_statistic_q99(p->imbalance.N_neig)){
-      p->imbalance.I_flag = 1;
+    sum_rij_norm += p->sum_rij[0]*p->sum_rij[0];
+    sum_rij_norm += p->sum_rij[1]*p->sum_rij[1];
+    sum_rij_norm += p->sum_rij[2]*p->sum_rij[2];
+    p->I = sqrtf(sum_rij_norm);
+    p->I /= p->N_neig;
+    p->I /= p->rij_max;
+
+    if (p->I > imbalance_statistic_q(p->N_neig)){
+      p->I_flag = 1;
     }
+
+    if (p->id == 854725 || p->id == 2777483){
+      printf(
+      "Print 1: "
+      "id, x, y, z, rho, h, mat_id\n"
+      "%lld, %.7g, %.7g, %.7g, "
+      "%.7g, %.7g, %d\n",
+      p->id, p->x[0], p->x[1], p->x[2],
+      p->rho, p->h, p->mat_id);
+
+      printf(
+      "Print 2: "
+      "id, N_neig, rij_max, sum_rij[0], sum_rij[1], sum_rij[2], I\n"
+      "%lld, "
+      "%.7g, %.7g, %.7g, %.7g, %.7g, %.7g \n",
+      p->id,
+      p->N_neig, p->rij_max,
+      p->sum_rij[0], p->sum_rij[1], p->sum_rij[2], p->I);
+    }
+
+    
   }
-  //if (p->imbalance.I_flag == 1){
-  //printf(
-  //    "## I particle: "
-  //    "id, x, y, z, vx, vy, vz, m, u, P, rho, h, mat_id \n"
-  //    "%lld, %.7g, %.7g, %.7g, %.7g, %.7g, %.7g, "
-  //    "%.7g, %.7g, %.7g, %.7g, %.7g, %d \n",
-  //    p->id, p->x[0], p->x[1], p->x[2], p->v[0], p->v[1], p->v[2], p->mass,
-  //    p->u, p->force.pressure, p->rho, p->h, p->mat_id);
-  //}
+  /*if (p->id == 854606 || p->id == 1748826){
+  printf(
+      "## I particle: "
+      "id, x, y, z, m, u, P, rho, h, mat_id, N_neig, I\n"
+      "%lld, %.7g, %.7g, %.7g, "
+      "%.7g, %.7g, %.7g, %.7g, %.7g, %d, "
+      "%.7g, %.7g \n",
+      p->id, p->x[0], p->x[1], p->x[2], p->mass,
+      p->u, p->force.pressure, p->rho, p->h, p->mat_id,
+      p->N_neig, p->imbalance.I);
+  }*/
   
 }
 
@@ -619,6 +650,12 @@ __attribute__((always_inline)) INLINE static void hydro_prepare_gradient(
   p->imbalance.rho_new = 0.f;
   p->imbalance.N_neig_rho_new = 0.f;
   p->imbalance.sum_wij_rho_new = 0.f;
+
+  p->rho_new = 0.f;
+  p->N_neig_rho_new = 0.f;
+  p->sum_wij_rho_new = 0.f;
+
+  p->N_neig = 0.f; // re-use to compute new density ?
   
 }
 
@@ -650,10 +687,10 @@ __attribute__((always_inline)) INLINE static void hydro_reset_gradient(
 __attribute__((always_inline)) INLINE static void hydro_end_gradient(
     struct part *p) {
 
-  if (p->imbalance.I_flag == 1 && p->imbalance.rho_new > 0.f){
-    p->imbalance.rho_new /= p->imbalance.N_neig_rho_new;
-    p->imbalance.rho_new /= p->imbalance.sum_wij_rho_new;
-    p->rho = p->imbalance.rho_new;
+  if (p->I_flag == 1 && p->rho_new > 0.f){
+    p->rho_new /= p->N_neig_rho_new;
+    //p->rho_new /= p->sum_wij_rho_new;
+    p->rho = p->rho_new;
   }
 }
 

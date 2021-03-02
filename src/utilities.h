@@ -56,14 +56,27 @@ INLINE static int find_value_in_monot_incr_array(const float x,
     return index_low;
 }
 
-INLINE static float imbalance_statistic_q99(const float N) {
+INLINE static float imbalance_statistic_q(const float N) {
 
-  float a = -30.61304167f;
-  float b = 5.03816109f;
-  float c = 0.05391999f;
+  /* quantile 99 */
+  /*const float a = -30.61304167f;
+  const float b = 5.03816109f;
+  const float c = 0.05391999f;*/
+
+  /* quantile 95 */
+  /*const float a = -23.15584009f;
+  const float b = 4.1097746f;
+  const float c = 0.04557648f;*/
+
+  /* quantile 90 */
+  const float a = -19.59631668f;
+  const float b = 3.64348537f;
+  const float c = 0.04112361f;
+
+  const float N_inv = 1.f / N;
   float q99 = 0.f;
 
-  q99 = a/N/N + b/N + c/N;
+  q99 = a*N_inv*N_inv + b*N_inv + c;
 
   return q99;
 

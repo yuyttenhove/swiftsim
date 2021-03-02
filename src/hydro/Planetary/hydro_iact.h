@@ -119,17 +119,40 @@ __attribute__((always_inline)) INLINE static void runner_iact_density(
   pj->density.rot_v[2] += facj * curlvr[2];
 
   /* Imbalance factor */
-  pi->imbalance.N_neig += 1.f;
-  pi->imbalance.rij_max = max(pi->imbalance.rij_max, r);
-  pi->imbalance.sum_rij[0] = pj->x[0] - pi->x[0];
-  pi->imbalance.sum_rij[1] = pj->x[1] - pi->x[1];
-  pi->imbalance.sum_rij[2] = pj->x[2] - pi->x[2];
+  //pi->imbalance.N_neig += 1.f;
+  pi->N_neig += 1.f;
+  //pi->imbalance.rij_max = max(pi->imbalance.rij_max, r);
+  pi->rij_max = max(pi->rij_max, r);
+  pi->sum_rij[0] += (pj->x[0] - pi->x[0]);
+  pi->sum_rij[1] += (pj->x[1] - pi->x[1]);
+  pi->sum_rij[2] += (pj->x[2] - pi->x[2]);
 
-  pj->imbalance.N_neig += 1.f;
-  pj->imbalance.rij_max = max(pj->imbalance.rij_max, r);
-  pj->imbalance.sum_rij[0] = pi->x[0] - pj->x[0];
-  pj->imbalance.sum_rij[1] = pi->x[1] - pj->x[1];
-  pj->imbalance.sum_rij[2] = pi->x[2] - pj->x[2];
+  /*if (pi->id == 854606){
+    printf(
+      "Print loop: "
+      "id, pi[0], pi[1], pi[2], pj->id, pj[0], pj[1], pj[2], r\n"
+      "%lld, %.7g, %.7g, %.7g, "
+      "%lld, %.7g, %.7g, %.7g, "
+      "%.7g \n",
+      pi->id, pi->x[0], pi->x[1], pi->x[2],
+      pj->id, pj->x[0], pj->x[1], pj->x[2], r);
+    printf(
+      "Print loop 2: "
+      "id, sum_rij[0], sum_rij[1], sum_rij[2], rij_max\n"
+      "%lld, %.7g, %.7g, %.7g, "
+      "%.7g \n",
+      pi->id, pi->imbalance.sum_rij[0], pi->imbalance.sum_rij[1], pi->imbalance.sum_rij[2],
+      pi->imbalance.rij_max);
+  }*/
+  
+
+  //pj->imbalance.N_neig += 1.f;
+  pj->N_neig += 1.f;
+  //pj->imbalance.rij_max = max(pj->imbalance.rij_max, r);
+  pj->rij_max = max(pj->rij_max, r);
+  pj->sum_rij[0] += (pi->x[0] - pj->x[0]);
+  pj->sum_rij[1] += (pi->x[1] - pj->x[1]);
+  pj->sum_rij[2] += (pi->x[2] - pj->x[2]);
 }
 
 /**
@@ -195,11 +218,13 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_density(
   pi->density.rot_v[2] += faci * curlvr[2];
 
   /* Imbalance factor */
-  pi->imbalance.N_neig += 1.f;
-  pi->imbalance.rij_max = max(pi->imbalance.rij_max, r);
-  pi->imbalance.sum_rij[0] = pj->x[0] - pi->x[0];
-  pi->imbalance.sum_rij[1] = pj->x[1] - pi->x[1];
-  pi->imbalance.sum_rij[2] = pj->x[2] - pi->x[2];
+  pi->N_neig += 1.f; // not error here?
+  //pi->imbalance.N_neig += 1.f; // error here?
+  //pi->imbalance.rij_max = max(pi->imbalance.rij_max, r);
+  pi->rij_max = max(pi->rij_max, r);
+  pi->sum_rij[0] += (pj->x[0] - pi->x[0]);
+  pi->sum_rij[1] += (pj->x[1] - pi->x[1]);
+  pi->sum_rij[2] += (pj->x[2] - pi->x[2]);
 }
 
 /**
@@ -227,10 +252,6 @@ __attribute__((always_inline)) INLINE static void runner_iact_gradient(
   const float r_inv = 1.0f / sqrtf(r2);
   const float r = r2 * r_inv;
 
-  /* Get the masses. */
-  //const float mi = pi->mass;
-  //const float mj = pj->mass;
-
   /* Compute kernel of pi. */
   const float hi_inv = 1.f / hi;
   const float ui = r * hi_inv;
@@ -241,20 +262,20 @@ __attribute__((always_inline)) INLINE static void runner_iact_gradient(
   const float uj = r * hj_inv;
   kernel_deval(uj, &wj, &wj_dx);
 
-  // If particle is boundary particle compute kernel averages
-  if (pi->imbalance.I_flag == 1){
-    if (pj->imbalance.I_flag == 0 && pi->mat_id == pj->mat_id){
-      pi->imbalance.N_neig_rho_new += 1.f;
-      pi->imbalance.sum_wij_rho_new += wi;
-      pi->imbalance.rho_new += pj->rho * wi;
+  /* If particle is boundary particle compute kernel averages */
+  if (pi->I_flag == 1){
+    if (pj->I_flag == 0 && pi->mat_id == pj->mat_id){
+      pi->N_neig_rho_new += 1.f;
+      pi->sum_wij_rho_new += wi;
+      pi->rho_new += pj->rho;
     }
   }
 
-  if (pj->imbalance.I_flag == 1){
-    if (pi->imbalance.I_flag == 0 && pj->mat_id == pi->mat_id){
-      pj->imbalance.N_neig_rho_new += 1.f;
-      pj->imbalance.sum_wij_rho_new += wj;
-      pj->imbalance.rho_new += pi->rho * wj;
+  if (pj->I_flag == 1){
+    if (pi->I_flag == 0 && pj->mat_id == pi->mat_id){
+      pj->N_neig_rho_new += 1.f;
+      pj->sum_wij_rho_new += wj;
+      pj->rho_new += pi->rho;
     }
   }
 
@@ -282,9 +303,6 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_gradient(
 
   float wi, wi_dx;
 
-  /* Get the masses. */
-  // const float mj = pj->mass;
-
   /* Get r. */
   const float r_inv = 1.0f / sqrtf(r2);
   const float r = r2 * r_inv;
@@ -294,11 +312,11 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_gradient(
   kernel_deval(ui, &wi, &wi_dx);
 
   // If particle is boundary particle compute kernel averages
-  if (pi->imbalance.I_flag == 1){
-    if (pj->imbalance.I_flag == 0 && pi->mat_id == pj->mat_id){
-      pi->imbalance.N_neig_rho_new += 1.f;
-      pi->imbalance.sum_wij_rho_new += wi;
-      pi->imbalance.rho_new += pj->rho * wi;
+  if (pi->I_flag == 1){
+    if (pj->I_flag == 0 && pi->mat_id == pj->mat_id){
+      pi->N_neig_rho_new += 1.f;
+      pi->sum_wij_rho_new += wi;
+      pi->rho_new += pj->rho;
     }
   }
   
