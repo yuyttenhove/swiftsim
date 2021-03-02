@@ -688,8 +688,8 @@ __attribute__((always_inline)) INLINE static void hydro_end_gradient(
     struct part *p) {
 
   if (p->I_flag == 1 && p->rho_new > 0.f){
-    p->rho_new /= p->N_neig_rho_new;
-    //p->rho_new /= p->sum_wij_rho_new;
+    //p->rho_new /= p->N_neig_rho_new;
+    p->rho_new /= p->sum_wij_rho_new;
     p->rho = p->rho_new;
   }
 }

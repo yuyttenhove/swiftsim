@@ -267,7 +267,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_gradient(
     if (pj->I_flag == 0 && pi->mat_id == pj->mat_id){
       pi->N_neig_rho_new += 1.f;
       pi->sum_wij_rho_new += wi;
-      pi->rho_new += pj->rho;
+      pi->rho_new += pj->rho * wi;
     }
   }
 
@@ -275,7 +275,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_gradient(
     if (pi->I_flag == 0 && pj->mat_id == pi->mat_id){
       pj->N_neig_rho_new += 1.f;
       pj->sum_wij_rho_new += wj;
-      pj->rho_new += pi->rho;
+      pj->rho_new += pi->rho * wj;
     }
   }
 
@@ -316,7 +316,7 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_gradient(
     if (pj->I_flag == 0 && pi->mat_id == pj->mat_id){
       pi->N_neig_rho_new += 1.f;
       pi->sum_wij_rho_new += wi;
-      pi->rho_new += pj->rho;
+      pi->rho_new += pj->rho * wi;
     }
   }
   
