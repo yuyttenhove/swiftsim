@@ -2044,6 +2044,15 @@ void engine_step(struct engine *e) {
 
   TIMER_TIC2;
 
+  int cur = (e->step / 200) + 1;
+  int bef = 0.5 * e->logger->delta_step;
+  if (e->step == 200 * cur - bef) {
+    message("Reset");
+    for(size_t i = 0; i < e->s->nr_gparts; i++) {
+      e->s->gparts[i].logger_data.steps_since_last_output = e->logger->delta_step + 1;
+    }
+  }
+
   struct clocks_time time1, time2;
   clocks_gettime(&time1);
 
