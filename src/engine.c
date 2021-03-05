@@ -2044,9 +2044,10 @@ void engine_step(struct engine *e) {
 
   TIMER_TIC2;
 
-  int cur = (e->step / 200) + 1;
+  const int freq = 250;
+  int cur = (e->step / freq) + 1;
   int bef = 0.5 * e->logger->delta_step;
-  if (e->step == 200 * cur - bef) {
+  if (e->step == freq * cur - bef) {
     message("Reset");
     for(size_t i = 0; i < e->s->nr_gparts; i++) {
       e->s->gparts[i].logger_data.steps_since_last_output = e->logger->delta_step + 1;
