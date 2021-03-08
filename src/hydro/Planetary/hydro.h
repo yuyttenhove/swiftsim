@@ -548,21 +548,21 @@ __attribute__((always_inline)) INLINE static void hydro_end_density(
   /* Determine Imbalance flag*/
   //p->imbalance.N_neig += 1.f;
   p->N_neig += 1.f; // self contribution to number of neighbours
-  const float N_neig_min = 20.f; //arbitrary choice?
+  const float N_neig_min = 3.f; //arbitrary choice? remember N_neig is neigbours from same material
   if (p->N_neig > N_neig_min && p->rij_max > 0.f){
     float sum_rij_norm = 0.f;
     sum_rij_norm += p->sum_rij[0]*p->sum_rij[0];
     sum_rij_norm += p->sum_rij[1]*p->sum_rij[1];
     sum_rij_norm += p->sum_rij[2]*p->sum_rij[2];
     p->I = sqrtf(sum_rij_norm);
-    p->I /= p->N_neig;
+    p->I /= sqrtf(p->N_neig - 1.f);
     p->I /= p->rij_max;
 
     if (p->I > imbalance_statistic_q(p->N_neig)){
       p->I_flag = 1;
     }
 
-    if (p->id == 854725 || p->id == 2777483){
+    /*if (p->id == 859888 || p->id == 845660){
       printf(
       "Print 1: "
       "id, x, y, z, rho, h, mat_id\n"
@@ -579,7 +579,7 @@ __attribute__((always_inline)) INLINE static void hydro_end_density(
       p->id,
       p->N_neig, p->rij_max,
       p->sum_rij[0], p->sum_rij[1], p->sum_rij[2], p->I);
-    }
+    }*/
 
     
   }
@@ -648,11 +648,9 @@ __attribute__((always_inline)) INLINE static void hydro_prepare_gradient(
     const struct cosmology *cosmo, const struct hydro_props *hydro_props) {
 
   p->imbalance.rho_new = 0.f;
-  p->imbalance.N_neig_rho_new = 0.f;
   p->imbalance.sum_wij_rho_new = 0.f;
 
   p->rho_new = 0.f;
-  p->N_neig_rho_new = 0.f;
   p->sum_wij_rho_new = 0.f;
 
   p->N_neig = 0.f; // re-use to compute new density ?
@@ -688,7 +686,6 @@ __attribute__((always_inline)) INLINE static void hydro_end_gradient(
     struct part *p) {
 
   if (p->I_flag == 1 && p->rho_new > 0.f){
-    //p->rho_new /= p->N_neig_rho_new;
     p->rho_new /= p->sum_wij_rho_new;
     p->rho = p->rho_new;
   }
