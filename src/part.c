@@ -30,6 +30,7 @@
 
 /* Local headers */
 #include "error.h"
+#include "helper_macros.h"
 #include "hydro.h"
 #include "threadpool.h"
 
@@ -548,6 +549,35 @@ MPI_Datatype spart_mpi_type;
 MPI_Datatype bpart_mpi_type;
 MPI_Datatype lospart_mpi_type;
 
+#define populate_offsets_(x) (((char *)&temp.x - (char *)&temp) / sizeof(char)),
+#define populate_lengths_(x) (sizeof(temp.x)),
+
+#define create_indexed_mpi_type(type, MPI_type, ...)                         \
+  ({                                                                         \
+    type temp;                                                               \
+                                                                             \
+    /* List of size of each field in the struct. */                          \
+    const int lengths[MACRO_NUM_ARGUMENTS(__VA_ARGS__)] = {                  \
+        MACRO_FOR_EACH(populate_lengths_, __VA_ARGS__)};                     \
+                                                                             \
+    /* List of offsets of each field from the start of the struct. */        \
+    const int offsets[MACRO_NUM_ARGUMENTS(__VA_ARGS__)] = {                  \
+        MACRO_FOR_EACH(populate_offsets_, __VA_ARGS__)};                     \
+                                                                             \
+    /* Create, register and resize the new type */                           \
+    if (MPI_Type_indexed(MACRO_NUM_ARGUMENTS(__VA_ARGS__), lengths, offsets, \
+                         MPI_BYTE, &MPI_type) != MPI_SUCCESS) {              \
+      error("Failed to create indexed MPI type for " #type);                 \
+    }                                                                        \
+    if (MPI_Type_commit(&MPI_type) != MPI_SUCCESS) {                         \
+      error("Failed to commit indexed MPI type for " #type);                 \
+    }                                                                        \
+    if (MPI_Type_create_resized(MPI_type, 0, sizeof(type), &MPI_type) !=     \
+        MPI_SUCCESS) {                                                       \
+      error("Failed to resize MPI type for " #type);                         \
+    }                                                                        \
+  })
+
 /**
  * @brief Registers MPI particle types.
  */
@@ -575,51 +605,11 @@ void part_create_mpi_types(void) {
     error("Failed to create MPI type for gparts.");
   }
 
-  struct gpart gpl;
-  struct gpart_foreign gpf;
-
-  const int lengths_l[4] = {sizeof(gpl.x),         /* pos */
-                            sizeof(gpl.mass),      /* mass */
-                            sizeof(gpl.time_bin),  /* bin */
-                            3 * sizeof(gpl.type)}; /* type  + padding */
-
-  const int offsets_l[4] = {
-      ((char *)&gpl.x - (char *)&gpl) / sizeof(char),        /* pos */
-      ((char *)&gpl.mass - (char *)&gpl) / sizeof(char),     /* mass */
-      ((char *)&gpl.time_bin - (char *)&gpl) / sizeof(char), /* bin */
-      ((char *)&gpl.type - (char *)&gpl) / sizeof(char)};    /* type */
-
-  if (MPI_Type_indexed(4, lengths_l, offsets_l, MPI_BYTE,
-                       &gpart_send_mpi_type) != MPI_SUCCESS ||
-      MPI_Type_commit(&gpart_send_mpi_type) != MPI_SUCCESS) {
-    error("Failed to create MPI type for sending foreign gparts.");
-  }
-  if (MPI_Type_create_resized(gpart_send_mpi_type, 0, sizeof(struct gpart),
-                              &gpart_send_mpi_type) != MPI_SUCCESS) {
-    error("Failed to resize MPI type for sending foreign gparts.");
-  }
-
-  const int lengths_f[4] = {sizeof(gpf.x),         /* pos */
-                            sizeof(gpf.mass),      /* mass */
-                            sizeof(gpf.time_bin),  /* bin */
-                            3 * sizeof(gpf.type)}; /* type  + padding */
-
-  const int offsets_f[4] = {
-      ((char *)&gpf.x - (char *)&gpf) / sizeof(char),        /* pos */
-      ((char *)&gpf.mass - (char *)&gpf) / sizeof(char),     /* mass */
-      ((char *)&gpf.time_bin - (char *)&gpf) / sizeof(char), /* bin */
-      ((char *)&gpf.type - (char *)&gpf) / sizeof(char)};    /* type */
-
-  if (MPI_Type_indexed(4, lengths_f, offsets_f, MPI_BYTE,
-                       &gpart_recv_mpi_type) != MPI_SUCCESS ||
-      MPI_Type_commit(&gpart_recv_mpi_type) != MPI_SUCCESS) {
-    error("Failed to create MPI type for receiving foreign gparts.");
-  }
-  if (MPI_Type_create_resized(gpart_recv_mpi_type, 0,
-                              sizeof(struct gpart_foreign),
-                              &gpart_recv_mpi_type) != MPI_SUCCESS) {
-    error("Failed to resize MPI type for receiving foreign gparts.");
-  }
+  /* Create the indexed types to send and receive gparts */
+  create_indexed_mpi_type(struct gpart, gpart_send_mpi_type, x, mass, time_bin,
+                          type);
+  create_indexed_mpi_type(struct gpart_foreign, gpart_recv_mpi_type, x, mass,
+                          time_bin, type);
 
   if (MPI_Type_contiguous(sizeof(struct spart) / sizeof(unsigned char),
                           MPI_BYTE, &spart_mpi_type) != MPI_SUCCESS ||
