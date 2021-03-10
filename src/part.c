@@ -30,7 +30,6 @@
 
 /* Local headers */
 #include "error.h"
-#include "helper_macros.h"
 #include "hydro.h"
 #include "threadpool.h"
 
@@ -549,35 +548,6 @@ MPI_Datatype spart_mpi_type;
 MPI_Datatype bpart_mpi_type;
 MPI_Datatype lospart_mpi_type;
 
-#define populate_offsets_(x) (((char *)&temp.x - (char *)&temp) / sizeof(char)),
-#define populate_lengths_(x) (sizeof(temp.x)),
-
-#define create_indexed_mpi_type(type, MPI_type, ...)                         \
-  ({                                                                         \
-    type temp;                                                               \
-                                                                             \
-    /* List of size of each field in the struct. */                          \
-    const int lengths[MACRO_NUM_ARGUMENTS(__VA_ARGS__)] = {                  \
-        MACRO_FOR_EACH(populate_lengths_, __VA_ARGS__)};                     \
-                                                                             \
-    /* List of offsets of each field from the start of the struct. */        \
-    const int offsets[MACRO_NUM_ARGUMENTS(__VA_ARGS__)] = {                  \
-        MACRO_FOR_EACH(populate_offsets_, __VA_ARGS__)};                     \
-                                                                             \
-    /* Create, register and resize the new type */                           \
-    if (MPI_Type_indexed(MACRO_NUM_ARGUMENTS(__VA_ARGS__), lengths, offsets, \
-                         MPI_BYTE, &MPI_type) != MPI_SUCCESS) {              \
-      error("Failed to create indexed MPI type for " #type);                 \
-    }                                                                        \
-    if (MPI_Type_commit(&MPI_type) != MPI_SUCCESS) {                         \
-      error("Failed to commit indexed MPI type for " #type);                 \
-    }                                                                        \
-    if (MPI_Type_create_resized(MPI_type, 0, sizeof(type), &MPI_type) !=     \
-        MPI_SUCCESS) {                                                       \
-      error("Failed to resize MPI type for " #type);                         \
-    }                                                                        \
-  })
-
 /**
  * @brief Registers MPI particle types.
  */
@@ -606,10 +576,7 @@ void part_create_mpi_types(void) {
   }
 
   /* Create the indexed types to send and receive gparts */
-  create_indexed_mpi_type(struct gpart, gpart_send_mpi_type, x, mass, time_bin,
-                          type);
-  create_indexed_mpi_type(struct gpart_foreign, gpart_recv_mpi_type, x, mass,
-                          time_bin, type);
+  gravity_create_MPI_types(&gpart_send_mpi_type, &gpart_recv_mpi_type);
 
   if (MPI_Type_contiguous(sizeof(struct spart) / sizeof(unsigned char),
                           MPI_BYTE, &spart_mpi_type) != MPI_SUCCESS ||
