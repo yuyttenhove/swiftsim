@@ -119,6 +119,12 @@ struct gpart {
 #endif
 };
 
+/**
+ * @brief Gravity particle data when on a foreign node.
+ *
+ * We only need a small fraction of the information on foreign
+ * nodes as the particles don't get updated there.
+ */
 struct gpart_foreign {
 
   /*! Particle position. */
