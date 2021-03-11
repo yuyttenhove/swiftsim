@@ -139,6 +139,12 @@ struct gpart_foreign {
 
   /*! Type of the #gpart (DM, gas, star, ...) */
   enum part_type type;
+
+#ifdef SWIFT_DEBUG_CHECKS
+
+  /* Time of the last drift */
+  integertime_t ti_drift;
+#endif
 };
 
 #ifdef WITH_MPI
@@ -154,10 +160,19 @@ struct gpart_foreign {
  */
 INLINE static void gravity_create_MPI_types(MPI_Datatype *gpart_send_mpi_type,
                                             MPI_Datatype *gpart_recv_mpi_type) {
+
+#ifdef SWIFT_DEBUG_CHECKS
+
+  create_indexed_mpi_type(struct gpart, *gpart_send_mpi_type, x, mass, time_bin,
+                          type, ti_drift);
+  create_indexed_mpi_type(struct gpart_foreign, *gpart_recv_mpi_type, x, mass,
+                          time_bin, type, ti_drift);
+#else
   create_indexed_mpi_type(struct gpart, *gpart_send_mpi_type, x, mass, time_bin,
                           type);
   create_indexed_mpi_type(struct gpart_foreign, *gpart_recv_mpi_type, x, mass,
                           time_bin, type);
+#endif
 }
 #endif /* WITH_MPI */
 
