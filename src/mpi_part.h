@@ -43,15 +43,15 @@
                                                                              \
     /* Create, register and resize the new type */                           \
     if (MPI_Type_indexed(MACRO_NUM_ARGUMENTS(__VA_ARGS__), lengths, offsets, \
-                         MPI_BYTE, &MPI_type) != MPI_SUCCESS) {              \
+                         MPI_BYTE, MPI_type) != MPI_SUCCESS) {               \
       error("Failed to create indexed MPI type for " #type);                 \
     }                                                                        \
-    if (MPI_Type_commit(&MPI_type) != MPI_SUCCESS) {                         \
-      error("Failed to commit indexed MPI type for " #type);                 \
-    }                                                                        \
-    if (MPI_Type_create_resized(MPI_type, 0, sizeof(type), &MPI_type) !=     \
+    if (MPI_Type_create_resized(*MPI_type, 0, sizeof(type), MPI_type) !=     \
         MPI_SUCCESS) {                                                       \
       error("Failed to resize MPI type for " #type);                         \
+    }                                                                        \
+    if (MPI_Type_commit(MPI_type) != MPI_SUCCESS) {                          \
+      error("Failed to commit indexed MPI type for " #type);                 \
     }                                                                        \
   })
 
