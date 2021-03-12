@@ -29,6 +29,20 @@
 #define populate_offsets_(x) (((char *)&temp.x - (char *)&temp) / sizeof(char)),
 #define populate_lengths_(x) (sizeof(temp.x)),
 
+/**
+ * @brief Register an MPI_Datatype as an indexed subset of a given struct.
+ *
+ * For a structure X{ a, b, c, d}; we can create a type that picks out only
+ * b and c (say) by calling the macro with (X, &MPI_type, b, c);. This will
+ * work for any types for the fields a,b,c,d.
+ *
+ * A maximum of 10 fields in X can be picked out in this way.
+ *
+ * @param type The structure type from which we construct the MPI type.
+ * @param MPI_type (pointer) Pointer to the MPI_Datatype to create.
+ * @param ... The list of fields in the structure to register as part of the
+ * subset.
+ */
 #define create_indexed_mpi_type(type, MPI_type, ...)                         \
   ({                                                                         \
     type temp;                                                               \
