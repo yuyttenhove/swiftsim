@@ -2072,12 +2072,18 @@ void scheduler_enqueue(struct scheduler *s, struct task *t) {
         } else if (t->subtype == task_subtype_xv ||
                    t->subtype == task_subtype_rho ||
                    t->subtype == task_subtype_gradient ||
-                   t->subtype == task_subtype_part_prep1 ||
-                   t->subtype == task_subtype_limiter) {
+                   t->subtype == task_subtype_part_prep1) {
 
           count = t->ci->hydro.count;
           size = count * sizeof(struct part);
           type = part_mpi_type;
+          buff = t->ci->hydro.parts;
+
+        } else if (t->subtype == task_subtype_limiter) {
+
+          count = t->ci->hydro.count;
+          size = count * sizeof(timebin_t);
+          type = part_limiter_mpi_type;
           buff = t->ci->hydro.parts;
 
         } else if (t->subtype == task_subtype_gpart) {
@@ -2191,12 +2197,18 @@ void scheduler_enqueue(struct scheduler *s, struct task *t) {
         } else if (t->subtype == task_subtype_xv ||
                    t->subtype == task_subtype_rho ||
                    t->subtype == task_subtype_gradient ||
-                   t->subtype == task_subtype_part_prep1 ||
-                   t->subtype == task_subtype_limiter) {
+                   t->subtype == task_subtype_part_prep1) {
 
           count = t->ci->hydro.count;
           size = count * sizeof(struct part);
           type = part_mpi_type;
+          buff = t->ci->hydro.parts;
+
+        } else if (t->subtype == task_subtype_limiter) {
+
+          count = t->ci->hydro.count;
+          size = count * sizeof(timebin_t);
+          type = part_limiter_mpi_type;
           buff = t->ci->hydro.parts;
 
         } else if (t->subtype == task_subtype_gpart) {
