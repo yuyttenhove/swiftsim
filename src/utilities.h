@@ -70,9 +70,20 @@ INLINE static float imbalance_statistic_q(const float N) {
   const float c = 1.24962448f;*/
 
   /* quantile 90 */
-  const float a = 0.04169535f;
+  /*const float a = 0.04169535f;
   const float b = 0.33453515f;
-  const float c = 1.1176431f;
+  const float c = 1.1176431f;*/
+
+  /* quantile 80 */
+  /*const float a = 0.3720982f;
+  const float b = 0.32889313f;
+  const float c = 0.96356348f;*/
+
+  /* quantile 70 */
+  const float a = 0.69223044f;
+  const float b = 0.28108532f;
+  const float c = 0.85737999f;
+
 
   const float N_inv = 1.f / N;
   float q99 = 0.f;

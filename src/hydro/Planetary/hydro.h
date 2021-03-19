@@ -562,7 +562,7 @@ __attribute__((always_inline)) INLINE static void hydro_end_density(
       p->I_flag = 1;
     }
 
-    /*if (p->id == 859888 || p->id == 845660){
+    /*if (p->id == 130483 || p->id == 129310){
       printf(
       "Print 1: "
       "id, x, y, z, rho, h, mat_id\n"
