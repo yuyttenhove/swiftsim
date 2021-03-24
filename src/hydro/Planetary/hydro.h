@@ -549,6 +549,7 @@ __attribute__((always_inline)) INLINE static void hydro_end_density(
   //p->imbalance.N_neig += 1.f;
   p->N_neig += 1.f; // self contribution to number of neighbours
   const float N_neig_min = 3.f; //arbitrary choice? remember N_neig is neigbours from same material
+  const float I_low = 0.7f;
   if (p->N_neig > N_neig_min && p->rij_max > 0.f){
     float sum_rij_norm = 0.f;
     sum_rij_norm += p->sum_rij[0]*p->sum_rij[0];
@@ -558,7 +559,7 @@ __attribute__((always_inline)) INLINE static void hydro_end_density(
     p->I /= sqrtf(p->N_neig - 1.f);
     p->I /= p->rij_max;
 
-    if (p->I > imbalance_statistic_q(p->N_neig)){
+    if (p->I > I_low){
       p->I_flag = 1;
     }
 
@@ -652,8 +653,6 @@ __attribute__((always_inline)) INLINE static void hydro_prepare_gradient(
 
   p->rho_new = 0.f;
   p->sum_wij_rho_new = 0.f;
-
-  p->N_neig = 0.f; // re-use to compute new density ?
   
 }
 
@@ -687,7 +686,26 @@ __attribute__((always_inline)) INLINE static void hydro_end_gradient(
 
   if (p->I_flag == 1 && p->rho_new > 0.f){
     p->rho_new /= p->sum_wij_rho_new;
-    p->rho = p->rho_new;
+
+    float rho_combined = 0.f;
+    float alpha_rho_sph = 0.f;
+    float alpha_rho_new = 0.f;
+
+    const float I_low = 0.7f;
+    const float I_high = 0.8f;
+    
+		if (p->I < I_low){
+			alpha_rho_new = 0.f;
+    } else if (p->I > I_high) {
+      alpha_rho_new = 1.f;
+    } else {
+			alpha_rho_new = (p->I - I_low)/(I_high - I_low);
+    }
+    alpha_rho_sph = 1.f - alpha_rho_new;
+
+    rho_combined = alpha_rho_sph*p->rho + alpha_rho_new*p->rho_new;
+
+    p->rho = rho_combined;
   }
 }
 

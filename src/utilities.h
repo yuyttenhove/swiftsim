@@ -56,7 +56,8 @@ INLINE static int find_value_in_monot_incr_array(const float x,
     return index_low;
 }
 
-INLINE static float imbalance_statistic_q(const float N) {
+// probably not necessary
+//INLINE static float imbalance_statistic_q(const float N) {
 
   // montecarlo N = 1M, N_neig 5 to 50
   /* quantile 99 */
@@ -80,7 +81,7 @@ INLINE static float imbalance_statistic_q(const float N) {
   const float c = 0.96356348f;*/
 
   /* quantile 70 */
-  const float a = 0.69223044f;
+  /*const float a = 0.69223044f;
   const float b = 0.28108532f;
   const float c = 0.85737999f;
 
@@ -92,7 +93,7 @@ INLINE static float imbalance_statistic_q(const float N) {
 
   return q99;
 
-}
+}*/
 
 
 
