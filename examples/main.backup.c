@@ -1415,17 +1415,6 @@ int main(int argc, char *argv[]) {
     /* Initialise the particles */
     engine_init_particles(&e, flag_entropy_ICs, clean_smoothing_length_values);
 
-    FILE *file = fopen("delaunay.txt", "w");
-    FILE *vfile = fopen("voronoi.txt", "w");
-    size_t offset = 0;
-    for (int i = 0; i < s.nr_cells; ++i) {
-      delaunay_write_tessellation(&s.cells_top[i].hydro.deltess, file, &offset);
-      voronoi_write_grid(&s.cells_top[i].hydro.vortess, vfile);
-    }
-    fclose(file);
-    fclose(vfile);
-    voronoi_print_grid(&s.cells_top[0].hydro.vortess, "voronoi_connections.txt");
-
     /* Write the state of the system before starting time integration. */
 #ifdef WITH_LOGGER
     if (e.policy & engine_policy_logger) {
@@ -1491,7 +1480,6 @@ int main(int argc, char *argv[]) {
     memuse_log_dump(dumpfile);
   }
 #endif
-  return 0;
 
   /* Dump MPI requests if collected. */
 #if defined(SWIFT_MPIUSE_REPORTS) && defined(WITH_MPI)
