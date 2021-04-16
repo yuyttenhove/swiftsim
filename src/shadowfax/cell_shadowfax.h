@@ -87,7 +87,7 @@ __attribute__((always_inline)) INLINE static void cell_shadowfax_do_pair_naive(
   struct part *restrict parts_i = ci->hydro.parts;
   struct part *restrict parts_j = cj->hydro.parts;
 
-  /* Loop over the parts in cj. */
+  /* Loop over the parts in ci. */
   for (int pid = 0; pid < count_i; pid++) {
 
     /* Get a pointer to the ith particle. */

@@ -1491,7 +1491,6 @@ int main(int argc, char *argv[]) {
     memuse_log_dump(dumpfile);
   }
 #endif
-  return 0;
 
   /* Dump MPI requests if collected. */
 #if defined(SWIFT_MPIUSE_REPORTS) && defined(WITH_MPI)
@@ -1504,6 +1503,7 @@ int main(int argc, char *argv[]) {
 
   /* Main simulation loop */
   /* ==================== */
+  /* return 0; */
   int force_stop = 0, resubmit = 0;
   for (int j = 0; !engine_is_done(&e) && e.step - 1 != nsteps && !force_stop;
        j++) {
