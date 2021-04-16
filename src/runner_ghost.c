@@ -41,7 +41,7 @@
 #include "timestep_limiter.h"
 #include "tracers.h"
 
-#ifdef SHADOWFAX_SPH
+#ifdef SHADOWFAX_NEW_SPH
 #include "shadowfax/cell_shadowfax.h"
 #endif
 
@@ -1066,7 +1066,7 @@ void runner_do_ghost(struct runner *r, struct cell *c, int timer) {
         struct part *p = &parts[pid[i]];
         struct xpart *xp = &xparts[pid[i]];
 
-#ifdef SHADOWFAX_SPH
+#ifdef SHADOWFAX_NEW_SPH
         float hnew = delaunay_get_search_radius(
             &c->hydro.deltess, pid[i] + c->hydro.deltess.vertex_start);
         if (hnew >= p->h) {
@@ -1113,7 +1113,7 @@ void runner_do_ghost(struct runner *r, struct cell *c, int timer) {
           /* Are we using the alternative definition of the
              number of neighbours? */
           if (use_mass_weighted_num_ngb) {
-#if defined(GIZMO_MFV_SPH) || defined(GIZMO_MFM_SPH) || defined(SHADOWFAX_SPH)
+#if defined(GIZMO_MFV_SPH) || defined(GIZMO_MFM_SPH) || defined(SHADOWFAX_SPH) || defined(SHADOWFAX_NEW_SPH)
             error(
                 "Can't use alternative neighbour definition with this scheme!");
 #else
@@ -1428,7 +1428,7 @@ void runner_do_ghost(struct runner *r, struct cell *c, int timer) {
   /* Update h_max */
   c->hydro.h_max = h_max;
 
-#ifdef SHADOWFAX_SPH
+#ifdef SHADOWFAX_NEW_SPH
   cell_shadowfax_end_density(c);
 #endif
 

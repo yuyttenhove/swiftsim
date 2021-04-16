@@ -28,7 +28,7 @@
  * @param hs #hydro_space to initialize.
  * @param s #space containing the hydro space.
  */
-#ifdef SHADOWFAX_SPH
+#ifdef SHADOWFAX_NEW_SPH
 __attribute__((always_inline)) INLINE void hydro_space_init(
     struct hydro_space *hs, const struct space *s) {
 

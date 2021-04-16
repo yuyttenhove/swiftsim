@@ -63,7 +63,7 @@
 #include "./hydro/Shadowswift/hydro_iact.h"
 #define SPH_IMPLEMENTATION \
   "Shadowfax moving mesh (Vandenbroucke and De Rijcke 2016)"
-#elif defined(SHADOWFAX_SPH_NEW)
+#elif defined(SHADOWFAX_NEW_SPH)
 #include "./hydro/Shadowfax/hydro.h"
 #include "./hydro/Shadowfax/hydro_iact.h"
 #define SPH_IMPLEMENTATION \

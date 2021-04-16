@@ -24,10 +24,8 @@
 #include "cosmology.h"
 #include "entropy_floor.h"
 #include "equation_of_state.h"
-#include "hydro_gradients.h"
 #include "hydro_properties.h"
 #include "hydro_space.h"
-#include "voronoi_algorithm.h"
 
 #include <float.h>
 
@@ -44,23 +42,7 @@ __attribute__((always_inline)) INLINE static float hydro_compute_timestep(
     const struct cosmology* restrict cosmo) {
 
   const float CFL_condition = hydro_properties->CFL_condition;
-
-  float vrel[3];
-  vrel[0] = p->primitives.v[0] - xp->v_full[0];
-  vrel[1] = p->primitives.v[1] - xp->v_full[1];
-  vrel[2] = p->primitives.v[2] - xp->v_full[2];
-  float vmax =
-      sqrtf(vrel[0] * vrel[0] + vrel[1] * vrel[1] + vrel[2] * vrel[2]) +
-      sqrtf(hydro_gamma * p->primitives.P / p->primitives.rho);
-  vmax = max(vmax, p->timestepvars.vmax);
-
-  const float psize =
-      cosmo->a *
-      powf(p->cell.volume / hydro_dimension_unit_sphere, hydro_dimension_inv);
   float dt = FLT_MAX;
-  if (vmax > 0.) {
-    dt = psize / vmax;
-  }
   return CFL_condition * dt;
 }
 
@@ -164,8 +146,6 @@ __attribute__((always_inline)) INLINE static void hydro_init_part(
   p->density.wcount = 1.0f;
   p->density.wcount_dh = 0.0f;
 
-  voronoi_cell_init(&p->cell, p->x, hs->anchor, hs->side);
-
   /* Set the active flag to active. */
   p->force.active = 1;
 }
@@ -186,85 +166,6 @@ __attribute__((always_inline)) INLINE static void hydro_init_part(
 __attribute__((always_inline)) INLINE static void hydro_end_density(
     struct part* restrict p, const struct cosmology* cosmo) {
 
-  float volume;
-  float m, momentum[3], energy;
-
-  hydro_gradients_init(p);
-
-  float hnew = voronoi_cell_finalize(&p->cell);
-  /* Enforce hnew as new smoothing length in the iteration
-     This is annoyingly difficult, as we do not have access to the variables
-     that govern the loop...
-     So here's an idea: let's force in some method somewhere that makes sure
-     r->e->hydro_properties->target_neighbours is 1, and
-     r->e->hydro_properties->delta_neighbours is 0.
-     This way, we can accept an iteration by setting p->density.wcount to 1.
-     To get the right correction for h, we set wcount to something else
-     (say 0), and then set p->density.wcount_dh to 1/(hnew-h). */
-  if (hnew < p->h) {
-    /* Iteration succesful: we accept, but manually set h to a smaller value
-       for the next time step */
-    const float hinvdim = pow_dimension(1.0f / p->h);
-    p->density.wcount = hinvdim;
-    p->h = 1.1f * hnew;
-  } else {
-    /* Iteration not succesful: we force h to become 1.1*hnew */
-    p->density.wcount = 0.0f;
-    p->density.wcount_dh = p->h / (1.1f * hnew - p->h);
-    return;
-  }
-  p->density.wcount = 1.0f;
-  volume = p->cell.volume;
-
-#ifdef SWIFT_DEBUG_CHECKS
-  /* the last condition checks for NaN: a NaN value always evaluates to false,
-     even when checked against itself */
-  if (volume == 0. || volume == INFINITY || volume != volume) {
-    error("Invalid value for cell volume (%g)!", volume);
-  }
-#endif
-
-  /* compute primitive variables */
-  /* eqns (3)-(5) */
-  m = p->conserved.mass;
-  if (m > 0.) {
-    momentum[0] = p->conserved.momentum[0];
-    momentum[1] = p->conserved.momentum[1];
-    momentum[2] = p->conserved.momentum[2];
-    p->primitives.rho = m / volume;
-    p->primitives.v[0] = momentum[0] / m;
-    p->primitives.v[1] = momentum[1] / m;
-    p->primitives.v[2] = momentum[2] / m;
-
-    energy = p->conserved.energy;
-
-#ifdef SHADOWFAX_TOTAL_ENERGY
-    energy -= 0.5f * (momentum[0] * p->primitives.v[0] +
-                      momentum[1] * p->primitives.v[1] +
-                      momentum[2] * p->primitives.v[2]);
-#endif
-
-    energy /= m;
-
-    p->primitives.P =
-        gas_pressure_from_internal_energy(p->primitives.rho, energy);
-  } else {
-    p->primitives.rho = 0.;
-    p->primitives.v[0] = 0.;
-    p->primitives.v[1] = 0.;
-    p->primitives.v[2] = 0.;
-    p->primitives.P = 0.;
-  }
-
-#ifdef SWIFT_DEBUG_CHECKS
-  if (p->primitives.rho < 0.) {
-    error("Negative density!");
-  }
-
-  if (p->primitives.P < 0.) {
-    error("Negative pressure!");
-  }
-#endif
 }
 
 /**
@@ -370,7 +271,6 @@ __attribute__((always_inline)) INLINE static void hydro_reset_gradient(
 __attribute__((always_inline)) INLINE static void hydro_end_gradient(
     struct part* p) {
 
-  hydro_gradients_finalize(p);
 }
 
 /**

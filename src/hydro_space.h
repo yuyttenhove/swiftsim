@@ -26,7 +26,7 @@ struct space;
 /**
  * @brief Extra space information that is needed for some hydro schemes.
  */
-#ifdef SHADOWFAX_SPH
+#ifdef SHADOWFAX_NEW_SPH
 struct hydro_space {
   /*! Anchor of the simulation space. */
   double anchor[3];

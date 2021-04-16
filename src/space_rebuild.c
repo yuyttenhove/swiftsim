@@ -30,7 +30,7 @@
 #include "engine.h"
 #include "memswap.h"
 
-#ifdef SHADOWFAX_SPH
+#ifdef SHADOWFAX_NEW_SPH
 #include "shadowfax/cell_shadowfax.h"
 #endif
 
@@ -960,7 +960,7 @@ void space_rebuild(struct space *s, int repartitioned, int verbose) {
       s->nr_local_cells_with_particles++;
     }
 
-#ifdef SHADOWFAX_SPH
+#ifdef SHADOWFAX_NEW_SPH
     cell_malloc_delaunay_tessellation(c, &s->hs);
 #endif
   }

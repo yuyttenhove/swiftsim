@@ -73,6 +73,10 @@ struct threadpool;
 #include "./hydro/Shadowswift/hydro_part.h"
 #define hydro_need_extra_init_loop 0
 #define EXTRA_HYDRO_LOOP
+#elif defined(SHADOWFAX_NEW_SPH)
+#include "./hydro/Shadowfax/hydro_part.h"
+#define hydro_need_extra_init_loop 0
+#define EXTRA_HYDRO_LOOP
 #elif defined(PLANETARY_SPH)
 #include "./hydro/Planetary/hydro_part.h"
 #define hydro_need_extra_init_loop 0

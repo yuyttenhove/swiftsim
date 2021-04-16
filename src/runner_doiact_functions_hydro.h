@@ -26,7 +26,7 @@
 
 #include "runner_doiact_hydro.h"
 
-#ifdef SHADOWFAX_SPH
+#ifdef SHADOWFAX_NEW_SPH
 #include "shadowfax/cell_shadowfax.h"
 #endif
 
@@ -73,7 +73,7 @@ void DOPAIR1_NAIVE(struct runner *r, struct cell *restrict ci,
       shift[k] = -e->s->dim[k];
   }
 
-#if defined(SHADOWFAX_SPH) && (FUNCTION_TASK_LOOP == TASK_LOOP_DENSITY)
+#if defined(SHADOWFAX_NEW_SPH) && (FUNCTION_TASK_LOOP == TASK_LOOP_DENSITY)
   cell_shadowfax_do_pair1_naive(e, ci, cj, -1, shift);
 #endif
 
@@ -203,7 +203,7 @@ void DOPAIR2_NAIVE(struct runner *r, struct cell *restrict ci,
       shift[k] = -e->s->dim[k];
   }
 
-#if defined(SHADOWFAX_SPH) && (FUNCTION_TASK_LOOP == TASK_LOOP_DENSITY)
+#if defined(SHADOWFAX_NEW_SPH) && (FUNCTION_TASK_LOOP == TASK_LOOP_DENSITY)
   cell_shadowfax_do_pair2_naive(e, ci, cj, -1, shift);
 #endif
 
@@ -597,7 +597,7 @@ void DOPAIR_SUBSET_NAIVE(struct runner *r, struct cell *restrict ci,
   const float a = cosmo->a;
   const float H = cosmo->H;
 
-#if defined(SHADOWFAX_SPH) && (FUNCTION_TASK_LOOP == TASK_LOOP_DENSITY)
+#if defined(SHADOWFAX_NEW_SPH) && (FUNCTION_TASK_LOOP == TASK_LOOP_DENSITY)
   cell_shadowfax_do_pair_subset_naive(e, ci, cj, -1, shift);
 #endif
 
@@ -702,7 +702,7 @@ void DOPAIR_SUBSET(struct runner *r, struct cell *restrict ci,
   const struct sort_entry *sort_j = cell_get_hydro_sorts(cj, sid);
   const float dxj = cj->hydro.dx_max_sort;
 
-#if defined(SHADOWFAX_SPH) && (FUNCTION_TASK_LOOP == TASK_LOOP_DENSITY)
+#if defined(SHADOWFAX_NEW_SPH) && (FUNCTION_TASK_LOOP == TASK_LOOP_DENSITY)
   cell_shadowfax_do_pair_subset(e, ci, parts_i, ind, count, cj, sid, flipped,
                                 shift);
 #endif
@@ -1065,7 +1065,7 @@ void DOPAIR1(struct runner *r, struct cell *ci, struct cell *cj, const int sid,
   const float a = cosmo->a;
   const float H = cosmo->H;
 
-#if defined(SHADOWFAX_SPH)
+#if defined(SHADOWFAX_NEW_SPH)
 #if (FUNCTION_TASK_LOOP == TASK_LOOP_DENSITY)
   cell_shadowfax_do_pair1_density(e, ci, cj, sid, shift);
 #elif (FUNCTION_TASK_LOOP == TASK_LOOP_GRADIENT)
@@ -1413,7 +1413,7 @@ void DOPAIR2(struct runner *r, struct cell *ci, struct cell *cj, const int sid,
   const float a = cosmo->a;
   const float H = cosmo->H;
 
-#if defined(SHADOWFAX_SPH)
+#if defined(SHADOWFAX_NEW_SPH)
 #if (FUNCTION_TASK_LOOP == TASK_LOOP_DENSITY) || \
     (FUNCTION_TASK_LOOP == TASK_LOOP_GRADIENT)
   error("Using wrong pair function!");
@@ -1476,7 +1476,7 @@ void DOPAIR2(struct runner *r, struct cell *ci, struct cell *cj, const int sid,
     }
   }
 
-#if defined(SHADOWFAX_SPH) && (FUNCTION_TASK_LOOP == TASK_LOOP_DENSITY)
+#if defined(SHADOWFAX_NEW_SPH) && (FUNCTION_TASK_LOOP == TASK_LOOP_DENSITY)
   cell_shadowfax_do_pair2(e, ci, cj, sid, shift);
 #endif
 
@@ -2000,7 +2000,7 @@ void DOSELF1(struct runner *r, struct cell *restrict c) {
 
   TIMER_TIC;
 
-#if defined(SHADOWFAX_SPH)
+#if defined(SHADOWFAX_NEW_SPH)
 #if (FUNCTION_TASK_LOOP == TASK_LOOP_DENSITY)
   cell_shadowfax_do_self1_density(e, c);
 #elif (FUNCTION_TASK_LOOP == TASK_LOOP_GRADIENT)
@@ -2236,7 +2236,7 @@ void DOSELF2(struct runner *r, struct cell *restrict c) {
 
   TIMER_TIC;
 
-#if defined(SHADOWFAX_SPH)
+#if defined(SHADOWFAX_NEW_SPH)
 #if (FUNCTION_TASK_LOOP == TASK_LOOP_DENSITY) || \
     (FUNCTION_TASK_LOOP == TASK_LOOP_GRADIENT)
   error("Using wrong self function!");

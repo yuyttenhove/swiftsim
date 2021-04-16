@@ -28,7 +28,7 @@
 #include "lock.h"
 #include "timeline.h"
 
-#ifdef SHADOWFAX_SPH
+#ifdef SHADOWFAX_NEW_SPH
 #include "shadowfax/delaunay.h"
 #include "shadowfax/voronoi.h"
 #endif
@@ -44,7 +44,7 @@ struct cell_hydro {
   /*! Pointer to the #xpart data. */
   struct xpart *xparts;
 
-#ifdef SHADOWFAX_SPH
+#ifdef SHADOWFAX_NEW_SPH
   /*! Was Shadowfax functionality enabled for this cell? */
   int shadowfax_enabled;
   /*! Delaunay tessellation. */

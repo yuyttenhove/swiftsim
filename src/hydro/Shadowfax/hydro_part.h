@@ -28,7 +28,6 @@
 #include "particle_splitting_struct.h"
 #include "timestep_limiter_struct.h"
 #include "tracers_struct.h"
-#include "voronoi_cell.h"
 
 /* Extra particle data not needed during the computation. */
 struct xpart {
@@ -213,9 +212,6 @@ struct part {
   integertime_t ti_kick;
 
 #endif
-
-  /* Voronoi cell. */
-  struct voronoi_cell cell;
 
   /* New Voronoi cell. */
   struct {

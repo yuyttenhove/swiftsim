@@ -36,7 +36,7 @@
 #include "star_formation.h"
 #include "tracers.h"
 
-#ifdef SHADOWFAX_SPH
+#ifdef SHADOWFAX_NEW_SPH
 #include "shadowfax/cell_shadowfax.h"
 #endif
 
@@ -240,7 +240,7 @@ void cell_drift_part(struct cell *c, const struct engine *e, int force) {
       }
     }
 
-#ifdef SHADOWFAX_SPH
+#ifdef SHADOWFAX_NEW_SPH
     cell_malloc_delaunay_tessellation(c, &e->s->hs);
 #endif
 

@@ -32,7 +32,7 @@
 #include "multipole.h"
 #include "star_formation_logger.h"
 #include "threadpool.h"
-#ifdef SHADOWFAX_SPH
+#ifdef SHADOWFAX_NEW_SPH
 #include "shadowfax/cell_shadowfax.h"
 #endif
 
@@ -267,7 +267,7 @@ void space_split_recursive(struct space *s, struct cell *c,
       /* Get the progenitor */
       struct cell *cp = c->progeny[k];
       /* Initialize tesselation for new cells (must happen after particle assignment)*/
-#ifdef SHADOWFAX_SPH
+#ifdef SHADOWFAX_NEW_SPH
       cell_malloc_delaunay_tessellation(cp, &s->hs);
 #endif
 
