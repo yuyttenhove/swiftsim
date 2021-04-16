@@ -366,3 +366,6 @@ sympy-plots-for-*.tex/
 
 # vim
 *.swp
+
+# CLion
+.idea
