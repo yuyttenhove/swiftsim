@@ -1725,7 +1725,7 @@ case "$with_hydro" in
    shadowfax)
       AC_DEFINE([SHADOWFAX_SPH], [1], [Shadowfax SPH])
    ;;
-   shadowfax_new)
+   shadowfax-new)
          AC_DEFINE([SHADOWFAX_NEW_SPH], [1], [Shadowfax new SPH])
       ;;
    planetary)
