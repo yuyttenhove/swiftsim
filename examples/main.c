@@ -1514,6 +1514,15 @@ int main(int argc, char *argv[]) {
     /* Take a step. */
     engine_step(&e);
 
+    if (j == 10) {
+      FILE *vfile = fopen("voronoi10.txt", "w");
+      for (int i = 0; i < s.nr_cells; ++i) {
+        voronoi_write_grid(&s.cells_top[i].hydro.vortess, vfile);
+      }
+      fclose(vfile);
+      break;
+    }
+
     /* Print the timers. */
     if (with_verbose_timers) timers_print(e.step);
 
