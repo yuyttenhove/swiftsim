@@ -1311,7 +1311,6 @@ void runner_do_ghost(struct runner *r, struct cell *c, int timer) {
         h_max = max(h_max, p->h);
 
 #ifdef EXTRA_HYDRO_LOOP
-
         /* As of here, particle gradient variables will be set. */
         /* The force variables are set in the extra ghost. */
 
@@ -1323,7 +1322,6 @@ void runner_do_ghost(struct runner *r, struct cell *c, int timer) {
 
         /* Prepare the particle for the gradient loop over neighbours */
         hydro_reset_gradient(p);
-
 #else
 
         /* Calculate the time-step for passing to hydro_prepare_force, used
