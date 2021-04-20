@@ -703,8 +703,8 @@ void DOPAIR_SUBSET(struct runner *r, struct cell *restrict ci,
   const float dxj = cj->hydro.dx_max_sort;
 
 #if defined(SHADOWFAX_NEW_SPH) && (FUNCTION_TASK_LOOP == TASK_LOOP_DENSITY)
-  cell_shadowfax_do_pair_subset(e, ci, parts_i, ind, count, cj, sid, flipped,
-                                shift);
+  cell_shadowfax_do_pair_subset_density(e, ci, parts_i, ind, count, cj, sid,
+                                        flipped, shift);
 #endif
 
   /* Parts are on the left? */
@@ -1066,11 +1066,14 @@ void DOPAIR1(struct runner *r, struct cell *ci, struct cell *cj, const int sid,
   const float H = cosmo->H;
 
 #if defined(SHADOWFAX_NEW_SPH)
-#if (FUNCTION_TASK_LOOP == TASK_LOOP_DENSITY)
+#if FUNCTION_TASK_LOOP == TASK_LOOP_DENSITY
   cell_shadowfax_do_pair1_density(e, ci, cj, sid, shift);
-#elif (FUNCTION_TASK_LOOP == TASK_LOOP_GRADIENT)
+#elif FUNCTION_TASK_LOOP == TASK_LOOP_GRADIENT
+  /* TODO implement this? */
+#elif FUNCTION_TASK_LOOP == TASK_LOOP_FORCE
+  cell_shadowfax_do_pair1_force(e, ci, cj, sid, shift);
 #else
-  error("Using wrong pair function!");
+  error("Unsupported task loop");
 #endif
 #endif
 
@@ -1414,11 +1417,14 @@ void DOPAIR2(struct runner *r, struct cell *ci, struct cell *cj, const int sid,
   const float H = cosmo->H;
 
 #if defined(SHADOWFAX_NEW_SPH)
-#if (FUNCTION_TASK_LOOP == TASK_LOOP_DENSITY) || \
-    (FUNCTION_TASK_LOOP == TASK_LOOP_GRADIENT)
-  error("Using wrong pair function!");
-#else
+#if FUNCTION_TASK_LOOP == TASK_LOOP_DENSITY
+  cell_shadowfax_do_pair2_density(e, ci, cj, sid, shift);
+#elif FUNCTION_TASK_LOOP == TASK_LOOP_GRADIENT
+  /* TODO implement this? */
+#elif FUNCTION_TASK_LOOP == TASK_LOOP_FORCE
   cell_shadowfax_do_pair2_force(e, ci, cj, sid, shift);
+#else
+  error("Unsupported task loop");
 #endif
 #endif
 
@@ -1475,10 +1481,6 @@ void DOPAIR2(struct runner *r, struct cell *ci, struct cell *cj, const int sid,
       }
     }
   }
-
-#if defined(SHADOWFAX_NEW_SPH) && (FUNCTION_TASK_LOOP == TASK_LOOP_DENSITY)
-  cell_shadowfax_do_pair2(e, ci, cj, sid, shift);
-#endif
 
   /* Loop over *all* the parts in ci starting from the centre until
      we are out of range of anything in cj (using the maximal hi). */
@@ -2001,11 +2003,14 @@ void DOSELF1(struct runner *r, struct cell *restrict c) {
   TIMER_TIC;
 
 #if defined(SHADOWFAX_NEW_SPH)
-#if (FUNCTION_TASK_LOOP == TASK_LOOP_DENSITY)
+#if FUNCTION_TASK_LOOP == TASK_LOOP_DENSITY
   cell_shadowfax_do_self1_density(e, c);
-#elif (FUNCTION_TASK_LOOP == TASK_LOOP_GRADIENT)
+#elif FUNCTION_TASK_LOOP == TASK_LOOP_GRADIENT
+  /* TODO implement this? */
+#elif FUNCTION_TASK_LOOP == TASK_LOOP_FORCE
+  cell_shadowfax_do_self1_force(e, c);
 #else
-  error("Using wrong self function!");
+  error("Unsupported task loop");
 #endif
 #endif
 
@@ -2237,11 +2242,14 @@ void DOSELF2(struct runner *r, struct cell *restrict c) {
   TIMER_TIC;
 
 #if defined(SHADOWFAX_NEW_SPH)
-#if (FUNCTION_TASK_LOOP == TASK_LOOP_DENSITY) || \
-    (FUNCTION_TASK_LOOP == TASK_LOOP_GRADIENT)
-  error("Using wrong self function!");
-#else
+#if FUNCTION_TASK_LOOP == TASK_LOOP_DENSITY
+  cell_shadowfax_do_self2_density(e, c);
+#elif FUNCTION_TASK_LOOP == TASK_LOOP_GRADIENT
+  /* TODO implement this? */
+#elif FUNCTION_TASK_LOOP == TASK_LOOP_FORCE
   cell_shadowfax_do_self2_force(e, c);
+#else
+  error("Unsupported task loop");
 #endif
 #endif
 
