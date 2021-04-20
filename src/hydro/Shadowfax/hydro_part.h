@@ -222,6 +222,9 @@ struct part {
     /* Number of times this cell interacted with other cells. */
     int nface;
 
+    /* Volume of associated cell */
+    double volume;
+
   } voronoi;
 
 } SWIFT_STRUCT_ALIGN;

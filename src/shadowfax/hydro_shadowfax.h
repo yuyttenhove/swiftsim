@@ -5,6 +5,64 @@
 #include "riemann.h"
 #include "equation_of_state.h"
 
+
+/**
+ * @brief Convert conserved variables into primitive variables.
+ *
+ * This method also initializes the gradient variables (if gradients are used).
+ *
+ * @param p The particle to act upon.
+ * @param volume The volume of the particle's associated voronoi cell
+ */
+__attribute__((always_inline)) INLINE static void
+hydro_shadowfax_convert_conserved_to_primitive(struct part *restrict p,
+                                               double volume) {
+  /* hydro_gradients_init(p);  TODO add this */
+  p->density.wcount = 1.0f;
+  p->voronoi.volume = volume;
+
+  float m = p->conserved.mass;
+  float energy, momentum[3];
+  if (m > 0.) {
+    momentum[0] = p->conserved.momentum[0];
+    momentum[1] = p->conserved.momentum[1];
+    momentum[2] = p->conserved.momentum[2];
+    p->primitives.rho = m / volume;
+    p->primitives.v[0] = momentum[0] / m;
+    p->primitives.v[1] = momentum[1] / m;
+    p->primitives.v[2] = momentum[2] / m;
+
+    energy = p->conserved.energy;
+
+#ifdef SHADOWFAX_TOTAL_ENERGY
+    energy -= 0.5f * (momentum[0] * p->primitives.v[0] +
+                      momentum[1] * p->primitives.v[1] +
+                      momentum[2] * p->primitives.v[2]);
+#endif
+
+    energy /= m;
+
+    p->primitives.P =
+        gas_pressure_from_internal_energy(p->primitives.rho, energy);
+  } else {
+    p->primitives.rho = 0.;
+    p->primitives.v[0] = 0.;
+    p->primitives.v[1] = 0.;
+    p->primitives.v[2] = 0.;
+    p->primitives.P = 0.;
+  }
+
+#ifdef SWIFT_DEBUG_CHECKS
+  if (p->primitives.rho < 0.) {
+    error("Negative density!");
+  }
+
+  if (p->primitives.P < 0.) {
+    error("Negative pressure!");
+  }
+#endif
+}
+
 __attribute__((always_inline)) INLINE static void hydro_shadowfax_flux_exchange(
     struct part *restrict pi, struct part *restrict pj, double const *midpoint, double surface_area) {
 

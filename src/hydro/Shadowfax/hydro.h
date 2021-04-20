@@ -42,7 +42,26 @@ __attribute__((always_inline)) INLINE static float hydro_compute_timestep(
     const struct cosmology* restrict cosmo) {
 
   const float CFL_condition = hydro_properties->CFL_condition;
+
+  float vrel[3];
+  vrel[0] = p->primitives.v[0] - xp->v_full[0];
+  vrel[1] = p->primitives.v[1] - xp->v_full[1];
+  vrel[2] = p->primitives.v[2] - xp->v_full[2];
+  float vmax =
+      sqrtf(vrel[0] * vrel[0] + vrel[1] * vrel[1] + vrel[2] * vrel[2]) +
+      sqrtf(hydro_gamma * p->primitives.P / p->primitives.rho);
+  vmax = max(vmax, p->timestepvars.vmax);
+
+  if (p->voronoi.volume == 0.) {
+    error("Voronoi cell with volume 0!");
+  }
+  const float psize =
+      cosmo->a *
+      powf(p->voronoi.volume / hydro_dimension_unit_sphere, hydro_dimension_inv);
   float dt = FLT_MAX;
+  if (vmax > 0.) {
+    dt = psize / vmax;
+  }
   return CFL_condition * dt;
 }
 
@@ -134,7 +153,6 @@ __attribute__((always_inline)) INLINE static void hydro_first_init_part(
  * @brief Prepares a particle for the volume calculation.
  *
  * Simply makes sure all necessary variables are initialized to zero.
- * Initializes the Voronoi cell.
  *
  * @param p The particle to act upon
  * @param hs #hydro_space containing extra information about the space.
@@ -153,19 +171,12 @@ __attribute__((always_inline)) INLINE static void hydro_init_part(
 /**
  * @brief Finishes the volume calculation.
  *
- * Calls the finalize method on the Voronoi cell, which calculates the volume
- * and centroid of the cell. We use the return value of this function to set
- * a new value for the smoothing length and possibly force another iteration
- * of the volume calculation for this particle. We then use the volume to
- * convert conserved variables into primitive variables.
- *
- * This method also initializes the gradient variables (if gradients are used).
+ * Moved to cell_shadowfax_end_density.
  *
  * @param p The particle to act upon.
  */
 __attribute__((always_inline)) INLINE static void hydro_end_density(
     struct part* restrict p, const struct cosmology* cosmo) {
-
 }
 
 /**
@@ -351,7 +362,7 @@ __attribute__((always_inline)) INLINE static void hydro_end_force(
 /**
  * @brief Extra operations done during the kick
  *
- * Not used for Shadowswift.
+ * This is also where the conserved quantities are updated
  *
  * @param p Particle to act upon.
  * @param xp Extended particle data to act upon.

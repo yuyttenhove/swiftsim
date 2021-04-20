@@ -367,6 +367,13 @@ cell_shadowfax_do_pair_subset_density(const struct engine *e,
 __attribute__((always_inline)) INLINE static void cell_shadowfax_end_density(
     struct cell *restrict c) {
   voronoi_init(&c->hydro.vortess, &c->hydro.deltess, c->hydro.parts);
+
+  for (int i = 0; i < c->hydro.vortess.number_of_cells; i++) {
+    hydro_shadowfax_convert_conserved_to_primitive(
+        &c->hydro.parts[i],
+        c->hydro.vortess.cells[i].volume
+    );
+  }
 }
 
 /* Naive functions */
