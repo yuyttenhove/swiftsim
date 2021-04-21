@@ -36,6 +36,7 @@ cell_malloc_delaunay_tessellation(struct cell *c,
     struct part *restrict p = &parts[pd];
     p->voronoi.flag = 0;
     p->voronoi.nface = 0;
+    p->voronoi.volume = 0;
   }
 
   c->hydro.shadowfax_enabled = 1;
