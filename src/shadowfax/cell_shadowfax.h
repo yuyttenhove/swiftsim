@@ -81,7 +81,7 @@ __attribute__((always_inline)) INLINE static void cell_shadowfax_do_self2_force(
   for (int i = 0; i < vortess->pair_index[0]; ++i) {
     struct voronoi_pair *pair = &vortess->pairs[0][i];
     hydro_shadowfax_flux_exchange(&parts[pair->left], &parts[pair->right],
-                                  pair->midpoint, pair->surface_area);
+                                  pair->midpoint, pair->surface_area, 1);
   }
 }
 
@@ -248,7 +248,7 @@ __attribute__((always_inline)) INLINE static void cell_shadowfax_do_pair2_force(
   for (int i = 0; i < vortess->pair_index[1 + sid]; ++i) {
     struct voronoi_pair *pair = &vortess->pairs[1 + sid][i];
     hydro_shadowfax_flux_exchange(&parts_i[pair->left], &parts_j[pair->right],
-                                  pair->midpoint, pair->surface_area);
+                                  pair->midpoint, pair->surface_area, 0);
   }
 }
 
