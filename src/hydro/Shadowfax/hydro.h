@@ -176,8 +176,7 @@ __attribute__((always_inline)) INLINE static void hydro_init_part(
  * @param p The particle to act upon.
  */
 __attribute__((always_inline)) INLINE static void hydro_end_density(
-    struct part* restrict p, const struct cosmology* cosmo) {
-}
+    struct part* restrict p, const struct cosmology* cosmo) {}
 
 /**
  * @brief Sets all particle fields to sensible values when the #part has 0 ngbs.
@@ -280,9 +279,7 @@ __attribute__((always_inline)) INLINE static void hydro_reset_gradient(
  * @param p The particle to act upon.
  */
 __attribute__((always_inline)) INLINE static void hydro_end_gradient(
-    struct part* p) {
-
-}
+    struct part* p) {}
 
 /**
  * @brief Reset acceleration fields of a particle
@@ -335,7 +332,12 @@ __attribute__((always_inline)) INLINE static void hydro_reset_predicted_values(
  */
 __attribute__((always_inline)) INLINE static void hydro_convert_quantities(
     struct part* p, struct xpart* xp, const struct cosmology* cosmo,
-    const struct hydro_props* hydro_props) {}
+    const struct hydro_props* hydro_props) {
+  float mass = p->conserved.mass;
+  p->conserved.momentum[0] = mass * p->v[0];
+  p->conserved.momentum[1] = mass * p->v[1];
+  p->conserved.momentum[2] = mass * p->v[2];
+}
 
 /**
  * @brief Extra operations to be done during the drift
@@ -353,6 +355,8 @@ __attribute__((always_inline)) INLINE static void hydro_predict_extra(
 
 /**
  * @brief Set the particle acceleration after the flux loop.
+ *
+ * Not used, velocities are updated via momentum flux
  *
  * @param p Particle to act upon.
  */
