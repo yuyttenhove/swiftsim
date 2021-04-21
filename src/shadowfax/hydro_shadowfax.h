@@ -159,6 +159,8 @@ __attribute__((always_inline)) INLINE static void hydro_shadowfax_flux_exchange(
   pi->conserved.flux.energy -= surface_area * totflux[0] * ekin;
 #endif
 
+  ++pi->voronoi.nface;
+
   /* here is how it works:
      Mode will only be 1 if both particles are ACTIVE and they are in the same
      cell. In this case, this method IS the flux calculation for particle j, and
@@ -187,10 +189,9 @@ __attribute__((always_inline)) INLINE static void hydro_shadowfax_flux_exchange(
     pj->conserved.flux.energy -= surface_area * totflux[3] * pj->primitives.v[2];
     pj->conserved.flux.energy += surface_area * totflux[0] * ekin;
 #endif
-  }
 
-  ++pi->voronoi.nface;
-  ++pj->voronoi.nface;
+    ++pj->voronoi.nface;
+  }
 }
 
 #endif /* SWIFT_HYDRO_SHADOWFAX_H */
