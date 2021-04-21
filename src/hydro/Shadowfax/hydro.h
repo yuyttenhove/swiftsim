@@ -311,7 +311,13 @@ __attribute__((always_inline)) INLINE static void hydro_reset_acceleration(
  */
 __attribute__((always_inline)) INLINE static void hydro_reset_predicted_values(
     struct part* restrict p, const struct xpart* restrict xp,
-    const struct cosmology* cosmo) {}
+    const struct cosmology* cosmo) {
+  p->conserved.flux.mass = 0.0f;
+  p->conserved.flux.momentum[0] = 0.0f;
+  p->conserved.flux.momentum[1] = 0.0f;
+  p->conserved.flux.momentum[2] = 0.0f;
+  p->conserved.flux.energy = 0.0f;
+}
 
 /**
  * @brief Converts the hydrodynamic variables from the initial condition file to
