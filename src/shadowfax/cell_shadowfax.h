@@ -368,11 +368,13 @@ __attribute__((always_inline)) INLINE static void cell_shadowfax_end_density(
     struct cell *restrict c) {
   voronoi_init(&c->hydro.vortess, &c->hydro.deltess, c->hydro.parts);
 
+  struct part *p;
   for (int i = 0; i < c->hydro.vortess.number_of_cells; i++) {
-    hydro_shadowfax_convert_conserved_to_primitive(
-        &c->hydro.parts[i],
-        c->hydro.vortess.cells[i].volume
-    );
+    p = &c->hydro.parts[i];
+    /* hydro_gradients_init(p);  TODO add this */
+    p->density.wcount = 1.0f;
+    p->voronoi.volume = c->hydro.vortess.cells[i].volume;
+    hydro_shadowfax_convert_conserved_to_primitive(p);
   }
 }
 

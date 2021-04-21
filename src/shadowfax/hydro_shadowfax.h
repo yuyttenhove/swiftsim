@@ -15,19 +15,14 @@
  * @param volume The volume of the particle's associated voronoi cell
  */
 __attribute__((always_inline)) INLINE static void
-hydro_shadowfax_convert_conserved_to_primitive(struct part *restrict p,
-                                               double volume) {
-  /* hydro_gradients_init(p);  TODO add this */
-  p->density.wcount = 1.0f;
-  p->voronoi.volume = volume;
-
+hydro_shadowfax_convert_conserved_to_primitive(struct part *restrict p) {
   float m = p->conserved.mass;
   float energy, momentum[3];
   if (m > 0.) {
     momentum[0] = p->conserved.momentum[0];
     momentum[1] = p->conserved.momentum[1];
     momentum[2] = p->conserved.momentum[2];
-    p->primitives.rho = m / volume;
+    p->primitives.rho = m / p->voronoi.volume;
     p->primitives.v[0] = momentum[0] / m;
     p->primitives.v[1] = momentum[1] / m;
     p->primitives.v[2] = momentum[2] / m;
