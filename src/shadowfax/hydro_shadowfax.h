@@ -60,12 +60,12 @@ hydro_shadowfax_convert_conserved_to_primitive(struct part *restrict p) {
 
 __attribute__((always_inline)) INLINE static void hydro_shadowfax_flux_exchange(
     struct part *restrict pi, struct part *restrict pj, double const *midpoint,
-    double surface_area, int mode) {
+    double surface_area, const double *shift, int mode) {
 
   /* Initialize local variables */
   float dx[3];
   for (int k = 0; k < 3; k++) {
-    dx[k] = (float)pi->x[k] - (float)pj->x[k];
+    dx[k] = (float)pi->x[k] - (float)pj->x[k] - (float)shift[k];
   }
   const float r2 = dx[0]*dx[0] + dx[1]*dx[1] + dx[2]*dx[2];
   const float r = sqrtf(r2);
