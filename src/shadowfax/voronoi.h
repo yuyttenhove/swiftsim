@@ -252,9 +252,6 @@ static inline void voronoi_init(struct voronoi *restrict v,
      Voronoi grid (because they are the points of equal distance to 3
      generators, while the Voronoi edges are the lines of equal distance to 2
      generators) */
-  /* FUTURE NOTE: we can add a check here to see if the triangle is linked to
-     a non-ghost, non-dummy vertex. If it isn't, it is not a grid vertex and
-     we can skip it. */
   double *vertices =
       (double *)malloc(2 * (d->triangle_index - 3) * sizeof(double));
   for (int i = 0; i < d->triangle_index - 3; ++i) {
@@ -263,7 +260,8 @@ static inline void voronoi_init(struct voronoi *restrict v,
     int v1 = t->vertices[1];
     int v2 = t->vertices[2];
 
-    /* skip triangles that are not connected to any local vertex */
+    /* if the triangle is not linked to a non-ghost, non-dummy vertex, it is not
+     * a grid vertex and we can skip it. */
     if (v0 >= v->number_of_cells && v1 >= v->number_of_cells &&
         v2 >= v->number_of_cells) {
       continue;
@@ -305,7 +303,7 @@ static inline void voronoi_init(struct voronoi *restrict v,
 
     vertices[2 * i] = v0x + Rx;
     vertices[2 * i + 1] = v0y + Ry;
-  }
+  } /* loop over the Delaunay triangles and compute the circumcenters */
 
   for (int i = 0; i < 27; ++i) {
     v->pairs[i] =
@@ -314,7 +312,7 @@ static inline void voronoi_init(struct voronoi *restrict v,
     v->pair_size[i] = 10;
   }
   /* loop over all cell generators, and hence over all non-ghost, non-dummy
-     Delaunay vertices */
+     Delaunay vertices and create the voronoi cell. */
   for (int i = 0; i < v->number_of_cells; ++i) {
 
     struct voronoi_cell_new *this_cell = &v->cells[i];
@@ -330,8 +328,7 @@ static inline void voronoi_init(struct voronoi *restrict v,
       ax = parts[i].x[0];
       ay = parts[i].x[1];
     } else {
-      ax = d->vertices[2 * i];
-      ay = d->vertices[2 * i + 1];
+      error("Found a ghost particle while looping over non-ghost, non-dummy particles!");
     }
 
 #ifdef VORONOI_STORE_GENERATORS
@@ -341,31 +338,32 @@ static inline void voronoi_init(struct voronoi *restrict v,
 
     /* Get a triangle containing this generator and the index of the generator
        within that triangle */
-    int dverti = i + d->vertex_start;
-    int t0 = d->vertex_triangles[dverti];
-    int vi0 = d->vertex_triangle_index[dverti];
+    int del_vert_ix = i + d->vertex_start;
+    int t0 = d->vertex_triangles[del_vert_ix];
+    int del_vert_ix_in_t0 = d->vertex_triangle_index[del_vert_ix];
     /* Add the first vertex for this cell: the circumcircle midpoint of this
        triangle */
-    int vertex_index = t0 - 3;
-    int first_vertex_index = vertex_index;
+    int vor_vert_ix = t0 - 3;
+    int first_vor_vert_ix = vor_vert_ix;
 
     /* store the current vertex position for geometry calculations */
-    double cx = vertices[2 * vertex_index];
-    double cy = vertices[2 * vertex_index + 1];
+    double cx = vertices[2 * vor_vert_ix];
+    double cy = vertices[2 * vor_vert_ix + 1];
 
     /* now use knowledge of the triangle orientation convention to obtain the
        next neighbouring triangle that has this generator as vertex, in the
        counterclockwise direction */
-    int vi0p1 = (vi0 + 1) % 3;
+    int next_t_ix_in_cur_t = (del_vert_ix_in_t0 + 1) % 3;
 
-    int first_vertex = d->triangles[t0].vertices[vi0p1];
+    int first_ngb_del_vert_ix = d->triangles[t0].vertices[next_t_ix_in_cur_t];
 
-    int t1 = d->triangles[t0].neighbours[vi0p1];
-    int vi1 = d->triangles[t0].index_in_neighbour[vi0p1];
-    /* loop around until we arrive back at the original triangle */
+    int t1 = d->triangles[t0].neighbours[next_t_ix_in_cur_t];
+    int cur_t_ix_in_next_t = d->triangles[t0].index_in_neighbour[next_t_ix_in_cur_t];
+    /* loop around the voronoi cell generator (delaunay vertex) until we arrive
+     * back at the original triangle */
     while (t1 != t0) {
       ++nface;
-      vertex_index = t1 - 3;
+      vor_vert_ix = t1 - 3;
 
       /* get the current vertex position for geometry calculations.
          Each calculation involves the current and the previous vertex.
@@ -375,8 +373,8 @@ static inline void voronoi_init(struct voronoi *restrict v,
          "volume" for the triangle (ax, ay) - (bx, by) - (cx, cy). */
       double bx = cx;
       double by = cy;
-      cx = vertices[2 * vertex_index];
-      cy = vertices[2 * vertex_index + 1];
+      cx = vertices[2 * vor_vert_ix];
+      cy = vertices[2 * vor_vert_ix + 1];
 
       double V = voronoi_compute_centroid_volume_triangle(ax, ay, bx, by, cx,
                                                           cy, centroid);
@@ -384,32 +382,33 @@ static inline void voronoi_init(struct voronoi *restrict v,
       cell_centroid[0] += V * centroid[0];
       cell_centroid[1] += V * centroid[1];
 
-      int vi1p2 = (vi1 + 2) % 3;
+      next_t_ix_in_cur_t = (cur_t_ix_in_next_t + 2) % 3;
 
       /* the neighbour corresponding to the face is the same vertex that
          determines the next triangle */
-      int other_vertex = d->triangles[t1].vertices[vi1p2];
-      if (other_vertex < d->ngb_offset) {
-        if (other_vertex > dverti) {
-          /* only store pairs once */
-          voronoi_add_pair(v, 0, dverti, other_vertex, bx, by, cx, cy);
+      int ngb_del_vert_ix = d->triangles[t1].vertices[next_t_ix_in_cur_t];
+      if (ngb_del_vert_ix < d->ngb_offset) {
+        /* only store pairs once */
+        if (ngb_del_vert_ix > del_vert_ix) {
+          voronoi_add_pair(v, 13, del_vert_ix, ngb_del_vert_ix, bx, by, cx, cy);
         }
       } else {
-        /* no check on other_vertex > i required, since this is always true */
-        int sid = d->ngb_cells[other_vertex - d->ngb_offset];
-        int pid = d->ngb_indices[other_vertex - d->ngb_offset];
-        voronoi_add_pair(v, sid, dverti, pid, bx, by, cx, cy);
+        /* no check on ngb_del_vert_ix > del_vert_ix required, since this is
+         * always true (del_vert_ix < d->ngb_offset) */
+        int sid = d->ngb_cells[ngb_del_vert_ix - d->ngb_offset];
+        int pid = d->ngb_indices[ngb_del_vert_ix - d->ngb_offset];
+        voronoi_add_pair(v, sid, del_vert_ix, pid, bx, by, cx, cy);
       }
 
-      vi1 = d->triangles[t1].index_in_neighbour[vi1p2];
-      t1 = d->triangles[t1].neighbours[vi1p2];
-    }
+      cur_t_ix_in_next_t = d->triangles[t1].index_in_neighbour[next_t_ix_in_cur_t];
+      t1 = d->triangles[t1].neighbours[next_t_ix_in_cur_t];
+    } /* loop around the voronoi cell generator */
 
     /* don't forget the last edge for the geometry! */
     double bx = cx;
     double by = cy;
-    cx = vertices[2 * first_vertex_index];
-    cy = vertices[2 * first_vertex_index + 1];
+    cx = vertices[2 * first_vor_vert_ix];
+    cy = vertices[2 * first_vor_vert_ix + 1];
 
     double V = voronoi_compute_centroid_volume_triangle(ax, ay, bx, by, cx, cy,
                                                         centroid);
@@ -417,15 +416,15 @@ static inline void voronoi_init(struct voronoi *restrict v,
     cell_centroid[0] += V * centroid[0];
     cell_centroid[1] += V * centroid[1];
 
-    if (first_vertex < d->ngb_offset) {
-      if (first_vertex > dverti) {
+    if (first_ngb_del_vert_ix < d->ngb_offset) {
+      if (first_ngb_del_vert_ix > del_vert_ix) {
         /* only store pairs once */
-        voronoi_add_pair(v, 0, dverti, first_vertex, bx, by, cx, cy);
+        voronoi_add_pair(v, 13, del_vert_ix, first_ngb_del_vert_ix, bx, by, cx, cy);
       }
     } else {
       /* no check on other_vertex > i required, since this is always true */
-      int sid = d->ngb_cells[first_vertex - d->ngb_offset];
-      int pid = d->ngb_indices[first_vertex - d->ngb_offset];
+      int sid = d->ngb_cells[first_ngb_del_vert_ix - d->ngb_offset];
+      int pid = d->ngb_indices[first_ngb_del_vert_ix - d->ngb_offset];
       voronoi_add_pair(v, sid, i, pid, bx, by, cx, cy);
     }
 
@@ -439,7 +438,7 @@ static inline void voronoi_init(struct voronoi *restrict v,
 #ifdef VORONOI_STORE_CELL_STATS
     this_cell->nface = nface;
 #endif
-  }
+  } /* loop over all cell generators */
 
   free(vertices);
 }
