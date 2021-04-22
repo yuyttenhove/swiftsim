@@ -85,7 +85,7 @@ __attribute__((always_inline)) INLINE static void cell_shadowfax_do_self2_force(
     if (parts[pair->left].force.active == 1
         || parts[pair->right].force.active == 1) {
       hydro_shadowfax_flux_exchange(&parts[pair->left], &parts[pair->right],
-                                    pair->midpoint, pair->surface_area, shift, 1);
+                                    pair->midpoint, pair->surface_area, shift);
     }
   }
 }
@@ -262,7 +262,7 @@ __attribute__((always_inline)) INLINE static void cell_shadowfax_do_pair2_force(
     if (parts_i[pair->left].force.active == 1
         || parts_j[pair->right].force.active == 1) {
       hydro_shadowfax_flux_exchange(&parts_i[pair->left], &parts_j[pair->right],
-                                    pair->midpoint, pair->surface_area, shift, 1);
+                                    pair->midpoint, pair->surface_area, shift);
     } /* at least one of the parts active? */
   } /* loop over voronoi faces between ci and cj */
 }
