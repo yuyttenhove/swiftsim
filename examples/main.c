@@ -1514,8 +1514,8 @@ int main(int argc, char *argv[]) {
     /* Take a step. */
     engine_step(&e);
 
-    if (j == 50) {
-      FILE *vfile = fopen("voronoi50.txt", "w");
+    if (j == 100) {
+      FILE *vfile = fopen("voronoi100.txt", "w");
       for (int i = 0; i < s.nr_cells; ++i) {
         voronoi_write_grid(&s.cells_top[i].hydro.vortess, vfile);
       }

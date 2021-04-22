@@ -60,7 +60,7 @@ hydro_shadowfax_convert_conserved_to_primitive(struct part *restrict p) {
 
 __attribute__((always_inline)) INLINE static void hydro_shadowfax_flux_exchange(
     struct part *restrict pi, struct part *restrict pj, double const *midpoint,
-    double surface_area, const double *shift, int mode) {
+    double surface_area, const double *shift) {
 
   /* Initialize local variables */
   float dx[3];
@@ -149,6 +149,12 @@ __attribute__((always_inline)) INLINE static void hydro_shadowfax_flux_exchange(
   pi->conserved.flux.momentum[2] -= surface_area * totflux[3];
   pi->conserved.flux.energy -= surface_area * totflux[4];
 
+  pj->conserved.flux.mass += surface_area * totflux[0];
+  pj->conserved.flux.momentum[0] += surface_area * totflux[1];
+  pj->conserved.flux.momentum[1] += surface_area * totflux[2];
+  pj->conserved.flux.momentum[2] += surface_area * totflux[3];
+  pj->conserved.flux.energy += surface_area * totflux[4];
+
 #ifndef SHADOWFAX_TOTAL_ENERGY
   float ekin = 0.5f * (pi->primitives.v[0] * pi->primitives.v[0] +
                        pi->primitives.v[1] * pi->primitives.v[1] +
@@ -157,41 +163,18 @@ __attribute__((always_inline)) INLINE static void hydro_shadowfax_flux_exchange(
   pi->conserved.flux.energy += surface_area * totflux[2] * pi->primitives.v[1];
   pi->conserved.flux.energy += surface_area * totflux[3] * pi->primitives.v[2];
   pi->conserved.flux.energy -= surface_area * totflux[0] * ekin;
+
+  ekin = 0.5f * (pj->primitives.v[0] * pj->primitives.v[0] +
+                 pj->primitives.v[1] * pj->primitives.v[1] +
+                 pj->primitives.v[2] * pj->primitives.v[2]);
+  pj->conserved.flux.energy -= surface_area * totflux[1] * pj->primitives.v[0];
+  pj->conserved.flux.energy -= surface_area * totflux[2] * pj->primitives.v[1];
+  pj->conserved.flux.energy -= surface_area * totflux[3] * pj->primitives.v[2];
+  pj->conserved.flux.energy += surface_area * totflux[0] * ekin;
 #endif
 
   ++pi->voronoi.nface;
-
-  /* here is how it works:
-     Mode will only be 1 if both particles are ACTIVE and they are in the same
-     cell. In this case, this method IS the flux calculation for particle j, and
-     we HAVE TO UPDATE it.
-     Mode 0 can mean several things: it can mean that particle j is INACTIVE, in
-     which case we NEED TO UPDATE it, since otherwise the flux is lost from the
-     system and the conserved variable is not conserved.
-     It can also mean that particle j sits in another cell and is ACTIVE. In
-     this case, the flux exchange for particle j is done TWICE and we SHOULD NOT
-     UPDATE particle j.
-     ==> we update particle j if (MODE IS 1) OR (j IS INACTIVE)
-  */
-  if (mode == 1 || pj->force.active == 0) {
-    pj->conserved.flux.mass += surface_area * totflux[0];
-    pj->conserved.flux.momentum[0] += surface_area * totflux[1];
-    pj->conserved.flux.momentum[1] += surface_area * totflux[2];
-    pj->conserved.flux.momentum[2] += surface_area * totflux[3];
-    pj->conserved.flux.energy += surface_area * totflux[4];
-
-#ifndef SHADOWFAX_TOTAL_ENERGY
-    ekin = 0.5f * (pj->primitives.v[0] * pj->primitives.v[0] +
-                   pj->primitives.v[1] * pj->primitives.v[1] +
-                   pj->primitives.v[2] * pj->primitives.v[2]);
-    pj->conserved.flux.energy -= surface_area * totflux[1] * pj->primitives.v[0];
-    pj->conserved.flux.energy -= surface_area * totflux[2] * pj->primitives.v[1];
-    pj->conserved.flux.energy -= surface_area * totflux[3] * pj->primitives.v[2];
-    pj->conserved.flux.energy += surface_area * totflux[0] * ekin;
-#endif
-
-    ++pj->voronoi.nface;
-  }
+  ++pj->voronoi.nface;
 }
 
 #endif /* SWIFT_HYDRO_SHADOWFAX_H */
