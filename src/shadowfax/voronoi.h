@@ -63,7 +63,7 @@ struct voronoi_pair {
   double surface_area;
 
   /*! Midpoint of the interface. */
-  double midpoint[2];
+  double midpoint[3];
 
 #ifdef VORONOI_STORE_CONNECTIONS
   /*! First vertex of the interface. */
@@ -142,6 +142,8 @@ static inline double voronoi_compute_midpoint_area_face(double ax, double ay,
 
   result[0] = 0.5 * (ax + bx);
   result[1] = 0.5 * (ay + by);
+  /* currently only 2d implementation */
+  result[2] = 0.;
 
   double sx = bx - ax;
   double sy = by - ay;
