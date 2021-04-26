@@ -72,8 +72,19 @@ cell_shadowfax_do_self2_density(const struct engine *e,
 __attribute__((always_inline)) INLINE static void
 cell_shadowfax_do_self1_gradient(const struct engine *e,
                                  struct cell *restrict c) {
-  /* TODO implement this */
-  if (0) {}
+  struct part *restrict parts = c->hydro.parts;
+  double shift[3] = {0., 0., 0.};
+
+  struct voronoi *vortess = &c->hydro.vortess;
+  for (int i = 0; i < vortess->pair_index[13]; ++i) {
+    struct voronoi_pair *pair = &vortess->pairs[13][i];
+    if (parts[pair->left].force.active == 1 ||
+        parts[pair->right].force.active == 1) {
+      hydro_shadowfax_gradients_collect(&parts[pair->left], &parts[pair->right],
+                                        pair->midpoint, pair->surface_area,
+                                        shift);
+    }
+  }
 }
 
 __attribute__((always_inline)) INLINE static void
@@ -263,8 +274,27 @@ cell_shadowfax_do_pair1_gradient(const struct engine *e,
                                  struct cell *restrict ci,
                                  struct cell *restrict cj, int sid,
                                  const double *shift) {
-  /* TODO implement this */
-  if (0) {}
+  if (ci == cj) error("Interacting cell with itself!");
+
+  /* anything to do here? */
+  if (!(cell_is_active_hydro(ci, e) || cell_is_active_hydro(cj, e))) return;
+
+  struct part *restrict parts_i = ci->hydro.parts;
+  struct part *restrict parts_j = cj->hydro.parts;
+
+  struct voronoi *vortess = &ci->hydro.vortess;
+  /* loop over voronoi faces between ci and cj */
+  for (int i = 0; i < vortess->pair_index[27 - sid]; ++i) {
+    struct voronoi_pair *pair = &vortess->pairs[27 - sid][i];
+    /* at least one of the parts active? TODO check this later, for the moment,
+     * always continue! */
+    if (1 || parts_i[pair->left].force.active == 1 ||
+        parts_j[pair->right].force.active == 1) {
+      hydro_shadowfax_gradients_collect(&parts_i[pair->left],
+                                        &parts_j[pair->right], pair->midpoint,
+                                        pair->surface_area, shift);
+    } /* at least one of the parts active? */
+  }   /* loop over voronoi faces between ci and cj */
 }
 
 __attribute__((always_inline)) INLINE static void

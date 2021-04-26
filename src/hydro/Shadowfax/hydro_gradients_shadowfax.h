@@ -76,7 +76,7 @@ __attribute__((always_inline)) INLINE void hydro_gradients_single_quantity(
 /**
  * @brief Gradient calculations done during the neighbour loop
  *
- * TODO: move to cell shadowfax
+ * moved to cell shadowfax
  *
  * @param r2 Squared distance between the two particles.
  * @param dx Distance vector (pi->x - pj->x).
@@ -87,63 +87,12 @@ __attribute__((always_inline)) INLINE void hydro_gradients_single_quantity(
  */
 __attribute__((always_inline)) INLINE static void hydro_gradients_collect(
     float r2, const float *dx, float hi, float hj, struct part *pi,
-    struct part *pj) {
-
-//  A = voronoi_get_face(&pi->cell, pj->id, midpoint);
-  float A = 0.f;
-  float midpoint[3] = {0.f, 0.f, 0.f};
-  if (!A) {
-    /* particle is not a cell neighbour: do nothing */
-    return;
-  }
-
-  float c[3];
-  /* midpoint is relative w.r.t. pi->x, as is dx */
-  /* c is supposed to be the vector pointing from the midpoint of pi and pj to
-     the midpoint of the face between pi and pj:
-       c = real_midpoint - 0.5*(pi+pj)
-         = midpoint + pi - 0.5*(2*pi - dx)
-         = midpoint + 0.5*dx */
-  c[0] = midpoint[0] + 0.5f * dx[0];
-  c[1] = midpoint[1] + 0.5f * dx[1];
-  c[2] = midpoint[2] + 0.5f * dx[2];
-
-  float r = sqrtf(r2);
-  hydro_gradients_single_quantity(pi->primitives.rho, pj->primitives.rho, c, dx,
-                                  r, A, pi->primitives.gradients.rho);
-  hydro_gradients_single_quantity(pi->primitives.v[0], pj->primitives.v[0], c,
-                                  dx, r, A, pi->primitives.gradients.v[0]);
-  hydro_gradients_single_quantity(pi->primitives.v[1], pj->primitives.v[1], c,
-                                  dx, r, A, pi->primitives.gradients.v[1]);
-  hydro_gradients_single_quantity(pi->primitives.v[2], pj->primitives.v[2], c,
-                                  dx, r, A, pi->primitives.gradients.v[2]);
-  hydro_gradients_single_quantity(pi->primitives.P, pj->primitives.P, c, dx, r,
-                                  A, pi->primitives.gradients.P);
-
-  hydro_slope_limit_cell_collect(pi, pj, r);
-
-  float mindx[3];
-  mindx[0] = -dx[0];
-  mindx[1] = -dx[1];
-  mindx[2] = -dx[2];
-  hydro_gradients_single_quantity(pj->primitives.rho, pi->primitives.rho, c,
-                                  mindx, r, A, pj->primitives.gradients.rho);
-  hydro_gradients_single_quantity(pj->primitives.v[0], pi->primitives.v[0], c,
-                                  mindx, r, A, pj->primitives.gradients.v[0]);
-  hydro_gradients_single_quantity(pj->primitives.v[1], pi->primitives.v[1], c,
-                                  mindx, r, A, pj->primitives.gradients.v[1]);
-  hydro_gradients_single_quantity(pj->primitives.v[2], pi->primitives.v[2], c,
-                                  mindx, r, A, pj->primitives.gradients.v[2]);
-  hydro_gradients_single_quantity(pj->primitives.P, pi->primitives.P, c, mindx,
-                                  r, A, pj->primitives.gradients.P);
-
-  hydro_slope_limit_cell_collect(pj, pi, r);
-}
+    struct part *pj) {}
 
 /**
  * @brief Gradient calculations done during the neighbour loop
  *
- * TODO move to cell_shadowfax
+ * Moved to cell_shadowfax
  *
  * @param r2 Squared distance between the two particles.
  * @param dx Distance vector (pi->x - pj->x).
@@ -154,41 +103,7 @@ __attribute__((always_inline)) INLINE static void hydro_gradients_collect(
  */
 __attribute__((always_inline)) INLINE static void
 hydro_gradients_nonsym_collect(float r2, const float *dx, float hi, float hj,
-                               struct part *pi, const struct part *pj) {
-
-  //  A = voronoi_get_face(&pi->cell, pj->id, midpoint);
-  float A = 0.f;
-  float midpoint[3] = {0.f, 0.f, 0.f};
-  if (!A) {
-    /* particle is not a cell neighbour: do nothing */
-    return;
-  }
-
-  float c[3];
-  /* midpoint is relative w.r.t. pi->x, as is dx */
-  /* c is supposed to be the vector pointing from the midpoint of pi and pj to
-     the midpoint of the face between pi and pj:
-       c = real_midpoint - 0.5*(pi+pj)
-         = midpoint + pi - 0.5*(2*pi - dx)
-         = midpoint + 0.5*dx */
-  c[0] = midpoint[0] + 0.5f * dx[0];
-  c[1] = midpoint[1] + 0.5f * dx[1];
-  c[2] = midpoint[2] + 0.5f * dx[2];
-
-  float r = sqrtf(r2);
-  hydro_gradients_single_quantity(pi->primitives.rho, pj->primitives.rho, c, dx,
-                                  r, A, pi->primitives.gradients.rho);
-  hydro_gradients_single_quantity(pi->primitives.v[0], pj->primitives.v[0], c,
-                                  dx, r, A, pi->primitives.gradients.v[0]);
-  hydro_gradients_single_quantity(pi->primitives.v[1], pj->primitives.v[1], c,
-                                  dx, r, A, pi->primitives.gradients.v[1]);
-  hydro_gradients_single_quantity(pi->primitives.v[2], pj->primitives.v[2], c,
-                                  dx, r, A, pi->primitives.gradients.v[2]);
-  hydro_gradients_single_quantity(pi->primitives.P, pj->primitives.P, c, dx, r,
-                                  A, pi->primitives.gradients.P);
-
-  hydro_slope_limit_cell_collect(pi, pj, r);
-}
+                               struct part *pi, const struct part *pj) {}
 
 /**
  * @brief Finalize the gradient variables after all data have been collected
