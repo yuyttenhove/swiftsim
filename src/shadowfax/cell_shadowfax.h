@@ -4,8 +4,8 @@
 #include "active.h"
 #include "cell.h"
 #include "delaunay.h"
-#include "hydro_shadowfax.h"
 #include "hydro/Shadowfax/hydro_gradients.h"
+#include "hydro_shadowfax.h"
 #include "voronoi.h"
 
 __attribute__((always_inline)) INLINE static void shadowfax_flag_particle_added(
@@ -69,6 +69,18 @@ cell_shadowfax_do_self2_density(const struct engine *e,
   error("Shouldn't be using this function!");
 }
 
+__attribute__((always_inline)) INLINE static void
+cell_shadowfax_do_self1_gradient(const struct engine *e,
+                                 struct cell *restrict c) {
+  /* TODO implement this */
+}
+
+__attribute__((always_inline)) INLINE static void
+cell_shadowfax_do_self2_gradient(const struct engine *e,
+                                 struct cell *restrict c) {
+  /* TODO implement this */
+}
+
 __attribute__((always_inline)) INLINE static void cell_shadowfax_do_self1_force(
     const struct engine *e, struct cell *restrict c) {
   error("Shouldn't be using this function!");
@@ -83,8 +95,8 @@ __attribute__((always_inline)) INLINE static void cell_shadowfax_do_self2_force(
   struct voronoi *vortess = &c->hydro.vortess;
   for (int i = 0; i < vortess->pair_index[13]; ++i) {
     struct voronoi_pair *pair = &vortess->pairs[13][i];
-    if (parts[pair->left].force.active == 1
-        || parts[pair->right].force.active == 1) {
+    if (parts[pair->left].force.active == 1 ||
+        parts[pair->right].force.active == 1) {
       hydro_shadowfax_flux_exchange(&parts[pair->left], &parts[pair->right],
                                     pair->midpoint, pair->surface_area, shift);
     }
@@ -251,6 +263,14 @@ __attribute__((always_inline)) INLINE static void cell_shadowfax_do_pair1_force(
   error("Shouldn't be using this function!");
 }
 
+__attribute__((always_inline)) INLINE static void
+cell_shadowfax_do_pair1_gradient(const struct engine *e,
+                                 struct cell *restrict ci,
+                                 struct cell *restrict cj, int sid,
+                                 const double *shift) {
+  /* TODO implement this */
+}
+
 __attribute__((always_inline)) INLINE static void cell_shadowfax_do_pair2_force(
     const struct engine *e, struct cell *restrict ci, struct cell *restrict cj,
     int sid, const double *shift) {
@@ -267,13 +287,22 @@ __attribute__((always_inline)) INLINE static void cell_shadowfax_do_pair2_force(
   /* loop over voronoi faces between ci and cj */
   for (int i = 0; i < vortess->pair_index[27 - sid]; ++i) {
     struct voronoi_pair *pair = &vortess->pairs[27 - sid][i];
-    /* at least one of the parts active? TODO check this later, for the moment, always continue! */
-    if (1 || parts_i[pair->left].force.active == 1
-        || parts_j[pair->right].force.active == 1) {
+    /* at least one of the parts active? TODO check this later, for the moment,
+     * always continue! */
+    if (1 || parts_i[pair->left].force.active == 1 ||
+        parts_j[pair->right].force.active == 1) {
       hydro_shadowfax_flux_exchange(&parts_i[pair->left], &parts_j[pair->right],
                                     pair->midpoint, pair->surface_area, shift);
     } /* at least one of the parts active? */
-  } /* loop over voronoi faces between ci and cj */
+  }   /* loop over voronoi faces between ci and cj */
+}
+
+__attribute__((always_inline)) INLINE static void
+cell_shadowfax_do_pair2_gradient(const struct engine *e,
+                                 struct cell *restrict ci,
+                                 struct cell *restrict cj, int sid,
+                                 const double *shift) {
+  /* TODO implement this */
 }
 
 __attribute__((always_inline)) INLINE static void
@@ -340,7 +369,7 @@ cell_shadowfax_do_pair_subset_density(const struct engine *e,
     }   /* loop over the parts in ci. */
   }
 
-    /* Parts are on the right. */
+  /* Parts are on the right. */
   else {
 
     /* Loop over the parts_i. */

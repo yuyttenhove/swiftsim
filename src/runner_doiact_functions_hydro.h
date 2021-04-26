@@ -705,6 +705,8 @@ void DOPAIR_SUBSET(struct runner *r, struct cell *restrict ci,
 #if defined(SHADOWFAX_NEW_SPH) && (FUNCTION_TASK_LOOP == TASK_LOOP_DENSITY)
   cell_shadowfax_do_pair_subset_density(e, ci, parts_i, ind, count, cj, sid,
                                         flipped, shift);
+#elif defined(SHADOWFAX_NEW_SPH)
+  error("Not implemented yet!");
 #endif
 
   /* Parts are on the left? */
@@ -916,6 +918,10 @@ void DOSELF_SUBSET(struct runner *r, struct cell *restrict ci,
   const int with_cosmology = (e->policy & engine_policy_cosmology);
 #endif
 
+#if defined(SHADOWFAX_NEW_SPH)
+  error("Not implemented yet!");
+#endif
+
   TIMER_TIC;
 
   /* Cosmological terms */
@@ -1069,7 +1075,7 @@ void DOPAIR1(struct runner *r, struct cell *ci, struct cell *cj, const int sid,
 #if FUNCTION_TASK_LOOP == TASK_LOOP_DENSITY
   cell_shadowfax_do_pair1_density(e, ci, cj, sid, shift);
 #elif FUNCTION_TASK_LOOP == TASK_LOOP_GRADIENT
-  /* TODO implement this? */
+  cell_shadowfax_do_pair1_gradient(e, ci, cj, sid, shift);
 #elif FUNCTION_TASK_LOOP == TASK_LOOP_FORCE
   cell_shadowfax_do_pair1_force(e, ci, cj, sid, shift);
 #else
@@ -1420,7 +1426,7 @@ void DOPAIR2(struct runner *r, struct cell *ci, struct cell *cj, const int sid,
 #if FUNCTION_TASK_LOOP == TASK_LOOP_DENSITY
   cell_shadowfax_do_pair2_density(e, ci, cj, sid, shift);
 #elif FUNCTION_TASK_LOOP == TASK_LOOP_GRADIENT
-  /* TODO implement this? */
+  cell_shadowfax_do_pair2_gradient(e, ci, cj, sid, shift);
 #elif FUNCTION_TASK_LOOP == TASK_LOOP_FORCE
   cell_shadowfax_do_pair2_force(e, ci, cj, sid, shift);
 #else
@@ -2006,7 +2012,7 @@ void DOSELF1(struct runner *r, struct cell *restrict c) {
 #if FUNCTION_TASK_LOOP == TASK_LOOP_DENSITY
   cell_shadowfax_do_self1_density(e, c);
 #elif FUNCTION_TASK_LOOP == TASK_LOOP_GRADIENT
-  /* TODO implement this? */
+  cell_shadowfax_do_self1_gradient(e, c);
 #elif FUNCTION_TASK_LOOP == TASK_LOOP_FORCE
   cell_shadowfax_do_self1_force(e, c);
 #else
@@ -2245,7 +2251,7 @@ void DOSELF2(struct runner *r, struct cell *restrict c) {
 #if FUNCTION_TASK_LOOP == TASK_LOOP_DENSITY
   cell_shadowfax_do_self2_density(e, c);
 #elif FUNCTION_TASK_LOOP == TASK_LOOP_GRADIENT
-  /* TODO implement this? */
+  cell_shadowfax_do_self1_gradient(e, c);
 #elif FUNCTION_TASK_LOOP == TASK_LOOP_FORCE
   cell_shadowfax_do_self2_force(e, c);
 #else
