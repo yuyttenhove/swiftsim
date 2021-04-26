@@ -131,7 +131,11 @@ cell_shadowfax_do_pair1_density(const struct engine *e,
       const float hi = pi->h;
 
       /* Skip inactive particles */
-      if (!part_is_active(pi, e)) continue;
+      if (!part_is_active(pi, e)) {
+        /* TODO what should we do here?
+         * For the moment, also build grid for inactive particles... */
+        // continue;
+      }
 
       /* Is there anything we need to interact with ? */
       const double di = sort_i[pid].d + hi * kernel_gamma + dx_max - rshift;
@@ -185,7 +189,11 @@ cell_shadowfax_do_pair1_density(const struct engine *e,
       const float hj = pj->h;
 
       /* Skip inactive particles */
-      if (!part_is_active(pj, e)) continue;
+      if (!part_is_active(pj, e)) {
+        /* TODO what should we do here?
+         * For the moment, also build grid for inactive particles... */
+        // continue;
+      }
 
       /* Is there anything we need to interact with ? */
       const double dj = sort_j[pjd].d - hj * kernel_gamma - dx_max + rshift;
@@ -256,10 +264,10 @@ __attribute__((always_inline)) INLINE static void cell_shadowfax_do_pair2_force(
 
   struct voronoi *vortess = &ci->hydro.vortess;
   /* loop over voronoi faces between ci and cj */
-  for (int i = 0; i < vortess->pair_index[sid]; ++i) {
-    struct voronoi_pair *pair = &vortess->pairs[sid][i];
-    /* at least one of the parts active? */
-    if (parts_i[pair->left].force.active == 1
+  for (int i = 0; i < vortess->pair_index[27 - sid]; ++i) {
+    struct voronoi_pair *pair = &vortess->pairs[27 - sid][i];
+    /* at least one of the parts active? TODO check this later, for the moment, always continue! */
+    if (1 || parts_i[pair->left].force.active == 1
         || parts_j[pair->right].force.active == 1) {
       hydro_shadowfax_flux_exchange(&parts_i[pair->left], &parts_j[pair->right],
                                     pair->midpoint, pair->surface_area, shift);
@@ -367,11 +375,10 @@ cell_shadowfax_do_pair_subset_density(const struct engine *e,
 
         /* Hit or miss? */
         if (r2 < hig2) {
-          if (!shadowfax_particle_was_added(pj, 27 - sid)) {
+          if (!shadowfax_particle_was_added(pj, sid)) {
             delaunay_add_new_vertex(&ci->hydro.deltess, pj->x[0] + shift[0],
-                                    pj->x[1] + shift[1], 27 - sid,
-                                    sort_j[pjd].i);
-            shadowfax_flag_particle_added(pj, 27 - sid);
+                                    pj->x[1] + shift[1], sid, sort_j[pjd].i);
+            shadowfax_flag_particle_added(pj, sid);
           }
         }
       } /* loop over the parts in cj. */
