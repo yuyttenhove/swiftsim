@@ -77,6 +77,8 @@ __attribute__((always_inline)) INLINE static float hydro_compute_timestep(
  * active in hydro_init_part, which is called the next time the particle becomes
  * active.
  *
+ * This method is not longer used?
+ *
  * @param p The particle to act upon.
  * @param dt Physical time step of the particle during the next step.
  */
@@ -257,6 +259,8 @@ __attribute__((always_inline)) INLINE static void hydro_prepare_gradient(
 
   /* Initialize time step criterion variables */
   p->timestepvars.vmax = 0.;
+
+  hydro_gradients_init(p);
 }
 
 /**
@@ -379,7 +383,14 @@ __attribute__((always_inline)) INLINE static void hydro_end_force(
  *
  * @param p Particle to act upon.
  * @param xp Extended particle data to act upon.
- * @param dt_therm Physical time step.
+ * @param dt_therm Thermal energy time-step @f$\frac{dt}{a^2}@f$.
+ * @param dt_grav Gravity time-step @f$\frac{dt}{a}@f$.
+ * @param dt_hydro Hydro acceleration time-step
+ * @f$\frac{dt}{a^{3(\gamma{}-1)}}@f$.
+ * @param dt_kick_corr Gravity correction time-step @f$adt@f$.
+ * @param cosmo Cosmology.
+ * @param hydro_props Additional hydro properties.
+ * @param floor_props The properties of the entropy floor.
  */
 __attribute__((always_inline)) INLINE static void hydro_kick_extra(
     struct part* p, struct xpart* xp, float dt_therm, float dt_grav, float dt_hydro,

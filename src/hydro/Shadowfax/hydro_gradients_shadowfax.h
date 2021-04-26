@@ -144,6 +144,8 @@ __attribute__((always_inline)) INLINE static void hydro_gradients_collect(
 /**
  * @brief Gradient calculations done during the neighbour loop
  *
+ * TODO move to cell_shadowfax
+ *
  * @param r2 Squared distance between the two particles.
  * @param dx Distance vector (pi->x - pj->x).
  * @param hi Smoothing length of particle i.
