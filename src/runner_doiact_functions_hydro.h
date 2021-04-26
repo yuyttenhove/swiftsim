@@ -2251,7 +2251,7 @@ void DOSELF2(struct runner *r, struct cell *restrict c) {
 #if FUNCTION_TASK_LOOP == TASK_LOOP_DENSITY
   cell_shadowfax_do_self2_density(e, c);
 #elif FUNCTION_TASK_LOOP == TASK_LOOP_GRADIENT
-  cell_shadowfax_do_self1_gradient(e, c);
+  cell_shadowfax_do_self2_gradient(e, c);
 #elif FUNCTION_TASK_LOOP == TASK_LOOP_FORCE
   cell_shadowfax_do_self2_force(e, c);
 #else

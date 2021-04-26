@@ -73,12 +73,13 @@ __attribute__((always_inline)) INLINE static void
 cell_shadowfax_do_self1_gradient(const struct engine *e,
                                  struct cell *restrict c) {
   /* TODO implement this */
+  if (0) {}
 }
 
 __attribute__((always_inline)) INLINE static void
 cell_shadowfax_do_self2_gradient(const struct engine *e,
                                  struct cell *restrict c) {
-  /* TODO implement this */
+  error("Shouldn't be using this function!");
 }
 
 __attribute__((always_inline)) INLINE static void cell_shadowfax_do_self1_force(
@@ -257,18 +258,27 @@ cell_shadowfax_do_pair2_density(const struct engine *e,
   error("Shouldn't be using this function!");
 }
 
-__attribute__((always_inline)) INLINE static void cell_shadowfax_do_pair1_force(
-    const struct engine *e, struct cell *restrict ci, struct cell *restrict cj,
-    int sid, const double *shift) {
-  error("Shouldn't be using this function!");
-}
-
 __attribute__((always_inline)) INLINE static void
 cell_shadowfax_do_pair1_gradient(const struct engine *e,
                                  struct cell *restrict ci,
                                  struct cell *restrict cj, int sid,
                                  const double *shift) {
   /* TODO implement this */
+  if (0) {}
+}
+
+__attribute__((always_inline)) INLINE static void
+cell_shadowfax_do_pair2_gradient(const struct engine *e,
+                                 struct cell *restrict ci,
+                                 struct cell *restrict cj, int sid,
+                                 const double *shift) {
+  error("Shouldn't be using this function!");
+}
+
+__attribute__((always_inline)) INLINE static void cell_shadowfax_do_pair1_force(
+    const struct engine *e, struct cell *restrict ci, struct cell *restrict cj,
+    int sid, const double *shift) {
+  error("Shouldn't be using this function!");
 }
 
 __attribute__((always_inline)) INLINE static void cell_shadowfax_do_pair2_force(
@@ -295,14 +305,6 @@ __attribute__((always_inline)) INLINE static void cell_shadowfax_do_pair2_force(
                                     pair->midpoint, pair->surface_area, shift);
     } /* at least one of the parts active? */
   }   /* loop over voronoi faces between ci and cj */
-}
-
-__attribute__((always_inline)) INLINE static void
-cell_shadowfax_do_pair2_gradient(const struct engine *e,
-                                 struct cell *restrict ci,
-                                 struct cell *restrict cj, int sid,
-                                 const double *shift) {
-  /* TODO implement this */
 }
 
 __attribute__((always_inline)) INLINE static void
