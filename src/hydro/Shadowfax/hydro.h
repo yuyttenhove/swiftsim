@@ -26,6 +26,7 @@
 #include "equation_of_state.h"
 #include "hydro_properties.h"
 #include "hydro_space.h"
+#include "hydro_gradients.h"
 
 #include <float.h>
 
@@ -279,7 +280,9 @@ __attribute__((always_inline)) INLINE static void hydro_reset_gradient(
  * @param p The particle to act upon.
  */
 __attribute__((always_inline)) INLINE static void hydro_end_gradient(
-    struct part* p) {}
+    struct part* p) {
+  hydro_gradients_finalize(p);
+}
 
 /**
  * @brief Reset acceleration fields of a particle
