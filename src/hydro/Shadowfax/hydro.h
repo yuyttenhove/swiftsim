@@ -376,27 +376,27 @@ __attribute__((always_inline)) INLINE static void hydro_end_force(
  *
  * @param p Particle to act upon.
  * @param xp Extended particle data to act upon.
- * @param dt Physical time step.
+ * @param dt_therm Physical time step.
  */
 __attribute__((always_inline)) INLINE static void hydro_kick_extra(
-    struct part* p, struct xpart* xp, float dt, float dt_grav, float dt_hydro,
+    struct part* p, struct xpart* xp, float dt_therm, float dt_grav, float dt_hydro,
     float dt_kick_corr, const struct cosmology* cosmo,
     const struct hydro_props* hydro_props,
     const struct entropy_floor_properties* floor_props) {
 
   /* Update the conserved variables. We do this here and not in the kick,
      since we need the updated variables below. */
-  p->conserved.mass += p->conserved.flux.mass * dt;
-  p->conserved.momentum[0] += p->conserved.flux.momentum[0] * dt;
-  p->conserved.momentum[1] += p->conserved.flux.momentum[1] * dt;
-  p->conserved.momentum[2] += p->conserved.flux.momentum[2] * dt;
+  p->conserved.mass += p->conserved.flux.mass * dt_therm;
+  p->conserved.momentum[0] += p->conserved.flux.momentum[0] * dt_therm;
+  p->conserved.momentum[1] += p->conserved.flux.momentum[1] * dt_therm;
+  p->conserved.momentum[2] += p->conserved.flux.momentum[2] * dt_therm;
 
 #ifdef EOS_ISOTHERMAL_GAS
   /* reset the thermal energy */
   p->conserved.energy =
       p->conserved.mass * gas_internal_energy_from_entropy(0.f, 0.f);
 #else
-  p->conserved.energy += p->conserved.flux.energy * dt;
+  p->conserved.energy += p->conserved.flux.energy * dt_therm;
 #endif
 
 #if defined(SHADOWFAX_FIX_CELLS)
