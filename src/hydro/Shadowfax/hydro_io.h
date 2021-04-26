@@ -236,20 +236,15 @@ INLINE static void hydro_write_particles(const struct part* parts,
  * @param h_grpsph The HDF5 group in which to write
  */
 INLINE static void hydro_write_flavour(hid_t h_grpsph) {
-  /* TODO implement this */
   /* Gradient information */
-  /*
   io_write_attribute_s(h_grpsph, "Gradient reconstruction model",
                        HYDRO_GRADIENT_IMPLEMENTATION);
-  */
 
   /* Slope limiter information */
-  /*
   io_write_attribute_s(h_grpsph, "Cell wide slope limiter model",
                        HYDRO_SLOPE_LIMITER_CELL_IMPLEMENTATION);
   io_write_attribute_s(h_grpsph, "Piecewise slope limiter model",
                        HYDRO_SLOPE_LIMITER_FACE_IMPLEMENTATION);
-  */
 
   /* Riemann solver information */
   io_write_attribute_s(h_grpsph, "Riemann solver type",

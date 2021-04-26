@@ -70,6 +70,8 @@ __attribute__((always_inline)) INLINE static void runner_iact_nonsym_density(
 __attribute__((always_inline)) INLINE static void runner_iact_gradient(
     float r2, const float *dx, float hi, float hj, struct part *restrict pi,
     struct part *restrict pj, float a, float H) {
+
+  hydro_gradients_collect(r2, dx, hi, hj, pi, pj);
 }
 
 /**
@@ -89,6 +91,8 @@ __attribute__((always_inline)) INLINE static void runner_iact_gradient(
 __attribute__((always_inline)) INLINE static void runner_iact_nonsym_gradient(
     float r2, const float *dx, float hi, float hj, struct part *restrict pi,
     struct part *restrict pj, float a, float H) {
+
+  hydro_gradients_nonsym_collect(r2, dx, hi, hj, pi, pj);
 }
 
 /**
