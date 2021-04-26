@@ -218,6 +218,18 @@ static inline double voronoi_compute_centroid_volume_triangle(
 }
 
 /**
+ * @brief Free up all memory used by the Voronoi grid.
+ *
+ * @param v Voronoi grid.
+ */
+static inline void voronoi_destroy(struct voronoi *restrict v) {
+  free(v->cells);
+  for (int i = 0; i < 27; ++i) {
+    free(v->pairs[i]);
+  }
+}
+
+/**
  * @brief Initialise the Voronoi grid based on the given Delaunay tessellation.
  *
  * This function allocates the memory for the Voronoi grid arrays and creates
@@ -237,6 +249,9 @@ static inline double voronoi_compute_centroid_volume_triangle(
 static inline void voronoi_init(struct voronoi *restrict v,
                                 const struct delaunay *restrict d,
                                 const struct part *restrict parts) {
+
+  /* dealloc voronoi tesselation */
+  voronoi_destroy(v);
 
   delaunay_assert(d->vertex_end > 0);
 
@@ -268,23 +283,32 @@ static inline void voronoi_init(struct voronoi *restrict v,
     }
 
     double v0x, v0y, v1x, v1y, v2x, v2y;
-    if (v0 < d->ngb_offset) {
+    if (v0 < d->vertex_end) {
       v0x = parts[v0].x[0];
       v0y = parts[v0].x[1];
+    } else if (v0 < d->ngb_offset) {
+      /* This could mean that a neighbouring cell of this grids cell is empty!
+       * Or that we did not add all the necessary ghost vertices to the delaunay
+       * tesselation. */
+      error("Vertex is part of triangle with Dummy vertex!");
     } else {
       v0x = d->vertices[2 * v0];
       v0y = d->vertices[2 * v0 + 1];
     }
-    if (v1 < d->ngb_offset) {
+    if (v1 < d->vertex_end) {
       v1x = parts[v1].x[0];
       v1y = parts[v1].x[1];
+    } else if (v1 < d->ngb_offset) {
+      error("Vertex is part of triangle with Dummy vertex!");
     } else {
       v1x = d->vertices[2 * v1];
       v1y = d->vertices[2 * v1 + 1];
     }
-    if (v2 < d->ngb_offset) {
+    if (v2 < d->vertex_end) {
       v2x = parts[v2].x[0];
       v2y = parts[v2].x[1];
+    } else if (v2 < d->ngb_offset) {
+      error("Vertex is part of triangle with Dummy vertex!");
     } else {
       v2x = d->vertices[2 * v2];
       v2y = d->vertices[2 * v2 + 1];
@@ -441,18 +465,6 @@ static inline void voronoi_init(struct voronoi *restrict v,
   } /* loop over all cell generators */
 
   free(vertices);
-}
-
-/**
- * @brief Free up all memory used by the Voronoi grid.
- *
- * @param v Voronoi grid.
- */
-static inline void voronoi_destroy(struct voronoi *restrict v) {
-  free(v->cells);
-  for (int i = 0; i < 27; ++i) {
-    free(v->pairs[i]);
-  }
 }
 
 /**
