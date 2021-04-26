@@ -89,10 +89,9 @@ __attribute__((always_inline)) INLINE static void hydro_gradients_collect(
     float r2, const float *dx, float hi, float hj, struct part *pi,
     struct part *pj) {
 
-  float A, midpoint[3];
-
 //  A = voronoi_get_face(&pi->cell, pj->id, midpoint);
-  A = 0.;
+  float A = 0.f;
+  float midpoint[3] = {0.f, 0.f, 0.f};
   if (!A) {
     /* particle is not a cell neighbour: do nothing */
     return;
@@ -157,10 +156,9 @@ __attribute__((always_inline)) INLINE static void
 hydro_gradients_nonsym_collect(float r2, const float *dx, float hi, float hj,
                                struct part *pi, const struct part *pj) {
 
-  float A, midpoint[3];
-
-//  A = voronoi_get_face(&pi->cell, pj->id, midpoint);
-  A = 0.;
+  //  A = voronoi_get_face(&pi->cell, pj->id, midpoint);
+  float A = 0.f;
+  float midpoint[3] = {0.f, 0.f, 0.f};
   if (!A) {
     /* particle is not a cell neighbour: do nothing */
     return;

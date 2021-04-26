@@ -5,6 +5,7 @@
 #include "cell.h"
 #include "delaunay.h"
 #include "hydro_shadowfax.h"
+#include "hydro/Shadowfax/hydro_gradients.h"
 #include "voronoi.h"
 
 __attribute__((always_inline)) INLINE static void shadowfax_flag_particle_added(
