@@ -919,7 +919,7 @@ void DOSELF_SUBSET(struct runner *r, struct cell *restrict ci,
 #endif
 
 #if defined(SHADOWFAX_NEW_SPH)
-  error("Not implemented yet!");
+//  error("Not implemented yet!");
 #endif
 
   TIMER_TIC;

@@ -63,6 +63,19 @@ hydro_gradients_nonsym_collect(float r2, const float* dx, float hi, float hj,
 __attribute__((always_inline)) INLINE static void hydro_gradients_finalize(
     struct part* p) {}
 
+/**
+ * @param qL Value of the quantity on the left.
+ * @param qR Value of the quantity on the right.
+ * @param cLR Vector pointing from the midpoint of the particle pair to the
+ * geometrical centroid of the face in between the particles.
+ * @param xLR Vector pointing from the right particle to the left particle.
+ * @param A Surface area of the face in between the particles.
+ * @param grad Current value of the gradient for the quantity (is updated).
+ */
+__attribute__((always_inline)) INLINE void hydro_gradients_single_quantity(
+    float qL, float qR, float *cLR, const float *xLR, float rLR, float A,
+    float *grad) {}
+
 #endif
 
 /**
