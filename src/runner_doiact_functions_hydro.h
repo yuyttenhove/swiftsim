@@ -703,8 +703,8 @@ void DOPAIR_SUBSET(struct runner *r, struct cell *restrict ci,
   const float dxj = cj->hydro.dx_max_sort;
 
 #if defined(SHADOWFAX_NEW_SPH) && (FUNCTION_TASK_LOOP == TASK_LOOP_DENSITY)
-  cell_shadowfax_do_pair_subset_density(e, ci, parts_i, ind, count, cj, sid,
-                                        flipped, shift);
+  cell_shadowfax_do_pair_subset_density_recursive(e, ci, parts_i, ind, count,
+                                                  cj, sid, flipped, shift);
 #elif defined(SHADOWFAX_NEW_SPH)
   error("Not implemented yet!");
 #endif
@@ -870,9 +870,9 @@ void DOPAIR_SUBSET_BRANCH(struct runner *r, struct cell *restrict ci,
   /* Get the sorting index. */
   int sid = 0;
   for (int k = 0; k < 3; k++)
-    sid = 3 * sid + ((cj->loc[k] - ci->loc[k] + shift[k] < 0)
-                         ? 0
-                         : (cj->loc[k] - ci->loc[k] + shift[k] > 0) ? 2 : 1);
+    sid = 3 * sid + ((cj->loc[k] - ci->loc[k] + shift[k] < 0)   ? 0
+                     : (cj->loc[k] - ci->loc[k] + shift[k] > 0) ? 2
+                                                                : 1);
 
   /* Switch the cells around? */
   const int flipped = runner_flip[sid];
@@ -1073,7 +1073,7 @@ void DOPAIR1(struct runner *r, struct cell *ci, struct cell *cj, const int sid,
 
 #if defined(SHADOWFAX_NEW_SPH)
 #if FUNCTION_TASK_LOOP == TASK_LOOP_DENSITY
-  cell_shadowfax_do_pair1_density(e, ci, cj, sid, shift);
+  cell_shadowfax_do_pair1_density_recursive(e, ci, cj, sid, shift);
 #elif FUNCTION_TASK_LOOP == TASK_LOOP_GRADIENT
   cell_shadowfax_do_pair1_gradient(e, ci, cj, sid, shift);
 #elif FUNCTION_TASK_LOOP == TASK_LOOP_FORCE
@@ -1447,8 +1447,8 @@ void DOPAIR2(struct runner *r, struct cell *ci, struct cell *cj, const int sid,
   const double shift_j[3] = {cj->loc[0], cj->loc[1], cj->loc[2]};
 
   int count_active_i = 0, count_active_j = 0;
-  struct sort_entry *restrict sort_active_i = NULL,
-                              *restrict sort_active_j = NULL;
+  struct sort_entry *restrict sort_active_i = NULL, *restrict sort_active_j =
+                                                        NULL;
 
   // MATTHIEU: temporary disable this optimization
   if (0 && cell_is_all_active_hydro(ci, e)) {
@@ -2010,7 +2010,7 @@ void DOSELF1(struct runner *r, struct cell *restrict c) {
 
 #if defined(SHADOWFAX_NEW_SPH)
 #if FUNCTION_TASK_LOOP == TASK_LOOP_DENSITY
-  cell_shadowfax_do_self1_density(e, c);
+  cell_shadowfax_do_self1_density_recursive(e, c);
 #elif FUNCTION_TASK_LOOP == TASK_LOOP_GRADIENT
   cell_shadowfax_do_self1_gradient(e, c);
 #elif FUNCTION_TASK_LOOP == TASK_LOOP_FORCE

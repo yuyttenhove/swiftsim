@@ -1427,7 +1427,7 @@ void runner_do_ghost(struct runner *r, struct cell *c, int timer) {
   c->hydro.h_max = h_max;
 
 #ifdef SHADOWFAX_NEW_SPH
-  cell_shadowfax_end_density(c);
+  cell_shadowfax_end_density_recursive(c);
 #endif
 
   /* The ghost may not always be at the top level.
