@@ -266,10 +266,6 @@ void space_split_recursive(struct space *s, struct cell *c,
 
       /* Get the progenitor */
       struct cell *cp = c->progeny[k];
-      /* Initialize tesselation for new cells (must happen after particle assignment)*/
-#ifdef SHADOWFAX_NEW_SPH
-      cell_malloc_delaunay_tessellation(cp, &s->hs);
-#endif
 
       /* Remove any progeny with zero particles. */
       if (cp->hydro.count == 0 && cp->grav.count == 0 && cp->stars.count == 0 &&
@@ -583,6 +579,11 @@ void space_split_recursive(struct space *s, struct cell *c,
       bparts[k].x_diff[1] = 0.f;
       bparts[k].x_diff[2] = 0.f;
     }
+
+#ifdef SHADOWFAX_NEW_SPH
+    // initialize delaunay_tesselation for lowest level cells
+    cell_malloc_delaunay_tessellation(c, &e->s->hs);
+#endif
 
     /* Construct the multipole and the centre of mass*/
     if (s->with_self_gravity) {
