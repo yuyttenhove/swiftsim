@@ -51,13 +51,14 @@
  * neighbouring cells, a surface area and a midpoint position.
  */
 struct voronoi_pair {
-  /*! Index of the generator on the left of the interface (always a particle
-   *  within the local cell). */
-  int left;
+  /*! Pointer to particle corresponding to the generator on the left of the
+   * interface (always a particle within the local cell). */
+  struct part *left;
 
-  /*! Index of the generator on the right of the interface (can be a local
-   *  particle, but also a particle in a neighbouring cell). */
-  int right;
+  /*! Pointer to particle corresponding to the generator on the right of the
+   * interface (can be a local particle, but also a particle in a
+   * neighbouring cell). */
+  struct part *right;
 
   /*! Surface area of the interface. */
   double surface_area;
@@ -165,14 +166,16 @@ static inline double voronoi_compute_midpoint_area_face(double ax, double ay,
  *
  * @param v Voronoi grid.
  * @param sid Index of the cell list in which the pair is stored.
- * @param lid Index of the left particle within its cell (the cell linked to
- * this grid).
- * @param rid Index of the right particle within cell sid.
+ * @param left_part_pointer Direct pointer to the left particle (particle in the
+ * cell linked to this grid).
+ * @param right_part_pointer Direct pointer to the right particle (particle
+ * within the cell determined by sid.
  * @param ax,ay,bx,by Vertices of the interface.
  */
 static inline void voronoi_add_pair(struct voronoi *restrict v, int sid,
-                                    int lid, int rid, double ax, double ay,
-                                    double bx, double by) {
+                                    struct part *left_part_pointer,
+                                    struct part *right_part_pointer, double ax,
+                                    double ay, double bx, double by) {
 
   if (v->pair_index[sid] == v->pair_size[sid]) {
     v->pair_size[sid] <<= 1;
@@ -180,8 +183,8 @@ static inline void voronoi_add_pair(struct voronoi *restrict v, int sid,
         v->pairs[sid], v->pair_size[sid] * sizeof(struct voronoi_pair));
   }
   struct voronoi_pair *this_pair = &v->pairs[sid][v->pair_index[sid]];
-  this_pair->left = lid;
-  this_pair->right = rid;
+  this_pair->left = left_part_pointer;
+  this_pair->right = right_part_pointer;
   this_pair->surface_area =
       voronoi_compute_midpoint_area_face(ax, ay, bx, by, this_pair->midpoint);
 #ifdef VORONOI_STORE_CONNECTIONS
@@ -352,7 +355,9 @@ static inline void voronoi_init(struct voronoi *restrict v,
       ax = parts[i].x[0];
       ay = parts[i].x[1];
     } else {
-      error("Found a ghost particle while looping over non-ghost, non-dummy particles!");
+      error(
+          "Found a ghost particle while looping over non-ghost, non-dummy "
+          "particles!");
     }
 
 #ifdef VORONOI_STORE_GENERATORS
@@ -382,7 +387,8 @@ static inline void voronoi_init(struct voronoi *restrict v,
     int first_ngb_del_vert_ix = d->triangles[t0].vertices[next_t_ix_in_cur_t];
 
     int t1 = d->triangles[t0].neighbours[next_t_ix_in_cur_t];
-    int cur_t_ix_in_next_t = d->triangles[t0].index_in_neighbour[next_t_ix_in_cur_t];
+    int cur_t_ix_in_next_t =
+        d->triangles[t0].index_in_neighbour[next_t_ix_in_cur_t];
     /* loop around the voronoi cell generator (delaunay vertex) until we arrive
      * back at the original triangle */
     while (t1 != t0) {
@@ -414,17 +420,19 @@ static inline void voronoi_init(struct voronoi *restrict v,
       if (ngb_del_vert_ix < d->ngb_offset) {
         /* only store pairs once */
         if (ngb_del_vert_ix > del_vert_ix) {
-          voronoi_add_pair(v, 13, del_vert_ix, ngb_del_vert_ix, bx, by, cx, cy);
+          voronoi_add_pair(v, 13, d->part_pointers[del_vert_ix],
+                           d->part_pointers[ngb_del_vert_ix], bx, by, cx, cy);
         }
       } else {
         /* no check on ngb_del_vert_ix > del_vert_ix required, since this is
          * always true (del_vert_ix < d->ngb_offset) */
-        int sid = d->ngb_cells[ngb_del_vert_ix - d->ngb_offset];
-        int pid = d->ngb_indices[ngb_del_vert_ix - d->ngb_offset];
-        voronoi_add_pair(v, sid, del_vert_ix, pid, bx, by, cx, cy);
+        int sid = d->ngb_cell_sids[ngb_del_vert_ix - d->ngb_offset];
+        voronoi_add_pair(v, sid, d->part_pointers[del_vert_ix],
+                         d->part_pointers[ngb_del_vert_ix], bx, by, cx, cy);
       }
 
-      cur_t_ix_in_next_t = d->triangles[t1].index_in_neighbour[next_t_ix_in_cur_t];
+      cur_t_ix_in_next_t =
+          d->triangles[t1].index_in_neighbour[next_t_ix_in_cur_t];
       t1 = d->triangles[t1].neighbours[next_t_ix_in_cur_t];
     } /* loop around the voronoi cell generator */
 
@@ -443,13 +451,15 @@ static inline void voronoi_init(struct voronoi *restrict v,
     if (first_ngb_del_vert_ix < d->ngb_offset) {
       if (first_ngb_del_vert_ix > del_vert_ix) {
         /* only store pairs once */
-        voronoi_add_pair(v, 13, del_vert_ix, first_ngb_del_vert_ix, bx, by, cx, cy);
+        voronoi_add_pair(v, 13, d->part_pointers[del_vert_ix],
+                         d->part_pointers[first_ngb_del_vert_ix], bx, by, cx,
+                         cy);
       }
     } else {
       /* no check on other_vertex > i required, since this is always true */
-      int sid = d->ngb_cells[first_ngb_del_vert_ix - d->ngb_offset];
-      int pid = d->ngb_indices[first_ngb_del_vert_ix - d->ngb_offset];
-      voronoi_add_pair(v, sid, i, pid, bx, by, cx, cy);
+      int sid = d->ngb_cell_sids[first_ngb_del_vert_ix - d->ngb_offset];
+      voronoi_add_pair(v, sid, d->part_pointers[del_vert_ix],
+                       d->part_pointers[first_ngb_del_vert_ix], bx, by, cx, cy);
     }
 
     /* now compute the actual centroid by dividing the volume-weighted
@@ -522,8 +532,8 @@ static inline void voronoi_write_grid(const struct voronoi *restrict v,
       fprintf(file, "%g\t%g\t%g\t%g\t", pair->a[0], pair->a[1], pair->b[0],
               pair->b[1]);
 #endif
-      fprintf(file, "%i\t%i\t%i\t%g\t%g\t%g\n", pair->left, ngb, pair->right,
-              pair->surface_area, pair->midpoint[0], pair->midpoint[1]);
+      fprintf(file, "%i\t%g\t%g\t%g\n", ngb, pair->surface_area,
+              pair->midpoint[0], pair->midpoint[1]);
     }
   }
 }

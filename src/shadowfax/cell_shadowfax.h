@@ -15,7 +15,7 @@ __attribute__((always_inline)) INLINE static void shadowfax_flag_particle_added(
 
 __attribute__((always_inline)) INLINE static int shadowfax_particle_was_added(
     const struct part *restrict p, int sid, unsigned long sub_cell_mask) {
-  return (p->voronoi.flags[sid] &  sub_cell_mask) > 0;
+  return (p->voronoi.flags[sid] & sub_cell_mask) > 0;
 }
 
 __attribute__((always_inline)) INLINE static void
@@ -130,8 +130,7 @@ cell_shadowfax_do_pair1_density(const struct engine *e, struct cell *ci,
 
           if (!shadowfax_particle_was_added(pj, 27 - sid, sub_cell_mask_i)) {
             delaunay_add_new_vertex(&ci->hydro.deltess, pj->x[0] + shift[0],
-                                    pj->x[1] + shift[1], 27 - sid,
-                                    sort_j[pjd].i);
+                                    pj->x[1] + shift[1], 27 - sid, pj);
             shadowfax_flag_particle_added(pj, 27 - sid, sub_cell_mask_i);
           }
         }
@@ -188,7 +187,7 @@ cell_shadowfax_do_pair1_density(const struct engine *e, struct cell *ci,
 
           if (!shadowfax_particle_was_added(pi, sid, sub_cell_mask_j)) {
             delaunay_add_new_vertex(&cj->hydro.deltess, pi->x[0] - shift[0],
-                                    pi->x[1] - shift[1], sid, sort_i[pid].i);
+                                    pi->x[1] - shift[1], sid, pi);
             shadowfax_flag_particle_added(pi, sid, sub_cell_mask_j);
           }
         }
@@ -221,19 +220,14 @@ cell_shadowfax_do_pair1_gradient(const struct engine *e,
   /* anything to do here? */
   if (!(cell_is_active_hydro(ci, e) || cell_is_active_hydro(cj, e))) return;
 
-  struct part *restrict parts_i = ci->hydro.parts;
-  struct part *restrict parts_j = cj->hydro.parts;
-
   struct voronoi *vortess = &ci->hydro.vortess;
   /* loop over voronoi faces between ci and cj */
   for (int i = 0; i < vortess->pair_index[27 - sid]; ++i) {
     struct voronoi_pair *pair = &vortess->pairs[27 - sid][i];
     /* at least one of the parts active? TODO check this later, for the moment,
      * always continue! */
-    if (1 || parts_i[pair->left].force.active == 1 ||
-        parts_j[pair->right].force.active == 1) {
-      hydro_shadowfax_gradients_collect(&parts_i[pair->left],
-                                        &parts_j[pair->right], pair->midpoint,
+    if (1 || pair->left->force.active == 1 || pair->right->force.active == 1) {
+      hydro_shadowfax_gradients_collect(pair->left, pair->right, pair->midpoint,
                                         pair->surface_area, shift);
     } /* at least one of the parts active? */
   }   /* loop over voronoi faces between ci and cj */
@@ -262,19 +256,15 @@ __attribute__((always_inline)) INLINE static void cell_shadowfax_do_pair2_force(
   /* anything to do here? */
   if (!(cell_is_active_hydro(ci, e) || cell_is_active_hydro(cj, e))) return;
 
-  struct part *restrict parts_i = ci->hydro.parts;
-  struct part *restrict parts_j = cj->hydro.parts;
-
   struct voronoi *vortess = &ci->hydro.vortess;
   /* loop over voronoi faces between ci and cj */
   for (int i = 0; i < vortess->pair_index[27 - sid]; ++i) {
     struct voronoi_pair *pair = &vortess->pairs[27 - sid][i];
     /* at least one of the parts active? TODO check this later, for the moment,
      * always continue! */
-    if (0 && (parts_i[pair->left].force.active == 1 ||
-              parts_j[pair->right].force.active == 1)) {
-      hydro_shadowfax_flux_exchange(&parts_i[pair->left], &parts_j[pair->right],
-                                    pair->midpoint, pair->surface_area, shift);
+    if (pair->left->force.active == 1 || pair->right->force.active == 1) {
+      hydro_shadowfax_flux_exchange(pair->left, pair->right, pair->midpoint,
+                                    pair->surface_area, shift);
     } /* at least one of the parts active? */
   }   /* loop over voronoi faces between ci and cj */
 }
@@ -334,8 +324,7 @@ cell_shadowfax_do_pair_subset_density(const struct engine *e, struct cell *ci,
         if (r2 < hig2) {
           if (!shadowfax_particle_was_added(pj, 27 - sid, sub_cell_mask_i)) {
             delaunay_add_new_vertex(&ci->hydro.deltess, pj->x[0] + shift[0],
-                                    pj->x[1] + shift[1], 27 - sid,
-                                    sort_j[pjd].i);
+                                    pj->x[1] + shift[1], 27 - sid, pj);
             shadowfax_flag_particle_added(pj, 27 - sid, sub_cell_mask_i);
           }
         }
@@ -381,7 +370,7 @@ cell_shadowfax_do_pair_subset_density(const struct engine *e, struct cell *ci,
         if (r2 < hig2) {
           if (!shadowfax_particle_was_added(pj, sid, sub_cell_mask_j)) {
             delaunay_add_new_vertex(&ci->hydro.deltess, pj->x[0] + shift[0],
-                                    pj->x[1] + shift[1], sid, sort_j[pjd].i);
+                                    pj->x[1] + shift[1], sid, pj);
             shadowfax_flag_particle_added(pj, sid, sub_cell_mask_j);
           }
         }
@@ -404,13 +393,13 @@ cell_shadowfax_do_self1_density(const struct engine *e,
   struct part *restrict parts = c->hydro.parts;
 
   /* Loop over the parts in c. */
-  for (int pd = 0; pd < count; pd++) {
+  for (int i = 0; i < count; i++) {
 
     /* Get a pointer to the ith particle. */
-    struct part *restrict p = &parts[pd];
+    struct part *restrict p = &parts[i];
 
     if (!shadowfax_particle_was_added(p, 13, 1)) {
-      delaunay_add_local_vertex(&c->hydro.deltess, pd, p->x[0], p->x[1]);
+      delaunay_add_local_vertex(&c->hydro.deltess, i, p->x[0], p->x[1], p);
       shadowfax_flag_particle_added(p, 13, 1);
     }
   }
@@ -428,17 +417,14 @@ cell_shadowfax_do_self2_density(const struct engine *e,
 __attribute__((always_inline)) INLINE static void
 cell_shadowfax_do_self1_gradient(const struct engine *e,
                                  struct cell *restrict c) {
-  struct part *restrict parts = c->hydro.parts;
   double shift[3] = {0., 0., 0.};
 
   struct voronoi *vortess = &c->hydro.vortess;
   for (int i = 0; i < vortess->pair_index[13]; ++i) {
     struct voronoi_pair *pair = &vortess->pairs[13][i];
-    if (parts[pair->left].force.active == 1 ||
-        parts[pair->right].force.active == 1) {
-      hydro_shadowfax_gradients_collect(&parts[pair->left], &parts[pair->right],
-                                        pair->midpoint, pair->surface_area,
-                                        shift);
+    if (pair->left->force.active == 1 || pair->right->force.active == 1) {
+      hydro_shadowfax_gradients_collect(pair->left, pair->right, pair->midpoint,
+                                        pair->surface_area, shift);
     }
   }
 }
@@ -457,16 +443,14 @@ __attribute__((always_inline)) INLINE static void cell_shadowfax_do_self1_force(
 __attribute__((always_inline)) INLINE static void cell_shadowfax_do_self2_force(
     const struct engine *e, struct cell *restrict c) {
 
-  struct part *restrict parts = c->hydro.parts;
   double shift[3] = {0., 0., 0.};
 
   struct voronoi *vortess = &c->hydro.vortess;
   for (int i = 0; i < vortess->pair_index[13]; ++i) {
     struct voronoi_pair *pair = &vortess->pairs[13][i];
-    if (0 && (parts[pair->left].force.active == 1 ||
-              parts[pair->right].force.active == 1)) {
-      hydro_shadowfax_flux_exchange(&parts[pair->left], &parts[pair->right],
-                                    pair->midpoint, pair->surface_area, shift);
+    if (pair->left->force.active == 1 || pair->right->force.active == 1) {
+      hydro_shadowfax_flux_exchange(pair->left, pair->right, pair->midpoint,
+                                    pair->surface_area, shift);
     }
   }
 }
@@ -509,7 +493,7 @@ __attribute__((always_inline)) INLINE static void cell_shadowfax_do_pair_naive(
 
     if (!shadowfax_particle_was_added(pi, sid, 1)) {
       delaunay_add_new_vertex(&cj->hydro.deltess, pi->x[0] - shift[0],
-                              pi->x[1] - shift[1], sid, pid);
+                              pi->x[1] - shift[1], sid, pi);
       shadowfax_flag_particle_added(pi, sid, 1);
     }
   }
@@ -522,7 +506,7 @@ __attribute__((always_inline)) INLINE static void cell_shadowfax_do_pair_naive(
 
     if (!shadowfax_particle_was_added(pj, 27 - sid, 1)) {
       delaunay_add_new_vertex(&ci->hydro.deltess, pj->x[0] + shift[0],
-                              pj->x[1] + shift[1], 27 - sid, pjd);
+                              pj->x[1] + shift[1], 27 - sid, pj);
       shadowfax_flag_particle_added(pj, 27 - sid, 1);
     }
   }
