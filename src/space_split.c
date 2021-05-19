@@ -580,11 +580,6 @@ void space_split_recursive(struct space *s, struct cell *c,
       bparts[k].x_diff[2] = 0.f;
     }
 
-#ifdef SHADOWFAX_NEW_SPH
-    // initialize delaunay_tesselation for lowest level cells
-    cell_malloc_delaunay_tessellation(c, &e->s->hs);
-#endif
-
     /* Construct the multipole and the centre of mass*/
     if (s->with_self_gravity) {
       if (gcount > 0) {
