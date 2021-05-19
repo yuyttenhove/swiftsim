@@ -226,7 +226,7 @@ cell_shadowfax_do_pair1_gradient(const struct engine *e,
     struct voronoi_pair *pair = &vortess->pairs[27 - sid][i];
     /* at least one of the parts active? TODO check this later, for the moment,
      * always continue! */
-    if (1 || pair->left->force.active == 1 || pair->right->force.active == 1) {
+    if (0 && (pair->left->force.active == 1 || pair->right->force.active == 1)) {
       hydro_shadowfax_gradients_collect(pair->left, pair->right, pair->midpoint,
                                         pair->surface_area, shift);
     } /* at least one of the parts active? */
@@ -426,7 +426,7 @@ cell_shadowfax_do_self1_gradient(const struct engine *e,
   struct voronoi *vortess = &c->hydro.vortess;
   for (int i = 0; i < vortess->pair_index[13]; ++i) {
     struct voronoi_pair *pair = &vortess->pairs[13][i];
-    if (pair->left->force.active == 1 || pair->right->force.active == 1) {
+    if (0 && (pair->left->force.active == 1 || pair->right->force.active == 1)) {
       hydro_shadowfax_gradients_collect(pair->left, pair->right, pair->midpoint,
                                         pair->surface_area, shift);
     }
