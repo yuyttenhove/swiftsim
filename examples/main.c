@@ -29,6 +29,7 @@
 #include <errno.h>
 #include <fenv.h>
 #include <libgen.h>
+#include <shadowfax/cell_shadowfax.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1419,8 +1420,7 @@ int main(int argc, char *argv[]) {
     FILE *vfile = fopen("voronoi.txt", "w");
     size_t offset = 0;
     for (int i = 0; i < s.nr_cells; ++i) {
-      delaunay_write_tessellation(&s.cells_top[i].hydro.deltess, file, &offset);
-      voronoi_write_grid(&s.cells_top[i].hydro.vortess, vfile);
+      cell_shadowfax_write_tesselations(&s.cells_top[i], file, vfile, &offset);
     }
     fclose(file);
     fclose(vfile);
@@ -1518,8 +1518,11 @@ int main(int argc, char *argv[]) {
       char fname[20];
       sprintf(fname, "voronoi%d.txt", j);
       FILE *vfile = fopen(fname, "w");
+      sprintf(fname, "delaunay%d.txt", j);
+      FILE *file = fopen(fname, "w");
+      size_t offset = 0;
       for (int i = 0; i < s.nr_cells; ++i) {
-        voronoi_write_grid(&s.cells_top[i].hydro.vortess, vfile);
+        cell_shadowfax_write_tesselations(&s.cells_top[i], file, vfile, &offset);
       }
       fclose(vfile);
     }
