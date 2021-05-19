@@ -269,6 +269,10 @@ __attribute__((always_inline)) INLINE static void cell_shadowfax_do_pair2_force(
   }   /* loop over voronoi faces between ci and cj */
 }
 
+void cell_shadowfax_do_pair2_force_recursive(
+    const struct engine *e, struct cell *restrict ci, struct cell *restrict cj,
+    int sid, const double *shift);
+
 __attribute__((always_inline)) INLINE static void
 cell_shadowfax_do_pair_subset_density(const struct engine *e, struct cell *ci,
                                       struct part *parts_i, const int *ind,
@@ -454,6 +458,9 @@ __attribute__((always_inline)) INLINE static void cell_shadowfax_do_self2_force(
     }
   }
 }
+
+void cell_shadowfax_do_self2_force_recursive(const struct engine *e,
+                                             struct cell *restrict c);
 
 __attribute__((always_inline)) INLINE static void cell_shadowfax_end_density(
     struct cell *restrict c) {

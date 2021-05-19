@@ -46,6 +46,31 @@ void cell_shadowfax_do_pair1_density_recursive(const struct engine *e,
   }
 }
 
+void cell_shadowfax_do_pair2_force_recursive(const struct engine *e,
+                                             struct cell *restrict ci,
+                                             struct cell *restrict cj, int sid,
+                                             const double *shift) {
+  int k;
+  /* recurse */
+  if (ci->split) {
+    for (k = 0; k < 8; k++) {
+      if (ci->progeny[k] != NULL) {
+        cell_shadowfax_do_pair2_force_recursive(e, ci->progeny[k], cj, sid,
+                                                shift);
+      }
+    }
+  } else if (cj->split) {
+    for (k = 0; k < 8; k++) {
+      if (cj->progeny[k] != NULL) {
+        cell_shadowfax_do_pair2_force_recursive(e, ci, cj->progeny[k], sid,
+                                                shift);
+      }
+    }
+  } else {
+    cell_shadowfax_do_pair2_force(e, ci, cj, sid, shift);
+  }
+}
+
 void cell_shadowfax_do_pair_subset_density_recursive(
     const struct engine *e, struct cell *ci, struct part *parts_i,
     const int *ind, int count, struct cell *cj, int sid, int flipped,
@@ -117,14 +142,37 @@ void cell_shadowfax_do_self1_density_recursive(const struct engine *e,
           struct cell *cl = c->progeny[l];
           if (cl != NULL) {
             sid = space_getsid(e->s, &ck, &cl, shift);
-            cell_shadowfax_do_pair1_density_recursive(e, ck, cl, sid, shift, 0,
-                                                      0);
+            cell_shadowfax_do_pair1_density_recursive(e, ck, cl, sid, shift, 1,
+                                                      1);
           }
         }
       }
     }
   } else {
     cell_shadowfax_do_self1_density(e, c);
+  }
+}
+
+void cell_shadowfax_do_self2_force_recursive(const struct engine *e,
+                                             struct cell *restrict c) {
+  double shift[3] = {0., 0., 0.};
+  int sid;
+  if (c->split) {
+    for (int k = 0; k < 8; k++) {
+      struct cell *ck = c->progeny[k];
+      if (ck != NULL) {
+        cell_shadowfax_do_self2_force_recursive(e, c->progeny[k]);
+        for (int l = k + 1; l < 8; l++) {
+          struct cell *cl = c->progeny[l];
+          if (cl != NULL) {
+            sid = space_getsid(e->s, &ck, &cl, shift);
+            cell_shadowfax_do_pair2_force_recursive(e, ck, cl, sid, shift);
+          }
+        }
+      }
+    }
+  } else {
+    cell_shadowfax_do_self2_force(e, c);
   }
 }
 
@@ -147,7 +195,7 @@ void cell_shadowfax_write_tesselations(const struct cell *c, FILE *dfile,
       }
     }
   } else {
-//    delaunay_write_tessellation(&c->hydro.deltess, dfile, offset);
+    //    delaunay_write_tessellation(&c->hydro.deltess, dfile, offset);
     voronoi_write_grid(&c->hydro.vortess, vfile);
   }
 }
