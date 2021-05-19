@@ -703,8 +703,8 @@ void DOPAIR_SUBSET(struct runner *r, struct cell *restrict ci,
   const float dxj = cj->hydro.dx_max_sort;
 
 #if defined(SHADOWFAX_NEW_SPH) && (FUNCTION_TASK_LOOP == TASK_LOOP_DENSITY)
-  cell_shadowfax_do_pair_subset_density_recursive(e, ci, parts_i, ind, count,
-                                                  cj, sid, flipped, shift);
+  cell_shadowfax_do_pair_subset_density_recursive(
+      e, ci, parts_i, ind, count, cj, sid, flipped, shift, 1, 1);
 #elif defined(SHADOWFAX_NEW_SPH)
   error("Not implemented yet!");
 #endif
@@ -1073,7 +1073,7 @@ void DOPAIR1(struct runner *r, struct cell *ci, struct cell *cj, const int sid,
 
 #if defined(SHADOWFAX_NEW_SPH)
 #if FUNCTION_TASK_LOOP == TASK_LOOP_DENSITY
-  cell_shadowfax_do_pair1_density_recursive(e, ci, cj, sid, shift);
+  cell_shadowfax_do_pair1_density_recursive(e, ci, cj, sid, shift, 1, 1);
 #elif FUNCTION_TASK_LOOP == TASK_LOOP_GRADIENT
   cell_shadowfax_do_pair1_gradient(e, ci, cj, sid, shift);
 #elif FUNCTION_TASK_LOOP == TASK_LOOP_FORCE
