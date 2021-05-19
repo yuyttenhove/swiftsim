@@ -2,6 +2,18 @@
 
 #include "../space_getsid.h"
 
+void cell_malloc_delaunay_tessellation_recursive(struct cell *c) {
+  if (c->split) {
+    for (int k = 0; k < 8; k++) {
+      if (c->progeny[k] != NULL) {
+        cell_malloc_delaunay_tessellation_recursive(c->progeny[k]);
+      }
+    }
+  } else {
+    cell_malloc_delaunay_tessellation(c);
+  }
+}
+
 void cell_shadowfax_do_pair1_density_recursive(const struct engine *e,
                                                struct cell *restrict ci,
                                                struct cell *restrict cj,
