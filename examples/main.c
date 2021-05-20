@@ -1514,7 +1514,7 @@ int main(int argc, char *argv[]) {
     /* Take a step. */
     engine_step(&e);
 
-    if ((j % 100) == 0) {
+    if ((j % 200) == 0) {
       char fname[20];
       sprintf(fname, "voronoi%d.txt", j);
       FILE *vfile = fopen(fname, "w");
@@ -1526,7 +1526,7 @@ int main(int argc, char *argv[]) {
       }
       fclose(vfile);
     }
-    if (j == 2000) break;
+//    if (j == 2000) break;
 
     /* Print the timers. */
     if (with_verbose_timers) timers_print(e.step);
