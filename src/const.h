@@ -99,7 +99,7 @@
 //#define SHADOWFAX_TOTAL_ENERGY
 /* This option performs a simple check whether or not a particle was already
  * added to a cells delaunay triangulation (works only when not recursing) */
-#define SHADOWFAX_CHECK_DELAUNAY_FLAG
+//#define SHADOWFAX_CHECK_DELAUNAY_FLAG
 
 /* Source terms */
 #define SOURCETERMS_NONE
