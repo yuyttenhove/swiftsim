@@ -10,12 +10,18 @@
 
 __attribute__((always_inline)) INLINE static void shadowfax_flag_particle_added(
     struct part *restrict p, int sid) {
+#ifdef SHADOWFAX_CHECK_DELAUNAY_FLAG
   p->voronoi.flag |= (1 << sid);
+#endif
 }
 
 __attribute__((always_inline)) INLINE static int shadowfax_particle_was_added(
     const struct part *restrict p, int sid) {
+#ifdef SHADOWFAX_CHECK_DELAUNAY_FLAG
   return (p->voronoi.flag & (1 << sid)) > 0;
+#else
+  return 0;
+#endif
 }
 
 __attribute__((always_inline)) INLINE static void
