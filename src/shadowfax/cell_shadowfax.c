@@ -15,34 +15,28 @@ void cell_malloc_delaunay_tessellation_recursive(struct cell *c) {
 }
 
 void cell_shadowfax_do_pair1_density_recursive(const struct engine *e,
-                                               struct cell *ci, struct cell *cj,
-                                               int sid, const double *shift,
-                                               unsigned long sub_cell_mask_i,
-                                               unsigned long sub_cell_mask_j) {
+                                               struct cell *restrict ci,
+                                               struct cell *restrict cj,
+                                               int sid, const double *shift) {
   int k;
   /* recurse? */
   if (ci->split) {
-    sub_cell_mask_i *= sub_cell_mask_i;
     // TODO check if possible with max smoothing length
     for (k = 0; k < 8; k++) {
       if (ci->progeny[k] != NULL) {
         cell_shadowfax_do_pair1_density_recursive(e, ci->progeny[k], cj, sid,
-                                                  shift, sub_cell_mask_i << k,
-                                                  sub_cell_mask_j);
+                                                  shift);
       }
     }
   } else if (cj->split) {
-    sub_cell_mask_j *= sub_cell_mask_j;
     for (k = 0; k < 8; k++) {
       if (cj->progeny[k] != NULL) {
         cell_shadowfax_do_pair1_density_recursive(e, ci, cj->progeny[k], sid,
-                                                  shift, sub_cell_mask_i,
-                                                  sub_cell_mask_j << k);
+                                                  shift);
       }
     }
   } else {
-    cell_shadowfax_do_pair1_density(e, ci, cj, sid, shift, sub_cell_mask_i,
-                                    sub_cell_mask_j);
+    cell_shadowfax_do_pair1_density(e, ci, cj, sid, shift);
   }
 }
 
@@ -72,17 +66,16 @@ void cell_shadowfax_do_pair2_force_recursive(const struct engine *e,
 }
 
 void cell_shadowfax_do_pair_subset_density_recursive(
-    const struct engine *e, struct cell *ci, struct part *parts_i,
-    const int *ind, int count, struct cell *cj, int sid, int flipped,
-    const double *shift, unsigned long sub_cell_mask_i,
-    unsigned long sub_cell_mask_j) {
+    const struct engine *e, struct cell *restrict ci,
+    struct part *restrict parts_i, const int *restrict ind, int count,
+    struct cell *restrict cj, const int sid, const int flipped,
+    const double *shift) {
   int k;
   /* recurse? */
   if (ci->split) {
-    sub_cell_mask_i *= sub_cell_mask_i;
+    // TODO check if possible with max smoothing length
     int sub_start_ind = 0;
     for (k = 0; k < 8 && count > 0; k++) {
-      // TODO check if possible with max smoothing length
       if (ci->progeny[k] != NULL) {
         struct cell *sub = ci->progeny[k];
         /* Does this sub contain some of the remaining particles?
@@ -105,26 +98,23 @@ void cell_shadowfax_do_pair_subset_density_recursive(
           } /* Does this sub contain all of the remaining particles? */
           cell_shadowfax_do_pair_subset_density_recursive(
               e, sub, parts_i, &ind[sub_start_ind], sub_count, cj, sid, flipped,
-              shift, sub_cell_mask_i << k, sub_cell_mask_j);
+              shift);
           sub_start_ind += sub_count;
           count -= sub_count;
         } /* Does this sub contain some of the remaining particles? */
       }   /* Progeny not NULL? */
     }
   } else if (cj->split) {
-    sub_cell_mask_j *= sub_cell_mask_j;
     for (k = 0; k < 8; k++) {
       if (cj->progeny[k] != NULL) {
         // TODO check if possible with max smoothing length
         cell_shadowfax_do_pair_subset_density_recursive(
-            e, ci, parts_i, ind, count, cj->progeny[k], sid, flipped, shift,
-            sub_cell_mask_i, sub_cell_mask_j << k);
+            e, ci, parts_i, ind, count, cj->progeny[k], sid, flipped, shift);
       }
     }
   } else {
     cell_shadowfax_do_pair_subset_density(e, ci, parts_i, ind, count, cj, sid,
-                                          flipped, shift, sub_cell_mask_i,
-                                          sub_cell_mask_j);
+                                          flipped, shift);
   }
 }
 
@@ -142,8 +132,7 @@ void cell_shadowfax_do_self1_density_recursive(const struct engine *e,
           struct cell *cl = c->progeny[l];
           if (cl != NULL) {
             sid = space_getsid(e->s, &ck, &cl, shift);
-            cell_shadowfax_do_pair1_density_recursive(e, ck, cl, sid, shift, 1,
-                                                      1);
+            cell_shadowfax_do_pair1_density_recursive(e, ck, cl, sid, shift);
           }
         }
       }

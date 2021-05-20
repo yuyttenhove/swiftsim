@@ -217,7 +217,7 @@ struct part {
   struct {
     /* Flag that keeps track of where this particle was added to the Delaunay
        tessellation. */
-    unsigned long flags[27];
+    int flag;
 
     /* Number of times this cell interacted with other cells. */
     int nface;
