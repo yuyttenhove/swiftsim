@@ -97,6 +97,9 @@
 //#define SHADOWFAX_STEER_CELL_MOTION
 /* This option evolves the total energy instead of the thermal energy */
 //#define SHADOWFAX_TOTAL_ENERGY
+/* This option performs a simple check whether or not a particle was already
+ * added to a cells delaunay triangulation (works only when not recursing) */
+#define SHADOWFAX_CHEKC_DELAUNAY_FLAG
 
 /* Source terms */
 #define SOURCETERMS_NONE
