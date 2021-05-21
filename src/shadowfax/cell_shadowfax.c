@@ -144,20 +144,22 @@ void cell_shadowfax_do_self1_density_recursive(const struct engine *e,
 
 void cell_shadowfax_do_self2_force_recursive(const struct engine *e,
                                              struct cell *restrict c) {
-  double shift[3] = {0., 0., 0.};
-  int sid;
+//  double shift[3] = {0., 0., 0.};
+//  int sid;
   if (c->split) {
     for (int k = 0; k < 8; k++) {
       struct cell *ck = c->progeny[k];
       if (ck != NULL) {
         cell_shadowfax_do_self2_force_recursive(e, c->progeny[k]);
-        for (int l = k + 1; l < 8; l++) {
-          struct cell *cl = c->progeny[l];
-          if (cl != NULL) {
-            sid = space_getsid(e->s, &ck, &cl, shift);
-            cell_shadowfax_do_pair2_force_recursive(e, ck, cl, sid, shift);
-          }
-        }
+        /* Pair interactions already handled in dopair function...
+         * TODO: how to hanlde this better? */
+//        for (int l = k + 1; l < 8; l++) {
+//          struct cell *cl = c->progeny[l];
+//          if (cl != NULL) {
+//            sid = space_getsid(e->s, &ck, &cl, shift);
+//            cell_shadowfax_do_pair2_force_recursive(e, ck, cl, sid, shift);
+//          }
+//        }
       }
     }
   } else {
