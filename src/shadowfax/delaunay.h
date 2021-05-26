@@ -301,9 +301,6 @@ inline static void delaunay_init_vertex(struct delaunay* restrict d, int v,
   d->search_radii[v] = DBL_MAX;
 
   /* set the particle pointer */
-  if (v >= d->vertex_size) {
-    error("Error!");
-  }
   d->part_pointers[v] = part_pointer;
 }
 
@@ -1352,9 +1349,9 @@ inline static int delaunay_add_vertex(struct delaunay* restrict d, int v,
     int ngb0 = d->triangles[t0].neighbours[0];
     int ngb1 = d->triangles[t0].neighbours[1];
     int ngb2 = d->triangles[t0].neighbours[2];
-    int ngbi0 = d->triangles[t0].index_in_neighbour[0];
-    int ngbi1 = d->triangles[t0].index_in_neighbour[1];
-    int ngbi2 = d->triangles[t0].index_in_neighbour[2];
+    int ix_in_ngb0 = d->triangles[t0].index_in_neighbour[0];
+    int ix_in_ngb1 = d->triangles[t0].index_in_neighbour[1];
+    int ix_in_ngb2 = d->triangles[t0].index_in_neighbour[2];
 
     /* create 3 new triangles (drawing the triangles helps to check that the
        code below is indeed correct) */
@@ -1364,22 +1361,22 @@ inline static int delaunay_add_vertex(struct delaunay* restrict d, int v,
     triangle_init(&d->triangles[t0], tv0, tv1, v);
     triangle_swap_neighbour(&d->triangles[t0], 0, t1, 1);
     triangle_swap_neighbour(&d->triangles[t0], 1, t2, 0);
-    triangle_swap_neighbour(&d->triangles[t0], 2, ngb2, ngbi2);
-    triangle_swap_neighbour(&d->triangles[ngb2], ngbi2, t0, 2);
+    triangle_swap_neighbour(&d->triangles[t0], 2, ngb2, ix_in_ngb2);
+    triangle_swap_neighbour(&d->triangles[ngb2], ix_in_ngb2, t0, 2);
 
     delaunay_log("Creating triangle %i: %i %i %i", t1, tv1, tv2, v);
     triangle_init(&d->triangles[t1], tv1, tv2, v);
     triangle_swap_neighbour(&d->triangles[t1], 0, t2, 1);
     triangle_swap_neighbour(&d->triangles[t1], 1, t0, 0);
-    triangle_swap_neighbour(&d->triangles[t1], 2, ngb0, ngbi0);
-    triangle_swap_neighbour(&d->triangles[ngb0], ngbi0, t1, 2);
+    triangle_swap_neighbour(&d->triangles[t1], 2, ngb0, ix_in_ngb0);
+    triangle_swap_neighbour(&d->triangles[ngb0], ix_in_ngb0, t1, 2);
 
     delaunay_log("Creating triangle %i: %i %i %i", t2, tv2, tv0, v);
     triangle_init(&d->triangles[t2], tv2, tv0, v);
     triangle_swap_neighbour(&d->triangles[t2], 0, t0, 1);
     triangle_swap_neighbour(&d->triangles[t2], 1, t1, 0);
-    triangle_swap_neighbour(&d->triangles[t2], 2, ngb1, ngbi1);
-    triangle_swap_neighbour(&d->triangles[ngb1], ngbi1, t2, 2);
+    triangle_swap_neighbour(&d->triangles[t2], 2, ngb1, ix_in_ngb1);
+    triangle_swap_neighbour(&d->triangles[ngb1], ix_in_ngb1, t2, 2);
 
     /* update the vertex-triangle links */
     d->vertex_triangles[tv0] = t0;
