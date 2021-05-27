@@ -183,7 +183,7 @@ void cell_shadowfax_end_density_recursive(struct cell *restrict c) {
 void cell_shadowfax_write_tesselations(const struct cell *c, FILE *dfile,
                                        FILE *vfile, size_t *offset) {
   if (c->split) {
-    for (k = 0; k < 8; k++) {
+    for (int k = 0; k < 8; k++) {
       if (c->progeny[k] != NULL) {
         cell_shadowfax_write_tesselations(c->progeny[k], dfile, vfile, offset);
       }
