@@ -78,18 +78,18 @@ void cell_shadowfax_do_pair_subset_density_recursive(
     for (k = 0; k < 8 && count > 0; k++) {
       if (ci->progeny[k] != NULL) {
         struct cell *sub = ci->progeny[k];
-        /* Does this sub contain some of the remaining particles?
-         * (Particles are stored in order of sub cells) */
+        /* Does this sub-cell contain some of the remaining particles?
+         * (Particles are stored in order of sub-cells) */
         if (&parts_i[ind[sub_start_ind]] >= &sub->hydro.parts[0] &&
             &parts_i[ind[sub_start_ind]] <
                 &sub->hydro.parts[sub->hydro.count]) {
           int sub_count;
-          /* Does this sub contain all of the remaining particles? */
+          /* Does this sub-cell contain all of the remaining particles? */
           if (&parts_i[ind[count - 1]] < &sub->hydro.parts[sub->hydro.count]) {
             sub_count = count;
           } else {
-            /* Some, but not all remaining particles are in this sub
-             * Find the number of particles in this sub. */
+            /* Some, but not all remaining particles are in this sub-cell
+             * Find the number of particles in this sub-cell. */
             sub_count = 1;
             while (&parts_i[ind[sub_start_ind + sub_count]] <
                    &sub->hydro.parts[sub->hydro.count]) {
@@ -120,17 +120,20 @@ void cell_shadowfax_do_pair_subset_density_recursive(
 
 void cell_shadowfax_do_self1_density_recursive(const struct engine *e,
                                                struct cell *restrict c) {
+  if (!cell_is_active_hydro(c, e)) return;
+
   double shift[3] = {0., 0., 0.};
   int sid;
   /* Recurse? */
   if (c->split) {
     for (int k = 0; k < 8; k++) {
-      struct cell *ck = c->progeny[k];
-      if (ck != NULL) {
+      if (c->progeny[k] != NULL) {
         cell_shadowfax_do_self1_density_recursive(e, c->progeny[k]);
         for (int l = k + 1; l < 8; l++) {
-          struct cell *cl = c->progeny[l];
-          if (cl != NULL) {
+          if (c->progeny[l] != NULL) {
+            struct cell *ck = c->progeny[k];
+            struct cell *cl = c->progeny[l];
+            /* this might swap ck and cl! */
             sid = space_getsid(e->s, &ck, &cl, shift);
             cell_shadowfax_do_pair1_density_recursive(e, ck, cl, sid, shift);
           }
@@ -180,7 +183,7 @@ void cell_shadowfax_end_density_recursive(struct cell *restrict c) {
 void cell_shadowfax_write_tesselations(const struct cell *c, FILE *dfile,
                                        FILE *vfile, size_t *offset) {
   if (c->split) {
-    for (int k = 0; k < 8; k++) {
+    for (k = 0; k < 8; k++) {
       if (c->progeny[k] != NULL) {
         cell_shadowfax_write_tesselations(c->progeny[k], dfile, vfile, offset);
       }
