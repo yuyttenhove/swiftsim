@@ -30,9 +30,9 @@ cell_malloc_delaunay_tessellation(struct cell *c) {
   const int count = c->hydro.count;
   double *loc, *width;
 
-  if (c->super != NULL) {
-    loc = c->super->loc;
-    width = c->super->width;
+  if (c->hydro.super != NULL) {
+    loc = c->hydro.super->loc;
+    width = c->hydro.super->width;
   } else {
     error("Trying to allocate a delaunay tesselation for a cell above the super level!");
   }
