@@ -1514,12 +1514,13 @@ int main(int argc, char *argv[]) {
     /* Take a step. */
     engine_step(&e);
 
-    if ((j % 200) == 0) {
+    if ((j % 50) == 0) {
       char fname[20];
       sprintf(fname, "voronoi%d.txt", j);
       FILE *vfile = fopen(fname, "w");
-      sprintf(fname, "delaunay%d.txt", j);
-      FILE *file = fopen(fname, "w");
+//      sprintf(fname, "delaunay%d.txt", j);
+//      FILE *file = fopen(fname, "w");
+      FILE *file = NULL;
       size_t offset = 0;
       for (int i = 0; i < s.nr_cells; ++i) {
         cell_shadowfax_write_tesselations(&s.cells_top[i], file, vfile, &offset);
