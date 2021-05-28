@@ -293,7 +293,7 @@ static inline void voronoi_init(struct voronoi *restrict v,
       /* This could mean that a neighbouring cell of this grids cell is empty!
        * Or that we did not add all the necessary ghost vertices to the delaunay
        * tesselation. */
-      error("Vertex is part of triangle with Dummy vertex!");
+      error("Vertex is part of triangle with Dummy vertex! This could mean that one of the neighbouring cells is empty.");
     } else {
       v0x = d->vertices[2 * v0];
       v0y = d->vertices[2 * v0 + 1];
@@ -302,7 +302,7 @@ static inline void voronoi_init(struct voronoi *restrict v,
       v1x = parts[v1].x[0];
       v1y = parts[v1].x[1];
     } else if (v1 < d->ngb_offset) {
-      error("Vertex is part of triangle with Dummy vertex!");
+      error("Vertex is part of triangle with Dummy vertex! This could mean that one of the neighbouring cells is empty.");
     } else {
       v1x = d->vertices[2 * v1];
       v1y = d->vertices[2 * v1 + 1];
@@ -311,7 +311,7 @@ static inline void voronoi_init(struct voronoi *restrict v,
       v2x = parts[v2].x[0];
       v2y = parts[v2].x[1];
     } else if (v2 < d->ngb_offset) {
-      error("Vertex is part of triangle with Dummy vertex!");
+      error("Vertex is part of triangle with Dummy vertex! This could mean that one of the neighbouring cells is empty.");
     } else {
       v2x = d->vertices[2 * v2];
       v2y = d->vertices[2 * v2 + 1];
