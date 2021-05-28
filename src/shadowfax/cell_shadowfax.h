@@ -34,7 +34,9 @@ cell_malloc_delaunay_tessellation(struct cell *c) {
     loc = c->hydro.super->loc;
     width = c->hydro.super->width;
   } else {
-    error("Trying to allocate a delaunay tesselation for a cell above the super level!");
+    error(
+        "Trying to allocate a delaunay tesselation for a cell above the super "
+        "level!");
   }
 
   if (c->hydro.shadowfax_enabled == 1) {
