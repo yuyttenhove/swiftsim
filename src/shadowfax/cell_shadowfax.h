@@ -471,6 +471,20 @@ __attribute__((always_inline)) INLINE static void cell_shadowfax_do_self2_force(
 void cell_shadowfax_do_self2_force_recursive(const struct engine *e,
                                              struct cell *restrict c);
 
+__attribute__((always_inline)) INLINE static void
+cell_shadowfax_do_self_subset_density(const struct engine *e,
+                                      struct cell *restrict c,
+                                      struct part *restrict parts,
+                                      const int *restrict ind,
+                                      int count) {
+  /* Nothing should happen here at the moment */
+}
+
+void cell_shadowfax_do_self_subset_density_recursive(const struct engine *e,
+                                                     struct cell *c,
+                                                     struct part *parts,
+                                                     const int *ind, int count);
+
 __attribute__((always_inline)) INLINE static void cell_shadowfax_end_density(
     struct cell *restrict c) {
   voronoi_init(&c->hydro.vortess, &c->hydro.deltess, c->hydro.parts);
