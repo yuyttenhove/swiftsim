@@ -173,6 +173,61 @@ void cell_shadowfax_do_self2_force_recursive(const struct engine *e,
   }
 }
 
+void cell_shadowfax_do_self_subset_density_recursive(
+    const struct engine *e, struct cell *restrict c,
+    struct part *restrict parts, const int *restrict ind, int count) {
+  int k, j, sid, flipped;
+  double shift[3] = {0., 0., 0.};
+  /* recurse? */
+  if (c->split) {
+    int sub_start_ind = 0;
+    for (k = 0; k < 8 && count > 0; k++) {
+      if (c->progeny[k] != NULL) {
+        struct cell *sub = c->progeny[k];
+        /* Does this sub-cell contain some of the remaining particles?
+         * (Particles are stored in order of sub-cells) */
+        if (&parts[ind[sub_start_ind]] >= &sub->hydro.parts[0] &&
+            &parts[ind[sub_start_ind]] < &sub->hydro.parts[sub->hydro.count]) {
+          int sub_count;
+          /* Does this sub-cell contain all of the remaining particles? */
+          if (&parts[ind[count - 1]] < &sub->hydro.parts[sub->hydro.count]) {
+            sub_count = count;
+          } else {
+            /* Some, but not all remaining particles are in this sub-cell
+             * Find the number of particles in this sub-cell. */
+            sub_count = 1;
+            while (&parts[ind[sub_start_ind + sub_count]] <
+                   &sub->hydro.parts[sub->hydro.count]) {
+              sub_count++;
+            }
+          } /* Does this sub contain all of the remaining particles? */
+
+          /* recursive self interaction of this sub cells */
+          cell_shadowfax_do_self_subset_density_recursive(e, sub, parts, &ind[sub_start_ind], sub_count);
+
+          /* pair interactions of this sub-cell with the other sub-cells of c*/
+          for (j = 0; j < 8; j++) {
+            if (j != k && c->progeny[j] != NULL) {
+              struct cell *ck = c->progeny[k];
+              struct cell *cj = c->progeny[j];
+              sid = space_getsid(e->s, &ck, &cj, shift);
+              flipped = (ck != sub);
+              cell_shadowfax_do_pair_subset_density_recursive(
+                  e, sub, parts, &ind[sub_start_ind], sub_count, c->progeny[j],
+                  sid, flipped, shift);
+            }
+          }
+          /* Update indices */
+          sub_start_ind += sub_count;
+          count -= sub_count;
+        } /* Does this sub contain some of the remaining particles? */
+      }
+    }
+  } else {
+    cell_shadowfax_do_self_subset_density(e, c, parts, ind, count);
+  }
+}
+
 void cell_shadowfax_end_density_recursive(struct cell *restrict c) {
   if (c->split) {
     for (int k = 0; k < 8; k++)
