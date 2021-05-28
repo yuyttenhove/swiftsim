@@ -3,6 +3,9 @@
 #include "../space_getsid.h"
 
 void cell_malloc_delaunay_tessellation_recursive(struct cell *c) {
+  /* anything to do here? */
+  if (c->hydro.count == 0) return;
+  /* recurse? */
   if (c->split) {
     for (int k = 0; k < 8; k++) {
       if (c->progeny[k] != NULL) {
