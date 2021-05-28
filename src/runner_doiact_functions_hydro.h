@@ -919,7 +919,7 @@ void DOSELF_SUBSET(struct runner *r, struct cell *restrict ci,
 #endif
 
 #if defined(SHADOWFAX_NEW_SPH)
-//  error("Not implemented yet!");
+  cell_shadowfax_do_self_subset_density_recursive(e, ci, parts, ind, count);
 #endif
 
   TIMER_TIC;
