@@ -51,7 +51,10 @@ void cell_shadowfax_do_pair2_force_recursive(const struct engine *e,
    * the pairs corresponding to direction sid, INCLUDING those resulting from
    * recursive SELF interactions! */
   int k;
-  /* recurse */
+  if (ci->loc[0] ==  0.83333333333333326 && ci->loc[1] == 0.) {
+    k = 0;
+  }
+  /* recurse? */
   if (ci->split) {
     for (k = 0; k < 8; k++) {
       if (ci->progeny[k] != NULL) {
@@ -146,16 +149,22 @@ void cell_shadowfax_do_self1_density_recursive(const struct engine *e,
 
 void cell_shadowfax_do_self2_force_recursive(const struct engine *e,
                                              struct cell *restrict c) {
+  double shift[3] = {0., 0., 0.};
+  int sid;
   /* recurse? */
   if (c->split) {
     for (int k = 0; k < 8; k++) {
-      struct cell *ck = c->progeny[k];
-      if (ck != NULL) {
+      if (c->progeny[k] != NULL) {
         cell_shadowfax_do_self2_force_recursive(e, c->progeny[k]);
-        /* In the self interaction, we only handle force interactions for pairs
-         * of two particles from the cell itself, any interactions between a
-         * particle from this cell and a neighbouring (sub-)cell are handled in the
-         * pair interaction! */
+        for (int l = k + 1; l < 8; l++) {
+          if (c->progeny[l] != NULL) {
+            struct cell *ck = c->progeny[k];
+            struct cell *cl = c->progeny[l];
+            /* this might swap ck and cl! */
+            sid = space_getsid(e->s, &ck, &cl, shift);
+            cell_shadowfax_do_pair2_force_recursive(e, ck, cl, sid, shift);
+          }
+        }
       }
     }
   } else {
@@ -204,7 +213,7 @@ void cell_shadowfax_do_self_subset_density_recursive(
               flipped = (ck != sub);
               cell_shadowfax_do_pair_subset_density_recursive(
                   e, sub, parts, &ind[sub_start_ind], sub_count, c->progeny[j],
-                  sid, flipped, shift);
+                  sid, flipped, shift, 1);
             }
           }
           /* Update indices */
