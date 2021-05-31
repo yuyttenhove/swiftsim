@@ -60,8 +60,7 @@ void cell_malloc_delaunay_tessellation_recursive(struct cell *c);
 
 __attribute__((always_inline)) INLINE static void
 cell_shadowfax_do_pair1_density(const struct engine *e, struct cell *ci,
-                                struct cell *cj, int sid, const double *shift,
-                                const int from_self) {
+                                struct cell *cj, int sid, const double *shift) {
 
   if (ci == cj) error("Interacting cell with itself!");
 
