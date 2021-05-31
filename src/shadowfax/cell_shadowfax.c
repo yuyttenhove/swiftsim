@@ -213,7 +213,7 @@ void cell_shadowfax_do_self_subset_density_recursive(
               flipped = (ck != sub);
               cell_shadowfax_do_pair_subset_density_recursive(
                   e, sub, parts, &ind[sub_start_ind], sub_count, c->progeny[j],
-                  sid, flipped, shift, 1);
+                  sid, flipped, shift);
             }
           }
           /* Update indices */
