@@ -47,19 +47,15 @@ void cell_shadowfax_do_pair2_force_recursive(const struct engine *e,
                                              struct cell *restrict ci,
                                              struct cell *restrict cj, int sid,
                                              const double *shift) {
+  /* We don't actually care about cj, we just do all the force interactions for
+   * the pairs corresponding to direction sid, INCLUDING those resulting from
+   * recursive SELF interactions! */
   int k;
   /* recurse */
   if (ci->split) {
     for (k = 0; k < 8; k++) {
       if (ci->progeny[k] != NULL) {
         cell_shadowfax_do_pair2_force_recursive(e, ci->progeny[k], cj, sid,
-                                                shift);
-      }
-    }
-  } else if (cj->split) {
-    for (k = 0; k < 8; k++) {
-      if (cj->progeny[k] != NULL) {
-        cell_shadowfax_do_pair2_force_recursive(e, ci, cj->progeny[k], sid,
                                                 shift);
       }
     }
@@ -150,22 +146,16 @@ void cell_shadowfax_do_self1_density_recursive(const struct engine *e,
 
 void cell_shadowfax_do_self2_force_recursive(const struct engine *e,
                                              struct cell *restrict c) {
-//  double shift[3] = {0., 0., 0.};
-//  int sid;
+  /* recurse? */
   if (c->split) {
     for (int k = 0; k < 8; k++) {
       struct cell *ck = c->progeny[k];
       if (ck != NULL) {
         cell_shadowfax_do_self2_force_recursive(e, c->progeny[k]);
-        /* Pair interactions already handled in dopair function...
-         * TODO: how to hanlde this better? */
-//        for (int l = k + 1; l < 8; l++) {
-//          struct cell *cl = c->progeny[l];
-//          if (cl != NULL) {
-//            sid = space_getsid(e->s, &ck, &cl, shift);
-//            cell_shadowfax_do_pair2_force_recursive(e, ck, cl, sid, shift);
-//          }
-//        }
+        /* In the self interaction, we only handle force interactions for pairs
+         * of two particles from the cell itself, any interactions between a
+         * particle from this cell and a neighbouring (sub-)cell are handled in the
+         * pair interaction! */
       }
     }
   } else {

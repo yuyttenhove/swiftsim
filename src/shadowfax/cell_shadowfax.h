@@ -260,10 +260,8 @@ __attribute__((always_inline)) INLINE static void cell_shadowfax_do_pair2_force(
     const struct engine *e, struct cell *restrict ci, struct cell *restrict cj,
     int sid, const double *shift) {
 
-  if (ci == cj) error("Interacting cell with itself!");
-
   /* anything to do here? */
-  if (!(cell_is_active_hydro(ci, e) || cell_is_active_hydro(cj, e))) return;
+  if (!cell_is_active_hydro(ci, e)) return;
 
   struct voronoi *vortess = &ci->hydro.vortess;
   /* loop over voronoi faces between ci and cj */
