@@ -1428,7 +1428,7 @@ void DOPAIR2(struct runner *r, struct cell *ci, struct cell *cj, const int sid,
 #elif FUNCTION_TASK_LOOP == TASK_LOOP_GRADIENT
   cell_shadowfax_do_pair2_gradient(e, ci, cj, sid, shift);
 #elif FUNCTION_TASK_LOOP == TASK_LOOP_FORCE
-  cell_shadowfax_do_pair2_force_recursive(e, ci, cj, sid, shift);
+  cell_shadowfax_do_pair2_force(e, ci, cj, sid, shift);
 #else
   error("Unsupported task loop");
 #endif

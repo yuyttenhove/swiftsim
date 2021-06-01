@@ -24,7 +24,6 @@ void cell_shadowfax_do_pair1_density_recursive(const struct engine *e,
   int k;
   /* recurse? */
   if (ci->split) {
-    // TODO check if possible with max smoothing length
     for (k = 0; k < 8; k++) {
       if (ci->progeny[k] != NULL) {
         cell_shadowfax_do_pair1_density_recursive(e, ci->progeny[k], cj, sid,
@@ -40,30 +39,6 @@ void cell_shadowfax_do_pair1_density_recursive(const struct engine *e,
     }
   } else {
     cell_shadowfax_do_pair1_density(e, ci, cj, sid, shift);
-  }
-}
-
-void cell_shadowfax_do_pair2_force_recursive(const struct engine *e,
-                                             struct cell *restrict ci,
-                                             struct cell *restrict cj, int sid,
-                                             const double *shift) {
-  /* We don't actually care about cj, we just do all the force interactions for
-   * the pairs corresponding to direction sid, INCLUDING those resulting from
-   * recursive SELF interactions! */
-  int k;
-  if (ci->loc[0] ==  0.83333333333333326 && ci->loc[1] == 0.) {
-    k = 0;
-  }
-  /* recurse? */
-  if (ci->split) {
-    for (k = 0; k < 8; k++) {
-      if (ci->progeny[k] != NULL) {
-        cell_shadowfax_do_pair2_force_recursive(e, ci->progeny[k], cj, sid,
-                                                shift);
-      }
-    }
-  } else {
-    cell_shadowfax_do_pair2_force(e, ci, cj, sid, shift);
   }
 }
 
@@ -106,14 +81,6 @@ void cell_shadowfax_do_pair_subset_density_recursive(
         } /* Does this sub contain some of the remaining particles? */
       }   /* Progeny not NULL? */
     }
-  } else if (cj->split) {
-    for (k = 0; k < 8; k++) {
-      if (cj->progeny[k] != NULL) {
-        // TODO check if possible with max smoothing length
-        cell_shadowfax_do_pair_subset_density_recursive(
-            e, ci, parts_i, ind, count, cj->progeny[k], sid, flipped, shift);
-      }
-    }
   } else {
     cell_shadowfax_do_pair_subset_density(e, ci, parts_i, ind, count, cj, sid,
                                           flipped, shift);
@@ -149,22 +116,11 @@ void cell_shadowfax_do_self1_density_recursive(const struct engine *e,
 
 void cell_shadowfax_do_self2_force_recursive(const struct engine *e,
                                              struct cell *restrict c) {
-  double shift[3] = {0., 0., 0.};
-  int sid;
   /* recurse? */
   if (c->split) {
     for (int k = 0; k < 8; k++) {
       if (c->progeny[k] != NULL) {
         cell_shadowfax_do_self2_force_recursive(e, c->progeny[k]);
-        for (int l = k + 1; l < 8; l++) {
-          if (c->progeny[l] != NULL) {
-            struct cell *ck = c->progeny[k];
-            struct cell *cl = c->progeny[l];
-            /* this might swap ck and cl! */
-            sid = space_getsid(e->s, &ck, &cl, shift);
-            cell_shadowfax_do_pair2_force_recursive(e, ck, cl, sid, shift);
-          }
-        }
       }
     }
   } else {
@@ -175,7 +131,7 @@ void cell_shadowfax_do_self2_force_recursive(const struct engine *e,
 void cell_shadowfax_do_self_subset_density_recursive(
     const struct engine *e, struct cell *restrict c,
     struct part *restrict parts, const int *restrict ind, int count) {
-  int k, j, sid, flipped;
+  int k, l, sid, flipped;
   double shift[3] = {0., 0., 0.};
   /* recurse? */
   if (c->split) {
@@ -205,14 +161,14 @@ void cell_shadowfax_do_self_subset_density_recursive(
           cell_shadowfax_do_self_subset_density_recursive(e, sub, parts, &ind[sub_start_ind], sub_count);
 
           /* pair interactions of this sub-cell with the other sub-cells of c*/
-          for (j = 0; j < 8; j++) {
-            if (j != k && c->progeny[j] != NULL) {
+          for (l = 0; l < 8; l++) {
+            if (l != k && c->progeny[l] != NULL) {
               struct cell *ck = c->progeny[k];
-              struct cell *cj = c->progeny[j];
+              struct cell *cj = c->progeny[l];
               sid = space_getsid(e->s, &ck, &cj, shift);
               flipped = (ck != sub);
               cell_shadowfax_do_pair_subset_density_recursive(
-                  e, sub, parts, &ind[sub_start_ind], sub_count, c->progeny[j],
+                  e, sub, parts, &ind[sub_start_ind], sub_count, c->progeny[l],
                   sid, flipped, shift);
             }
           }
