@@ -263,10 +263,34 @@ __attribute__((always_inline)) INLINE static void cell_shadowfax_do_pair1_force(
 __attribute__((always_inline)) INLINE static void cell_shadowfax_do_pair2_force(
     const struct engine *e, struct cell *restrict ci, struct cell *restrict cj,
     int sid, const double *shift) {
-  /* We do not longer need a double for loop over the particles to do the force
-   * interaction, so this pair task is not longer the best way to do the force
-   * calculations */
+
+  /* anything to do here? */
+  if (!cell_is_active_hydro(ci, e)) return;
+
+  struct voronoi *vortess = &ci->hydro.vortess;
+  /* loop over voronoi faces between ci and cj */
+  for (int i = 0; i < vortess->pair_index[26 - sid]; ++i) {
+    struct voronoi_pair *pair = &vortess->pairs[26 - sid][i];
+    /* at least one of the parts active? */
+    struct part* part_left = pair->left;
+    struct part* part_right = pair->right;
+    /* check if right particle in cj */
+    if (!(part_right->x[0] >= cj->loc[0] && part_right->x[0] < cj->loc[0] + cj->width[0]
+          && part_right->x[1] >= cj->loc[1] && part_right->x[1] < cj->loc[1] + cj->width[1]
+          && part_right->x[2] >= cj->loc[2] && part_right->x[2] < cj->loc[2] + cj->width[2])) {
+      continue;
+    }
+    if (part_left->force.active == 1 || part_right->force.active == 1) {
+      hydro_shadowfax_flux_exchange(part_left, part_right, pair->midpoint,
+                                    pair->surface_area, shift);
+    } /* at least one of the parts active? */
+  }   /* loop over voronoi faces between ci and cj */
 }
+
+void cell_shadowfax_do_pair2_force_recursive(const struct engine *e,
+                                             struct cell *restrict ci,
+                                             struct cell *restrict cj, int sid,
+                                             const double *shift);
 
 __attribute__((always_inline)) INLINE static void
 cell_shadowfax_do_pair_subset_density(const struct engine *e,
@@ -432,28 +456,15 @@ __attribute__((always_inline)) INLINE static void cell_shadowfax_do_self1_force(
 
 __attribute__((always_inline)) INLINE static void cell_shadowfax_do_self2_force(
     const struct engine *e, struct cell *restrict c) {
-  double shift[3] = {0., 0., 0.};
-  int i, sid;
 
-  /* Pairs within cell itself */
+  double shift[3] = {0., 0., 0.};
+
   struct voronoi *vortess = &c->hydro.vortess;
-  for (i = 0; i < vortess->pair_index[13]; ++i) {
+  for (int i = 0; i < vortess->pair_index[13]; ++i) {
     struct voronoi_pair *pair = &vortess->pairs[13][i];
     if (pair->left->force.active == 1 || pair->right->force.active == 1) {
       hydro_shadowfax_flux_exchange(pair->left, pair->right, pair->midpoint,
                                     pair->surface_area, shift);
-    }
-  }
-
-  /* Pairs on border with other cells */
-  for (sid = 14; sid < 27; sid++) {
-    for (i = 0; i < vortess->pair_index[sid]; ++i) {
-      struct voronoi_pair *pair = &vortess->pairs[sid][i];
-      if (pair->left->force.active == 1 || pair->right->force.active == 1) {
-        get_shift(pair->left->x, pair->right->x, e->s, shift);
-        hydro_shadowfax_flux_exchange(pair->left, pair->right, pair->midpoint,
-                                      pair->surface_area, shift);
-      }
     }
   }
 }
