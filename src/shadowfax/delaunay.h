@@ -212,6 +212,9 @@ struct delaunay {
    *  contains a specific neighbouring vertex. */
   int* ngb_cell_sids;
 
+  /*! @brief Pointers to neighbour cells containing corresponding particles */
+  struct cell** ngb_cell_ptrs;
+
   /*! @brief Current used size of the neighbouring vertex bookkeeping arrays
    *  (and next valid index in this array). */
   int ngb_index;
@@ -565,8 +568,7 @@ inline static void delaunay_check_tessellation(struct delaunay* restrict d) {
  */
 inline static void delaunay_reset(struct delaunay* restrict d,
                                   const double* cell_loc,
-                                  const double* cell_width,
-                                  int vertex_size) {
+                                  const double* cell_width, int vertex_size) {
 
   if (vertex_size == 0) {
     /* Don't bother for empty cells */
@@ -722,6 +724,8 @@ inline static void delaunay_init(struct delaunay* restrict d,
 
   d->ngb_cell_sids =
       (int*)swift_malloc("delaunay ngb cells", vertex_size * sizeof(int));
+  d->ngb_cell_ptrs = (struct cell**)swift_malloc(
+      "delaunay ngb cells", vertex_size * sizeof(struct cell*));
   d->ngb_size = vertex_size;
 
   /* initialise the structure used to perform exact geometrical tests */
@@ -751,6 +755,7 @@ inline static void delaunay_destroy(struct delaunay* restrict d) {
     swift_free("delaunay triangles", d->triangles);
     swift_free("delaunay queue", d->queue);
     swift_free("delaunay ngb cells", d->ngb_cell_sids);
+    swift_free("delaunay ngb cell pointers", d->ngb_cell_ptrs);
     geometry_destroy(&d->geometry);
   }
 }
@@ -1509,8 +1514,9 @@ inline static void delaunay_add_local_vertex(struct delaunay* restrict d, int v,
   }
 }
 
-inline static void delaunay_add_new_vertex(struct delaunay* restrict d,
-                                           double x, double y, int cell_sid,
+inline static void delaunay_add_new_vertex(struct delaunay* d, double x,
+                                           double y, int cell_sid,
+                                           struct cell* c,
                                            struct part* part_pointer) {
   if (d->active != 1) {
     error("Trying to add a vertex to an inactive Delaunay tessellation!");
@@ -1530,9 +1536,13 @@ inline static void delaunay_add_new_vertex(struct delaunay* restrict d,
       d->ngb_size <<= 1;
       d->ngb_cell_sids = (int*)swift_realloc(
           "delaunay ngb cells", d->ngb_cell_sids, d->ngb_size * sizeof(int));
+      d->ngb_cell_ptrs = (struct cell**)swift_realloc(
+          "delaunay ngb cell pointers", d->ngb_cell_ptrs,
+          d->ngb_size * sizeof(struct cell*));
     }
     delaunay_assert(d->ngb_index == v - d->ngb_offset);
     d->ngb_cell_sids[d->ngb_index] = cell_sid;
+    d->ngb_cell_ptrs[d->ngb_index] = c;
     ++d->ngb_index;
   }
 }

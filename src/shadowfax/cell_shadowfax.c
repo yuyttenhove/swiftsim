@@ -61,6 +61,13 @@ void cell_shadowfax_do_pair2_force_recursive(const struct engine *e,
                                                 shift);
       }
     }
+  } else if (cj->split) {
+    for (k = 0; k < 8; k++) {
+      if (cj->progeny[k] != NULL) {
+        cell_shadowfax_do_pair2_force_recursive(e, ci, cj->progeny[k], sid,
+                                                shift);
+      }
+    }
   } else {
     cell_shadowfax_do_pair2_force(e, ci, cj, sid, shift);
   }
@@ -104,6 +111,13 @@ void cell_shadowfax_do_pair_subset_density_recursive(
           count -= sub_count;
         } /* Does this sub contain some of the remaining particles? */
       }   /* Progeny not NULL? */
+    }
+  } else if (cj->split) {
+    for (k = 0; k < 8; k++) {
+      if (cj->progeny[k] != NULL) {
+        cell_shadowfax_do_pair_subset_density_recursive(
+            e, ci, parts_i, ind, count, cj->progeny[k], sid, flipped, shift);
+      }
     }
   } else {
     cell_shadowfax_do_pair_subset_density(e, ci, parts_i, ind, count, cj, sid,

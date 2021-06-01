@@ -149,7 +149,7 @@ cell_shadowfax_do_pair1_density(const struct engine *e, struct cell *ci,
         /* Hit or miss? */
         if (r2 < hig2) {
           delaunay_add_new_vertex(&ci->hydro.deltess, pj->x[0] + shift[0],
-                                  pj->x[1] + shift[1], 26 - sid, pj);
+                                  pj->x[1] + shift[1], 26 - sid, cj, pj);
         }
       } /* loop over the parts in cj. */
     }   /* loop over the parts in ci. */
@@ -202,7 +202,7 @@ cell_shadowfax_do_pair1_density(const struct engine *e, struct cell *ci,
         /* Hit or miss? */
         if (r2 < hjg2) {
           delaunay_add_new_vertex(&cj->hydro.deltess, pi->x[0] - shift[0],
-                                  pi->x[1] - shift[1], sid, pi);
+                                  pi->x[1] - shift[1], sid, ci, pi);
         }
       } /* loop over the parts in ci. */
     }   /* loop over the parts in cj. */
@@ -275,9 +275,7 @@ __attribute__((always_inline)) INLINE static void cell_shadowfax_do_pair2_force(
     struct part* part_left = pair->left;
     struct part* part_right = pair->right;
     /* check if right particle in cj */
-    if (!(part_right->x[0] >= cj->loc[0] && part_right->x[0] < cj->loc[0] + cj->width[0]
-          && part_right->x[1] >= cj->loc[1] && part_right->x[1] < cj->loc[1] + cj->width[1]
-          && part_right->x[2] >= cj->loc[2] && part_right->x[2] < cj->loc[2] + cj->width[2])) {
+    if (pair->right_cell != cj) {
       continue;
     }
     if (part_left->force.active == 1 || part_right->force.active == 1) {
@@ -346,7 +344,7 @@ cell_shadowfax_do_pair_subset_density(const struct engine *e,
         /* Hit or miss? */
         if (r2 < hig2) {
           delaunay_add_new_vertex(&ci->hydro.deltess, pj->x[0] + shift[0],
-                                  pj->x[1] + shift[1], 26 - sid, pj);
+                                  pj->x[1] + shift[1], 26 - sid, cj, pj);
         }
       } /* loop over the parts in cj. */
     }   /* loop over the parts in ci. */
@@ -389,7 +387,7 @@ cell_shadowfax_do_pair_subset_density(const struct engine *e,
         /* Hit or miss? */
         if (r2 < hig2) {
           delaunay_add_new_vertex(&ci->hydro.deltess, pj->x[0] + shift[0],
-                                  pj->x[1] + shift[1], sid, pj);
+                                  pj->x[1] + shift[1], sid, cj, pj);
         }
       } /* loop over the parts in cj. */
     }   /* loop over the parts in ci. */
@@ -521,7 +519,7 @@ __attribute__((always_inline)) INLINE static void cell_shadowfax_do_pair_naive(
     /* Get a pointer to the ith particle. */
     struct part *restrict pi = &parts_i[pid];
     delaunay_add_new_vertex(&cj->hydro.deltess, pi->x[0] - shift[0],
-                            pi->x[1] - shift[1], sid, pi);
+                            pi->x[1] - shift[1], sid, ci, pi);
   }
 
   /* Loop over the parts in cj. */
@@ -530,7 +528,7 @@ __attribute__((always_inline)) INLINE static void cell_shadowfax_do_pair_naive(
     /* Get a pointer to the jth particle. */
     struct part *restrict pj = &parts_j[pjd];
     delaunay_add_new_vertex(&ci->hydro.deltess, pj->x[0] + shift[0],
-                            pj->x[1] + shift[1], 26 - sid, pj);
+                            pj->x[1] + shift[1], 26 - sid, cj, pj);
   }
 }
 

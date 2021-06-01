@@ -60,6 +60,8 @@ struct voronoi_pair {
    * neighbouring cell). */
   struct part *right;
 
+  struct cell *right_cell;
+
   /*! Surface area of the interface. */
   double surface_area;
 
@@ -172,7 +174,8 @@ static inline double voronoi_compute_midpoint_area_face(double ax, double ay,
  * within the cell determined by sid.
  * @param ax,ay,bx,by Vertices of the interface.
  */
-static inline void voronoi_add_pair(struct voronoi *restrict v, int sid,
+static inline void voronoi_add_pair(struct voronoi *v, int sid,
+                                    struct cell *restrict c,
                                     struct part *left_part_pointer,
                                     struct part *right_part_pointer, double ax,
                                     double ay, double bx, double by) {
@@ -183,6 +186,7 @@ static inline void voronoi_add_pair(struct voronoi *restrict v, int sid,
         v->pairs[sid], v->pair_size[sid] * sizeof(struct voronoi_pair));
   }
   struct voronoi_pair *this_pair = &v->pairs[sid][v->pair_index[sid]];
+  this_pair->right_cell = c;
   this_pair->left = left_part_pointer;
   this_pair->right = right_part_pointer;
   this_pair->surface_area =
@@ -420,14 +424,15 @@ static inline void voronoi_init(struct voronoi *restrict v,
       if (ngb_del_vert_ix < d->ngb_offset) {
         /* only store pairs once */
         if (ngb_del_vert_ix > del_vert_ix) {
-          voronoi_add_pair(v, 13, d->part_pointers[del_vert_ix],
+          voronoi_add_pair(v, 13, NULL, d->part_pointers[del_vert_ix],
                            d->part_pointers[ngb_del_vert_ix], bx, by, cx, cy);
         }
       } else {
         /* no check on ngb_del_vert_ix > del_vert_ix required, since this is
          * always true (del_vert_ix < d->ngb_offset) */
         int sid = d->ngb_cell_sids[ngb_del_vert_ix - d->ngb_offset];
-        voronoi_add_pair(v, sid, d->part_pointers[del_vert_ix],
+        struct cell *c = d->ngb_cell_ptrs[ngb_del_vert_ix - d->ngb_offset];
+        voronoi_add_pair(v, sid, c, d->part_pointers[del_vert_ix],
                          d->part_pointers[ngb_del_vert_ix], bx, by, cx, cy);
       }
 
@@ -451,14 +456,15 @@ static inline void voronoi_init(struct voronoi *restrict v,
     if (first_ngb_del_vert_ix < d->ngb_offset) {
       if (first_ngb_del_vert_ix > del_vert_ix) {
         /* only store pairs once */
-        voronoi_add_pair(v, 13, d->part_pointers[del_vert_ix],
+        voronoi_add_pair(v, 13, NULL, d->part_pointers[del_vert_ix],
                          d->part_pointers[first_ngb_del_vert_ix], bx, by, cx,
                          cy);
       }
     } else {
       /* no check on other_vertex > i required, since this is always true */
       int sid = d->ngb_cell_sids[first_ngb_del_vert_ix - d->ngb_offset];
-      voronoi_add_pair(v, sid, d->part_pointers[del_vert_ix],
+      struct cell *c = d->ngb_cell_ptrs[first_ngb_del_vert_ix - d->ngb_offset];
+      voronoi_add_pair(v, sid, c, d->part_pointers[del_vert_ix],
                        d->part_pointers[first_ngb_del_vert_ix], bx, by, cx, cy);
     }
 
