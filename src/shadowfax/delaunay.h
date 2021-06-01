@@ -32,6 +32,7 @@
 #include "geometry.h"
 #include "hydro_space.h"
 #include "memuse.h"
+#include "part.h"
 #include "triangle.h"
 
 #include <float.h>
@@ -149,6 +150,9 @@ struct delaunay {
    *  part of. */
   double* search_radii;
 
+  /*! @brief Direct pointers to particles corresponding to vertices */
+  struct part** part_pointers;
+
   /*! @brief Next available index within the vertex array. Corresponds to the
    *  actual size of the vertex array. */
   int vertex_index;
@@ -204,13 +208,12 @@ struct delaunay {
    *  and deallocating them for every test is too expensive. */
   struct geometry geometry;
 
-  /*! @brief Cell neighbour indices keeping track of which neighbouring cells
+  /*! @brief Cell neighbour sids keeping track of which neighbouring cells
    *  contains a specific neighbouring vertex. */
-  int* ngb_cells;
+  int* ngb_cell_sids;
 
-  /*! @brief Indices of the neighbouring vertices within their respective
-   *  cells. */
-  int* ngb_indices;
+  /*! @brief Pointers to neighbour cells containing corresponding particles */
+  struct cell** ngb_cell_ptrs;
 
   /*! @brief Current used size of the neighbouring vertex bookkeeping arrays
    *  (and next valid index in this array). */
@@ -223,7 +226,7 @@ struct delaunay {
 
   /*! @brief Offset of the neighbouring vertices within the vertex array (so
    *  that neighbouring information for vertex v is stored in
-   *  ngb_cells[v-ngb_offset]). */
+   *  ngb_cell_sids[v-ngb_offset]). */
   int ngb_offset;
 };
 
@@ -262,7 +265,8 @@ static inline unsigned long int delaunay_double_to_int(double d) {
 }
 
 inline static void delaunay_init_vertex(struct delaunay* restrict d, int v,
-                                        double x, double y) {
+                                        double x, double y,
+                                        struct part* part_pointer) {
 
   /* store a copy of the vertex coordinates (we should get rid of this for
      SWIFT) */
@@ -298,6 +302,9 @@ inline static void delaunay_init_vertex(struct delaunay* restrict d, int v,
 
   /* initialise the search radii to the largest possible value */
   d->search_radii[v] = DBL_MAX;
+
+  /* set the particle pointer */
+  d->part_pointers[v] = part_pointer;
 }
 
 /**
@@ -315,7 +322,7 @@ inline static void delaunay_init_vertex(struct delaunay* restrict d, int v,
  * @return Index of the new vertex within the vertex array.
  */
 inline static int delaunay_new_vertex(struct delaunay* restrict d, double x,
-                                      double y) {
+                                      double y, struct part* part_pointer) {
 
   /* check the size of the vertex arrays against the allocated memory size */
   if (d->vertex_index == d->vertex_size) {
@@ -340,9 +347,12 @@ inline static int delaunay_new_vertex(struct delaunay* restrict d, double x,
     d->search_radii =
         (double*)swift_realloc("delaunay search radii", d->search_radii,
                                d->vertex_size * sizeof(double));
+    d->part_pointers = (struct part**)swift_realloc(
+        "delaunay particle pointers", d->part_pointers,
+        d->vertex_size * sizeof(struct part*));
   }
 
-  delaunay_init_vertex(d, d->vertex_index, x, y);
+  delaunay_init_vertex(d, d->vertex_index, x, y, part_pointer);
 
   /* return the vertex index and then increase it by 1.
      After this operation, vertex_index will correspond to the size of the
@@ -546,16 +556,120 @@ inline static void delaunay_check_tessellation(struct delaunay* restrict d) {
 }
 
 /**
- * @brief Initialize the Delaunay tessellation.
+ * @brief Reset the Delaunay tessellation without reallocating memory.
  *
- * This function allocates memory for all arrays that make up the tessellation
- * and initializes the variables used for bookkeeping.
- *
- * It then sets up a large triangle that contains the entire simulation box and
+ * It sets up a large triangle that contains the entire simulation box and
  * additional buffer space to deal with boundary ghost vertices, and 3
  * additional dummy triangles that provide valid neighbours for the 3 sides of
  * this triangle (these dummy triangles themselves have an invalid tip vertex
  * and are therefore simply placeholders).
+ *
+ * @param d Delaunay tessellation.
+ */
+inline static void delaunay_reset(struct delaunay* restrict d,
+                                  const double* cell_loc,
+                                  const double* cell_width, int vertex_size) {
+
+  if (vertex_size == 0) {
+    /* Don't bother for empty cells */
+    return;
+  }
+
+  if (d->active != 1) {
+    error("Delaunay tessellation corruption!");
+  }
+
+  /* by overwriting the indices, we invalidate all arrays without changing their
+     allocated size */
+  d->vertex_index = vertex_size;
+  d->triangle_index = 0;
+  d->queue_index = 0;
+  d->ngb_index = 0;
+
+  /* determine the size of a box large enough to accommodate the entire
+     simulation volume and all possible ghost vertices required to deal with
+     boundaries. Note that the box we use is quite big, since it is chosen to
+     work for even the very degenerate case of a single vertex that could be
+     anywhere in the box. Also note that we convert the generally rectangular
+     box to a square. */
+  double box_anchor[2] = {cell_loc[0] - cell_width[0],
+                          cell_loc[1] - cell_width[1]};
+  double box_side = 6. * fmax(cell_width[0], cell_width[1]);
+
+  /* store the anchor and inverse side_length for the conversion from box
+  coordinates to rescaled (integer) coordinates */
+  d->anchor[0] = box_anchor[0];
+  d->anchor[1] = box_anchor[1];
+  d->side = box_side;
+  /* the 1.e-13 makes sure converted values are in the range [1, 2[ instead of
+   * [1,2] (unlike Springel, 2010) */
+  d->inverse_side = (1. - 1.e-13) / box_side;
+
+  /* set up the large triangle and the 3 dummies */
+  /* mind the orientation: counterclockwise w.r.t. the z-axis. */
+  int v0 = delaunay_new_vertex(d, box_anchor[0], box_anchor[1], NULL);
+  delaunay_log("Creating vertex %i: %g %g", v0, box_anchor[0], box_anchor[1]);
+  int v1 =
+      delaunay_new_vertex(d, box_anchor[0] + box_side, box_anchor[1], NULL);
+  delaunay_log("Creating vertex %i: %g %g", v1, box_anchor[0] + box_side,
+               box_anchor[1]);
+  int v2 =
+      delaunay_new_vertex(d, box_anchor[0], box_anchor[1] + box_side, NULL);
+  delaunay_log("Creating vertex %i: %g %g", v2, box_anchor[0],
+               box_anchor[1] + box_side);
+
+  /* we also create 3 dummy triangles with a fake tip (just to create valid
+     neighbours for the big triangle */
+  int dummy0 = delaunay_new_triangle(d);
+  int dummy1 = delaunay_new_triangle(d);
+  int dummy2 = delaunay_new_triangle(d);
+  int first_triangle = delaunay_new_triangle(d);
+  delaunay_log("Creating triangle %i: %i %i %i", dummy0, v1, v0, -1);
+  triangle_init(&d->triangles[dummy0], v1, v0, -1);
+  triangle_swap_neighbour(&d->triangles[dummy0], 2, first_triangle, 2);
+  delaunay_log("Creating triangle %i: %i %i %i", dummy1, v2, v1, -1);
+  triangle_init(&d->triangles[dummy1], v2, v1, -1);
+  triangle_swap_neighbour(&d->triangles[dummy1], 2, first_triangle, 0);
+  delaunay_log("Creating triangle %i: %i %i %i", dummy2, v0, v2, -1);
+  triangle_init(&d->triangles[dummy2], v0, v2, -1);
+  triangle_swap_neighbour(&d->triangles[dummy2], 2, first_triangle, 1);
+  delaunay_log("Creating triangle %i: %i %i %i", first_triangle, v0, v1, v2);
+  triangle_init(&d->triangles[first_triangle], v0, v1, v2);
+  triangle_swap_neighbour(&d->triangles[first_triangle], 0, dummy1, 2);
+  triangle_swap_neighbour(&d->triangles[first_triangle], 1, dummy2, 2);
+  triangle_swap_neighbour(&d->triangles[first_triangle], 2, dummy0, 2);
+
+  /* set up the vertex-triangle links for the initial triangle (not for the
+     dummies) */
+  d->vertex_triangles[v0] = first_triangle;
+  d->vertex_triangle_index[v0] = 0;
+  d->vertex_triangles[v1] = first_triangle;
+  d->vertex_triangle_index[v1] = 1;
+  d->vertex_triangles[v2] = first_triangle;
+  d->vertex_triangle_index[v2] = 2;
+
+  d->last_triangle = first_triangle;
+
+  d->vertex_start = 0;
+  /* initialise the last vertex index to a negative value to signal that the
+     Delaunay tessellation was not consolidated yet.
+     delaunay_update_search_radii() will not work until delaunay_consolidate()
+     was called. Neither will it be possible to convert the Delaunay
+     tessellation into a Voronoi grid before this happens. */
+  d->vertex_end = vertex_size;
+
+  d->ngb_offset = d->vertex_index;
+
+  /* Perform potential log output and sanity checks */
+  delaunay_log("Post init or reset check");
+  delaunay_check_tessellation(d);
+}
+
+/**
+ * @brief Initialize the Delaunay tessellation.
+ *
+ * This function allocates memory for all arrays that make up the tessellation
+ * and initializes the variables used for bookkeeping.
  *
  * @param d Delaunay tesselation.
  * @param hs Spatial extents of the simulation box.
@@ -593,107 +707,31 @@ inline static void delaunay_init(struct delaunay* restrict d,
       "delaunay vertex-triangle index links", vertex_size * sizeof(int));
   d->search_radii = (double*)swift_malloc("delaunay search radii",
                                           vertex_size * sizeof(double));
-  d->vertex_index = vertex_size;
+  d->part_pointers = (struct part**)swift_malloc(
+      "delaunay part pointers", vertex_size * sizeof(struct part*));
   d->vertex_size = vertex_size;
 
   /* allocate memory for the triangle array */
   d->triangles = (struct triangle*)swift_malloc(
       "delaunay triangles", triangle_size * sizeof(struct triangle));
-  d->triangle_index = 0;
   d->triangle_size = triangle_size;
 
   /* allocate memory for the queue (note that the queue size of 10 was chosen
      arbitrarily, and a proper value should be chosen based on performance
      measurements) */
   d->queue = (int*)swift_malloc("delaunay queue", 10 * sizeof(int));
-  d->queue_index = 0;
   d->queue_size = 10;
 
-  d->ngb_cells =
+  d->ngb_cell_sids =
       (int*)swift_malloc("delaunay ngb cells", vertex_size * sizeof(int));
-  d->ngb_indices =
-      (int*)swift_malloc("delaunay ngb indices", vertex_size * sizeof(int));
-  d->ngb_index = 0;
+  d->ngb_cell_ptrs = (struct cell**)swift_malloc(
+      "delaunay ngb cells", vertex_size * sizeof(struct cell*));
   d->ngb_size = vertex_size;
-
-  /* determine the size of a box large enough to accommodate the entire
-     simulation volume and all possible ghost vertices required to deal with
-     boundaries. Note that the box we use is quite big, since it is chosen to
-     work for even the very degenerate case of a single vertex that could be
-     anywhere in the box. Also note that we convert the generally rectangular
-     box to a square. */
-  double box_anchor[2] = {cell_loc[0] - cell_width[0],
-                          cell_loc[1] - cell_width[1]};
-  double box_side = 6. * fmax(cell_width[0], cell_width[1]);
-
-  /* store the anchor and inverse side_length for the conversion from box
-     coordinates to rescaled (integer) coordinates */
-  d->anchor[0] = box_anchor[0];
-  d->anchor[1] = box_anchor[1];
-  d->side = box_side;
-  /* the 1.e-13 makes sure converted values are in the range [1, 2[ instead of
-   * [1,2] (unlike Springel, 2010) */
-  d->inverse_side = (1. - 1.e-13) / box_side;
 
   /* initialise the structure used to perform exact geometrical tests */
   geometry_init(&d->geometry);
 
-  /* set up the large triangle and the 3 dummies */
-  /* mind the orientation: counterclockwise w.r.t. the z-axis. */
-  int v0 = delaunay_new_vertex(d, box_anchor[0], box_anchor[1]);
-  delaunay_log("Creating vertex %i: %g %g", v0, box_anchor[0], box_anchor[1]);
-  int v1 = delaunay_new_vertex(d, box_anchor[0] + box_side, box_anchor[1]);
-  delaunay_log("Creating vertex %i: %g %g", v1, box_anchor[0] + box_side,
-               box_anchor[1]);
-  int v2 = delaunay_new_vertex(d, box_anchor[0], box_anchor[1] + box_side);
-  delaunay_log("Creating vertex %i: %g %g", v2, box_anchor[0],
-               box_anchor[1] + box_side);
-
-  /* we also create 3 dummy triangles with a fake tip (just to create valid
-     neighbours for the big triangle */
-  int dummy0 = delaunay_new_triangle(d);
-  int dummy1 = delaunay_new_triangle(d);
-  int dummy2 = delaunay_new_triangle(d);
-  int first_triangle = delaunay_new_triangle(d);
-  delaunay_log("Creating triangle %i: %i %i %i", dummy0, v1, v0, -1);
-  triangle_init(&d->triangles[dummy0], v1, v0, -1);
-  triangle_swap_neighbour(&d->triangles[dummy0], 2, first_triangle, 2);
-  delaunay_log("Creating triangle %i: %i %i %i", dummy1, v2, v1, -1);
-  triangle_init(&d->triangles[dummy1], v2, v1, -1);
-  triangle_swap_neighbour(&d->triangles[dummy1], 2, first_triangle, 0);
-  delaunay_log("Creating triangle %i: %i %i %i", dummy2, v0, v2, -1);
-  triangle_init(&d->triangles[dummy2], v0, v2, -1);
-  triangle_swap_neighbour(&d->triangles[dummy2], 2, first_triangle, 1);
-  delaunay_log("Creating triangle %i: %i %i %i", first_triangle, v0, v1, v2);
-  triangle_init(&d->triangles[first_triangle], v0, v1, v2);
-  triangle_swap_neighbour(&d->triangles[first_triangle], 0, dummy1, 2);
-  triangle_swap_neighbour(&d->triangles[first_triangle], 1, dummy2, 2);
-  triangle_swap_neighbour(&d->triangles[first_triangle], 2, dummy0, 2);
-
-  /* set up the vertex-triangle links for the initial triangle (not for the
-     dummies) */
-  d->vertex_triangles[v0] = first_triangle;
-  d->vertex_triangle_index[v0] = 0;
-  d->vertex_triangles[v1] = first_triangle;
-  d->vertex_triangle_index[v1] = 1;
-  d->vertex_triangles[v2] = first_triangle;
-  d->vertex_triangle_index[v2] = 2;
-
-  d->last_triangle = first_triangle;
-
-  d->vertex_start = 0;
-  /* initialise the last vertex index to a negative value to signal that the
-     Delaunay tessellation was not consolidated yet.
-     delaunay_update_search_radii() will not work until delaunay_consolidate()
-     was called. Neither will it be possible to convert the Delaunay
-     tessellation into a Voronoi grid before this happens. */
-  d->vertex_end = vertex_size;
-
-  d->ngb_offset = d->vertex_index;
-
-  /* Perform potential log output and sanity checks */
-  delaunay_log("Post init check");
-  delaunay_check_tessellation(d);
+  delaunay_reset(d, cell_loc, cell_width, vertex_size);
 }
 
 /**
@@ -713,96 +751,13 @@ inline static void delaunay_destroy(struct delaunay* restrict d) {
     swift_free("delaunay vertex-triangle index links",
                d->vertex_triangle_index);
     swift_free("delaunay search radii", d->search_radii);
+    swift_free("delaunay part pointers", d->part_pointers);
     swift_free("delaunay triangles", d->triangles);
     swift_free("delaunay queue", d->queue);
-    swift_free("delaunay ngb cells", d->ngb_cells);
-    swift_free("delaunay ngb indices", d->ngb_indices);
+    swift_free("delaunay ngb cells", d->ngb_cell_sids);
+    swift_free("delaunay ngb cell pointers", d->ngb_cell_ptrs);
     geometry_destroy(&d->geometry);
   }
-}
-
-/**
- * @brief Reset the Delaunay tessellation without reallocating memory.
- *
- * @param d Delaunay tessellation.
- */
-inline static void delaunay_reset(struct delaunay* restrict d,
-                                  int vertex_size) {
-
-  if (vertex_size == 0) {
-    /* Don't bother for empty cells */
-    return;
-  }
-
-  if (d->active != 1) {
-    error("Delaunay tessellation corruption!");
-  }
-
-  /* by overwriting the indices, we invalidate all arrays without changing their
-     allocated size */
-  d->vertex_index = vertex_size;
-  d->triangle_index = 0;
-  d->queue_index = 0;
-  d->ngb_index = 0;
-
-  double box_anchor[2] = {d->anchor[0], d->anchor[1]};
-  double box_side = d->side;
-  /* set up the large triangle and the 3 dummies */
-  /* mind the orientation: counterclockwise w.r.t. the z-axis. */
-  int v0 = delaunay_new_vertex(d, box_anchor[0], box_anchor[1]);
-  delaunay_log("Creating vertex %i: %g %g", v0, box_anchor[0], box_anchor[1]);
-  int v1 = delaunay_new_vertex(d, box_anchor[0] + box_side, box_anchor[1]);
-  delaunay_log("Creating vertex %i: %g %g", v1, box_anchor[0] + box_side,
-               box_anchor[1]);
-  int v2 = delaunay_new_vertex(d, box_anchor[0], box_anchor[1] + box_side);
-  delaunay_log("Creating vertex %i: %g %g", v2, box_anchor[0],
-               box_anchor[1] + box_side);
-
-  /* we also create 3 dummy triangles with a fake tip (just to create valid
-     neighbours for the big triangle */
-  int dummy0 = delaunay_new_triangle(d);
-  int dummy1 = delaunay_new_triangle(d);
-  int dummy2 = delaunay_new_triangle(d);
-  int first_triangle = delaunay_new_triangle(d);
-  delaunay_log("Creating triangle %i: %i %i %i", dummy0, v1, v0, -1);
-  triangle_init(&d->triangles[dummy0], v1, v0, -1);
-  triangle_swap_neighbour(&d->triangles[dummy0], 2, first_triangle, 2);
-  delaunay_log("Creating triangle %i: %i %i %i", dummy1, v2, v1, -1);
-  triangle_init(&d->triangles[dummy1], v2, v1, -1);
-  triangle_swap_neighbour(&d->triangles[dummy1], 2, first_triangle, 0);
-  delaunay_log("Creating triangle %i: %i %i %i", dummy2, v0, v2, -1);
-  triangle_init(&d->triangles[dummy2], v0, v2, -1);
-  triangle_swap_neighbour(&d->triangles[dummy2], 2, first_triangle, 1);
-  delaunay_log("Creating triangle %i: %i %i %i", first_triangle, v0, v1, v2);
-  triangle_init(&d->triangles[first_triangle], v0, v1, v2);
-  triangle_swap_neighbour(&d->triangles[first_triangle], 0, dummy1, 2);
-  triangle_swap_neighbour(&d->triangles[first_triangle], 1, dummy2, 2);
-  triangle_swap_neighbour(&d->triangles[first_triangle], 2, dummy0, 2);
-
-  /* set up the vertex-triangle links for the initial triangle (not for the
-     dummies) */
-  d->vertex_triangles[v0] = first_triangle;
-  d->vertex_triangle_index[v0] = 0;
-  d->vertex_triangles[v1] = first_triangle;
-  d->vertex_triangle_index[v1] = 1;
-  d->vertex_triangles[v2] = first_triangle;
-  d->vertex_triangle_index[v2] = 2;
-
-  d->last_triangle = first_triangle;
-
-  d->vertex_start = 0;
-  /* initialise the last vertex index to a negative value to signal that the
-     Delaunay tessellation was not consolidated yet.
-     delaunay_update_search_radii() will not work until delaunay_consolidate()
-     was called. Neither will it be possible to convert the Delaunay
-     tessellation into a Voronoi grid before this happens. */
-  d->vertex_end = vertex_size;
-
-  d->ngb_offset = d->vertex_index;
-
-  /* Perform potential log output and sanity checks */
-  delaunay_log("Post reset check");
-  delaunay_check_tessellation(d);
 }
 
 /**
@@ -1399,9 +1354,9 @@ inline static int delaunay_add_vertex(struct delaunay* restrict d, int v,
     int ngb0 = d->triangles[t0].neighbours[0];
     int ngb1 = d->triangles[t0].neighbours[1];
     int ngb2 = d->triangles[t0].neighbours[2];
-    int ngbi0 = d->triangles[t0].index_in_neighbour[0];
-    int ngbi1 = d->triangles[t0].index_in_neighbour[1];
-    int ngbi2 = d->triangles[t0].index_in_neighbour[2];
+    int ix_in_ngb0 = d->triangles[t0].index_in_neighbour[0];
+    int ix_in_ngb1 = d->triangles[t0].index_in_neighbour[1];
+    int ix_in_ngb2 = d->triangles[t0].index_in_neighbour[2];
 
     /* create 3 new triangles (drawing the triangles helps to check that the
        code below is indeed correct) */
@@ -1411,22 +1366,22 @@ inline static int delaunay_add_vertex(struct delaunay* restrict d, int v,
     triangle_init(&d->triangles[t0], tv0, tv1, v);
     triangle_swap_neighbour(&d->triangles[t0], 0, t1, 1);
     triangle_swap_neighbour(&d->triangles[t0], 1, t2, 0);
-    triangle_swap_neighbour(&d->triangles[t0], 2, ngb2, ngbi2);
-    triangle_swap_neighbour(&d->triangles[ngb2], ngbi2, t0, 2);
+    triangle_swap_neighbour(&d->triangles[t0], 2, ngb2, ix_in_ngb2);
+    triangle_swap_neighbour(&d->triangles[ngb2], ix_in_ngb2, t0, 2);
 
     delaunay_log("Creating triangle %i: %i %i %i", t1, tv1, tv2, v);
     triangle_init(&d->triangles[t1], tv1, tv2, v);
     triangle_swap_neighbour(&d->triangles[t1], 0, t2, 1);
     triangle_swap_neighbour(&d->triangles[t1], 1, t0, 0);
-    triangle_swap_neighbour(&d->triangles[t1], 2, ngb0, ngbi0);
-    triangle_swap_neighbour(&d->triangles[ngb0], ngbi0, t1, 2);
+    triangle_swap_neighbour(&d->triangles[t1], 2, ngb0, ix_in_ngb0);
+    triangle_swap_neighbour(&d->triangles[ngb0], ix_in_ngb0, t1, 2);
 
     delaunay_log("Creating triangle %i: %i %i %i", t2, tv2, tv0, v);
     triangle_init(&d->triangles[t2], tv2, tv0, v);
     triangle_swap_neighbour(&d->triangles[t2], 0, t0, 1);
     triangle_swap_neighbour(&d->triangles[t2], 1, t1, 0);
-    triangle_swap_neighbour(&d->triangles[t2], 2, ngb1, ngbi1);
-    triangle_swap_neighbour(&d->triangles[ngb1], ngbi1, t2, 2);
+    triangle_swap_neighbour(&d->triangles[t2], 2, ngb1, ix_in_ngb1);
+    triangle_swap_neighbour(&d->triangles[ngb1], ix_in_ngb1, t2, 2);
 
     /* update the vertex-triangle links */
     d->vertex_triangles[tv0] = t0;
@@ -1551,22 +1506,24 @@ inline static int delaunay_add_vertex(struct delaunay* restrict d, int v,
 }
 
 inline static void delaunay_add_local_vertex(struct delaunay* restrict d, int v,
-                                             double x, double y) {
-  delaunay_init_vertex(d, v, x, y);
+                                             double x, double y,
+                                             struct part* part_pointer) {
+  delaunay_init_vertex(d, v, x, y, part_pointer);
   if (delaunay_add_vertex(d, v, x, y) != 0) {
     error("Local vertices cannot be added twice!");
   }
 }
 
-inline static void delaunay_add_new_vertex(struct delaunay* restrict d,
-                                           double x, double y, int cell_index,
-                                           int index_in_cell) {
+inline static void delaunay_add_new_vertex(struct delaunay* d, double x,
+                                           double y, int cell_sid,
+                                           struct cell* c,
+                                           struct part* part_pointer) {
   if (d->active != 1) {
     error("Trying to add a vertex to an inactive Delaunay tessellation!");
   }
 
   /* create the new vertex */
-  int v = delaunay_new_vertex(d, x, y);
+  int v = delaunay_new_vertex(d, x, y, part_pointer);
   delaunay_log("Created new vertex with index %i", v);
 
   int flag = delaunay_add_vertex(d, v, x, y);
@@ -1577,14 +1534,15 @@ inline static void delaunay_add_new_vertex(struct delaunay* restrict d,
     /* vertex is new: add neighbour information for bookkeeping */
     if (d->ngb_index == d->ngb_size) {
       d->ngb_size <<= 1;
-      d->ngb_cells = (int*)swift_realloc("delaunay ngb cells", d->ngb_cells,
-                                         d->ngb_size * sizeof(int));
-      d->ngb_indices = (int*)swift_realloc(
-          "delaunay ngb indices", d->ngb_indices, d->ngb_size * sizeof(int));
+      d->ngb_cell_sids = (int*)swift_realloc(
+          "delaunay ngb cells", d->ngb_cell_sids, d->ngb_size * sizeof(int));
+      d->ngb_cell_ptrs = (struct cell**)swift_realloc(
+          "delaunay ngb cell pointers", d->ngb_cell_ptrs,
+          d->ngb_size * sizeof(struct cell*));
     }
     delaunay_assert(d->ngb_index == v - d->ngb_offset);
-    d->ngb_cells[d->ngb_index] = cell_index;
-    d->ngb_indices[d->ngb_index] = index_in_cell;
+    d->ngb_cell_sids[d->ngb_index] = cell_sid;
+    d->ngb_cell_ptrs[d->ngb_index] = c;
     ++d->ngb_index;
   }
 }

@@ -29,6 +29,7 @@
 #include <float.h>
 #include <limits.h>
 #include <sched.h>
+#include <shadowfax/cell_shadowfax.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -1277,6 +1278,16 @@ void engine_rebuild(struct engine *e, const int repartitioned,
 
   /* Re-build the tasks. */
   engine_maketasks(e);
+
+#ifdef SHADOWFAX_NEW_SPH
+  /* After the tasks have been re-build and consequently, the super-level has
+   * been set for every cell, initialize the delaunay tessellations */
+  struct cell *top_level_cells = e->s->cells_top;
+  int nr_cells = e->s->nr_cells;
+  for (int k = 0; k < nr_cells; k++) {
+    cell_malloc_delaunay_tessellation_recursive(&top_level_cells[k]);
+  }
+#endif
 
   /* Make the list of top-level cells that have tasks */
   space_list_useful_top_level_cells(e->s);

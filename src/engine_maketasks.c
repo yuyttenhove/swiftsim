@@ -1968,6 +1968,12 @@ void engine_make_extra_hydroloop_tasks_mapper(void *map_data, int num_elements,
       /* Make the self-density tasks depend on the drift only. */
       scheduler_addunlock(sched, ci->hydro.super->hydro.drift, t);
 
+#ifdef SHADOWFAX_NEW_SPH
+      /* Make the self-density tasks also depend on the sorts
+       * (in case we need to recurse!) */
+      scheduler_addunlock(sched, ci->hydro.super->hydro.sorts, t);
+#endif
+
       /* Task for the second hydro loop, */
       t_force = scheduler_addtask(sched, task_type_self, task_subtype_force,
                                   flags, 0, ci, NULL);

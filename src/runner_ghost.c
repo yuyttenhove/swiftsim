@@ -1028,7 +1028,6 @@ void runner_do_ghost(struct runner *r, struct cell *c, int timer) {
       }
     }
   } else {
-
     /* Init the list of active particles that have to be updated and their
      * current smoothing lengths. */
     int *pid = NULL;
@@ -1070,7 +1069,9 @@ void runner_do_ghost(struct runner *r, struct cell *c, int timer) {
         float hnew = delaunay_get_search_radius(
             &c->hydro.deltess, pid[i] + c->hydro.deltess.vertex_start);
         if (hnew >= p->h) {
-          p->h *= 1.5f;
+          p->h *= 1.25f;
+          /* Check if h_max is increased */
+          h_max = max(h_max, p->h);
           pid[redo] = pid[i];
           h_0[redo] = h_0[i];
           left[redo] = left[i];
@@ -1421,14 +1422,15 @@ void runner_do_ghost(struct runner *r, struct cell *c, int timer) {
     free(right);
     free(pid);
     free(h_0);
+
+#ifdef SHADOWFAX_NEW_SPH
+    /* Construct voronoi grid */
+    cell_shadowfax_end_density_recursive(c);
+#endif
   }
 
   /* Update h_max */
   c->hydro.h_max = h_max;
-
-#ifdef SHADOWFAX_NEW_SPH
-  cell_shadowfax_end_density(c);
-#endif
 
   /* The ghost may not always be at the top level.
    * Therefore we need to update h_max between the super- and top-levels */
