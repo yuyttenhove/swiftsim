@@ -58,8 +58,8 @@ hydro_shadowfax_convert_conserved_to_primitive(struct part *restrict p) {
 }
 
 __attribute__((always_inline)) INLINE static void hydro_shadowfax_flux_exchange(
-    struct part *restrict pi, struct part *restrict pj, double const *midpoint,
-    double surface_area, const double *shift) {
+    struct part *pi, struct part *pj, double const *midpoint,
+    double surface_area, const double *shift, const int symmetric) {
 
   /* Initialize local variables */
   float dx[3];
@@ -142,12 +142,6 @@ __attribute__((always_inline)) INLINE static void hydro_shadowfax_flux_exchange(
   pi->conserved.flux.momentum[2] -= surface_area * totflux[3];
   pi->conserved.flux.energy -= surface_area * totflux[4];
 
-  pj->conserved.flux.mass += surface_area * totflux[0];
-  pj->conserved.flux.momentum[0] += surface_area * totflux[1];
-  pj->conserved.flux.momentum[1] += surface_area * totflux[2];
-  pj->conserved.flux.momentum[2] += surface_area * totflux[3];
-  pj->conserved.flux.energy += surface_area * totflux[4];
-
 #ifndef SHADOWFAX_TOTAL_ENERGY
   float ekin = 0.5f * (pi->primitives.v[0] * pi->primitives.v[0] +
                        pi->primitives.v[1] * pi->primitives.v[1] +
@@ -156,15 +150,25 @@ __attribute__((always_inline)) INLINE static void hydro_shadowfax_flux_exchange(
   pi->conserved.flux.energy += surface_area * totflux[2] * pi->primitives.v[1];
   pi->conserved.flux.energy += surface_area * totflux[3] * pi->primitives.v[2];
   pi->conserved.flux.energy -= surface_area * totflux[0] * ekin;
-
-  ekin = 0.5f * (pj->primitives.v[0] * pj->primitives.v[0] +
-                 pj->primitives.v[1] * pj->primitives.v[1] +
-                 pj->primitives.v[2] * pj->primitives.v[2]);
-  pj->conserved.flux.energy -= surface_area * totflux[1] * pj->primitives.v[0];
-  pj->conserved.flux.energy -= surface_area * totflux[2] * pj->primitives.v[1];
-  pj->conserved.flux.energy -= surface_area * totflux[3] * pj->primitives.v[2];
-  pj->conserved.flux.energy += surface_area * totflux[0] * ekin;
 #endif
+
+  if (symmetric) {
+    pj->conserved.flux.mass += surface_area * totflux[0];
+    pj->conserved.flux.momentum[0] += surface_area * totflux[1];
+    pj->conserved.flux.momentum[1] += surface_area * totflux[2];
+    pj->conserved.flux.momentum[2] += surface_area * totflux[3];
+    pj->conserved.flux.energy += surface_area * totflux[4];
+
+#ifndef SHADOWFAX_TOTAL_ENERGY
+    ekin = 0.5f * (pj->primitives.v[0] * pj->primitives.v[0] +
+                   pj->primitives.v[1] * pj->primitives.v[1] +
+                   pj->primitives.v[2] * pj->primitives.v[2]);
+    pj->conserved.flux.energy -= surface_area * totflux[1] * pj->primitives.v[0];
+    pj->conserved.flux.energy -= surface_area * totflux[2] * pj->primitives.v[1];
+    pj->conserved.flux.energy -= surface_area * totflux[3] * pj->primitives.v[2];
+    pj->conserved.flux.energy += surface_area * totflux[0] * ekin;
+#endif
+  }
 
   ++pi->voronoi.nface;
   ++pj->voronoi.nface;

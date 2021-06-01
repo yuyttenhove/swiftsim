@@ -278,10 +278,20 @@ __attribute__((always_inline)) INLINE static void cell_shadowfax_do_pair2_force(
     if (pair->right_cell != cj) {
       continue;
     }
-    if (part_left->force.active == 1 || part_right->force.active == 1) {
+    if (part_left->force.active == 1 && part_right->force.active == 1) {
       hydro_shadowfax_flux_exchange(part_left, part_right, pair->midpoint,
-                                    pair->surface_area, shift);
-    } /* at least one of the parts active? */
+                                    pair->surface_area, shift, 1);
+    } else if (part_left->force.active) {
+      hydro_shadowfax_flux_exchange(part_left, part_right, pair->midpoint,
+                                    pair->surface_area, shift, 0);
+    } else if (part_right->force.active) {
+      double inverse_shift[3];
+      for (int k = 0; k < 3; k++) {
+        inverse_shift[k] = -shift[k];
+      }
+      hydro_shadowfax_flux_exchange(part_right, part_left, pair->midpoint,
+                                    pair->surface_area, inverse_shift, 0);
+    }
   }   /* loop over voronoi faces between ci and cj */
 }
 
@@ -460,9 +470,21 @@ __attribute__((always_inline)) INLINE static void cell_shadowfax_do_self2_force(
   struct voronoi *vortess = &c->hydro.vortess;
   for (int i = 0; i < vortess->pair_index[13]; ++i) {
     struct voronoi_pair *pair = &vortess->pairs[13][i];
-    if (pair->left->force.active == 1 || pair->right->force.active == 1) {
-      hydro_shadowfax_flux_exchange(pair->left, pair->right, pair->midpoint,
-                                    pair->surface_area, shift);
+    struct part *part_left = pair->left;
+    struct part *part_right = pair->right;
+    if (part_left->force.active == 1 && part_right->force.active == 1) {
+      hydro_shadowfax_flux_exchange(part_left, part_right, pair->midpoint,
+                                    pair->surface_area, shift, 1);
+    } else if (part_left->force.active) {
+      hydro_shadowfax_flux_exchange(part_left, part_right, pair->midpoint,
+                                    pair->surface_area, shift, 0);
+    } else if (part_right->force.active) {
+      double inverse_shift[3];
+      for (int k = 0; k < 3; k++) {
+        inverse_shift[k] = -shift[k];
+      }
+      hydro_shadowfax_flux_exchange(part_right, part_left, pair->midpoint,
+                                    pair->surface_area, inverse_shift, 0);
     }
   }
 }
