@@ -7,7 +7,7 @@
 
 #include "hydro_slope_limiters.h"
 
-#if defined(SHADOWFAX_GRADIENTS)
+#ifdef SHADOWFAX_GRADIENTS
 
 #define HYDRO_GRADIENT_IMPLEMENTATION "Shadowfax gradients (Springel 2010)"
 #include "hydro_gradients_shadowfax.h"
