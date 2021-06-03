@@ -236,14 +236,34 @@ cell_shadowfax_do_pair1_gradient(const struct engine *e,
   /* loop over voronoi faces between ci and cj */
   for (int i = 0; i < vortess->pair_index[26 - sid]; ++i) {
     struct voronoi_pair *pair = &vortess->pairs[26 - sid][i];
-    /* at least one of the parts active? TODO check this later, for the moment,
-     * always continue! */
-    if (pair->left->force.active == 1 || pair->right->force.active == 1) {
-      hydro_shadowfax_gradients_collect(pair->left, pair->right, pair->midpoint,
+    struct part *part_left = pair->left;
+    struct part *part_right = pair->right;
+    /* check if right particle in cj */
+    if (pair->right_cell != cj) {
+      continue;
+    }
+    if (part_left->force.active == 1 && part_right->force.active == 1) {
+      hydro_shadowfax_gradients_collect(part_left, part_right, pair->midpoint,
                                         pair->surface_area, shift);
-    } /* at least one of the parts active? */
-  }   /* loop over voronoi faces between ci and cj */
+    } else if (part_left->force.active) {
+      hydro_shadowfax_gradients_nonsym_collect(
+          part_left, part_right, pair->midpoint, pair->surface_area, shift);
+    } else if (part_right->force.active) {
+      double inverse_shift[3];
+      for (int k = 0; k < 3; k++) {
+        inverse_shift[k] = -shift[k];
+      }
+      hydro_shadowfax_gradients_nonsym_collect(
+          part_right, part_left, pair->midpoint, pair->surface_area,
+          inverse_shift);
+    }
+  } /* loop over voronoi faces between ci and cj */
 }
+
+void cell_shadowfax_do_pair1_gradient_recursive(const struct engine *e,
+                                                struct cell *restrict ci,
+                                                struct cell *restrict cj,
+                                                int sid, const double *shift);
 
 __attribute__((always_inline)) INLINE static void
 cell_shadowfax_do_pair2_gradient(const struct engine *e,
@@ -270,9 +290,8 @@ __attribute__((always_inline)) INLINE static void cell_shadowfax_do_pair2_force(
   /* loop over voronoi faces between ci and cj */
   for (int i = 0; i < vortess->pair_index[26 - sid]; ++i) {
     struct voronoi_pair *pair = &vortess->pairs[26 - sid][i];
-    /* at least one of the parts active? */
-    struct part* part_left = pair->left;
-    struct part* part_right = pair->right;
+    struct part *part_left = pair->left;
+    struct part *part_right = pair->right;
     /* check if right particle in cj */
     if (pair->right_cell != cj) {
       continue;
@@ -291,7 +310,7 @@ __attribute__((always_inline)) INLINE static void cell_shadowfax_do_pair2_force(
       hydro_shadowfax_flux_exchange(part_right, part_left, pair->midpoint,
                                     pair->surface_area, inverse_shift, 0);
     }
-  }   /* loop over voronoi faces between ci and cj */
+  } /* loop over voronoi faces between ci and cj */
 }
 
 void cell_shadowfax_do_pair2_force_recursive(const struct engine *e,
@@ -406,8 +425,7 @@ cell_shadowfax_do_pair_subset_density(const struct engine *e,
 void cell_shadowfax_do_pair_subset_density_recursive(
     const struct engine *e, struct cell *restrict ci,
     struct part *restrict parts_i, const int *restrict ind, int count,
-    struct cell *restrict cj, int sid, int flipped,
-    const double *shift);
+    struct cell *restrict cj, int sid, int flipped, const double *shift);
 
 __attribute__((always_inline)) INLINE static void
 cell_shadowfax_do_self1_density(const struct engine *e,
@@ -442,12 +460,28 @@ cell_shadowfax_do_self1_gradient(const struct engine *e,
   struct voronoi *vortess = &c->hydro.vortess;
   for (int i = 0; i < vortess->pair_index[13]; ++i) {
     struct voronoi_pair *pair = &vortess->pairs[13][i];
-    if (pair->left->force.active == 1 || pair->right->force.active == 1) {
-      hydro_shadowfax_gradients_collect(pair->left, pair->right, pair->midpoint,
+    struct part *part_left = pair->left;
+    struct part *part_right = pair->right;
+    if (part_left->force.active == 1 && part_right->force.active == 1) {
+      hydro_shadowfax_gradients_collect(part_left, part_right, pair->midpoint,
                                         pair->surface_area, shift);
+    } else if (part_left->force.active) {
+      hydro_shadowfax_gradients_nonsym_collect(
+          part_left, part_right, pair->midpoint, pair->surface_area, shift);
+    } else if (part_right->force.active) {
+      double inverse_shift[3];
+      for (int k = 0; k < 3; k++) {
+        inverse_shift[k] = -shift[k];
+      }
+      hydro_shadowfax_gradients_nonsym_collect(
+          part_right, part_left, pair->midpoint, pair->surface_area,
+          inverse_shift);
     }
   }
 }
+
+void cell_shadowfax_do_self1_gradient_recursive(const struct engine *e,
+                                      struct cell *restrict c);
 
 __attribute__((always_inline)) INLINE static void
 cell_shadowfax_do_self2_gradient(const struct engine *e,

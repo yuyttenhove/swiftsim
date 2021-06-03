@@ -1075,7 +1075,7 @@ void DOPAIR1(struct runner *r, struct cell *ci, struct cell *cj, const int sid,
 #if FUNCTION_TASK_LOOP == TASK_LOOP_DENSITY
   cell_shadowfax_do_pair1_density_recursive(e, ci, cj, sid, shift);
 #elif FUNCTION_TASK_LOOP == TASK_LOOP_GRADIENT
-  cell_shadowfax_do_pair1_gradient(e, ci, cj, sid, shift);
+  cell_shadowfax_do_pair1_gradient_recursive(e, ci, cj, sid, shift);
 #elif FUNCTION_TASK_LOOP == TASK_LOOP_FORCE
   cell_shadowfax_do_pair1_force(e, ci, cj, sid, shift);
 #else
@@ -2012,7 +2012,7 @@ void DOSELF1(struct runner *r, struct cell *restrict c) {
 #if FUNCTION_TASK_LOOP == TASK_LOOP_DENSITY
   cell_shadowfax_do_self1_density_recursive(e, c);
 #elif FUNCTION_TASK_LOOP == TASK_LOOP_GRADIENT
-  cell_shadowfax_do_self1_gradient(e, c);
+  cell_shadowfax_do_self1_gradient_recursive(e, c);
 #elif FUNCTION_TASK_LOOP == TASK_LOOP_FORCE
   cell_shadowfax_do_self1_force(e, c);
 #else
