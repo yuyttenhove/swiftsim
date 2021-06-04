@@ -544,9 +544,9 @@ __attribute__((always_inline)) INLINE static void cell_shadowfax_end_density(
   struct part *p;
   for (int i = 0; i < c->hydro.vortess.number_of_cells; i++) {
     p = &c->hydro.parts[i];
-    hydro_gradients_init(p);
     p->density.wcount = 1.0f;
     p->voronoi.volume = c->hydro.vortess.cells[i].volume;
+    hydro_gradients_init(p);
     hydro_shadowfax_convert_conserved_to_primitive(p);
   }
 }
