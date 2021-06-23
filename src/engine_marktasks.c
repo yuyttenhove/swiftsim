@@ -413,8 +413,8 @@ void engine_marktasks_mapper(void *map_data, int num_elements,
           (with_star_formation && cj_active_hydro) ||
           (with_star_formation_sink && (cj_active_hydro || cj_active_sinks));
 
-      const int ci_active_rt = with_rt && rt_should_do_cell_pair(ci, cj, e);
-      const int cj_active_rt = with_rt && rt_should_do_cell_pair(cj, ci, e);
+      const int ci_active_rt = with_rt && rt_should_iact_cell_pair(ci, cj, e);
+      const int cj_active_rt = with_rt && rt_should_iact_cell_pair(cj, ci, e);
 
       /* Only activate tasks that involve a local active cell. */
       if ((t_subtype == task_subtype_density ||
@@ -1243,6 +1243,13 @@ void engine_marktasks_mapper(void *map_data, int num_elements,
       if (cell_is_active_gravity(t->ci, e)) scheduler_activate(s, t);
     }
 
+    /* Activate the weighting task for neutrinos */
+    else if (t_type == task_type_neutrino_weight) {
+      if (cell_is_active_gravity(t->ci, e)) {
+        scheduler_activate(s, t);
+      }
+    }
+
     /* Kick ? */
     else if (t_type == task_type_kick1 || t_type == task_type_kick2) {
 
@@ -1258,8 +1265,8 @@ void engine_marktasks_mapper(void *map_data, int num_elements,
       if (cell_is_active_hydro(t->ci, e)) scheduler_activate(s, t);
     }
 
-    /* logger tasks ? */
-    else if (t->type == task_type_logger) {
+    /* csds tasks ? */
+    else if (t->type == task_type_csds) {
       if (cell_is_active_hydro(t->ci, e) || cell_is_active_gravity(t->ci, e) ||
           cell_is_active_stars(t->ci, e))
         scheduler_activate(s, t);
@@ -1382,15 +1389,21 @@ void engine_marktasks_mapper(void *map_data, int num_elements,
       if (cell_is_active_hydro(t->ci, e)) scheduler_activate(s, t);
     }
 
+    /* rt_ghost1 is special: Also check for stars activity to catch
+     * dependencies further down the line (e.g. timestep task) */
+    else if (t->type == task_type_rt_ghost1) {
+      if (rt_should_do_unskip_cell(t->ci, e)) scheduler_activate(s, t);
+    }
+
     /* Radiative transfer ghosts and thermochemistry*/
-    else if (t->type == task_type_rt_ghost1 || t->type == task_type_rt_ghost2 ||
-             t->type == task_type_rt_tchem) {
+    else if (t->type == task_type_rt_ghost2 || t->type == task_type_rt_tchem) {
       if (cell_is_active_hydro(t->ci, e)) scheduler_activate(s, t);
     }
 
     /* Subgrid tasks: sink formation */
     else if (t_type == task_type_sink_formation) {
-      if (t->ci->hydro.count > 0 && cell_is_active_hydro(t->ci, e)) {
+      if (with_star_formation_sink && t->ci->hydro.count > 0 &&
+          cell_is_active_hydro(t->ci, e)) {
         cell_activate_sink_formation_tasks(t->ci, s);
         cell_activate_super_sink_drifts(t->ci, s);
       }

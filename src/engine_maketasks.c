@@ -50,6 +50,7 @@
 #include "debug.h"
 #include "error.h"
 #include "feedback.h"
+#include "neutrino_properties.h"
 #include "proxy.h"
 #include "rt_properties.h"
 #include "timers.h"
@@ -515,6 +516,7 @@ void engine_addtasks_send_black_holes(struct engine *e, struct cell *ci,
  * @param t_prep1 The recv_prep1 #task, if it has already been created.
  * @param t_limiter The recv_limiter #task, if it has already been created.
  * @param with_feedback Are we running with stellar feedback?
+ * @param with_black_holes Are we running with black holes?
  * @param with_limiter Are we running with the time-step limiter?
  * @param with_sync Are we running with time-step synchronization?
  */
@@ -522,8 +524,9 @@ void engine_addtasks_recv_hydro(struct engine *e, struct cell *c,
                                 struct task *t_xv, struct task *t_rho,
                                 struct task *t_gradient, struct task *t_ti,
                                 struct task *t_prep1, struct task *t_limiter,
-                                const int with_feedback, const int with_limiter,
-                                const int with_sync) {
+                                const int with_feedback,
+                                const int with_black_holes,
+                                const int with_limiter, const int with_sync) {
 
 #ifdef WITH_MPI
   struct scheduler *s = &e->sched;
@@ -612,8 +615,10 @@ void engine_addtasks_recv_hydro(struct engine *e, struct cell *c,
 
     /* Make sure the gas density has been computed before the
      * stars compute theirs. */
-    for (struct link *l = c->stars.density; l != NULL; l = l->next) {
-      scheduler_addunlock(s, t_rho, l->t);
+    if (with_feedback) {
+      for (struct link *l = c->stars.density; l != NULL; l = l->next) {
+        scheduler_addunlock(s, t_rho, l->t);
+      }
     }
 #ifdef EXTRA_STAR_LOOPS
     if (with_feedback) {
@@ -631,8 +636,10 @@ void engine_addtasks_recv_hydro(struct engine *e, struct cell *c,
 #endif
     /* Make sure the part have been received before the BHs compute their
      * accretion rates (depends on particles' rho). */
-    for (struct link *l = c->black_holes.density; l != NULL; l = l->next) {
-      scheduler_addunlock(s, t_rho, l->t);
+    if (with_black_holes) {
+      for (struct link *l = c->black_holes.density; l != NULL; l = l->next) {
+        scheduler_addunlock(s, t_rho, l->t);
+      }
     }
   }
 
@@ -642,7 +649,7 @@ void engine_addtasks_recv_hydro(struct engine *e, struct cell *c,
       if (c->progeny[k] != NULL)
         engine_addtasks_recv_hydro(e, c->progeny[k], t_xv, t_rho, t_gradient,
                                    t_ti, t_prep1, t_limiter, with_feedback,
-                                   with_limiter, with_sync);
+                                   with_black_holes, with_limiter, with_sync);
 
 #else
   error("SWIFT was not compiled with MPI support.");
@@ -959,8 +966,8 @@ void engine_make_hierarchical_tasks_common(struct engine *e, struct cell *c) {
   const int with_timestep_limiter =
       (e->policy & engine_policy_timestep_limiter);
   const int with_timestep_sync = (e->policy & engine_policy_timestep_sync);
-#ifdef WITH_LOGGER
-  const int with_logger = e->policy & engine_policy_logger;
+#ifdef WITH_CSDS
+  const int with_csds = e->policy & engine_policy_csds;
 #endif
 
   /* Are we at the top-level? */
@@ -977,9 +984,12 @@ void engine_make_hierarchical_tasks_common(struct engine *e, struct cell *c) {
           s, task_type_star_formation_sink, task_subtype_none, 0, 0, c, NULL);
     }
 
-    /* hydro.sink_formation plays the role of a ghost => always created */
-    c->hydro.sink_formation = scheduler_addtask(
-        s, task_type_sink_formation, task_subtype_none, 0, 0, c, NULL);
+    if (with_sinks) {
+      /* hydro.sink_formation plays the role of a ghost => always created when
+       * playing with sinks*/
+      c->hydro.sink_formation = scheduler_addtask(
+          s, task_type_sink_formation, task_subtype_none, 0, 0, c, NULL);
+    }
   }
 
   /* Are we in a super-cell ? */
@@ -995,42 +1005,49 @@ void engine_make_hierarchical_tasks_common(struct engine *e, struct cell *c) {
       c->kick2 = scheduler_addtask(s, task_type_kick2, task_subtype_none, 0, 0,
                                    c, NULL);
 
-#if defined(WITH_LOGGER)
-      struct task *kick2_or_logger;
-      if (with_logger) {
-        /* Add the hydro logger task. */
-        c->logger = scheduler_addtask(s, task_type_logger, task_subtype_none, 0,
-                                      0, c, NULL);
+      /* Weighting task for neutrinos after the last kick */
+      if (e->neutrino_properties->use_delta_f) {
+        c->grav.neutrino_weight = scheduler_addtask(
+            s, task_type_neutrino_weight, task_subtype_none, 0, 0, c, NULL);
+        scheduler_addunlock(s, c->kick1, c->grav.neutrino_weight);
+      }
+
+#if defined(WITH_CSDS)
+      struct task *kick2_or_csds;
+      if (with_csds) {
+        /* Add the hydro csds task. */
+        c->csds = scheduler_addtask(s, task_type_csds, task_subtype_none, 0, 0,
+                                    c, NULL);
 
         /* Add the kick2 dependency */
-        scheduler_addunlock(s, c->kick2, c->logger);
+        scheduler_addunlock(s, c->kick2, c->csds);
 
         /* Create a variable in order to avoid to many ifdef */
-        kick2_or_logger = c->logger;
+        kick2_or_csds = c->csds;
       } else {
-        kick2_or_logger = c->kick2;
+        kick2_or_csds = c->kick2;
       }
 #else
-      struct task *kick2_or_logger = c->kick2;
+      struct task *kick2_or_csds = c->kick2;
 #endif
 
       /* Add the time-step calculation task and its dependency */
       c->timestep = scheduler_addtask(s, task_type_timestep, task_subtype_none,
                                       0, 0, c, NULL);
 
-      scheduler_addunlock(s, kick2_or_logger, c->timestep);
+      scheduler_addunlock(s, kick2_or_csds, c->timestep);
       scheduler_addunlock(s, c->timestep, c->kick1);
 
       /* Subgrid tasks: star formation */
       if (with_star_formation && c->hydro.count > 0) {
-        scheduler_addunlock(s, kick2_or_logger, c->top->hydro.star_formation);
+        scheduler_addunlock(s, kick2_or_csds, c->top->hydro.star_formation);
         scheduler_addunlock(s, c->top->hydro.star_formation, c->timestep);
       }
 
       /* Subgrid tasks: star formation from sinks */
       if (with_star_formation_sink &&
           (c->hydro.count > 0 || c->sinks.count > 0)) {
-        scheduler_addunlock(s, kick2_or_logger,
+        scheduler_addunlock(s, kick2_or_csds,
                             c->top->hydro.star_formation_sink);
         scheduler_addunlock(s, c->top->hydro.star_formation_sink, c->timestep);
       }
@@ -1260,8 +1277,8 @@ void engine_make_hierarchical_tasks_hydro(struct engine *e, struct cell *c,
   const int with_star_formation_sink = (with_sinks && with_stars);
   const int with_black_holes = (e->policy & engine_policy_black_holes);
   const int with_rt = (e->policy & engine_policy_rt);
-#ifdef WITH_LOGGER
-  const int with_logger = (e->policy & engine_policy_logger);
+#ifdef WITH_CSDS
+  const int with_csds = (e->policy & engine_policy_csds);
 #endif
 
   /* Are we are the level where we create the stars' resort tasks?
@@ -1432,9 +1449,9 @@ void engine_make_hierarchical_tasks_hydro(struct engine *e, struct cell *c,
                               0, /* implicit = */ 1, c, NULL);
 #endif
 
-#ifdef WITH_LOGGER
-        if (with_logger) {
-          scheduler_addunlock(s, c->super->logger, c->stars.stars_in);
+#ifdef WITH_CSDS
+        if (with_csds) {
+          scheduler_addunlock(s, c->super->csds, c->stars.stars_in);
         } else {
           scheduler_addunlock(s, c->super->kick2, c->stars.stars_in);
         }
@@ -1487,6 +1504,9 @@ void engine_make_hierarchical_tasks_hydro(struct engine *e, struct cell *c,
         /* add the explicit dependency on kick2 for cases where injection
          * gets skipped */
         scheduler_addunlock(s, c->super->kick2, c->hydro.rt_ghost1);
+        /* add the explicit dependency for the timestep task for the
+         * cases where we have active sparts, but no active parts */
+        scheduler_addunlock(s, c->hydro.rt_ghost1, c->super->timestep);
 
         /* non-implicit ghost 2 */
         c->hydro.rt_ghost2 = scheduler_addtask(
@@ -1526,10 +1546,9 @@ void engine_make_hierarchical_tasks_hydro(struct engine *e, struct cell *c,
         c->black_holes.swallow_ghost_2 = scheduler_addtask(
             s, task_type_bh_swallow_ghost3, task_subtype_none, 0, 0, c, NULL);
 
-#ifdef WITH_LOGGER
-        if (with_logger) {
-          scheduler_addunlock(s, c->super->logger,
-                              c->black_holes.black_holes_in);
+#ifdef WITH_CSDS
+        if (with_csds) {
+          scheduler_addunlock(s, c->super->csds, c->black_holes.black_holes_in);
         } else {
           scheduler_addunlock(s, c->super->kick2,
                               c->black_holes.black_holes_in);
@@ -2306,6 +2325,10 @@ void engine_make_extra_hydroloop_tasks_mapper(void *map_data, int num_elements,
 
       if (with_feedback) {
 
+        if (with_cooling)
+          scheduler_addunlock(sched, ci->hydro.super->hydro.cooling_out,
+                              t_star_density);
+
         scheduler_addunlock(sched, ci->hydro.super->stars.drift,
                             t_star_density);
         scheduler_addunlock(sched, ci->hydro.super->hydro.drift,
@@ -2361,6 +2384,10 @@ void engine_make_extra_hydroloop_tasks_mapper(void *map_data, int num_elements,
       }
 
       if (with_black_holes && bcount_i > 0) {
+
+        if (with_cooling)
+          scheduler_addunlock(sched, ci->hydro.super->hydro.cooling_out,
+                              t_bh_density);
 
         scheduler_addunlock(sched, ci->hydro.super->black_holes.drift,
                             t_bh_density);
@@ -2628,6 +2655,10 @@ void engine_make_extra_hydroloop_tasks_mapper(void *map_data, int num_elements,
 
         if (with_feedback) {
 
+          if (with_cooling)
+            scheduler_addunlock(sched, ci->hydro.super->hydro.cooling_out,
+                                t_star_density);
+
           scheduler_addunlock(sched, ci->hydro.super->stars.drift,
                               t_star_density);
           scheduler_addunlock(sched, ci->hydro.super->stars.sorts,
@@ -2686,6 +2717,10 @@ void engine_make_extra_hydroloop_tasks_mapper(void *map_data, int num_elements,
         }
 
         if (with_black_holes && (bcount_i > 0 || bcount_j > 0)) {
+
+          if (with_cooling)
+            scheduler_addunlock(sched, ci->hydro.super->hydro.cooling_out,
+                                t_bh_density);
 
           scheduler_addunlock(sched, ci->hydro.super->black_holes.drift,
                               t_bh_density);
@@ -2778,6 +2813,10 @@ void engine_make_extra_hydroloop_tasks_mapper(void *map_data, int num_elements,
 
           if (with_feedback) {
 
+            if (with_cooling)
+              scheduler_addunlock(sched, cj->hydro.super->hydro.cooling_out,
+                                  t_star_density);
+
             scheduler_addunlock(sched, cj->hydro.super->stars.sorts,
                                 t_star_density);
             scheduler_addunlock(sched, cj->hydro.super->stars.drift,
@@ -2837,6 +2876,10 @@ void engine_make_extra_hydroloop_tasks_mapper(void *map_data, int num_elements,
           }
 
           if (with_black_holes && (bcount_i > 0 || bcount_j > 0)) {
+
+            if (with_cooling)
+              scheduler_addunlock(sched, cj->hydro.super->hydro.cooling_out,
+                                  t_bh_density);
 
             scheduler_addunlock(sched, cj->hydro.super->black_holes.drift,
                                 t_bh_density);
@@ -3080,6 +3123,10 @@ void engine_make_extra_hydroloop_tasks_mapper(void *map_data, int num_elements,
 
       if (with_feedback) {
 
+        if (with_cooling)
+          scheduler_addunlock(sched, ci->hydro.super->hydro.cooling_out,
+                              t_star_density);
+
         scheduler_addunlock(sched, ci->hydro.super->stars.drift,
                             t_star_density);
         scheduler_addunlock(sched, ci->hydro.super->stars.sorts,
@@ -3142,6 +3189,10 @@ void engine_make_extra_hydroloop_tasks_mapper(void *map_data, int num_elements,
       }
 
       if (with_black_holes && bcount_i > 0) {
+
+        if (with_cooling)
+          scheduler_addunlock(sched, ci->hydro.super->hydro.cooling_out,
+                              t_bh_density);
 
         scheduler_addunlock(sched, ci->hydro.super->black_holes.drift,
                             t_bh_density);
@@ -3423,6 +3474,10 @@ void engine_make_extra_hydroloop_tasks_mapper(void *map_data, int num_elements,
 
         if (with_feedback) {
 
+          if (with_cooling)
+            scheduler_addunlock(sched, ci->hydro.super->hydro.cooling_out,
+                                t_star_density);
+
           scheduler_addunlock(sched, ci->hydro.super->stars.sorts,
                               t_star_density);
           scheduler_addunlock(sched, ci->hydro.super->stars.drift,
@@ -3481,6 +3536,10 @@ void engine_make_extra_hydroloop_tasks_mapper(void *map_data, int num_elements,
         }
 
         if (with_black_holes && (bcount_i > 0 || bcount_j > 0)) {
+
+          if (with_cooling)
+            scheduler_addunlock(sched, ci->hydro.super->hydro.cooling_out,
+                                t_bh_density);
 
           scheduler_addunlock(sched, ci->hydro.super->black_holes.drift,
                               t_bh_density);
@@ -3573,6 +3632,10 @@ void engine_make_extra_hydroloop_tasks_mapper(void *map_data, int num_elements,
 
           if (with_feedback) {
 
+            if (with_cooling)
+              scheduler_addunlock(sched, cj->hydro.super->hydro.cooling_out,
+                                  t_star_density);
+
             scheduler_addunlock(sched, cj->hydro.super->stars.sorts,
                                 t_star_density);
             scheduler_addunlock(sched, cj->hydro.super->stars.drift,
@@ -3631,6 +3694,10 @@ void engine_make_extra_hydroloop_tasks_mapper(void *map_data, int num_elements,
           }
 
           if (with_black_holes && (bcount_i > 0 || bcount_j > 0)) {
+
+            if (with_cooling)
+              scheduler_addunlock(sched, cj->hydro.super->hydro.cooling_out,
+                                  t_bh_density);
 
             scheduler_addunlock(sched, cj->hydro.super->black_holes.drift,
                                 t_bh_density);
@@ -3934,6 +4001,7 @@ void engine_addtasks_recv_mapper(void *map_data, int num_elements,
   const int with_star_formation = (e->policy & engine_policy_star_formation);
   const int with_limiter = (e->policy & engine_policy_timestep_limiter);
   const int with_feedback = (e->policy & engine_policy_feedback);
+  const int with_black_holes = (e->policy & engine_policy_black_holes);
   const int with_sync = (e->policy & engine_policy_timestep_sync);
   struct cell_type_pair *cell_type_pairs = (struct cell_type_pair *)map_data;
 
@@ -3950,10 +4018,11 @@ void engine_addtasks_recv_mapper(void *map_data, int num_elements,
     /* Add the recv tasks for the cells in the proxy that have a hydro
      * connection. */
     if ((e->policy & engine_policy_hydro) && (type & proxy_cell_type_hydro))
-      engine_addtasks_recv_hydro(
-          e, ci, /*t_xv=*/NULL, /*t_rho=*/NULL,
-          /*t_gradient=*/NULL, /*t_ti=*/NULL, /*t_prep1=*/NULL,
-          /*t_limiter=*/NULL, with_feedback, with_limiter, with_sync);
+      engine_addtasks_recv_hydro(e, ci, /*t_xv=*/NULL, /*t_rho=*/NULL,
+                                 /*t_gradient=*/NULL, /*t_ti=*/NULL,
+                                 /*t_prep1=*/NULL,
+                                 /*t_limiter=*/NULL, with_feedback,
+                                 with_black_holes, with_limiter, with_sync);
 
     /* Add the recv tasks for the cells in the proxy that have a stars
      * connection. */

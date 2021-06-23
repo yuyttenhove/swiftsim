@@ -79,7 +79,7 @@ enum engine_policy {
   engine_policy_fof = (1 << 20),
   engine_policy_timestep_limiter = (1 << 21),
   engine_policy_timestep_sync = (1 << 22),
-  engine_policy_logger = (1 << 23),
+  engine_policy_csds = (1 << 23),
   engine_policy_line_of_sight = (1 << 24),
   engine_policy_sinks = (1 << 25),
   engine_policy_rt = (1 << 26),
@@ -101,8 +101,7 @@ enum engine_step_properties {
   engine_step_prop_stf = (1 << 6),
   engine_step_prop_fof = (1 << 7),
   engine_step_prop_mesh = (1 << 8),
-  engine_step_prop_logger_index = (1 << 9),
-  engine_step_prop_done = (1 << 10),
+  engine_step_prop_done = (1 << 9),
 };
 
 /* Some constants */
@@ -240,9 +239,6 @@ struct engine {
   /* Minimal overall ti_end for the next time-step */
   integertime_t ti_end_min;
 
-  /* Maximal overall ti_end for the next time-step */
-  integertime_t ti_end_max;
-
   /* Maximal overall ti_beg for the next time-step */
   integertime_t ti_beg_max;
 
@@ -319,6 +315,8 @@ struct engine {
   char snapshot_base_name[PARSER_MAX_LINE_SIZE];
   char snapshot_subdir[PARSER_MAX_LINE_SIZE];
   char snapshot_dump_command[PARSER_MAX_LINE_SIZE];
+  int snapshot_subsample[swift_type_count];
+  float snapshot_subsample_fraction[swift_type_count];
   int snapshot_run_on_dump;
   int snapshot_distributed;
   int snapshot_compression;
@@ -353,6 +351,7 @@ struct engine {
 
   /* FOF information */
   int run_fof;
+  int dump_catalogue_when_seeding;
 
   /* Statistics information */
   double a_first_statistics;
@@ -417,8 +416,8 @@ struct engine {
   int forcerepart;
   struct repartition *reparttype;
 
-  /* The particle logger */
-  struct logger_writer *logger;
+  /* The Continuous Simulation Data Stream (CSDS) */
+  struct csds_writer *csds;
 
   /* How many steps have we done with the same set of tasks? */
   int tasks_age;
@@ -452,13 +451,16 @@ struct engine {
   const struct entropy_floor_properties *entropy_floor;
 
   /* Properties of the star model */
-  const struct stars_props *stars_properties;
+  struct stars_props *stars_properties;
 
   /* Properties of the black hole model */
   const struct black_holes_props *black_holes_properties;
 
   /* Properties of the sink model */
   const struct sink_props *sink_properties;
+
+  /* Properties of the neutrino model */
+  const struct neutrino_props *neutrino_properties;
 
   /* Properties of the self-gravity scheme */
   struct gravity_props *gravity_properties;
@@ -574,7 +576,6 @@ void engine_reconstruct_multipoles(struct engine *e);
 void engine_allocate_foreign_particles(struct engine *e);
 void engine_print_stats(struct engine *e);
 void engine_check_for_dumps(struct engine *e);
-void engine_check_for_index_dump(struct engine *e);
 void engine_collect_end_of_step(struct engine *e, int apply);
 void engine_dump_snapshot(struct engine *e);
 void engine_run_on_dump(struct engine *e);
@@ -589,9 +590,10 @@ void engine_init(
     const struct phys_const *physical_constants, struct cosmology *cosmo,
     struct hydro_props *hydro,
     const struct entropy_floor_properties *entropy_floor,
-    struct gravity_props *gravity, const struct stars_props *stars,
+    struct gravity_props *gravity, struct stars_props *stars,
     const struct black_holes_props *black_holes, const struct sink_props *sinks,
-    struct feedback_props *feedback, struct rt_props *rt, struct pm_mesh *mesh,
+    const struct neutrino_props *neutrinos, struct feedback_props *feedback,
+    struct rt_props *rt, struct pm_mesh *mesh,
     const struct external_potential *potential,
     struct cooling_function_data *cooling_func,
     const struct star_formation *starform,
@@ -601,7 +603,6 @@ void engine_config(int restart, int fof, struct engine *e,
                    struct swift_params *params, int nr_nodes, int nodeID,
                    int nr_task_threads, int nr_pool_threads, int with_aff,
                    int verbose, const char *restart_file);
-void engine_dump_index(struct engine *e);
 void engine_launch(struct engine *e, const char *call);
 int engine_prepare(struct engine *e);
 void engine_init_particles(struct engine *e, int flag_entropy_ICs,
@@ -628,7 +629,7 @@ void engine_clean(struct engine *e, const int fof, const int restart);
 int engine_estimate_nr_tasks(const struct engine *e);
 void engine_print_task_counts(const struct engine *e);
 void engine_fof(struct engine *e, const int dump_results,
-                const int seed_black_holes);
+                const int dump_debug_results, const int seed_black_holes);
 void engine_activate_gpart_comms(struct engine *e);
 
 /* Function prototypes, engine_maketasks.c. */

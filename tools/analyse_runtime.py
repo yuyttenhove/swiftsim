@@ -91,7 +91,9 @@ tasks = [
     "fof",
     "others",
     "sink",
-    "RT", 
+    "neutrino",
+    "RT",
+    "CSDS",
     "total",
 ]
 

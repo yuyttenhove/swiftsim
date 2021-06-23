@@ -97,6 +97,7 @@ int main(int argc, char *argv[]) {
   struct hydro_props hydro_properties;
   struct stars_props stars_properties;
   struct sink_props sink_properties;
+  struct neutrino_props neutrino_properties;
   struct feedback_props feedback_properties;
   struct rt_props rt_properties;
   struct entropy_floor_properties entropy_floor;
@@ -173,7 +174,7 @@ int main(int argc, char *argv[]) {
   int with_drift_all = 0;
   int with_mpole_reconstruction = 0;
   int with_structure_finding = 0;
-  int with_logger = 0;
+  int with_csds = 0;
   int with_sink = 0;
   int with_qla = 0;
   int with_eagle = 0;
@@ -182,7 +183,7 @@ int main(int argc, char *argv[]) {
   int with_rt = 0;
   int verbose = 0;
   int nr_threads = 1;
-  int nr_pool_threads = 1;
+  int nr_pool_threads = -1;
   int with_verbose_timers = 0;
   char *output_parameters_filename = NULL;
   char *cpufreqarg = NULL;
@@ -243,7 +244,8 @@ int main(int argc, char *argv[]) {
                   "Run with time-step synchronization of particles hit by "
                   "feedback events.",
                   NULL, 0, 0),
-      OPT_BOOLEAN(0, "logger", &with_logger, "Run with the particle logger.",
+      OPT_BOOLEAN(0, "csds", &with_csds,
+                  "Run with the Continuous Simulation Data Stream (CSDS).",
                   NULL, 0, 0),
       OPT_BOOLEAN('R', "radiation", &with_rt,
                   "Run with radiative transfer. Work in progress, currently "
@@ -394,11 +396,11 @@ int main(int argc, char *argv[]) {
   }
 #endif
 
-#if !defined(WITH_LOGGER)
-  if (with_logger) {
+#if !defined(WITH_CSDS)
+  if (with_csds) {
     printf(
-        "Error: the particle logger is not available, please compile with "
-        "--enable-logger.");
+        "Error: the CSDS is not available, please compile with "
+        "--enable-csds.");
     return 1;
   }
 #endif
@@ -939,15 +941,8 @@ int main(int argc, char *argv[]) {
 #endif
 
     /* And initialize the engine with the space and policies. */
-    if (myrank == 0) clocks_gettime(&tic);
     engine_config(/*restart=*/1, /*fof=*/0, &e, params, nr_nodes, myrank,
                   nr_threads, nr_pool_threads, with_aff, talking, restart_file);
-    if (myrank == 0) {
-      clocks_gettime(&toc);
-      message("engine_config took %.3f %s.", clocks_diff(&tic, &toc),
-              clocks_getunit());
-      fflush(stdout);
-    }
 
     /* Check if we are already done when given steps on the command-line. */
     if (e.step >= nsteps && nsteps > 0)
@@ -1063,7 +1058,7 @@ int main(int argc, char *argv[]) {
     if (with_rt) {
       if (hydro_properties.particle_splitting)
         error("Can't run with RT and particle splitting as of yet.");
-      rt_props_init(&rt_properties, params);
+      rt_props_init(&rt_properties, &prog_const, &us, params, &cosmo);
     } else
       bzero(&rt_properties, sizeof(struct rt_props));
 
@@ -1089,12 +1084,6 @@ int main(int argc, char *argv[]) {
       error(
           "ERROR: Running with cooling calculation"
           " but compiled without it.");
-    }
-#else
-    if (!with_cooling && !with_temperature) {
-      error(
-          "ERROR: Compiled with cooling but running without it. "
-          "Did you forget the --cooling or --temperature flags?");
     }
 #endif
     bzero(&cooling_func, sizeof(struct cooling_function_data));
@@ -1192,6 +1181,11 @@ int main(int argc, char *argv[]) {
 
 #ifdef SWIFT_DEBUG_CHECKS
     /* Check once and for all that we don't have unwanted links */
+    for (size_t k = 0; k < Ngpart; ++k)
+      if (!dry_run && gparts[k].id_or_neg_offset == 0 &&
+          (gparts[k].type == swift_type_dark_matter ||
+           gparts[k].type == swift_type_dark_matter_background))
+        error("SWIFT does not allow the ID 0.");
     if (!with_stars && !dry_run) {
       for (size_t k = 0; k < Ngpart; ++k)
         if (gparts[k].type == swift_type_stars) error("Linking problem");
@@ -1268,6 +1262,12 @@ int main(int argc, char *argv[]) {
     /* Do we have neutrino DM particles? */
     const int with_neutrinos = N_total[swift_type_neutrino] > 0;
 
+    /* Initialise the neutrino properties if we have neutrino particles */
+    bzero(&neutrino_properties, sizeof(struct neutrino_props));
+    if (with_neutrinos)
+      neutrino_props_init(&neutrino_properties, &prog_const, &us, params,
+                          &cosmo);
+
     /* Initialize the space with these data. */
     if (myrank == 0) clocks_gettime(&tic);
     space_init(&s, params, &cosmo, dim, &hydro_properties, parts, gparts, sinks,
@@ -1313,11 +1313,6 @@ int main(int argc, char *argv[]) {
     } else {
       pm_mesh_init_no_mesh(&mesh, s.dim);
     }
-
-    /* Check that the matter content matches the cosmology given in the
-     * parameter file. */
-    if (with_cosmology && with_self_gravity && !dry_run)
-      space_check_cosmology(&s, &cosmo, myrank);
 
     /* Also update the total counts (in case of changes due to replication) */
     Nbaryons = s.nr_parts + s.nr_sparts + s.nr_bparts + s.nr_sinks;
@@ -1408,13 +1403,12 @@ int main(int argc, char *argv[]) {
     if (with_structure_finding)
       engine_policies |= engine_policy_structure_finding;
     if (with_fof) engine_policies |= engine_policy_fof;
-    if (with_logger) engine_policies |= engine_policy_logger;
+    if (with_csds) engine_policies |= engine_policy_csds;
     if (with_line_of_sight) engine_policies |= engine_policy_line_of_sight;
     if (with_sink) engine_policies |= engine_policy_sinks;
     if (with_rt) engine_policies |= engine_policy_rt;
 
     /* Initialize the engine with the space and policies. */
-    if (myrank == 0) clocks_gettime(&tic);
     engine_init(&e, &s, params, output_options, N_total[swift_type_gas],
                 N_total[swift_type_count], N_total[swift_type_sink],
                 N_total[swift_type_stars], N_total[swift_type_black_hole],
@@ -1422,18 +1416,12 @@ int main(int argc, char *argv[]) {
                 N_total[swift_type_neutrino], engine_policies, talking,
                 &reparttype, &us, &prog_const, &cosmo, &hydro_properties,
                 &entropy_floor, &gravity_properties, &stars_properties,
-                &black_holes_properties, &sink_properties, &feedback_properties,
-                &rt_properties, &mesh, &potential, &cooling_func, &starform,
-                &chemistry, &fof_properties, &los_properties);
+                &black_holes_properties, &sink_properties, &neutrino_properties,
+                &feedback_properties, &rt_properties, &mesh, &potential,
+                &cooling_func, &starform, &chemistry, &fof_properties,
+                &los_properties);
     engine_config(/*restart=*/0, /*fof=*/0, &e, params, nr_nodes, myrank,
                   nr_threads, nr_pool_threads, with_aff, talking, restart_file);
-
-    if (myrank == 0) {
-      clocks_gettime(&toc);
-      message("engine_init took %.3f %s.", clocks_diff(&tic, &toc),
-              clocks_getunit());
-      fflush(stdout);
-    }
 
     /* Compute some stats for the star formation */
     if (with_star_formation) {
@@ -1484,22 +1472,28 @@ int main(int argc, char *argv[]) {
 #ifdef WITH_MPI
     /* Split the space. */
     engine_split(&e, &initial_partition);
-    /* Turn off the logger to avoid writing the communications */
-    if (with_logger) e.policy &= ~engine_policy_logger;
+    /* Turn off the csds to avoid writing the communications */
+    if (with_csds) e.policy &= ~engine_policy_csds;
 
     engine_redistribute(&e);
     /* Turn it back on */
-    if (with_logger) e.policy |= engine_policy_logger;
+    if (with_csds) e.policy |= engine_policy_csds;
 #endif
 
     /* Initialise the particles */
     engine_init_particles(&e, flag_entropy_ICs, clean_smoothing_length_values);
 
+    /* Check that the matter content matches the cosmology given in the
+     * parameter file. */
+    if (with_cosmology && with_self_gravity && !dry_run) {
+      const int check_neutrinos = !neutrino_properties.use_delta_f;
+      space_check_cosmology(&s, &cosmo, with_hydro, myrank, check_neutrinos);
+    }
+
     /* Write the state of the system before starting time integration. */
-#ifdef WITH_LOGGER
-    if (e.policy & engine_policy_logger) {
-      logger_log_all_particles(e.logger, &e);
-      engine_dump_index(&e);
+#ifdef WITH_CSDS
+    if (e.policy & engine_policy_csds) {
+      csds_log_all_particles(e.csds, &e, /* first_log */ 1);
     }
 #endif
     /* Dump initial state snapshot, if not working with an output list */
@@ -1507,7 +1501,8 @@ int main(int argc, char *argv[]) {
 
       /* Run FoF first, if we're adding FoF info to the snapshot */
       if (with_fof && e.snapshot_invoke_fof) {
-        engine_fof(&e, /*dump_results=*/0, /*seed_black_holes=*/0);
+        engine_fof(&e, /*dump_results=*/1, /*dump_debug=*/0,
+                   /*seed_black_holes=*/0);
       }
 
       engine_dump_snapshot(&e);
@@ -1714,20 +1709,17 @@ int main(int argc, char *argv[]) {
     } else {
       engine_print_stats(&e);
     }
-#ifdef WITH_LOGGER
-    if (e.policy & engine_policy_logger) {
-      logger_log_all_particles(e.logger, &e);
-
-      /* Write a final index file */
-      engine_dump_index(&e);
+#ifdef WITH_CSDS
+    if (e.policy & engine_policy_csds) {
+      csds_log_all_particles(e.csds, &e, /* first_log */ 0);
 
       /* Write a sentinel timestamp */
       if (e.policy & engine_policy_cosmology) {
-        logger_log_timestamp(e.logger, e.ti_current, e.cosmology->a,
-                             &e.logger->timestamp_offset);
+        csds_log_timestamp(e.csds, e.ti_current, e.cosmology->a,
+                           &e.csds->timestamp_offset);
       } else {
-        logger_log_timestamp(e.logger, e.ti_current, e.time,
-                             &e.logger->timestamp_offset);
+        csds_log_timestamp(e.csds, e.ti_current, e.time,
+                           &e.csds->timestamp_offset);
       }
     }
 #endif
@@ -1737,7 +1729,8 @@ int main(int argc, char *argv[]) {
         !e.output_list_snapshots) {
 
       if (with_fof && e.snapshot_invoke_fof) {
-        engine_fof(&e, /*dump_results=*/0, /*seed_black_holes=*/0);
+        engine_fof(&e, /*dump_results=*/1, /*dump_debug=*/0,
+                   /*seed_black_holes=*/0);
       }
 
 #ifdef HAVE_VELOCIRAPTOR
@@ -1779,6 +1772,7 @@ int main(int argc, char *argv[]) {
   if (with_verbose_timers) timers_close_file();
   if (with_cosmology) cosmology_clean(e.cosmology);
   if (with_self_gravity) pm_mesh_clean(e.mesh);
+  if (with_stars) stars_props_clean(e.stars_properties);
   if (with_cooling || with_temperature) cooling_clean(e.cooling_func);
   if (with_feedback) feedback_clean(e.feedback_props);
   if (with_rt) rt_clean(e.rt_props);

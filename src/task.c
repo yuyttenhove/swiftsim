@@ -88,7 +88,7 @@ const char *taskID_names[task_type_count] = {
     "star_formation_in",
     "star_formation_out",
     "star_formation_sink",
-    "logger",
+    "csds",
     "stars_in",
     "stars_out",
     "stars_ghost_in",
@@ -107,6 +107,7 @@ const char *taskID_names[task_type_count] = {
     "bh_swallow_ghost3",
     "fof_self",
     "fof_pair",
+    "neutrino_weight",
     "sink_in",
     "sink_ghost",
     "sink_out",
@@ -169,7 +170,8 @@ const char *task_category_names[task_category_count] = {
     "black holes", "cooling", "star formation",
     "limiter",     "sync",    "time integration",
     "mpi",         "fof",     "others",
-    "sink",        "RT"};
+    "neutrino",    "sink",    "RT",
+    "CSDS"};
 
 #ifdef WITH_MPI
 /* MPI communicators for the subtypes. */
@@ -318,7 +320,7 @@ __attribute__((always_inline)) INLINE static enum task_actions task_acts_on(
 
     case task_type_kick1:
     case task_type_kick2:
-    case task_type_logger:
+    case task_type_csds:
     case task_type_fof_self:
     case task_type_fof_pair:
     case task_type_timestep:
@@ -529,7 +531,7 @@ void task_unlock(struct task *t) {
 
     case task_type_kick1:
     case task_type_kick2:
-    case task_type_logger:
+    case task_type_csds:
     case task_type_timestep:
       cell_unlocktree(ci);
       cell_gunlocktree(ci);
@@ -754,7 +756,7 @@ int task_lock(struct task *t) {
 
     case task_type_kick1:
     case task_type_kick2:
-    case task_type_logger:
+    case task_type_csds:
     case task_type_timestep:
       if (ci->hydro.hold || ci->grav.phold) return 0;
       if (cell_locktree(ci) != 0) return 0;
@@ -1694,6 +1696,9 @@ enum task_categories task_get_category(const struct task *t) {
     case task_type_cooling:
       return task_category_cooling;
 
+    case task_type_csds:
+      return task_category_csds;
+
     case task_type_star_formation:
     case task_type_star_formation_sink:
       return task_category_star_formation;
@@ -1763,6 +1768,9 @@ enum task_categories task_get_category(const struct task *t) {
     case task_type_rt_tchem:
     case task_type_rt_out:
       return task_category_rt;
+
+    case task_type_neutrino_weight:
+      return task_category_neutrino;
 
     case task_type_self:
     case task_type_pair:

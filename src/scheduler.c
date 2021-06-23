@@ -1835,6 +1835,10 @@ void scheduler_reweight(struct scheduler *s, int verbose) {
       case task_type_rt_tchem:
         cost = wscale * count_i;
         break;
+      case task_type_csds:
+        cost =
+            wscale * (count_i + gcount_i + scount_i + sink_count_i + bcount_i);
+        break;
       case task_type_kick1:
         cost =
             wscale * (count_i + gcount_i + scount_i + sink_count_i + bcount_i);
@@ -2018,7 +2022,7 @@ void scheduler_enqueue(struct scheduler *s, struct task *t) {
       case task_type_kick1:
       case task_type_kick2:
       case task_type_stars_ghost:
-      case task_type_logger:
+      case task_type_csds:
       case task_type_stars_sort:
       case task_type_timestep:
         qid = t->ci->super->owner;
