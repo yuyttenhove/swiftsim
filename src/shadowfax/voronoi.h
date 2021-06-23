@@ -168,6 +168,8 @@ static inline double voronoi_compute_midpoint_area_face(double ax, double ay,
  *
  * @param v Voronoi grid.
  * @param sid Index of the cell list in which the pair is stored.
+ * @param cell Pointer to the cell of the right particle (NULL if the right
+ * particle lives in the same cell as the left particle).
  * @param left_part_pointer Direct pointer to the left particle (particle in the
  * cell linked to this grid).
  * @param right_part_pointer Direct pointer to the right particle (particle
