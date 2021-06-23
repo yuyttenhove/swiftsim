@@ -170,8 +170,10 @@ __attribute__((always_inline)) INLINE static void hydro_shadowfax_flux_exchange(
 #endif
   }
 
-  ++pi->voronoi.nface;
-  ++pj->voronoi.nface;
+#ifdef SWIFT_DEBUG_CHECKS
+  ++pi->voronoi.nfluxes;
+  ++pj->voronoi.nfluxes;
+#endif
 }
 
 /**
