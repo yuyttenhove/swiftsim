@@ -3,10 +3,10 @@
 
 #include "active.h"
 #include "cell.h"
-#include "delaunay.h"
+#include "delaunay_functions.h"
 #include "hydro/Shadowfax/hydro_gradients.h"
 #include "hydro_shadowfax.h"
-#include "voronoi.h"
+#include "voronoi_functions.h"
 
 #ifdef SHADOWFAX_CHECK_DELAUNAY_FLAG
 __attribute__((always_inline)) INLINE static void shadowfax_flag_particle_added(
