@@ -188,6 +188,9 @@ static inline void voronoi_add_pair(struct voronoi *v, int sid,
         v->pairs[sid], v->pair_size[sid] * sizeof(struct voronoi_pair));
   }
   struct voronoi_pair *this_pair = &v->pairs[sid][v->pair_index[sid]];
+#ifdef SWIFT_DEBUG_CHECKS
+  assert(c == NULL || !c->split);
+#endif
   this_pair->right_cell = c;
   this_pair->left = left_part_pointer;
   this_pair->right = right_part_pointer;

@@ -152,6 +152,10 @@ __attribute__((always_inline)) INLINE static void hydro_shadowfax_flux_exchange(
   pi->conserved.flux.energy -= surface_area * totflux[0] * ekin;
 #endif
 
+#ifdef SWIFT_DEBUG_CHECKS
+  ++pi->voronoi.nfluxes;
+#endif
+
   if (symmetric) {
     pj->conserved.flux.mass += surface_area * totflux[0];
     pj->conserved.flux.momentum[0] += surface_area * totflux[1];
@@ -168,13 +172,13 @@ __attribute__((always_inline)) INLINE static void hydro_shadowfax_flux_exchange(
     pj->conserved.flux.energy -= surface_area * totflux[3] * pj->primitives.v[2];
     pj->conserved.flux.energy += surface_area * totflux[0] * ekin;
 #endif
-  }
 
 #ifdef SWIFT_DEBUG_CHECKS
-  ++pi->voronoi.nfluxes;
-  ++pj->voronoi.nfluxes;
+    ++pj->voronoi.nfluxes;
 #endif
+  }
 }
+
 
 /**
  * @brief Gradient calculations done during the neighbour loop
