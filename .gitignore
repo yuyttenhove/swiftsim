@@ -154,7 +154,7 @@ tests/testVoronoi1D
 tests/testVoronoi2D
 tests/testVoronoi3D
 tests/testDump
-tests/testLogger
+tests/testCSDS
 tests/benchmarkInteractions
 tests/testGravityDerivatives
 tests/testGravitySpeed
@@ -172,6 +172,8 @@ tests/testCooling
 tests/testComovingCooling
 tests/testHashmap
 tests/testNeutrinoCosmology
+tests/testNeutrinoFermiDirac
+tests/testLog
 tests/*.png
 tests/*.txt
 

@@ -82,25 +82,36 @@ fi
 #  Restrict support.
 AC_C_RESTRICT
 
-# logger
-AC_ARG_ENABLE([logger],
-	[AS_HELP_STRING([--enable-logger],
-		[enable the particle logger]
+# CSDS
+AC_ARG_ENABLE([csds],
+	[AS_HELP_STRING([--enable-csds],
+		[enable the Continuous Simulation Data Stream]
 	)],
-	[with_logger="${enableval}"],
-	[with_logger="no"]
+	[with_csds="${enableval}"],
+	[with_csds="no"]
 )
 
-if test "$with_logger" = "yes"; then
-   AC_DEFINE([WITH_LOGGER], 1, [logger enabled])
-   # The logger requires that long long is a 64bit type, let's
+if test "$with_csds" = "yes"; then
+   AC_DEFINE([WITH_CSDS], 1, [csds enabled])
+   # Ensure that the submodule is initialized
+   ${srcdir}/tools/update-modules csds
+   # The csds requires that long long is a 64bit type, let's
    # check that.
    AC_CHECK_SIZEOF([long long int])
    if test "$ac_cv_sizeof_long_long_int" != "8"; then
-      AC_MSG_ERROR([The particle logger requires that 'long long int' has size 8 bytes])
+      AC_MSG_ERROR([The CSDS requires that 'long long int' has size 8 bytes])
    fi
+
+   # Ensure that everything is alright for the CSDS
+   if test ! -f csds/Makefile.in; then
+      AC_MSG_ERROR([It seems that the submodule "CSDS" was not initialized, please rerun autogen.sh and reconfigure.])
+   fi
+
 fi
-AM_CONDITIONAL([HAVELOGGER],[test $with_logger = "yes"])
+AM_CONDITIONAL([HAVECSDS],[test $with_csds = "yes"])
+AM_COND_IF([HAVECSDS], [AC_CONFIG_FILES([csds/Makefile csds/src/Makefile csds/tests/Makefile])])
+
+
 
 # Interprocedural optimization support. Needs special handling for linking and
 # archiving as well as compilation with Intels, needs to be done before
@@ -352,6 +363,18 @@ if test "$enable_naive_interactions_stars" = "yes"; then
    AC_DEFINE([SWIFT_USE_NAIVE_INTERACTIONS_STARS],1,[Enable use of naive cell interaction functions for stars])
 fi
 
+# Check whether we want to default to naive cell interactions (stars)
+AC_ARG_ENABLE([naive-interactions-rt],
+   [AS_HELP_STRING([--enable-naive-interactions-rt],
+     [Activate use of naive cell interaction functions for stars in RT tasks@<:@yes/no@:>@]
+   )],
+   [enable_naive_interactions_rt="$enableval"],
+   [enable_naive_interactions_rt="no"]
+)
+if test "$enable_naive_interactions_rt" = "yes"; then
+   AC_DEFINE([SWIFT_USE_NAIVE_INTERACTIONS_RT],1,[Enable use of naive cell interaction functions for stars in RT tasks])
+fi
+
 # Check if gravity force checks are on for some particles.
 AC_ARG_ENABLE([gravity-force-checks],
    [AS_HELP_STRING([--enable-gravity-force-checks=<N>],
@@ -364,6 +387,34 @@ if test "$gravity_force_checks" == "yes"; then
    AC_MSG_ERROR(Need to specify the fraction of particles to check when using --enable-gravity-force-checks!)
 elif test "$gravity_force_checks" != "no"; then
    AC_DEFINE_UNQUOTED([SWIFT_GRAVITY_FORCE_CHECKS], [$enableval] ,[Enable gravity brute-force checks])
+fi
+
+# Check if hydro density checks are on for some particles.
+AC_ARG_ENABLE([hydro-density-checks],
+   [AS_HELP_STRING([--enable-hydro-density-checks],
+     [Activate expensive brute-force hydro density checks for a fraction 1/N of all particles @<:@N@:>@]
+   )],
+   [hydro_density_checks="$enableval"],
+   [hydro_density_checks="no"]
+)
+if test "$hydro_density_checks" == "yes"; then
+   AC_MSG_ERROR(Need to specify the fraction of particles to check when using --enable-hydro-density-checks!)
+elif test "$hydro_density_checks" != "no"; then
+   AC_DEFINE_UNQUOTED([SWIFT_HYDRO_DENSITY_CHECKS], [$enableval] ,[Enable hydro density brute-force checks])
+fi
+
+# Check if stars density checks are on for some particles.
+AC_ARG_ENABLE([stars-density-checks],
+   [AS_HELP_STRING([--enable-stars-density-checks],
+     [Activate expensive brute-force stars density checks for a fraction 1/N of all particles @<:@N@:>@]
+   )],
+   [stars_density_checks="$enableval"],
+   [stars_density_checks="no"]
+)
+if test "$stars_density_checks" == "yes"; then
+   AC_MSG_ERROR(Need to specify the fraction of particles to check when using --enable-stars-density-checks!)
+elif test "$stars_density_checks" != "no"; then
+   AC_DEFINE_UNQUOTED([SWIFT_STARS_DENSITY_CHECKS], [$enableval] ,[Enable stars density brute-force checks])
 fi
 
 # Check whether we want to switch on glass making
@@ -1691,13 +1742,16 @@ fi
 # Hydro scheme.
 AC_ARG_WITH([hydro],
    [AS_HELP_STRING([--with-hydro=<scheme>],
-      [Hydro dynamics to use @<:@gadget2, minimal, pressure-entropy, pressure-energy, pressure-energy-monaghan, phantom, gizmo-mfv, gizmo-mfm, shadowfax, shadowfax-new, planetary, sphenix, anarchy-pu default: sphenix@:>@]
+      [Hydro dynamics to use @<:@gadget2, minimal, pressure-entropy, pressure-energy, pressure-energy-monaghan, phantom, gizmo-mfv, gizmo-mfm, shadowfax, shadowfax-new, planetary, sphenix, gasoline, anarchy-pu default: sphenix@:>@]
    )],
    [with_hydro="$withval"],
    [with_hydro="sphenix"]
 )
 
 case "$with_hydro" in
+   none)
+      AC_DEFINE([NONE_SPH], [1], [No hydro])
+   ;;
    gadget2)
       AC_DEFINE([GADGET2_SPH], [1], [Gadget-2 SPH])
    ;;
@@ -1733,6 +1787,9 @@ case "$with_hydro" in
    ;;
    sphenix)
       AC_DEFINE([SPHENIX_SPH], [1], [SPHENIX SPH])
+   ;;
+   gasoline)
+      AC_DEFINE([GASOLINE_SPH], [1], [Gasoline SPH])
    ;;
    anarchy-du)
       AC_DEFINE([SPHENIX_SPH], [1], [SPHENIX SPH])
@@ -2087,14 +2144,14 @@ esac
 # Stellar model.
 AC_ARG_WITH([stars],
    [AS_HELP_STRING([--with-stars=<model>],
-      [Stellar model to use @<:@none, EAGLE, GEAR, debug default: none@:>@]
+      [Stellar model to use @<:@none, basic, EAGLE, GEAR, default: basic@:>@]
    )],
    [with_stars="$withval"],
-   [with_stars="none"]
+   [with_stars="basic"]
 )
 
 if test "$with_subgrid" != "none"; then
-   if test "$with_stars" != "none"; then
+   if test "$with_stars" != "basic"; then
       AC_MSG_ERROR([Cannot provide with-subgrid and with-stars together])
    else
       with_stars="$with_subgrid_stars"
@@ -2108,10 +2165,12 @@ case "$with_stars" in
    GEAR)
       AC_DEFINE([STARS_GEAR], [1], [GEAR stellar model])
    ;;
-   none)
-      AC_DEFINE([STARS_NONE], [1], [Basic stellar model])
+   basic)
+      AC_DEFINE([STARS_BASIC], [1], [Basic stellar model])
    ;;
-
+   none)
+      AC_DEFINE([STARS_NONE], [1], [No stellar model])
+   ;;
    *)
       AC_MSG_ERROR([Unknown stellar model: $with_stars])
    ;;
@@ -2120,7 +2179,7 @@ esac
 # Feedback model
 AC_ARG_WITH([feedback],
    [AS_HELP_STRING([--with-feedback=<model>],
-      [Feedback model to use @<:@none, EAGLE, GEAR default: none@:>@]
+      [Feedback model to use @<:@none, EAGLE, EAGLE-thermal, EAGLE-kinetic, GEAR default: none@:>@]
    )],
    [with_feedback="$withval"],
    [with_feedback="none"]
@@ -2135,8 +2194,17 @@ if test "$with_subgrid" != "none"; then
 fi
 
 case "$with_feedback" in
+   EAGLE-kinetic)
+      AC_DEFINE([FEEDBACK_EAGLE_KINETIC], [1], [EAGLE kinetic stellar feedback and evolution model])
+      with_feedback="EAGLE kinetic stellar feedback and evolution model"
+   ;;
+   EAGLE-thermal)
+      AC_DEFINE([FEEDBACK_EAGLE_THERMAL], [1], [EAGLE thermal stellar feedback and evolution model])
+      with_feedback="EAGLE thermal stellar feedback and evolution model"
+   ;;
    EAGLE)
-      AC_DEFINE([FEEDBACK_EAGLE], [1], [EAGLE stellar feedback and evolution model])
+      AC_DEFINE([FEEDBACK_EAGLE_THERMAL], [1], [EAGLE thermal stellar feedback and evolution model])
+      with_feedback="EAGLE thermal stellar feedback and evolution model"
    ;;
    GEAR)
       AC_DEFINE([FEEDBACK_GEAR], [1], [GEAR stellar feedback and evolution model])
@@ -2149,6 +2217,26 @@ case "$with_feedback" in
       AC_MSG_ERROR([Unknown feedback model: $with_feedback])
    ;;
 esac
+
+# For models using ray-based feedback, let the users set different numbers of rays
+AC_ARG_WITH([number-of-SNII-rays],
+	    [AS_HELP_STRING([--with-number-of-SNII-rays], [Number of rays to use for the SNII feedback (default: 1)])],
+	    [with_number_of_SNII_rays="$withval"],
+	    [with_number_of_SNII_rays="1"])
+AC_DEFINE_UNQUOTED([FEEDBACK_NR_RAYS_SNII], [$with_number_of_SNII_rays], [Number of rays to use for the SNII feedback])
+
+AC_ARG_WITH([number-of-SNIa-rays],
+	    [AS_HELP_STRING([--with-number-of-SNIa-rays], [Number of rays to use for the SNIa feedback (default: 1)])],
+	    [with_number_of_SNIa_rays="$withval"],
+	    [with_number_of_SNIa_rays="1"])
+AC_DEFINE_UNQUOTED([FEEDBACK_NR_RAYS_SNIa], [$with_number_of_SNIa_rays], [Number of rays to use for the SNIa feedback])
+
+AC_ARG_WITH([number-of-AGN-rays],
+	    [AS_HELP_STRING([--with-number-of-AGN-rays], [Number of rays to use for the AGN feedback (default: 50)])],
+	    [with_number_of_AGN_rays="$withval"],
+	    [with_number_of_AGN_rays="50"])
+AC_DEFINE_UNQUOTED([FEEDBACK_NR_RAYS_AGN], [$with_number_of_AGN_rays], [Number of rays to use for the AGN feedback])
+
 
 # Black hole model.
 AC_ARG_WITH([black-holes],
@@ -2182,7 +2270,7 @@ esac
 # Sink model.
 AC_ARG_WITH([sink],
    [AS_HELP_STRING([--with-sink=<model>],
-      [Sink particle model to use @<:@none, default: none@:>@]
+      [Sink particle model to use @<:@none, GEAR, default: none@:>@]
    )],
    [with_sink="$withval"],
    [with_sink="none"]
@@ -2200,7 +2288,10 @@ case "$with_sink" in
    none)
       AC_DEFINE([SINK_NONE], [1], [No sink particle model])
    ;;
-   *)
+   GEAR)
+    AC_DEFINE([SINK_GEAR], [1], [GEAR sink particle model])
+    ;;
+    *)
       AC_MSG_ERROR([Unknown sink particle model model: $with_sink])
    ;;
 esac
@@ -2370,7 +2461,9 @@ AC_DEFINE_UNQUOTED([SELF_GRAVITY_MULTIPOLE_ORDER], [$with_multipole_order], [Mul
 #  Radiative transfer scheme
 AC_ARG_WITH([rt],
    [AS_HELP_STRING([--with-rt=<scheme>],
-      [Radiative transfer scheme to use @<:@none, M1closure, debug default: none@:>@. This is still work in progress, currently no scheme works.]
+      [Radiative transfer scheme to use @<:@none, GEAR_*, debug default: none@:>@.
+      This is still work in progress, currently no scheme works.
+      For GEAR, you need to provide the number of photon groups (e.g. GEAR_4)]
    )],
    [with_rt="$withval"],
    [with_rt="none"]
@@ -2380,16 +2473,57 @@ case "$with_rt" in
    none)
       AC_DEFINE([RT_NONE], [1], [No radiative transfer scheme])
    ;;
-   M1closure)
-      AC_DEFINE([RT_M1], [1], [M1 closure scheme])
+   GEAR_*)
+      AC_DEFINE([RT_GEAR], [1], [GEAR M1 closure scheme])
+      number_group=${with_rt:5}
+      AC_DEFINE_UNQUOTED([RT_NGROUPS], [$number_group], [Number of photon groups to follow])
+
+      if test "$number_group" == 0; then
+          AC_MSG_ERROR([GEAR-RT: Cannot work with zero photon groups])
+      fi
+      if ! test $number_group -eq $number_group; then
+          # abuse -eq to check whether $number_group is an integer. -eq
+          # only works with those.
+          AC_MSG_ERROR([GEAR-RT: Cannot work with non-integer photon groups])
+      fi
+
+      if test "$enable_debugging_checks" = "yes"; then
+          AC_DEFINE([SWIFT_RT_DEBUG_CHECKS], [1], [additional debugging checks for RT])
+      fi
+
+      if test "$with_hydro" != "gizmo-mfv"; then
+          AC_MSG_ERROR([GEAR-RT: Cannot work without gizmo-mfv hydro])
+      fi
+
    ;;
    debug)
       AC_DEFINE([RT_DEBUG], [1], [debugging scheme])
+      AC_DEFINE([SWIFT_RT_DEBUG_CHECKS], [1], [additional debugging checks for RT])
    ;;
    *)
       AC_MSG_ERROR([Unknown radiative transfer scheme: $with_rt])
    ;;
 esac
+
+
+AC_ARG_ENABLE([rt-hydro-controlled-injection],
+    [AS_HELP_STRING([--enable-rt-hydro-controlled-injection],
+        [enable the radiative transfer injection scheme where \
+        active hydro particles gather radiation from neighbouring \
+        stars. Experimental feature, use with caution. \
+        @<:@no/yes@:>@ Default: no]
+    )],
+    [with_hydro_controlled_injection="${enableval}"],
+    [with_hydro_controlled_injection="no"]
+)
+
+rt_extra_msg="" # extra message for ./configure printout
+if test "$with_hydro_controlled_injection" = "yes"; then
+    rt_extra_msg=", hydro controlled injection"
+    AC_DEFINE([RT_HYDRO_CONTROLLED_INJECTION], 1,
+        [Enable hydro controlled radiative transfer injection scheme])
+fi
+
 
 
 # Check for git, needed for revision stamps.
@@ -2411,7 +2545,8 @@ AM_CONDITIONAL([HAVEEAGLECOOLING], [test "${with_cooling:0:5}" = "EAGLE"])
 AM_CONDITIONAL([HAVECOLIBRECOOLING], [test "${with_cooling:0:7}" = "COLIBRE"])
 
 # Check if using EAGLE feedback
-AM_CONDITIONAL([HAVEEAGLEFEEDBACK], [test "$with_feedback" = "EAGLE"])
+AM_CONDITIONAL([HAVEEAGLETHERMALFEEDBACK], [test "${with_feedback:0:13}" = "EAGLE thermal"])
+AM_CONDITIONAL([HAVEEAGLEKINETICFEEDBACK], [test "${with_feedback:0:13}" = "EAGLE kinetic"])
 
 # check if using grackle cooling
 AM_CONDITIONAL([HAVEGRACKLECOOLING], [test "${with_cooling:0:7}" = "grackle"])
@@ -2432,7 +2567,7 @@ AM_CONDITIONAL([HAVE_CHEMISTRY_NONE], [test "$with_chemistry" = "none"])
 AM_CONDITIONAL([HAVE_CHEMISTRY_GEAR], [test "${with_chemistry:0:5}" = "GEAR_"])
 
 # check if using default stars
-AM_CONDITIONAL([HAVE_STARS_DEFAULT], [test "$with_stars" = "none"])
+AM_CONDITIONAL([HAVE_STARS_BASIC], [test "$with_stars" = "basic"])
 
 # check if using GEAR stars
 AM_CONDITIONAL([HAVE_STARS_GEAR], [test "$with_stars" = "GEAR"])
@@ -2448,7 +2583,7 @@ AM_CONDITIONAL([HAVE_GRAVITY_MULTISOFTENING], [test "$with_gravity" = "with-mult
 
 # Handle .in files.
 AC_CONFIG_FILES([Makefile src/Makefile examples/Makefile examples/Cooling/CoolingRates/Makefile doc/Makefile doc/Doxyfile tests/Makefile])
-AC_CONFIG_FILES([argparse/Makefile tools/Makefile logger/Makefile logger/tests/Makefile])
+AC_CONFIG_FILES([argparse/Makefile tools/Makefile])
 AC_CONFIG_FILES([tests/testReading.sh], [chmod +x tests/testReading.sh])
 AC_CONFIG_FILES([tests/testActivePair.sh], [chmod +x tests/testActivePair.sh])
 AC_CONFIG_FILES([tests/test27cells.sh], [chmod +x tests/test27cells.sh])
@@ -2528,7 +2663,7 @@ AC_MSG_RESULT([
    Star feedback model  : $with_feedback
    Sink particle model  : $with_sink
    Black holes model    : $with_black_holes
-   Radiative transfer   : $with_rt
+   Radiative transfer   : $with_rt$rt_extra_msg
 
    Atomic operations in tasks  : $enable_atomics_within_tasks
    Individual timers           : $enable_timers
@@ -2545,7 +2680,7 @@ AC_MSG_RESULT([
    Fixed boundary particles    : $fixed_boundary_particles
    Planetary fixed entropy     : $planetary_fixed_entropy
 
-   Particle Logger      : $with_logger
-   Python enabled       : $have_python
+   Continuous Sim. Data Stream : $with_csds
+   Python enabled              : $have_python
 
  ------------------------])

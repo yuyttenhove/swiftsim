@@ -39,31 +39,30 @@
 #include "black_holes_io.h"
 #include "chemistry_io.h"
 #include "common_io.h"
-#include "cooling_io.h"
 #include "dimension.h"
 #include "engine.h"
 #include "error.h"
-#include "fof_io.h"
 #include "gravity_io.h"
 #include "gravity_properties.h"
 #include "hydro_io.h"
 #include "hydro_properties.h"
+#include "io_compression.h"
 #include "io_properties.h"
 #include "memuse.h"
 #include "output_list.h"
 #include "output_options.h"
 #include "part.h"
 #include "part_type.h"
-#include "particle_splitting.h"
-#include "rt_io.h"
 #include "sink_io.h"
 #include "star_formation_io.h"
 #include "stars_io.h"
 #include "tools.h"
-#include "tracers_io.h"
 #include "units.h"
-#include "velociraptor_io.h"
+#include "version.h"
 #include "xmf.h"
+
+/* Are we timing the i/o? */
+//#define IO_SPEED_MEASUREMENT
 
 /**
  * @brief Writes a data array in given HDF5 group.
@@ -89,6 +88,10 @@ void write_distributed_array(
     const struct unit_system* internal_units,
     const struct unit_system* snapshot_units) {
 
+#ifdef IO_SPEED_MEASUREMENT
+  const ticks tic_total = getticks();
+#endif
+
   const size_t typeSize = io_sizeof_type(props.type);
   const size_t num_elements = N * props.dimension;
 
@@ -100,8 +103,18 @@ void write_distributed_array(
                      num_elements * typeSize) != 0)
     error("Unable to allocate temporary i/o buffer");
 
+#ifdef IO_SPEED_MEASUREMENT
+  ticks tic = getticks();
+#endif
+
   /* Copy the particle data to the temporary buffer */
   io_copy_temp_buffer(temp, e, props, N, internal_units, snapshot_units);
+
+#ifdef IO_SPEED_MEASUREMENT
+  if (engine_rank == IO_SPEED_MEASUREMENT || IO_SPEED_MEASUREMENT == -1)
+    message("Copying for '%s' took %.3f %s.", props.name,
+            clocks_from_ticks(getticks() - tic), clocks_getunit());
+#endif
 
   /* Create data space */
   hid_t h_space;
@@ -149,6 +162,7 @@ void write_distributed_array(
   hid_t h_prop = H5Pcreate(H5P_DATASET_CREATE);
 
   /* Create filters and set compression level if we have something to write */
+  char comp_buffer[32] = "None";
   if (N > 0) {
 
     /* Set chunk size */
@@ -160,7 +174,7 @@ void write_distributed_array(
     /* Are we imposing some form of lossy compression filter? */
     if (lossy_compression != compression_write_lossless)
       set_hdf5_lossy_compression(&h_prop, &h_type, lossy_compression,
-                                 props.name);
+                                 props.name, comp_buffer);
 
     /* Impose GZIP data compression */
     if (e->snapshot_compression > 0) {
@@ -186,10 +200,25 @@ void write_distributed_array(
                                  h_prop, H5P_DEFAULT);
   if (h_data < 0) error("Error while creating dataspace '%s'.", props.name);
 
+#ifdef IO_SPEED_MEASUREMENT
+  tic = getticks();
+#endif
+
   /* Write temporary buffer to HDF5 dataspace */
   h_err = H5Dwrite(h_data, io_hdf5_type(props.type), h_space, H5S_ALL,
                    H5P_DEFAULT, temp);
   if (h_err < 0) error("Error while writing data array '%s'.", props.name);
+
+#ifdef IO_SPEED_MEASUREMENT
+  ticks toc = getticks();
+  float ms = clocks_from_ticks(toc - tic);
+  int megaBytes = N * props.dimension * typeSize / (1024 * 1024);
+  if (engine_rank == IO_SPEED_MEASUREMENT || IO_SPEED_MEASUREMENT == -1)
+    message(
+        "H5Dwrite for '%s' (%d MB) on rank %d took %.3f %s (speed = %f MB/s).",
+        props.name, megaBytes, engine_rank, ms, clocks_getunit(),
+        megaBytes / (ms / 1000.));
+#endif
 
   /* Write unit conversion factors for this data set */
   char buffer[FIELD_BUFFER_SIZE] = {0};
@@ -205,6 +234,7 @@ void write_distributed_array(
   io_write_attribute_f(h_data, "h-scale exponent", 0.f);
   io_write_attribute_f(h_data, "a-scale exponent", props.scale_factor_exponent);
   io_write_attribute_s(h_data, "Expression for physical CGS units", buffer);
+  io_write_attribute_s(h_data, "Lossy compression filter", comp_buffer);
 
   /* Write the actual number this conversion factor corresponds to */
   const double factor =
@@ -232,6 +262,12 @@ void write_distributed_array(
   H5Pclose(h_prop);
   H5Dclose(h_data);
   H5Sclose(h_space);
+
+#ifdef IO_SPEED_MEASUREMENT
+  if (engine_rank == IO_SPEED_MEASUREMENT || IO_SPEED_MEASUREMENT == -1)
+    message("'%s' took %.3f %s.", props.name,
+            clocks_from_ticks(getticks() - tic), clocks_getunit());
+#endif
 }
 
 /**
@@ -271,6 +307,7 @@ void write_output_distributed(struct engine* e,
   const int with_temperature = e->policy & engine_policy_temperature;
   const int with_fof = e->policy & engine_policy_fof;
   const int with_DM_background = e->s->with_DM_background;
+  const int with_neutrinos = e->s->with_neutrinos;
   const int with_rt = e->policy & engine_policy_rt;
 #ifdef HAVE_VELOCIRAPTOR
   const int with_stf = (e->policy & engine_policy_structure_finding) &&
@@ -286,71 +323,145 @@ void write_output_distributed(struct engine* e,
   const size_t Nstars = e->s->nr_sparts;
   const size_t Nblackholes = e->s->nr_bparts;
 
-  size_t Ndm_background = 0;
-  if (with_DM_background) {
-    Ndm_background = io_count_dm_background_gparts(gparts, Ntot);
+  /* Determine if we are writing a reduced snapshot, and if so which
+   * output selection type to use */
+  char current_selection_name[FIELD_BUFFER_SIZE] =
+      select_output_header_default_name;
+  if (output_list) {
+    /* Users could have specified a different Select Output scheme for each
+     * snapshot. */
+    output_list_get_current_select_output(output_list, current_selection_name);
   }
 
-  /* Number of particles that we will write in this file.
-   * Recall that background particles are never inhibited and have no extras */
-  const size_t Ntot_written =
-      e->s->nr_gparts - e->s->nr_inhibited_gparts - e->s->nr_extra_gparts;
-  const size_t Ngas_written =
-      e->s->nr_parts - e->s->nr_inhibited_parts - e->s->nr_extra_parts;
-  const size_t Nsinks_written =
-      e->s->nr_sinks - e->s->nr_inhibited_sinks - e->s->nr_extra_sinks;
-  const size_t Nstars_written =
-      e->s->nr_sparts - e->s->nr_inhibited_sparts - e->s->nr_extra_sparts;
-  const size_t Nblackholes_written =
-      e->s->nr_bparts - e->s->nr_inhibited_bparts - e->s->nr_extra_bparts;
-  const size_t Nbaryons_written =
-      Ngas_written + Nstars_written + Nblackholes_written + Nsinks_written;
-  const size_t Ndm_written =
-      Ntot_written > 0 ? Ntot_written - Nbaryons_written - Ndm_background : 0;
-
   int snap_count = -1;
-  if (e->snapshot_int_time_label_on)
-    snap_count = (int)round(e->time);
-  else if (e->snapshot_invoke_stf)
-    snap_count = e->stf_output_count;
-  else
-    snap_count = e->snapshot_output_count;
-
   int number_digits = -1;
-  if (e->snapshot_int_time_label_on)
-    number_digits = 6;
-  else
+  if (output_list && output_list->alternative_labels_on) {
+    snap_count = output_list->snapshot_labels[snap_count];
+    number_digits = 0;
+  } else if (e->snapshot_invoke_stf) {
+    snap_count = e->stf_output_count;
     number_digits = 4;
+  } else {
+    snap_count = e->snapshot_output_count;
+    number_digits = 4;
+  }
 
   /* Directory and file name */
   char dirName[1024];
   char fileName[1024];
+  char snapshot_subdir_name[FILENAME_BUFFER_SIZE];
+  char snapshot_base_name[FILENAME_BUFFER_SIZE];
 
+  output_options_get_basename(output_options, current_selection_name,
+                              e->snapshot_subdir, e->snapshot_base_name,
+                              snapshot_subdir_name, snapshot_base_name);
+
+  /* Are we using a sub-dir? */
   if (strnlen(e->snapshot_subdir, PARSER_MAX_LINE_SIZE) > 0) {
-    sprintf(dirName, "%s/%s_%0*d", e->snapshot_subdir, e->snapshot_base_name,
+    sprintf(dirName, "%s/%s_%0*d", snapshot_subdir_name, snapshot_base_name,
             number_digits, snap_count);
 
-    sprintf(fileName, "%s/%s_%0*d/%s_%0*d.%d.hdf5", e->snapshot_subdir,
-            e->snapshot_base_name, number_digits, snap_count,
-            e->snapshot_base_name, number_digits, snap_count, mpi_rank);
+    sprintf(fileName, "%s/%s_%0*d/%s_%0*d.%d.hdf5", snapshot_subdir_name,
+            snapshot_base_name, number_digits, snap_count, snapshot_base_name,
+            number_digits, snap_count, mpi_rank);
 
   } else {
-    sprintf(dirName, "%s_%0*d", e->snapshot_base_name, number_digits,
-            snap_count);
+    sprintf(dirName, "%s_%0*d", snapshot_base_name, number_digits, snap_count);
 
-    sprintf(fileName, "%s_%0*d/%s_%0*d.%d.hdf5", e->snapshot_base_name,
-            number_digits, snap_count, e->snapshot_base_name, number_digits,
+    sprintf(fileName, "%s_%0*d/%s_%0*d.%d.hdf5", snapshot_base_name,
+            number_digits, snap_count, snapshot_base_name, number_digits,
             snap_count, mpi_rank);
   }
 
   /* Create the directory */
+  if (mpi_rank == 0) safe_checkdir(snapshot_subdir_name, /*create=*/1);
   if (mpi_rank == 0) safe_checkdir(dirName, /*create=*/1);
   MPI_Barrier(comm);
 
+  /* Do we want to sub-sample any of the arrays */
+  int subsample[swift_type_count];
+  float subsample_fraction[swift_type_count];
+  for (int i = 0; i < swift_type_count; ++i) {
+    subsample[i] = 0;
+    subsample_fraction[i] = 1.f;
+  }
+
+  output_options_get_subsampling(
+      output_options, current_selection_name, e->snapshot_subsample,
+      e->snapshot_subsample_fraction, subsample, subsample_fraction);
+
+  /* Is any particle type being subsampled? */
+  int subsample_any = 0;
+  for (int i = 0; i < swift_type_count; ++i) {
+    subsample_any += subsample[i];
+    if (!subsample[i]) subsample_fraction[i] = 1.f;
+  }
+
+  /* Number of particles that we will write */
+  size_t Ngas_written, Ndm_written, Ndm_background, Ndm_neutrino,
+      Nsinks_written, Nstars_written, Nblackholes_written;
+
+  if (subsample[swift_type_gas]) {
+    Ngas_written = io_count_gas_to_write(e->s, /*subsample=*/1,
+                                         subsample_fraction[swift_type_gas],
+                                         e->snapshot_output_count);
+  } else {
+    Ngas_written =
+        e->s->nr_parts - e->s->nr_inhibited_parts - e->s->nr_extra_parts;
+  }
+
+  if (subsample[swift_type_stars]) {
+    Nstars_written = io_count_stars_to_write(
+        e->s, /*subsample=*/1, subsample_fraction[swift_type_stars],
+        e->snapshot_output_count);
+  } else {
+    Nstars_written =
+        e->s->nr_sparts - e->s->nr_inhibited_sparts - e->s->nr_extra_sparts;
+  }
+
+  if (subsample[swift_type_black_hole]) {
+    Nblackholes_written = io_count_black_holes_to_write(
+        e->s, /*subsample=*/1, subsample_fraction[swift_type_black_hole],
+        e->snapshot_output_count);
+  } else {
+    Nblackholes_written =
+        e->s->nr_bparts - e->s->nr_inhibited_bparts - e->s->nr_extra_bparts;
+  }
+
+  if (subsample[swift_type_sink]) {
+    Nsinks_written = io_count_sinks_to_write(
+        e->s, /*subsample=*/1, subsample_fraction[swift_type_sink],
+        e->snapshot_output_count);
+  } else {
+    Nsinks_written =
+        e->s->nr_sinks - e->s->nr_inhibited_sinks - e->s->nr_extra_sinks;
+  }
+
+  Ndm_written = io_count_dark_matter_to_write(
+      e->s, subsample[swift_type_dark_matter],
+      subsample_fraction[swift_type_dark_matter], e->snapshot_output_count);
+
+  if (with_DM_background) {
+    Ndm_background = io_count_background_dark_matter_to_write(
+        e->s, subsample[swift_type_dark_matter_background],
+        subsample_fraction[swift_type_dark_matter_background],
+        e->snapshot_output_count);
+  } else {
+    Ndm_background = 0;
+  }
+
+  if (with_neutrinos) {
+    Ndm_neutrino = io_count_neutrinos_to_write(
+        e->s, subsample[swift_type_neutrino],
+        subsample_fraction[swift_type_neutrino], e->snapshot_output_count);
+  } else {
+    Ndm_neutrino = 0;
+  }
+
   /* Compute offset in the file and total number of particles */
-  const long long N[swift_type_count] = {Ngas_written,   Ndm_written,
-                                         Ndm_background, Nsinks_written,
-                                         Nstars_written, Nblackholes_written};
+  const long long N[swift_type_count] = {
+      Ngas_written,   Ndm_written,         Ndm_background, Nsinks_written,
+      Nstars_written, Nblackholes_written, Ndm_neutrino};
 
   /* Gather the total number of particles to write */
   long long N_total[swift_type_count] = {0};
@@ -376,16 +487,6 @@ void write_output_distributed(struct engine* e,
                          e->s->dim[1] * factor_length,
                          e->s->dim[2] * factor_length};
 
-  /* Determine if we are writing a reduced snapshot, and if so which
-   * output selection type to use */
-  char current_selection_name[FIELD_BUFFER_SIZE] =
-      select_output_header_default_name;
-  if (output_list) {
-    /* Users could have specified a different Select Output scheme for each
-     * snapshot. */
-    output_list_get_current_select_output(output_list, current_selection_name);
-  }
-
   /* Print the relevant information and print status */
   io_write_attribute(h_grp, "BoxSize", DOUBLE, dim, 3);
   io_write_attribute(h_grp, "Time", DOUBLE, &dblTime, 1);
@@ -395,6 +496,15 @@ void write_output_distributed(struct engine* e,
   io_write_attribute(h_grp, "Scale-factor", DOUBLE, &e->cosmology->a, 1);
   io_write_attribute_s(h_grp, "Code", "SWIFT");
   io_write_attribute_s(h_grp, "RunName", e->run_name);
+
+  /* We write rank 0's hostname so that it is uniform across all files. */
+  char systemname[256] = {0};
+  if (mpi_rank == 0) sprintf(systemname, "%s", hostname());
+  MPI_Bcast(systemname, 256, MPI_CHAR, 0, comm);
+  io_write_attribute_s(h_grp, "System", systemname);
+
+  /* Write out the particle types */
+  io_write_part_type_names(h_grp);
 
   /* Write out the time-base */
   if (with_cosmology) {
@@ -411,9 +521,10 @@ void write_output_distributed(struct engine* e,
   struct tm* timeinfo = localtime(&tm);
   char snapshot_date[64];
   strftime(snapshot_date, 64, "%T %F %Z", timeinfo);
-  io_write_attribute_s(h_grp, "Snapshot date", snapshot_date);
+  io_write_attribute_s(h_grp, "SnapshotDate", snapshot_date);
 
   /* GADGET-2 legacy values:  Number of particles of each type */
+  long long numParticlesThisFile[swift_type_count] = {0};
   unsigned int numParticles[swift_type_count] = {0};
   unsigned int numParticlesHighWord[swift_type_count] = {0};
 
@@ -426,9 +537,16 @@ void write_output_distributed(struct engine* e,
 
     numFields[ptype] = output_options_get_num_fields_to_write(
         output_options, current_selection_name, ptype);
+
+    if (numFields[ptype] == 0) {
+      numParticlesThisFile[ptype] = 0;
+    } else {
+      numParticlesThisFile[ptype] = N[ptype];
+    }
   }
 
-  io_write_attribute(h_grp, "NumPart_ThisFile", LONGLONG, N, swift_type_count);
+  io_write_attribute(h_grp, "NumPart_ThisFile", LONGLONG, numParticlesThisFile,
+                     swift_type_count);
   io_write_attribute(h_grp, "NumPart_Total", UINT, numParticles,
                      swift_type_count);
   io_write_attribute(h_grp, "NumPart_Total_HighWord", UINT,
@@ -443,8 +561,15 @@ void write_output_distributed(struct engine* e,
                      swift_type_count);
   io_write_attribute_i(h_grp, "NumFilesPerSnapshot", numFiles);
   io_write_attribute_i(h_grp, "ThisFile", mpi_rank);
-  io_write_attribute_s(h_grp, "OutputType", "FullVolume");
   io_write_attribute_s(h_grp, "SelectOutput", current_selection_name);
+
+  if (subsample_any) {
+    io_write_attribute_s(h_grp, "OutputType", "SubSampled");
+    io_write_attribute(h_grp, "SubSampleFractions", FLOAT, subsample_fraction,
+                       swift_type_count);
+  } else {
+    io_write_attribute_s(h_grp, "OutputType", "FullVolume");
+  }
 
   /* Close header */
   H5Gclose(h_grp);
@@ -463,8 +588,9 @@ void write_output_distributed(struct engine* e,
   /* Write the location of the particles in the arrays */
   io_write_cell_offsets(h_grp, e->s->cdim, e->s->dim, e->s->cells_top,
                         e->s->nr_cells, e->s->width, mpi_rank,
-                        /*distributed=*/1, N_total, global_offsets, numFields,
-                        internal_units, snapshot_units);
+                        /*distributed=*/1, subsample, subsample_fraction,
+                        e->snapshot_output_count, N_total, global_offsets,
+                        numFields, internal_units, snapshot_units);
   H5Gclose(h_grp);
 
   /* Loop over all particle types */
@@ -495,6 +621,7 @@ void write_output_distributed(struct engine* e,
 
     int num_fields = 0;
     struct io_props list[100];
+    bzero(list, 100 * sizeof(struct io_props));
     size_t Nparticles = 0;
 
     struct part* parts_written = NULL;
@@ -513,29 +640,11 @@ void write_output_distributed(struct engine* e,
 
           /* No inhibted particles: easy case */
           Nparticles = Ngas;
-          hydro_write_particles(parts, xparts, list, &num_fields);
-          num_fields += particle_splitting_write_particles(
-              parts, xparts, list + num_fields, with_cosmology);
-          num_fields += chemistry_write_particles(
-              parts, xparts, list + num_fields, with_cosmology);
-          if (with_cooling || with_temperature) {
-            num_fields += cooling_write_particles(
-                parts, xparts, list + num_fields, e->cooling_func);
-          }
-          if (with_fof) {
-            num_fields += fof_write_parts(parts, xparts, list + num_fields);
-          }
-          if (with_stf) {
-            num_fields +=
-                velociraptor_write_parts(parts, xparts, list + num_fields);
-          }
-          num_fields += tracers_write_particles(
-              parts, xparts, list + num_fields, with_cosmology);
-          num_fields +=
-              star_formation_write_particles(parts, xparts, list + num_fields);
-          if (with_rt) {
-            num_fields += rt_write_particles(parts, list + num_fields);
-          }
+
+          /* Select the fields to write */
+          io_select_hydro_fields(parts, xparts, with_cosmology, with_cooling,
+                                 with_temperature, with_fof, with_stf, with_rt,
+                                 e, &num_fields, list);
 
         } else {
 
@@ -553,52 +662,29 @@ void write_output_distributed(struct engine* e,
             error("Error while allocating temporary memory for xparts");
 
           /* Collect the particles we want to write */
-          io_collect_parts_to_write(parts, xparts, parts_written,
-                                    xparts_written, Ngas, Ngas_written);
+          io_collect_parts_to_write(
+              parts, xparts, parts_written, xparts_written,
+              subsample[swift_type_gas], subsample_fraction[swift_type_gas],
+              e->snapshot_output_count, Ngas, Ngas_written);
 
           /* Select the fields to write */
-          hydro_write_particles(parts_written, xparts_written, list,
-                                &num_fields);
-          num_fields += particle_splitting_write_particles(
-              parts_written, xparts_written, list + num_fields, with_cosmology);
-          num_fields += chemistry_write_particles(
-              parts_written, xparts_written, list + num_fields, with_cosmology);
-          if (with_cooling || with_temperature) {
-            num_fields +=
-                cooling_write_particles(parts_written, xparts_written,
-                                        list + num_fields, e->cooling_func);
-          }
-          if (with_fof) {
-            num_fields += fof_write_parts(parts_written, xparts_written,
-                                          list + num_fields);
-          }
-          if (with_stf) {
-            num_fields += velociraptor_write_parts(
-                parts_written, xparts_written, list + num_fields);
-          }
-          num_fields += tracers_write_particles(
-              parts_written, xparts_written, list + num_fields, with_cosmology);
-          num_fields += star_formation_write_particles(
-              parts_written, xparts_written, list + num_fields);
-          if (with_rt) {
-            num_fields += rt_write_particles(parts_written, list + num_fields);
-          }
+          io_select_hydro_fields(parts_written, xparts_written, with_cosmology,
+                                 with_cooling, with_temperature, with_fof,
+                                 with_stf, with_rt, e, &num_fields, list);
         }
       } break;
 
       case swift_type_dark_matter: {
         if (Ntot == Ndm_written) {
 
-          /* This is a DM-only run without background or inhibited particles */
+          /* This is a DM-only run without background or inhibited particles
+           * or neutrinos */
           Nparticles = Ntot;
-          darkmatter_write_particles(gparts, list, &num_fields);
-          if (with_fof) {
-            num_fields += fof_write_gparts(gparts, list + num_fields);
-          }
-          if (with_stf) {
-            num_fields += velociraptor_write_gparts(e->s->gpart_group_data,
-                                                    list + num_fields);
-          }
+
+          /* Select the fields to write */
+          io_select_dm_fields(gparts, e->s->gpart_group_data, with_fof,
+                              with_stf, e, &num_fields, list);
+
         } else {
 
           /* Ok, we need to fish out the particles we want */
@@ -621,19 +707,15 @@ void write_output_distributed(struct engine* e,
           }
 
           /* Collect the non-inhibited DM particles from gpart */
-          io_collect_gparts_to_write(gparts, e->s->gpart_group_data,
-                                     gparts_written, gpart_group_data_written,
-                                     Ntot, Ndm_written, with_stf);
+          io_collect_gparts_to_write(
+              gparts, e->s->gpart_group_data, gparts_written,
+              gpart_group_data_written, subsample[swift_type_dark_matter],
+              subsample_fraction[swift_type_dark_matter],
+              e->snapshot_output_count, Ntot, Ndm_written, with_stf);
 
           /* Select the fields to write */
-          darkmatter_write_particles(gparts_written, list, &num_fields);
-          if (with_fof) {
-            num_fields += fof_write_gparts(gparts_written, list + num_fields);
-          }
-          if (with_stf) {
-            num_fields += velociraptor_write_gparts(gpart_group_data_written,
-                                                    list + num_fields);
-          }
+          io_select_dm_fields(gparts_written, gpart_group_data_written,
+                              with_fof, with_stf, e, &num_fields, list);
         }
       } break;
 
@@ -661,17 +743,47 @@ void write_output_distributed(struct engine* e,
         /* Collect the non-inhibited DM particles from gpart */
         io_collect_gparts_background_to_write(
             gparts, e->s->gpart_group_data, gparts_written,
-            gpart_group_data_written, Ntot, Ndm_background, with_stf);
+            gpart_group_data_written,
+            subsample[swift_type_dark_matter_background],
+            subsample_fraction[swift_type_dark_matter_background],
+            e->snapshot_output_count, Ntot, Ndm_background, with_stf);
 
         /* Select the fields to write */
-        darkmatter_write_particles(gparts_written, list, &num_fields);
-        if (with_fof) {
-          num_fields += fof_write_gparts(gparts_written, list + num_fields);
-        }
+        io_select_dm_fields(gparts_written, gpart_group_data_written, with_fof,
+                            with_stf, e, &num_fields, list);
+      } break;
+
+      case swift_type_neutrino: {
+
+        /* Ok, we need to fish out the particles we want */
+        Nparticles = Ndm_neutrino;
+
+        /* Allocate temporary array */
+        if (swift_memalign("gparts_written", (void**)&gparts_written,
+                           gpart_align,
+                           Ndm_neutrino * sizeof(struct gpart)) != 0)
+          error("Error while allocating temporart memory for gparts");
+
         if (with_stf) {
-          num_fields += velociraptor_write_gparts(gpart_group_data_written,
-                                                  list + num_fields);
+          if (swift_memalign(
+                  "gpart_group_written", (void**)&gpart_group_data_written,
+                  gpart_align,
+                  Ndm_neutrino * sizeof(struct velociraptor_gpart_data)) != 0)
+            error(
+                "Error while allocating temporart memory for gparts STF "
+                "data");
         }
+
+        /* Collect the non-inhibited DM particles from gpart */
+        io_collect_gparts_neutrino_to_write(
+            gparts, e->s->gpart_group_data, gparts_written,
+            gpart_group_data_written, subsample[swift_type_neutrino],
+            subsample_fraction[swift_type_neutrino], e->snapshot_output_count,
+            Ntot, Ndm_neutrino, with_stf);
+
+        /* Select the fields to write */
+        io_select_neutrino_fields(gparts_written, gpart_group_data_written,
+                                  with_fof, with_stf, e, &num_fields, list);
       } break;
 
       case swift_type_sink: {
@@ -679,7 +791,10 @@ void write_output_distributed(struct engine* e,
 
           /* No inhibted particles: easy case */
           Nparticles = Nsinks;
-          sink_write_particles(sinks, list, &num_fields, with_cosmology);
+
+          /* Select the fields to write */
+          io_select_sink_fields(sinks, with_cosmology, with_fof, with_stf, e,
+                                &num_fields, list);
 
         } else {
 
@@ -693,12 +808,14 @@ void write_output_distributed(struct engine* e,
             error("Error while allocating temporary memory for sinks");
 
           /* Collect the particles we want to write */
-          io_collect_sinks_to_write(sinks, sinks_written, Nsinks,
-                                    Nsinks_written);
+          io_collect_sinks_to_write(
+              sinks, sinks_written, subsample[swift_type_sink],
+              subsample_fraction[swift_type_sink], e->snapshot_output_count,
+              Nsinks, Nsinks_written);
 
           /* Select the fields to write */
-          sink_write_particles(sinks_written, list, &num_fields,
-                               with_cosmology);
+          io_select_sink_fields(sinks_written, with_cosmology, with_fof,
+                                with_stf, e, &num_fields, list);
         }
       } break;
 
@@ -707,21 +824,11 @@ void write_output_distributed(struct engine* e,
 
           /* No inhibted particles: easy case */
           Nparticles = Nstars;
-          stars_write_particles(sparts, list, &num_fields, with_cosmology);
-          num_fields +=
-              particle_splitting_write_sparticles(sparts, list + num_fields);
-          num_fields += chemistry_write_sparticles(sparts, list + num_fields);
-          num_fields += tracers_write_sparticles(sparts, list + num_fields,
-                                                 with_cosmology);
-          if (with_fof) {
-            num_fields += fof_write_sparts(sparts, list + num_fields);
-          }
-          if (with_stf) {
-            num_fields += velociraptor_write_sparts(sparts, list + num_fields);
-          }
-          if (with_rt) {
-            num_fields += rt_write_stars(sparts, list + num_fields);
-          }
+
+          /* Select the fields to write */
+          io_select_star_fields(sparts, with_cosmology, with_fof, with_stf,
+                                with_rt, e, &num_fields, list);
+
         } else {
 
           /* Ok, we need to fish out the particles we want */
@@ -734,28 +841,14 @@ void write_output_distributed(struct engine* e,
             error("Error while allocating temporary memory for sparts");
 
           /* Collect the particles we want to write */
-          io_collect_sparts_to_write(sparts, sparts_written, Nstars,
-                                     Nstars_written);
+          io_collect_sparts_to_write(
+              sparts, sparts_written, subsample[swift_type_stars],
+              subsample_fraction[swift_type_stars], e->snapshot_output_count,
+              Nstars, Nstars_written);
 
           /* Select the fields to write */
-          stars_write_particles(sparts_written, list, &num_fields,
-                                with_cosmology);
-          num_fields += particle_splitting_write_sparticles(sparts_written,
-                                                            list + num_fields);
-          num_fields +=
-              chemistry_write_sparticles(sparts_written, list + num_fields);
-          num_fields += tracers_write_sparticles(
-              sparts_written, list + num_fields, with_cosmology);
-          if (with_fof) {
-            num_fields += fof_write_sparts(sparts_written, list + num_fields);
-          }
-          if (with_stf) {
-            num_fields +=
-                velociraptor_write_sparts(sparts_written, list + num_fields);
-          }
-          if (with_rt) {
-            num_fields += rt_write_stars(sparts_written, list + num_fields);
-          }
+          io_select_star_fields(sparts_written, with_cosmology, with_fof,
+                                with_stf, with_rt, e, &num_fields, list);
         }
       } break;
 
@@ -764,17 +857,11 @@ void write_output_distributed(struct engine* e,
 
           /* No inhibted particles: easy case */
           Nparticles = Nblackholes;
-          black_holes_write_particles(bparts, list, &num_fields,
-                                      with_cosmology);
-          num_fields +=
-              particle_splitting_write_bparticles(bparts, list + num_fields);
-          num_fields += chemistry_write_bparticles(bparts, list + num_fields);
-          if (with_fof) {
-            num_fields += fof_write_bparts(bparts, list + num_fields);
-          }
-          if (with_stf) {
-            num_fields += velociraptor_write_bparts(bparts, list + num_fields);
-          }
+
+          /* Select the fields to write */
+          io_select_bh_fields(bparts, with_cosmology, with_fof, with_stf, e,
+                              &num_fields, list);
+
         } else {
 
           /* Ok, we need to fish out the particles we want */
@@ -787,23 +874,14 @@ void write_output_distributed(struct engine* e,
             error("Error while allocating temporary memory for bparts");
 
           /* Collect the particles we want to write */
-          io_collect_bparts_to_write(bparts, bparts_written, Nblackholes,
-                                     Nblackholes_written);
+          io_collect_bparts_to_write(
+              bparts, bparts_written, subsample[swift_type_black_hole],
+              subsample_fraction[swift_type_black_hole],
+              e->snapshot_output_count, Nblackholes, Nblackholes_written);
 
           /* Select the fields to write */
-          black_holes_write_particles(bparts_written, list, &num_fields,
-                                      with_cosmology);
-          num_fields += particle_splitting_write_bparticles(bparts_written,
-                                                            list + num_fields);
-          num_fields +=
-              chemistry_write_bparticles(bparts_written, list + num_fields);
-          if (with_fof) {
-            num_fields += fof_write_bparts(bparts_written, list + num_fields);
-          }
-          if (with_stf) {
-            num_fields +=
-                velociraptor_write_bparts(bparts_written, list + num_fields);
-          }
+          io_select_bh_fields(bparts_written, with_cosmology, with_fof,
+                              with_stf, e, &num_fields, list);
         }
       } break;
 
@@ -858,6 +936,9 @@ void write_output_distributed(struct engine* e,
 
   /* Close file */
   H5Fclose(h_file);
+
+  /* Make sure nobody is allowed to progress until everyone is done. */
+  MPI_Barrier(comm);
 
   e->snapshot_output_count++;
   if (e->snapshot_invoke_stf) e->stf_output_count++;

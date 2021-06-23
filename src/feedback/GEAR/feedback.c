@@ -39,8 +39,8 @@
  * @param xp The #xpart to consider.
  * @param e The #engine.
  */
-void feedback_update_part(struct part* restrict p, struct xpart* restrict xp,
-                          const struct engine* restrict e) {
+void feedback_update_part(struct part* p, struct xpart* xp,
+                          const struct engine* e) {
 
   /* Did the particle receive a supernovae */
   if (xp->feedback_data.delta_mass == 0) return;
@@ -85,6 +85,17 @@ void feedback_update_part(struct part* restrict p, struct xpart* restrict xp,
     xp->feedback_data.delta_p[i] = 0;
   }
 }
+
+/**
+ * @brief Reset the gas particle-carried fields related to feedback at the
+ * start of a step.
+ *
+ * Nothing to do here in the GEAR model.
+ *
+ * @param p The particle.
+ * @param xp The extended data of the particle.
+ */
+void feedback_reset_part(struct part* p, struct xpart* xp) {}
 
 /**
  * @brief Compute the times for the stellar model.
@@ -134,6 +145,7 @@ void compute_time(struct spart* sp, const int with_cosmology,
   /* Get the length of the enrichment time-step */
   *dt_enrichment = feedback_get_enrichment_timestep(sp, with_cosmology, cosmo,
                                                     time, dt_star);
+
   *star_age_beg_of_step = star_age_end_of_step - *dt_enrichment;
 }
 
@@ -172,14 +184,12 @@ void feedback_will_do_feedback(
 
 #ifdef SWIFT_DEBUG_CHECKS
   if (sp->birth_time == -1.) error("Evolving a star particle that should not!");
-
-  if (star_age_beg_step < -1e-6) {
+  if (star_age_beg_step + dt_enrichment < 0) {
     error("Negative age for a star");
   }
 #endif
-  /* Has this star been around for a while ? */
-  if (star_age_beg_step + dt_enrichment <= 0.) return;
 
+  /* Ensure that the age is positive (rounding errors) */
   const double star_age_beg_step_safe =
       star_age_beg_step < 0 ? 0 : star_age_beg_step;
 

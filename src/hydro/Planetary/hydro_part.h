@@ -38,8 +38,8 @@
 #include "cooling_struct.h"
 #include "equation_of_state.h"  // For enum material_id
 #include "feedback_struct.h"
-#include "logger.h"
 #include "particle_splitting_struct.h"
+#include "rt_struct.h"
 #include "star_formation_struct.h"
 #include "timestep_limiter_struct.h"
 #include "tracers_struct.h"
@@ -83,10 +83,6 @@ struct xpart {
   /* Additional data used by the feedback */
   struct feedback_part_data feedback_data;
 
-#ifdef WITH_LOGGER
-  /* Additional data for the particle logger */
-  struct logger_part_data logger_data;
-#endif
 } SWIFT_STRUCT_ALIGN;
 
 /**
@@ -198,6 +194,9 @@ struct part {
 
   /*! Material identifier flag */
   enum eos_planetary_material_id mat_id;
+
+  /*! Additional Radiative Transfer Data */
+  struct rt_part_data rt_data;
 
   /*! Time-step length */
   timebin_t time_bin;

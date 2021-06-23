@@ -52,7 +52,6 @@ void make_cell(struct cell *c, int N, const double loc[3], double width,
 
   /* Set the time bins */
   c->grav.ti_end_min = 1;
-  c->grav.ti_end_max = 1;
   c->grav.ti_beg_max = 1;
   c->grav.ti_old_part = 1;
   c->grav.ti_old_multipole = 1;
@@ -149,11 +148,13 @@ int main(int argc, char *argv[]) {
 
   /* Construct arrays of multipoles to prevent too much optimization */
   struct gravity_tensors *tensors_i = NULL;
-  posix_memalign((void **)&tensors_i, SWIFT_CACHE_ALIGNMENT,
-                 num_M2L_runs * sizeof(struct gravity_tensors));
+  if (posix_memalign((void **)&tensors_i, SWIFT_CACHE_ALIGNMENT,
+                     num_M2L_runs * sizeof(struct gravity_tensors)) != 0)
+    error("Error allocating memory for multipoles array.");
   struct gravity_tensors *tensors_j = NULL;
-  posix_memalign((void **)&tensors_j, SWIFT_CACHE_ALIGNMENT,
-                 num_M2L_runs * sizeof(struct gravity_tensors));
+  if (posix_memalign((void **)&tensors_j, SWIFT_CACHE_ALIGNMENT,
+                     num_M2L_runs * sizeof(struct gravity_tensors)) != 0)
+    error("Error allocating memory for multipoles array.");
   for (int n = 0; n < num_M2L_runs; ++n) {
 
     memcpy(&tensors_i[n], ci.grav.multipole, sizeof(struct gravity_tensors));

@@ -29,10 +29,11 @@
 #include "black_holes_struct.h"
 #include "chemistry_struct.h"
 #include "cooling_struct.h"
+#include "csds.h"
 #include "feedback_struct.h"
-#include "logger.h"
 #include "particle_splitting_struct.h"
 #include "pressure_floor_struct.h"
+#include "rt_struct.h"
 #include "star_formation_struct.h"
 #include "timestep_limiter_struct.h"
 #include "tracers_struct.h"
@@ -74,11 +75,11 @@ struct xpart {
   struct star_formation_xpart_data sf_data;
 
   /* Additional data used by the feedback */
-  struct feedback_part_data feedback_data;
+  struct feedback_xpart_data feedback_data;
 
-#ifdef WITH_LOGGER
-  /* Additional data for the particle logger */
-  struct logger_part_data logger_data;
+#ifdef WITH_CSDS
+  /* Additional data for the particle csds */
+  struct csds_part_data csds_data;
 #endif
 
 } SWIFT_STRUCT_ALIGN;
@@ -215,11 +216,17 @@ struct part {
   /*! Cooling information */
   struct cooling_part_data cooling_data;
 
+  /*! Additional data used by the feedback */
+  struct feedback_part_data feedback_data;
+
   /*! Black holes information (e.g. swallowing ID) */
   struct black_holes_part_data black_holes_data;
 
   /*! Additional data used by the pressure floor */
   struct pressure_floor_part_data pressure_floor_data;
+
+  /*! Additional Radiative Transfer Data */
+  struct rt_part_data rt_data;
 
   /*! Time-step length */
   timebin_t time_bin;
@@ -235,6 +242,54 @@ struct part {
   /* Time of the last kick */
   integertime_t ti_kick;
 
+#endif
+
+#ifdef SWIFT_HYDRO_DENSITY_CHECKS
+
+  /* Integer number of neighbours in the density loop */
+  int N_density;
+
+  /* Exact integer number of neighbours in the density loop */
+  int N_density_exact;
+
+  /* Integer number of neighbours in the gradient loop */
+  int N_gradient;
+
+  /* Exact integer number of neighbours in the gradient loop */
+  int N_gradient_exact;
+
+  /* Integer number of neighbours in the force loop */
+  int N_force;
+
+  /* Exact integer number of neighbours in the force loop */
+  int N_force_exact;
+
+  /*! Exact value of the density field obtained via brute-force loop */
+  float rho_exact;
+
+  /*! Weighted numer of neighbours in the density loop */
+  float n_density;
+
+  /*! Exact value of the weighted numer of neighbours in the density loop */
+  float n_density_exact;
+
+  /*! Weighted numer of neighbours in the gradient loop */
+  float n_gradient;
+
+  /*! Exact value of the weighted numer of neighbours in the gradient loop */
+  float n_gradient_exact;
+
+  /*! Weighted numer of neighbours in the force loop */
+  float n_force;
+
+  /*! Exact value of the weighted numer of neighbours in the force loop */
+  float n_force_exact;
+
+  /*! Has this particle interacted with any unhibited neighbour? */
+  char inhibited_exact;
+
+  /*! Has this particle been woken up by the limiter? */
+  char limited_part;
 #endif
 
 } SWIFT_STRUCT_ALIGN;

@@ -108,6 +108,9 @@ struct space {
   /*! Are we doing star formation? */
   int with_star_formation;
 
+  /*! Are we doing star formation through sink particles? */
+  int with_sink;
+
   /*! Are we running with some DM background particles? */
   int with_DM_background;
 
@@ -185,6 +188,9 @@ struct space {
 
   /*! The total number of #sink in the space. */
   size_t nr_sinks;
+
+  /*! The total number of neutrino #gpart in the space. */
+  size_t nr_nuparts;
 
   /*! The total number of #part we allocated memory for */
   size_t size_parts;
@@ -347,10 +353,11 @@ void space_init(struct space *s, struct swift_params *params,
                 const struct hydro_props *hydro_properties, struct part *parts,
                 struct gpart *gparts, struct sink *sinks, struct spart *sparts,
                 struct bpart *bparts, size_t Npart, size_t Ngpart, size_t Nsink,
-                size_t Nspart, size_t Nbpart, int periodic, int replicate,
-                int remap_ids, int generate_gas_in_ics, int hydro, int gravity,
-                int star_formation, int DM_background, int neutrinos,
-                int verbose, int dry_run, int nr_nodes);
+                size_t Nspart, size_t Nbpart, size_t Nnupart, int periodic,
+                int replicate, int remap_ids, int generate_gas_in_ics,
+                int hydro, int gravity, int star_formation, int with_sink,
+                int DM_background, int neutrinos, int verbose, int dry_run,
+                int nr_nodes);
 void space_sanitize(struct space *s);
 void space_map_cells_pre(struct space *s, int full,
                          void (*fun)(struct cell *c, void *data), void *data);
@@ -417,9 +424,11 @@ void space_replicate(struct space *s, int replicate, int verbose);
 void space_generate_gas(struct space *s, const struct cosmology *cosmo,
                         const struct hydro_props *hydro_properties,
                         const int periodic, const int with_DM_background,
-                        const double dim[3], const int verbose);
+                        const int with_neutrinos, const double dim[3],
+                        const int verbose);
 void space_check_cosmology(struct space *s, const struct cosmology *cosmo,
-                           int rank);
+                           const int with_hydro, const int rank,
+                           const int check_neutrinos);
 void space_reset_task_counters(struct space *s);
 void space_clean(struct space *s);
 void space_free_cells(struct space *s);

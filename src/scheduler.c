@@ -1536,10 +1536,15 @@ void scheduler_reweight(struct scheduler *s, int verbose) {
         } else if (t->subtype == task_subtype_external_grav)
           cost = 1.f * wscale * gcount_i;
         else if (t->subtype == task_subtype_stars_density ||
+                 t->subtype == task_subtype_stars_prep1 ||
+                 t->subtype == task_subtype_stars_prep2 ||
                  t->subtype == task_subtype_stars_feedback)
           cost = 1.f * wscale * scount_i * count_i;
-        else if (t->subtype == task_subtype_sink_compute_formation)
+        else if (t->subtype == task_subtype_sink_compute_formation ||
+                 t->subtype == task_subtype_sink_accretion)
           cost = 1.f * wscale * count_i * sink_count_i;
+        else if (t->subtype == task_subtype_sink_merger)
+          cost = 1.f * wscale * sink_count_i * sink_count_i;
         else if (t->subtype == task_subtype_bh_density ||
                  t->subtype == task_subtype_bh_swallow ||
                  t->subtype == task_subtype_bh_feedback)
@@ -1553,9 +1558,13 @@ void scheduler_reweight(struct scheduler *s, int verbose) {
                  t->subtype == task_subtype_force ||
                  t->subtype == task_subtype_limiter)
           cost = 1.f * (wscale * count_i) * count_i;
-        else if (t->subtype == task_subtype_rt_inject) {
+        else if (t->subtype == task_subtype_rt_inject)
           cost = 1.f * wscale * scount_i * count_i;
-        } else
+        else if (t->subtype == task_subtype_rt_gradient)
+          cost = 1.f * wscale * count_i * count_i;
+        else if (t->subtype == task_subtype_rt_transport)
+          cost = 1.f * wscale * count_i * count_i;
+        else
           error("Untreated sub-type for selfs: %s",
                 subtaskID_names[t->subtype]);
         break;
@@ -1568,6 +1577,8 @@ void scheduler_reweight(struct scheduler *s, int verbose) {
             cost = 2.f * (wscale * gcount_i) * gcount_j;
 
         } else if (t->subtype == task_subtype_stars_density ||
+                   t->subtype == task_subtype_stars_prep1 ||
+                   t->subtype == task_subtype_stars_prep2 ||
                    t->subtype == task_subtype_stars_feedback) {
           if (t->ci->nodeID != nodeID)
             cost = 3.f * wscale * count_i * scount_j * sid_scale[t->flags];
@@ -1577,7 +1588,8 @@ void scheduler_reweight(struct scheduler *s, int verbose) {
             cost = 2.f * wscale * (scount_i * count_j + scount_j * count_i) *
                    sid_scale[t->flags];
 
-        } else if (t->subtype == task_subtype_sink_compute_formation) {
+        } else if (t->subtype == task_subtype_sink_compute_formation ||
+                   t->subtype == task_subtype_sink_accretion) {
           if (t->ci->nodeID != nodeID)
             cost = 3.f * wscale * count_i * sink_count_j * sid_scale[t->flags];
           else if (t->cj->nodeID != nodeID)
@@ -1585,6 +1597,18 @@ void scheduler_reweight(struct scheduler *s, int verbose) {
           else
             cost = 2.f * wscale *
                    (sink_count_i * count_j + sink_count_j * count_i) *
+                   sid_scale[t->flags];
+
+        } else if (t->subtype == task_subtype_sink_merger) {
+          if (t->ci->nodeID != nodeID)
+            cost = 3.f * wscale * sink_count_i * sink_count_j *
+                   sid_scale[t->flags];
+          else if (t->cj->nodeID != nodeID)
+            cost = 3.f * wscale * sink_count_i * sink_count_j *
+                   sid_scale[t->flags];
+          else
+            cost = 2.f * wscale *
+                   (sink_count_i * sink_count_j + sink_count_j * sink_count_i) *
                    sid_scale[t->flags];
 
         } else if (t->subtype == task_subtype_bh_density ||
@@ -1615,6 +1639,10 @@ void scheduler_reweight(struct scheduler *s, int verbose) {
 
         } else if (t->subtype == task_subtype_rt_inject) {
           cost = 1.f * wscale * scount_i * count_j;
+        } else if (t->subtype == task_subtype_rt_gradient) {
+          cost = 1.f * wscale * count_i * count_j;
+        } else if (t->subtype == task_subtype_rt_transport) {
+          cost = 1.f * wscale * count_i * count_j;
         } else {
           error("Untreated sub-type for pairs: %s",
                 subtaskID_names[t->subtype]);
@@ -1626,6 +1654,8 @@ void scheduler_reweight(struct scheduler *s, int verbose) {
         if (t->flags < 0) error("Negative flag value!");
 #endif
         if (t->subtype == task_subtype_stars_density ||
+            t->subtype == task_subtype_stars_prep1 ||
+            t->subtype == task_subtype_stars_prep2 ||
             t->subtype == task_subtype_stars_feedback) {
           if (t->ci->nodeID != nodeID) {
             cost = 3.f * (wscale * count_i) * scount_j * sid_scale[t->flags];
@@ -1636,7 +1666,8 @@ void scheduler_reweight(struct scheduler *s, int verbose) {
                    sid_scale[t->flags];
           }
 
-        } else if (t->subtype == task_subtype_sink_compute_formation) {
+        } else if (t->subtype == task_subtype_sink_compute_formation ||
+                   t->subtype == task_subtype_sink_accretion) {
           if (t->ci->nodeID != nodeID) {
             cost =
                 3.f * (wscale * count_i) * sink_count_j * sid_scale[t->flags];
@@ -1646,6 +1677,19 @@ void scheduler_reweight(struct scheduler *s, int verbose) {
           } else {
             cost = 2.f * wscale *
                    (sink_count_i * count_j + sink_count_j * count_i) *
+                   sid_scale[t->flags];
+          }
+
+        } else if (t->subtype == task_subtype_sink_merger) {
+          if (t->ci->nodeID != nodeID) {
+            cost = 3.f * (wscale * sink_count_i) * sink_count_j *
+                   sid_scale[t->flags];
+          } else if (t->cj->nodeID != nodeID) {
+            cost = 3.f * (wscale * sink_count_i) * sink_count_j *
+                   sid_scale[t->flags];
+          } else {
+            cost = 2.f * wscale *
+                   (sink_count_i * sink_count_j + sink_count_j * sink_count_i) *
                    sid_scale[t->flags];
           }
         } else if (t->subtype == task_subtype_bh_density ||
@@ -1677,6 +1721,10 @@ void scheduler_reweight(struct scheduler *s, int verbose) {
           }
         } else if (t->subtype == task_subtype_rt_inject) {
           cost = 1.f * wscale * scount_i * count_j;
+        } else if (t->subtype == task_subtype_rt_gradient) {
+          cost = 1.f * wscale * count_i * count_j;
+        } else if (t->subtype == task_subtype_rt_transport) {
+          cost = 1.f * wscale * count_i * count_j;
         } else {
           error("Untreated sub-type for sub-pairs: %s",
                 subtaskID_names[t->subtype]);
@@ -1685,10 +1733,15 @@ void scheduler_reweight(struct scheduler *s, int verbose) {
 
       case task_type_sub_self:
         if (t->subtype == task_subtype_stars_density ||
+            t->subtype == task_subtype_stars_prep1 ||
+            t->subtype == task_subtype_stars_prep2 ||
             t->subtype == task_subtype_stars_feedback) {
           cost = 1.f * (wscale * scount_i) * count_i;
-        } else if (t->subtype == task_subtype_sink_compute_formation) {
+        } else if (t->subtype == task_subtype_sink_compute_formation ||
+                   t->subtype == task_subtype_sink_accretion) {
           cost = 1.f * (wscale * sink_count_i) * count_i;
+        } else if (t->subtype == task_subtype_sink_merger) {
+          cost = 1.f * (wscale * sink_count_i) * sink_count_i;
         } else if (t->subtype == task_subtype_bh_density ||
                    t->subtype == task_subtype_bh_swallow ||
                    t->subtype == task_subtype_bh_feedback) {
@@ -1703,6 +1756,10 @@ void scheduler_reweight(struct scheduler *s, int verbose) {
                    t->subtype == task_subtype_limiter) {
           cost = 1.f * (wscale * count_i) * count_i;
         } else if (t->subtype == task_subtype_rt_inject) {
+          cost = 1.f * wscale * scount_i * count_i;
+        } else if (t->subtype == task_subtype_rt_gradient) {
+          cost = 1.f * wscale * scount_i * count_i;
+        } else if (t->subtype == task_subtype_rt_transport) {
           cost = 1.f * wscale * scount_i * count_i;
         } else {
           error("Untreated sub-type for sub-selfs: %s",
@@ -1763,11 +1820,24 @@ void scheduler_reweight(struct scheduler *s, int verbose) {
       case task_type_star_formation:
         cost = wscale * (count_i + scount_i);
         break;
+      case task_type_star_formation_sink:
+        cost = wscale * (sink_count_i + scount_i);
+        break;
       case task_type_sink_formation:
         cost = wscale * (count_i + sink_count_i);
         break;
       case task_type_rt_ghost1:
         cost = wscale * count_i;
+        break;
+      case task_type_rt_ghost2:
+        cost = wscale * count_i;
+        break;
+      case task_type_rt_tchem:
+        cost = wscale * count_i;
+        break;
+      case task_type_csds:
+        cost =
+            wscale * (count_i + gcount_i + scount_i + sink_count_i + bcount_i);
         break;
       case task_type_kick1:
         cost =
@@ -1952,7 +2022,7 @@ void scheduler_enqueue(struct scheduler *s, struct task *t) {
       case task_type_kick1:
       case task_type_kick2:
       case task_type_stars_ghost:
-      case task_type_logger:
+      case task_type_csds:
       case task_type_stars_sort:
       case task_type_timestep:
         qid = t->ci->super->owner;
@@ -2009,6 +2079,7 @@ void scheduler_enqueue(struct scheduler *s, struct task *t) {
         } else if (t->subtype == task_subtype_xv ||
                    t->subtype == task_subtype_rho ||
                    t->subtype == task_subtype_gradient ||
+                   t->subtype == task_subtype_part_prep1 ||
                    t->subtype == task_subtype_limiter) {
 
           count = t->ci->hydro.count;
@@ -2023,7 +2094,8 @@ void scheduler_enqueue(struct scheduler *s, struct task *t) {
           type = gpart_mpi_type;
           buff = t->ci->grav.parts;
 
-        } else if (t->subtype == task_subtype_spart) {
+        } else if (t->subtype == task_subtype_spart_density ||
+                   t->subtype == task_subtype_spart_prep2) {
 
           count = t->ci->stars.count;
           size = count * sizeof(struct spart);
@@ -2126,6 +2198,7 @@ void scheduler_enqueue(struct scheduler *s, struct task *t) {
         } else if (t->subtype == task_subtype_xv ||
                    t->subtype == task_subtype_rho ||
                    t->subtype == task_subtype_gradient ||
+                   t->subtype == task_subtype_part_prep1 ||
                    t->subtype == task_subtype_limiter) {
 
           count = t->ci->hydro.count;
@@ -2140,7 +2213,8 @@ void scheduler_enqueue(struct scheduler *s, struct task *t) {
           type = gpart_mpi_type;
           buff = t->ci->grav.parts;
 
-        } else if (t->subtype == task_subtype_spart) {
+        } else if (t->subtype == task_subtype_spart_density ||
+                   t->subtype == task_subtype_spart_prep2) {
 
           count = t->ci->stars.count;
           size = count * sizeof(struct spart);

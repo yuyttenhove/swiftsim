@@ -58,9 +58,10 @@ Stars:
   h_tolerance:           7e-3
   overwrite_birth_time:    1     # Make sure the stars in the ICs do not do any feedback
   birth_time:             -1.    # by setting all of their birth times to -1  
-  timestep_age_threshold_Myr: 10.    # Age at which stars switch from young to old (in Mega-years).
-  max_timestep_young_Myr:      0.1   # Maximal time-step length of young stars (in Mega-years).
-  max_timestep_old_Myr:        1.0   # Maximal time-step length of old stars (in Mega-years).
+  timestep_age_threshold_Myr: 10.   # Age at which stars switch from young to old (in Mega-years).
+  max_timestep_young_Myr:     0.1   # Maximal time-step length of young stars (in Mega-years).
+  max_timestep_old_Myr:       1.0   # Maximal time-step length of old stars (in Mega-years).
+  luminosity_filename:   ./photometry
 
 
 # Standard EAGLE cooling options
@@ -153,7 +154,9 @@ EAGLEFeedback:
   SNII_feedback_model:                  MinimumDistance # Feedback modes: Random, Isotropic, MinimumDistance, MinimumDensity
   SNII_sampled_delay:                   1               # Sample the SNII lifetimes to do feedback.
   SNII_delta_T_K:                       3.16228e7       # Change in temperature to apply to the gas particle in a SNII thermal feedback event in Kelvin.
+  SNII_delta_v_km_p_s:                  200             # Velocity kick applied by the stars when doing SNII feedback (in km/s).
   SNII_energy_erg:                      1.0e51          # Energy of one SNII explosion in ergs.
+  SNII_energy_fraction_function:        EAGLE           # Type of functional form to use for scaling the energy fraction with density and metallicity ('EAGLE', 'Separable', or 'Independent').
   SNII_energy_fraction_min:             1.0             # Minimal fraction of energy applied in a SNII feedback event.
   SNII_energy_fraction_max:             1.0             # Maximal fraction of energy applied in a SNII feedback event.
   SNII_energy_fraction_Z_0:             0.0012663729    # Pivot point for the metallicity dependance of the SNII energy fraction (metal mass fraction).

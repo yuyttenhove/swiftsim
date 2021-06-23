@@ -38,99 +38,167 @@
  */
 struct cell_hydro {
 
-  /*! Pointer to the #part data. */
-  struct part *parts;
-
-  /*! Pointer to the #xpart data. */
-  struct xpart *xparts;
-
-#ifdef SHADOWFAX_NEW_SPH
-  /*! Was Shadowfax functionality enabled for this cell? */
-  int shadowfax_enabled;
-  /*! Delaunay tessellation. */
-  struct delaunay deltess;
-  /*! Voronoi tessellation. */
-  struct voronoi vortess;
+  /* If we are not using hydro, compact as much of the unecessary variables
+     into an anonymous union to save memory in the cell structure. */
+#ifdef NONE_SPH
+  union {
 #endif
 
-  /*! Pointer for the sorted indices. */
-  struct sort_entry *sort;
+    /*! Pointer to the #part data. */
+    struct part *parts;
 
-  /*! Super cell, i.e. the highest-level parent cell that has a hydro
-   * pair/self tasks */
-  struct cell *super;
+    /*! Pointer to the #xpart data. */
+    struct xpart *xparts;
 
-  /*! The task computing this cell's sorts. */
-  struct task *sorts;
+#ifdef SHADOWFAX_NEW_SPH
+    /*! Was Shadowfax functionality enabled for this cell? */
+    int shadowfax_enabled;
+    /*! Delaunay tessellation. */
+    struct delaunay deltess;
+    /*! Voronoi tessellation. */
+    struct voronoi vortess;
+#endif
 
-  /*! The drift task for parts */
-  struct task *drift;
+    /*! Pointer for the sorted indices. */
+    struct sort_entry *sort;
 
-  /*! Linked list of the tasks computing this cell's hydro density. */
-  struct link *density;
+    /*! Super cell, i.e. the highest-level parent cell that has a hydro
+     * pair/self tasks */
+    struct cell *super;
 
-  /* Linked list of the tasks computing this cell's hydro gradients. */
-  struct link *gradient;
+    /*! The task computing this cell's sorts. */
+    struct task *sorts;
 
-  /*! Linked list of the tasks computing this cell's hydro forces. */
-  struct link *force;
+    /*! The drift task for parts */
+    struct task *drift;
 
-  /*! Linked list of the tasks computing this cell's limiter. */
-  struct link *limiter;
+    /*! Linked list of the tasks computing this cell's hydro density. */
+    struct link *density;
 
-  /*! Dependency implicit task for the ghost  (in->ghost->out)*/
-  struct task *ghost_in;
+    /* Linked list of the tasks computing this cell's hydro gradients. */
+    struct link *gradient;
 
-  /*! Dependency implicit task for the ghost  (in->ghost->out)*/
-  struct task *ghost_out;
+    /*! Linked list of the tasks computing this cell's hydro forces. */
+    struct link *force;
 
-  /*! The ghost task itself */
-  struct task *ghost;
+    /*! Linked list of the tasks computing this cell's limiter. */
+    struct link *limiter;
 
-  /*! The extra ghost task for complex hydro schemes */
-  struct task *extra_ghost;
+    /*! Dependency implicit task for the ghost  (in->ghost->out)*/
+    struct task *ghost_in;
 
-  /*! The task to end the force calculation */
-  struct task *end_force;
+    /*! Dependency implicit task for the ghost  (in->ghost->out)*/
+    struct task *ghost_out;
 
-  /*! Dependency implicit task for cooling (in->cooling->out) */
-  struct task *cooling_in;
+    /*! The ghost task itself */
+    struct task *ghost;
 
-  /*! Dependency implicit task for cooling (in->cooling->out) */
-  struct task *cooling_out;
+    /*! The hydro ghost task related to kinetic feedback */
+    struct task *prep1_ghost;
 
-  /*! Task for cooling */
-  struct task *cooling;
+    /*! The extra ghost task for complex hydro schemes */
+    struct task *extra_ghost;
 
-  /*! Task for star formation */
-  struct task *star_formation;
+    /*! The task to end the force calculation */
+    struct task *end_force;
 
-  /*! Task for sink formation */
-  struct task *sink_formation;
+    /*! Dependency implicit task for cooling (in->cooling->out) */
+    struct task *cooling_in;
 
-  /*! Task for sorting the stars again after a SF event */
-  struct task *stars_resort;
+    /*! Dependency implicit task for cooling (in->cooling->out) */
+    struct task *cooling_out;
 
-  /*! Radiative transfer ghost in task */
-  struct task *rt_in;
+    /*! Task for cooling */
+    struct task *cooling;
 
-  /*! Radiative transfer ghost out task */
-  struct task *rt_out;
+    /*! Task for star formation */
+    struct task *star_formation;
 
-  /*! Radiative transfer ghost1 task (finishes up injection) */
-  struct task *rt_ghost1;
+    /*! Task for star formation from sink particles */
+    struct task *star_formation_sink;
 
-  /*! Task for self/pair injection step of radiative transfer */
-  struct link *rt_inject;
+    /*! Task for sink formation */
+    struct task *sink_formation;
 
-  /*! Last (integer) time the cell's part were drifted forward in time. */
-  integertime_t ti_old_part;
+    /*! Task for sorting the stars again after a SF event */
+    struct task *stars_resort;
+
+    /*! Radiative transfer ghost in task */
+    struct task *rt_in;
+
+    /*! Task for self/pair injection step of radiative transfer */
+    struct link *rt_inject;
+
+    /*! Radiative transfer ghost1 task (finishes up injection) */
+    struct task *rt_ghost1;
+
+    /*! Task for self/pair gradient step of radiative transfer */
+    struct link *rt_gradient;
+
+    /*! Radiative transfer ghost2 task */
+    struct task *rt_ghost2;
+
+    /*! Task for self/pair transport step of radiative transfer */
+    struct link *rt_transport;
+
+    /*! Radiative transfer transport out task */
+    struct task *rt_transport_out;
+
+    /*! Radiative transfer thermochemistry task */
+    struct task *rt_tchem;
+
+    /*! Radiative transfer ghost out task */
+    struct task *rt_out;
+
+    /*! Last (integer) time the cell's part were drifted forward in time. */
+    integertime_t ti_old_part;
+
+    /*! Max smoothing length of active particles in this cell. */
+    float h_max_active;
+
+    /*! Values of h_max before the drifts, used for sub-cell tasks. */
+    float h_max_old;
+
+    /*! Maximum part movement in this cell since last construction. */
+    float dx_max_part;
+
+    /*! Maximum particle movement in this cell since the last sort. */
+    float dx_max_sort;
+
+    /*! Values of dx_max before the drifts, used for sub-cell tasks. */
+    float dx_max_part_old;
+
+    /*! Values of dx_max_sort before the drifts, used for sub-cell tasks. */
+    float dx_max_sort_old;
+
+    /*! Nr of #part this cell can hold after addition of new #part. */
+    int count_total;
+
+    /*! Bit mask of sort directions that will be needed in the next timestep. */
+    uint16_t requires_sorts;
+
+    /*! Bit mask of sorts that need to be computed for this cell. */
+    uint16_t do_sort;
+
+    /*! Bit-mask indicating the sorted directions */
+    uint16_t sorted;
+
+    /*! Bit-mask indicating the sorted directions */
+    uint16_t sort_allocated;
+
+#ifdef SWIFT_DEBUG_CHECKS
+
+    /*! Last (integer) time the cell's sort arrays were updated. */
+    integertime_t ti_sort;
+
+#endif
+
+#ifdef NONE_SPH
+  };
+#endif
 
   /*! Minimum end of (integer) time step in this cell for hydro tasks. */
   integertime_t ti_end_min;
-
-  /*! Maximum end of (integer) time step in this cell for hydro tasks. */
-  integertime_t ti_end_max;
 
   /*! Maximum beginning of (integer) time step in this cell for hydro tasks.
    */
@@ -142,51 +210,14 @@ struct cell_hydro {
   /*! Max smoothing length in this cell. */
   float h_max;
 
-  /*! Maximum part movement in this cell since last construction. */
-  float dx_max_part;
-
-  /*! Maximum particle movement in this cell since the last sort. */
-  float dx_max_sort;
-
-  /*! Values of h_max before the drifts, used for sub-cell tasks. */
-  float h_max_old;
-
-  /*! Values of dx_max before the drifts, used for sub-cell tasks. */
-  float dx_max_part_old;
-
-  /*! Values of dx_max_sort before the drifts, used for sub-cell tasks. */
-  float dx_max_sort_old;
-
-  /*! Nr of #part in this cell. */
-  int count;
-
-  /*! Nr of #part this cell can hold after addition of new #part. */
-  int count_total;
-
   /*! Number of #part updated in this cell. */
   int updated;
 
   /*! Is the #part data of this cell being used in a sub-cell? */
   int hold;
 
-  /*! Bit mask of sort directions that will be needed in the next timestep. */
-  uint16_t requires_sorts;
-
-  /*! Bit mask of sorts that need to be computed for this cell. */
-  uint16_t do_sort;
-
-  /*! Bit-mask indicating the sorted directions */
-  uint16_t sorted;
-
-  /*! Bit-mask indicating the sorted directions */
-  uint16_t sort_allocated;
-
-#ifdef SWIFT_DEBUG_CHECKS
-
-  /*! Last (integer) time the cell's sort arrays were updated. */
-  integertime_t ti_sort;
-
-#endif
+  /*! Nr of #part in this cell. */
+  int count;
 };
 
 #endif /* SWIFT_CELL_HYDRO_H */
