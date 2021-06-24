@@ -76,8 +76,8 @@ inline static void delaunay_init_vertex(struct delaunay* restrict d, int v,
   /* compute the rescaled coordinates. We do this because floating point values
      in the range [1,2[ all have the same exponent (0), which guarantees that
      their mantissas form a linear sequence */
-  double rescaled_x = 1. + (x - d->anchor[0]) * d->inverse_side;
-  double rescaled_y = 1. + (y - d->anchor[1]) * d->inverse_side;
+  double rescaled_x = 1. + (x - d->anchor[0]) * d->inverse_side + 1e-13;
+  double rescaled_y = 1. + (y - d->anchor[1]) * d->inverse_side + 1e-13;
 
   delaunay_assert(rescaled_x >= 1.);
   delaunay_assert(rescaled_x < 2.);
@@ -403,18 +403,22 @@ inline static void delaunay_reset(struct delaunay* restrict d,
   d->side = box_side;
   /* the 1.e-13 makes sure converted values are in the range [1, 2[ instead of
    * [1,2] (unlike Springel, 2010) */
-  d->inverse_side = (1. - 1.e-13) / box_side;
+  d->inverse_side = (1. - 2.e-13) / box_side;
 
   /* set up the large triangle and the 3 dummies */
   /* mind the orientation: counterclockwise w.r.t. the z-axis. */
-  int v0 = delaunay_new_vertex(d, box_anchor[0], box_anchor[1], NULL);
+  int v0 = delaunay_new_vertex(
+      d, (box_anchor[0] * d->inverse_side - 1e-13) / d->inverse_side,
+      (box_anchor[1] * d->inverse_side - 1e-13) / d->inverse_side, NULL);
   delaunay_log("Creating vertex %i: %g %g", v0, box_anchor[0], box_anchor[1]);
-  int v1 =
-      delaunay_new_vertex(d, box_anchor[0] + box_side, box_anchor[1], NULL);
+  int v1 = delaunay_new_vertex(
+      d, box_anchor[0] + box_side,
+      (box_anchor[1] * d->inverse_side - 1e-13) / d->inverse_side, NULL);
   delaunay_log("Creating vertex %i: %g %g", v1, box_anchor[0] + box_side,
                box_anchor[1]);
-  int v2 =
-      delaunay_new_vertex(d, box_anchor[0], box_anchor[1] + box_side, NULL);
+  int v2 = delaunay_new_vertex(
+      d, (box_anchor[0] * d->inverse_side - 1e-13) / d->inverse_side,
+      box_anchor[1] + box_side, NULL);
   delaunay_log("Creating vertex %i: %g %g", v2, box_anchor[0],
                box_anchor[1] + box_side);
 
