@@ -58,16 +58,23 @@ hydro_shadowfax_convert_conserved_to_primitive(struct part *restrict p) {
 }
 
 __attribute__((always_inline)) INLINE static void hydro_shadowfax_flux_exchange(
-    struct part *pi, struct part *pj, double const *midpoint,
+    struct part *pi, struct part *pj, double const *centroid,
     double surface_area, const double *shift, const int symmetric) {
 
   /* Initialize local variables */
+  /* Vector from pj to pi */
   float dx[3];
   for (int k = 0; k < 3; k++) {
     dx[k] = (float)pi->x[k] - (float)pj->x[k] - (float)shift[k];
   }
   const float r2 = dx[0] * dx[0] + dx[1] * dx[1] + dx[2] * dx[2];
   const float r = sqrtf(r2);
+
+  /* Midpoint between pj and pi */
+  float midpoint[3];
+  for (int k = 0; k < 3; k++) {
+    midpoint[k] = 0.5f * (float)(pi->x[k] + pj->x[k] + shift[k]);
+  }
 
   /* Primitive quantities */
   float Wi[5] = {pi->primitives.rho, pi->primitives.v[0], pi->primitives.v[1],
@@ -98,15 +105,18 @@ __attribute__((always_inline)) INLINE static void hydro_shadowfax_flux_exchange(
   pi->timestepvars.vmax = fmaxf(pi->timestepvars.vmax, vmax);
   pj->timestepvars.vmax = fmaxf(pj->timestepvars.vmax, vmax);
 
-  /* Compute interface velocity */
+  /* Compute interface velocity, see Springel 2010 (33) */
   float vij[3];
-  float fac = (vi[0] - vj[0]) * (midpoint[0] + 0.5f * dx[0]) +
-              (vi[1] - vj[1]) * (midpoint[1] + 0.5f * dx[1]) +
-              (vi[2] - vj[2]) * (midpoint[2] + 0.5f * dx[2]);
-  fac /= r;
-  vij[0] = 0.5f * (vi[0] + vj[0]) - fac * dx[0];
-  vij[1] = 0.5f * (vi[1] + vj[1]) - fac * dx[1];
-  vij[2] = 0.5f * (vi[2] + vj[2]) - fac * dx[2];
+  float fac = (float)((vj[0] - vi[0]) * (centroid[0] - midpoint[0]) +
+                      (vj[1] - vi[1]) * (centroid[1] - midpoint[1]) +
+                      (vj[2] - vi[2]) * (centroid[2] - midpoint[2])) /
+              r2;
+  vij[0] = 0.5f * (vi[0] + vj[0]) + fac * dx[0];
+  vij[1] = 0.5f * (vi[1] + vj[1]) + fac * dx[1];
+  vij[2] = 0.5f * (vi[2] + vj[2]) + fac * dx[2];
+#if defined(SWIFT_DEBUG_CHECKS) && defined(SHADOWFAX_FIX_CELLS)
+  assert(vij[0] == 0.f && vij[1] == 0.f && vij[2] == 0.);
+#endif
 
   /* Boost the primitive variables to the frame of reference of the interface */
   /* Note that velocities are indices 1-3 in W */
@@ -120,7 +130,7 @@ __attribute__((always_inline)) INLINE static void hydro_shadowfax_flux_exchange(
   /* TODO add gradients */
   float xij_i[3];
   for (int k = 0; k < 3; k++) {
-    xij_i[k] = midpoint[k] - pi->x[k];
+    xij_i[k] = (float)(centroid[k] - pi->x[k]);
   }
   hydro_gradients_predict(pi, pj, pi->h, pj->h, dx, r, xij_i, Wi, Wj);
 
@@ -136,20 +146,23 @@ __attribute__((always_inline)) INLINE static void hydro_shadowfax_flux_exchange(
 
   /* Update conserved variables */
   /* eqn. (16) */
-  pi->conserved.flux.mass -= surface_area * totflux[0];
-  pi->conserved.flux.momentum[0] -= surface_area * totflux[1];
-  pi->conserved.flux.momentum[1] -= surface_area * totflux[2];
-  pi->conserved.flux.momentum[2] -= surface_area * totflux[3];
-  pi->conserved.flux.energy -= surface_area * totflux[4];
+  pi->conserved.flux.mass -= (float)surface_area * totflux[0];
+  pi->conserved.flux.momentum[0] -= (float)surface_area * totflux[1];
+  pi->conserved.flux.momentum[1] -= (float)surface_area * totflux[2];
+  pi->conserved.flux.momentum[2] -= (float)surface_area * totflux[3];
+  pi->conserved.flux.energy -= (float)surface_area * totflux[4];
 
 #ifndef SHADOWFAX_TOTAL_ENERGY
   float ekin = 0.5f * (pi->primitives.v[0] * pi->primitives.v[0] +
                        pi->primitives.v[1] * pi->primitives.v[1] +
                        pi->primitives.v[2] * pi->primitives.v[2]);
-  pi->conserved.flux.energy += surface_area * totflux[1] * pi->primitives.v[0];
-  pi->conserved.flux.energy += surface_area * totflux[2] * pi->primitives.v[1];
-  pi->conserved.flux.energy += surface_area * totflux[3] * pi->primitives.v[2];
-  pi->conserved.flux.energy -= surface_area * totflux[0] * ekin;
+  pi->conserved.flux.energy +=
+      (float)surface_area * totflux[1] * pi->primitives.v[0];
+  pi->conserved.flux.energy +=
+      (float)surface_area * totflux[2] * pi->primitives.v[1];
+  pi->conserved.flux.energy +=
+      (float)surface_area * totflux[3] * pi->primitives.v[2];
+  pi->conserved.flux.energy -= (float)surface_area * totflux[0] * ekin;
 #endif
 
 #ifdef SWIFT_DEBUG_CHECKS
@@ -157,20 +170,23 @@ __attribute__((always_inline)) INLINE static void hydro_shadowfax_flux_exchange(
 #endif
 
   if (symmetric) {
-    pj->conserved.flux.mass += surface_area * totflux[0];
-    pj->conserved.flux.momentum[0] += surface_area * totflux[1];
-    pj->conserved.flux.momentum[1] += surface_area * totflux[2];
-    pj->conserved.flux.momentum[2] += surface_area * totflux[3];
-    pj->conserved.flux.energy += surface_area * totflux[4];
+    pj->conserved.flux.mass += (float)surface_area * totflux[0];
+    pj->conserved.flux.momentum[0] += (float)surface_area * totflux[1];
+    pj->conserved.flux.momentum[1] += (float)surface_area * totflux[2];
+    pj->conserved.flux.momentum[2] += (float)surface_area * totflux[3];
+    pj->conserved.flux.energy += (float)surface_area * totflux[4];
 
 #ifndef SHADOWFAX_TOTAL_ENERGY
     ekin = 0.5f * (pj->primitives.v[0] * pj->primitives.v[0] +
                    pj->primitives.v[1] * pj->primitives.v[1] +
                    pj->primitives.v[2] * pj->primitives.v[2]);
-    pj->conserved.flux.energy -= surface_area * totflux[1] * pj->primitives.v[0];
-    pj->conserved.flux.energy -= surface_area * totflux[2] * pj->primitives.v[1];
-    pj->conserved.flux.energy -= surface_area * totflux[3] * pj->primitives.v[2];
-    pj->conserved.flux.energy += surface_area * totflux[0] * ekin;
+    pj->conserved.flux.energy -=
+        (float)surface_area * totflux[1] * pj->primitives.v[0];
+    pj->conserved.flux.energy -=
+        (float)surface_area * totflux[2] * pj->primitives.v[1];
+    pj->conserved.flux.energy -=
+        (float)surface_area * totflux[3] * pj->primitives.v[2];
+    pj->conserved.flux.energy += (float)surface_area * totflux[0] * ekin;
 #endif
 
 #ifdef SWIFT_DEBUG_CHECKS
@@ -178,7 +194,6 @@ __attribute__((always_inline)) INLINE static void hydro_shadowfax_flux_exchange(
 #endif
   }
 }
-
 
 /**
  * @brief Gradient calculations done during the neighbour loop
