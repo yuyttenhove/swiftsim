@@ -282,50 +282,6 @@ __attribute__((always_inline)) INLINE static void cell_shadowfax_do_pair1_force(
 __attribute__((always_inline)) INLINE static void cell_shadowfax_do_pair2_force(
     const struct engine *e, struct cell *restrict ci, struct cell *restrict cj,
     int sid, const double *shift) {
-#ifdef SWIFT_DEBUG_CHECKS
-  int n_pairs_ci = 0;
-  for (int i = 0; i < ci->hydro.vortess.pair_index[26 - sid]; i++) {
-    if (ci->hydro.vortess.pairs[26 - sid][i].right_cell == cj) {
-      n_pairs_ci++;
-    }
-  }
-  int n_pairs_cj = 0;
-  for (int i = 0; i < cj->hydro.vortess.pair_index[sid]; i++) {
-    if (cj->hydro.vortess.pairs[sid][i].right_cell == ci) {
-      n_pairs_cj++;
-    }
-  }
-  assert(n_pairs_ci == n_pairs_cj);
-
-  for (int i = 0; i < ci->hydro.vortess.pair_index[26 - sid]; i++) {
-    struct voronoi_pair *pair_i = &ci->hydro.vortess.pairs[26 - sid][i];
-    if (pair_i->right_cell != cj) continue;
-
-    int found = 0;
-    struct voronoi_pair *pair_j;
-    for (int j = 0; !found && j < cj->hydro.vortess.pair_index[sid]; j++) {
-      pair_j = &cj->hydro.vortess.pairs[sid][j];
-      if (pair_i->left == pair_j->right && pair_j->left == pair_i->right) {
-        found = 1;
-      }
-    }
-    assert(found || pair_i->surface_area < 1e-15);
-  }
-  for (int j = 0; j < cj->hydro.vortess.pair_index[sid]; j++) {
-    struct voronoi_pair *pair_j = &cj->hydro.vortess.pairs[sid][j];
-    if (pair_j->right_cell != ci) continue;
-
-    int found = 0;
-    struct voronoi_pair *pair_i;
-    for (int i = 0; !found && i < ci->hydro.vortess.pair_index[26-sid]; i++) {
-      pair_i = &ci->hydro.vortess.pairs[26-sid][i];
-      if (pair_j->left == pair_i->right && pair_i->left == pair_j->right) {
-        found = 1;
-      }
-    }
-    assert(found || pair_j->surface_area < 1e-15);
-  }
-#endif
 
   /* anything to do here? */
   if (!cell_is_active_hydro(ci, e)) return;
@@ -336,24 +292,7 @@ __attribute__((always_inline)) INLINE static void cell_shadowfax_do_pair2_force(
     struct voronoi_pair *pair = &vortess->pairs[26 - sid][i];
     struct part *part_left = pair->left;
     struct part *part_right = pair->right;
-    if ((part_left->x[0] == 0.3833333333333333 &&
-         part_left->x[1] == 0.68333333333333335) ||
-        (part_right->x[0] == 0.3833333333333333 &&
-         part_right->x[1] == 0.68333333333333335)) {
-      int n_pairs = 0;
-      for (int k = 0; k < 27; k++) {
-        for (int j = 0; j < vortess->pair_index[k]; j++) {
-          struct voronoi_pair *p = &vortess->pairs[k][j];
-          if ((p->left->x[0] == 0.3833333333333333 &&
-              p->left->x[1] == 0.68333333333333335) ||
-              (p->right->x[0] == 0.3833333333333333 &&
-                  p->right->x[1] == 0.68333333333333335)) {
-            n_pairs++;
-          }
-        }
-      }
-      part_left->x[0] = part_left->x[0];
-    }
+
     /* check if right particle in cj */
     if (pair->right_cell != cj) {
       continue;

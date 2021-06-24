@@ -89,7 +89,7 @@ __attribute__((always_inline)) INLINE static void hydro_gradients_predict(
   float dWi[5], dWj[5];
   float xij_j[3];
 
-  /* xij_j = real_midpoint - pj->x
+  /* xij_j = real_centroid - pj->x
            = xij_i + pi->x - pj->x
            = xij_i + dx */
   xij_j[0] = xij_i[0] + dx[0];
