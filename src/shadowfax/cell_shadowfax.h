@@ -59,16 +59,6 @@ cell_malloc_delaunay_tessellation(struct cell *c) {
     delaunay_init(&c->hydro.deltess, loc, width, count, 10 * count);
   }
 
-  //  struct part *restrict parts = c->hydro.parts;
-  //
-  //  for (int pd = 0; pd < count; pd++) {
-  //    /* Get a pointer to the ith particle. */
-  //    struct part *restrict p = &parts[pd];
-  //    p->voronoi.flag = 0;
-  //    p->voronoi.nface = 0;
-  //    p->voronoi.volume = 0;
-  //  }
-
   c->hydro.shadowfax_enabled = 1;
 }
 
@@ -501,25 +491,6 @@ __attribute__((always_inline)) INLINE static void cell_shadowfax_do_self2_force(
     struct voronoi_pair *pair = &vortess->pairs[13][i];
     struct part *part_left = pair->left;
     struct part *part_right = pair->right;
-
-    if ((part_left->x[0] == 0.3833333333333333 &&
-         part_left->x[1] == 0.68333333333333335) ||
-        (part_right->x[0] == 0.3833333333333333 &&
-         part_right->x[1] == 0.68333333333333335)) {
-      int n_pairs = 0;
-      for (int k = 0; k < 27; k++) {
-        for (int j = 0; j < vortess->pair_index[k]; j++) {
-          struct voronoi_pair *p = &vortess->pairs[k][j];
-          if ((p->left->x[0] == 0.3833333333333333 &&
-               p->left->x[1] == 0.68333333333333335) ||
-              (p->right->x[0] == 0.3833333333333333 &&
-               p->right->x[1] == 0.68333333333333335)) {
-            n_pairs++;
-          }
-        }
-      }
-      part_left->x[0] = part_left->x[0];
-    }
 
     if (part_left->force.active == 1 && part_right->force.active == 1) {
       hydro_shadowfax_flux_exchange(part_left, part_right, pair->midpoint,
