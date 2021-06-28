@@ -41,11 +41,11 @@ hydro_slope_limit_face_quantity(float phi_i, float phi_j, float phi_mid0,
     return 0.0f;
   }
 
-  delta1 = psi1 * fabs(phi_i - phi_j);
-  delta2 = psi2 * fabs(phi_i - phi_j);
+  delta1 = psi1 * fabsf(phi_i - phi_j);
+  delta2 = psi2 * fabsf(phi_i - phi_j);
 
-  phimin = fmin(phi_i, phi_j);
-  phimax = fmax(phi_i, phi_j);
+  phimin = fminf(phi_i, phi_j);
+  phimax = fmaxf(phi_i, phi_j);
 
   phibar = phi_i + xij_norm / r * (phi_j - phi_i);
 
@@ -53,20 +53,20 @@ hydro_slope_limit_face_quantity(float phi_i, float phi_j, float phi_mid0,
   if ((phimax + delta1) * phimax > 0.0f) {
     phiplus = phimax + delta1;
   } else {
-    phiplus = phimax / (1.0f + delta1 / fabs(phimax));
+    phiplus = phimax / (1.0f + delta1 / fabsf(phimax));
   }
 
   /* if sign(phimin-delta1) == sign(phimin) */
   if ((phimin - delta1) * phimin > 0.0f) {
     phiminus = phimin - delta1;
   } else {
-    phiminus = phimin / (1.0f + delta1 / fabs(phimin));
+    phiminus = phimin / (1.0f + delta1 / fabsf(phimin));
   }
 
   if (phi_i < phi_j) {
-    phi_mid = fmax(phiminus, fmin(phibar + delta2, phi_mid0));
+    phi_mid = fmaxf(phiminus, fminf(phibar + delta2, phi_mid0));
   } else {
-    phi_mid = fmin(phiplus, fmax(phibar - delta2, phi_mid0));
+    phi_mid = fminf(phiplus, fmaxf(phibar - delta2, phi_mid0));
   }
 
   return phi_mid - phi_i;
@@ -86,7 +86,7 @@ hydro_slope_limit_face_quantity(float phi_i, float phi_j, float phi_mid0,
  * @param r Distance between particle i and particle j.
  */
 __attribute__((always_inline)) INLINE static void hydro_slope_limit_face(
-    float *Wi, float *Wj, float *dWi, float *dWj, float *xij_i, float *xij_j,
+    float *Wi, float *Wj, float *dWi, float *dWj, const float *xij_i, const float *xij_j,
     float r) {
 
   float xij_i_norm, xij_j_norm;

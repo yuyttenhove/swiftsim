@@ -198,8 +198,8 @@ __attribute__((always_inline)) INLINE static void hydro_shadowfax_flux_exchange(
 /**
  * @brief Gradient calculations done during the neighbour loop
  *
- * @param pi Particle i.
- * @param pj Particle j.
+ * @param pi Particle i (left particle).
+ * @param pj Particle j (right particle).
  * @param midpoint Midpoint of the interface between pi's and pj's cell.
  * @param surface_area Surface area of the interface between pi's and pj's cell.
  * @param shift The shift vector to apply to pj.
@@ -221,15 +221,13 @@ hydro_shadowfax_gradients_collect(struct part *pi, struct part *pj,
   const float r2 = dx[0] * dx[0] + dx[1] * dx[1] + dx[2] * dx[2];
 
   float c[3];
-  /* midpoint is relative w.r.t. pi->x, as is dx */
   /* c is supposed to be the vector pointing from the midpoint of pi and pj to
-     the midpoint of the face between pi and pj:
-       c = real_midpoint - 0.5*(pi+pj)
-         = midpoint + pi - 0.5*(2*pi - dx)
-         = midpoint + 0.5*dx */
-  c[0] = (float)midpoint[0] + 0.5f * dx[0];
-  c[1] = (float)midpoint[1] + 0.5f * dx[1];
-  c[2] = (float)midpoint[2] + 0.5f * dx[2];
+     the centroid of the face between pi and pj.
+     The coordinates of the centroid of the face of the voronoi cell of particle
+     pi are given in the case of periodic boundary conditions. */
+  c[0] = (float)(midpoint[0] - 0.5 * (pi->x[0] + pj->x[0] + shift[0]));
+  c[1] = (float)(midpoint[1] - 0.5 * (pi->x[1] + pj->x[1] + shift[1]));
+  c[2] = (float)(midpoint[2] - 0.5 * (pi->x[2] + pj->x[2] + shift[2]));
 
   float r = sqrtf(r2);
   float area = (float)surface_area;
@@ -286,7 +284,7 @@ hydro_shadowfax_gradients_nonsym_collect(struct part *pi, struct part *pj,
                                          double const *midpoint,
                                          double surface_area,
                                          const double *shift) {
-
+  abort();
   if (!surface_area) {
     /* particle is not a cell neighbour: do nothing */
     return;
