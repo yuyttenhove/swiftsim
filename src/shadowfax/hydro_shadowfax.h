@@ -21,7 +21,7 @@ hydro_shadowfax_convert_conserved_to_primitive(struct part *restrict p) {
     momentum[0] = p->conserved.momentum[0];
     momentum[1] = p->conserved.momentum[1];
     momentum[2] = p->conserved.momentum[2];
-    p->primitives.rho = m / p->voronoi.volume;
+    p->primitives.rho = (float)(m / p->voronoi.volume);
     p->primitives.v[0] = momentum[0] / m;
     p->primitives.v[1] = momentum[1] / m;
     p->primitives.v[2] = momentum[2] / m;
@@ -39,11 +39,11 @@ hydro_shadowfax_convert_conserved_to_primitive(struct part *restrict p) {
     p->primitives.P =
         gas_pressure_from_internal_energy(p->primitives.rho, energy);
   } else {
-    p->primitives.rho = 0.;
-    p->primitives.v[0] = 0.;
-    p->primitives.v[1] = 0.;
-    p->primitives.v[2] = 0.;
-    p->primitives.P = 0.;
+    p->primitives.rho = 0.f;
+    p->primitives.v[0] = 0.f;
+    p->primitives.v[1] = 0.f;
+    p->primitives.v[2] = 0.f;
+    p->primitives.P = 0.f;
   }
 
 #ifdef SWIFT_DEBUG_CHECKS
@@ -227,25 +227,26 @@ hydro_shadowfax_gradients_collect(struct part *pi, struct part *pj,
        c = real_midpoint - 0.5*(pi+pj)
          = midpoint + pi - 0.5*(2*pi - dx)
          = midpoint + 0.5*dx */
-  c[0] = midpoint[0] + 0.5f * dx[0];
-  c[1] = midpoint[1] + 0.5f * dx[1];
-  c[2] = midpoint[2] + 0.5f * dx[2];
+  c[0] = (float)midpoint[0] + 0.5f * dx[0];
+  c[1] = (float)midpoint[1] + 0.5f * dx[1];
+  c[2] = (float)midpoint[2] + 0.5f * dx[2];
 
   float r = sqrtf(r2);
+  float area = (float)surface_area;
   hydro_gradients_single_quantity(pi->primitives.rho, pj->primitives.rho, c, dx,
-                                  r, surface_area,
+                                  r, area,
                                   pi->primitives.gradients.rho);
   hydro_gradients_single_quantity(pi->primitives.v[0], pj->primitives.v[0], c,
-                                  dx, r, surface_area,
+                                  dx, r, area,
                                   pi->primitives.gradients.v[0]);
   hydro_gradients_single_quantity(pi->primitives.v[1], pj->primitives.v[1], c,
-                                  dx, r, surface_area,
+                                  dx, r, area,
                                   pi->primitives.gradients.v[1]);
   hydro_gradients_single_quantity(pi->primitives.v[2], pj->primitives.v[2], c,
-                                  dx, r, surface_area,
+                                  dx, r, area,
                                   pi->primitives.gradients.v[2]);
   hydro_gradients_single_quantity(pi->primitives.P, pj->primitives.P, c, dx, r,
-                                  surface_area, pi->primitives.gradients.P);
+                                  area, pi->primitives.gradients.P);
 
   hydro_slope_limit_cell_collect(pi, pj, r);
 
@@ -254,19 +255,19 @@ hydro_shadowfax_gradients_collect(struct part *pi, struct part *pj,
   mindx[1] = -dx[1];
   mindx[2] = -dx[2];
   hydro_gradients_single_quantity(pj->primitives.rho, pi->primitives.rho, c,
-                                  mindx, r, surface_area,
+                                  mindx, r, area,
                                   pj->primitives.gradients.rho);
   hydro_gradients_single_quantity(pj->primitives.v[0], pi->primitives.v[0], c,
-                                  mindx, r, surface_area,
+                                  mindx, r, area,
                                   pj->primitives.gradients.v[0]);
   hydro_gradients_single_quantity(pj->primitives.v[1], pi->primitives.v[1], c,
-                                  mindx, r, surface_area,
+                                  mindx, r, area,
                                   pj->primitives.gradients.v[1]);
   hydro_gradients_single_quantity(pj->primitives.v[2], pi->primitives.v[2], c,
-                                  mindx, r, surface_area,
+                                  mindx, r, area,
                                   pj->primitives.gradients.v[2]);
   hydro_gradients_single_quantity(pj->primitives.P, pi->primitives.P, c, mindx,
-                                  r, surface_area, pj->primitives.gradients.P);
+                                  r, area, pj->primitives.gradients.P);
 
   hydro_slope_limit_cell_collect(pj, pi, r);
 }
@@ -305,25 +306,26 @@ hydro_shadowfax_gradients_nonsym_collect(struct part *pi, struct part *pj,
        c = real_midpoint - 0.5*(pi+pj)
          = midpoint + pi - 0.5*(2*pi - dx)
          = midpoint + 0.5*dx */
-  c[0] = midpoint[0] + 0.5f * dx[0];
-  c[1] = midpoint[1] + 0.5f * dx[1];
-  c[2] = midpoint[2] + 0.5f * dx[2];
+  c[0] = (float)midpoint[0] + 0.5f * dx[0];
+  c[1] = (float)midpoint[1] + 0.5f * dx[1];
+  c[2] = (float)midpoint[2] + 0.5f * dx[2];
 
   float r = sqrtf(r2);
+  float area = (float)surface_area;
   hydro_gradients_single_quantity(pi->primitives.rho, pj->primitives.rho, c, dx,
-                                  r, surface_area,
+                                  r, area,
                                   pi->primitives.gradients.rho);
   hydro_gradients_single_quantity(pi->primitives.v[0], pj->primitives.v[0], c,
-                                  dx, r, surface_area,
+                                  dx, r, area,
                                   pi->primitives.gradients.v[0]);
   hydro_gradients_single_quantity(pi->primitives.v[1], pj->primitives.v[1], c,
-                                  dx, r, surface_area,
+                                  dx, r, area,
                                   pi->primitives.gradients.v[1]);
   hydro_gradients_single_quantity(pi->primitives.v[2], pj->primitives.v[2], c,
-                                  dx, r, surface_area,
+                                  dx, r, area,
                                   pi->primitives.gradients.v[2]);
   hydro_gradients_single_quantity(pi->primitives.P, pj->primitives.P, c, dx, r,
-                                  surface_area, pi->primitives.gradients.P);
+                                  area, pi->primitives.gradients.P);
 
   hydro_slope_limit_cell_collect(pi, pj, r);
 }
