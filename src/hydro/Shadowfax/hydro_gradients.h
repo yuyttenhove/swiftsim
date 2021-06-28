@@ -83,7 +83,7 @@ __attribute__((always_inline)) INLINE void hydro_gradients_single_quantity(
  * gradients_none does nothing, since all gradients are zero -- are they?).
  */
 __attribute__((always_inline)) INLINE static void hydro_gradients_predict(
-    struct part* pi, struct part* pj, float hi, float hj, const float* dx,
+    const struct part* pi, const struct part* pj, float hi, float hj, const float* dx,
     float r, float* xij_i, float* Wi, float* Wj) {
 
   float dWi[5], dWj[5];
@@ -158,4 +158,4 @@ __attribute__((always_inline)) INLINE static void hydro_gradients_predict(
   }
 }
 
-#endif  // SWIFT_HYDRO_GRADIENTS_H
+#endif  // SWIFTSIM_HYDRO_GRADIENTS_H

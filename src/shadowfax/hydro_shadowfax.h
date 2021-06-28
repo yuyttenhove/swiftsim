@@ -127,7 +127,6 @@ __attribute__((always_inline)) INLINE static void hydro_shadowfax_flux_exchange(
   Wj[2] -= vij[1];
   Wj[3] -= vij[2];
 
-  /* TODO add gradients */
   float xij_i[3];
   for (int k = 0; k < 3; k++) {
     xij_i[k] = (float)(centroid[k] - pi->x[k]);
@@ -203,11 +202,12 @@ __attribute__((always_inline)) INLINE static void hydro_shadowfax_flux_exchange(
  * @param midpoint Midpoint of the interface between pi's and pj's cell.
  * @param surface_area Surface area of the interface between pi's and pj's cell.
  * @param shift The shift vector to apply to pj.
+ * @param symmetric Whether or not to update pj also
  */
 __attribute__((always_inline)) INLINE static void
 hydro_shadowfax_gradients_collect(struct part *pi, struct part *pj,
                                   double const *midpoint, double surface_area,
-                                  const double *shift) {
+                                  const double *shift, int symmetric) {
   if (!surface_area) {
     /* particle is not a cell neighbour: do nothing */
     return;
@@ -248,84 +248,28 @@ hydro_shadowfax_gradients_collect(struct part *pi, struct part *pj,
 
   hydro_slope_limit_cell_collect(pi, pj, r);
 
-  float mindx[3];
-  mindx[0] = -dx[0];
-  mindx[1] = -dx[1];
-  mindx[2] = -dx[2];
-  hydro_gradients_single_quantity(pj->primitives.rho, pi->primitives.rho, c,
-                                  mindx, r, area,
-                                  pj->primitives.gradients.rho);
-  hydro_gradients_single_quantity(pj->primitives.v[0], pi->primitives.v[0], c,
-                                  mindx, r, area,
-                                  pj->primitives.gradients.v[0]);
-  hydro_gradients_single_quantity(pj->primitives.v[1], pi->primitives.v[1], c,
-                                  mindx, r, area,
-                                  pj->primitives.gradients.v[1]);
-  hydro_gradients_single_quantity(pj->primitives.v[2], pi->primitives.v[2], c,
-                                  mindx, r, area,
-                                  pj->primitives.gradients.v[2]);
-  hydro_gradients_single_quantity(pj->primitives.P, pi->primitives.P, c, mindx,
-                                  r, area, pj->primitives.gradients.P);
+  if (symmetric) {
+    float mindx[3];
+    mindx[0] = -dx[0];
+    mindx[1] = -dx[1];
+    mindx[2] = -dx[2];
+    hydro_gradients_single_quantity(pj->primitives.rho, pi->primitives.rho, c,
+                                    mindx, r, area,
+                                    pj->primitives.gradients.rho);
+    hydro_gradients_single_quantity(pj->primitives.v[0], pi->primitives.v[0], c,
+                                    mindx, r, area,
+                                    pj->primitives.gradients.v[0]);
+    hydro_gradients_single_quantity(pj->primitives.v[1], pi->primitives.v[1], c,
+                                    mindx, r, area,
+                                    pj->primitives.gradients.v[1]);
+    hydro_gradients_single_quantity(pj->primitives.v[2], pi->primitives.v[2], c,
+                                    mindx, r, area,
+                                    pj->primitives.gradients.v[2]);
+    hydro_gradients_single_quantity(pj->primitives.P, pi->primitives.P, c, mindx,
+                                    r, area, pj->primitives.gradients.P);
 
-  hydro_slope_limit_cell_collect(pj, pi, r);
-}
-
-/**
- * @brief Gradient calculations done during the neighbour loop (non-symmetrical)
- *
- * @param pi Particle i.
- * @param pj Particle j.
- * @param midpoint Midpoint of the interface between pi's and pj's cell.
- * @param surface_area Surface area of the interface between pi's and pj's cell.
- * @param shift The shift vector to apply to pj.
- */
-__attribute__((always_inline)) INLINE static void
-hydro_shadowfax_gradients_nonsym_collect(struct part *pi, struct part *pj,
-                                         double const *midpoint,
-                                         double surface_area,
-                                         const double *shift) {
-  abort();
-  if (!surface_area) {
-    /* particle is not a cell neighbour: do nothing */
-    return;
+    hydro_slope_limit_cell_collect(pj, pi, r);
   }
-
-  /* Initialize local variables */
-  float dx[3];
-  for (int k = 0; k < 3; k++) {
-    dx[k] = (float)pi->x[k] - (float)pj->x[k] - (float)shift[k];
-  }
-  const float r2 = dx[0] * dx[0] + dx[1] * dx[1] + dx[2] * dx[2];
-
-  float c[3];
-  /* midpoint is relative w.r.t. pi->x, as is dx */
-  /* c is supposed to be the vector pointing from the midpoint of pi and pj to
-     the midpoint of the face between pi and pj:
-       c = real_midpoint - 0.5*(pi+pj)
-         = midpoint + pi - 0.5*(2*pi - dx)
-         = midpoint + 0.5*dx */
-  c[0] = (float)midpoint[0] + 0.5f * dx[0];
-  c[1] = (float)midpoint[1] + 0.5f * dx[1];
-  c[2] = (float)midpoint[2] + 0.5f * dx[2];
-
-  float r = sqrtf(r2);
-  float area = (float)surface_area;
-  hydro_gradients_single_quantity(pi->primitives.rho, pj->primitives.rho, c, dx,
-                                  r, area,
-                                  pi->primitives.gradients.rho);
-  hydro_gradients_single_quantity(pi->primitives.v[0], pj->primitives.v[0], c,
-                                  dx, r, area,
-                                  pi->primitives.gradients.v[0]);
-  hydro_gradients_single_quantity(pi->primitives.v[1], pj->primitives.v[1], c,
-                                  dx, r, area,
-                                  pi->primitives.gradients.v[1]);
-  hydro_gradients_single_quantity(pi->primitives.v[2], pj->primitives.v[2], c,
-                                  dx, r, area,
-                                  pi->primitives.gradients.v[2]);
-  hydro_gradients_single_quantity(pi->primitives.P, pj->primitives.P, c, dx, r,
-                                  area, pi->primitives.gradients.P);
-
-  hydro_slope_limit_cell_collect(pi, pj, r);
 }
 
 #endif /* SWIFT_HYDRO_SHADOWFAX_H */

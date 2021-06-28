@@ -244,18 +244,17 @@ cell_shadowfax_do_pair1_gradient(const struct engine *e,
     }
     if (part_left->force.active == 1 && part_right->force.active == 1) {
       hydro_shadowfax_gradients_collect(part_left, part_right, pair->midpoint,
-                                        pair->surface_area, shift);
+                                        pair->surface_area, shift, 1);
     } else if (part_left->force.active) {
-      hydro_shadowfax_gradients_nonsym_collect(
-          part_left, part_right, pair->midpoint, pair->surface_area, shift);
+      hydro_shadowfax_gradients_collect(part_left, part_right, pair->midpoint,
+                                        pair->surface_area, shift, 0);
     } else if (part_right->force.active) {
-      double inverse_shift[3];
-      for (int k = 0; k < 3; k++) {
-        inverse_shift[k] = -shift[k];
-      }
-      hydro_shadowfax_gradients_nonsym_collect(
-          part_right, part_left, pair->midpoint, pair->surface_area,
-          inverse_shift);
+      double inverse_shift[3] = {-shift[0], -shift[1], -shift[2]};
+      double midpoint[3] = {pair->midpoint[0] + inverse_shift[0],
+                            pair->midpoint[1] + inverse_shift[1],
+                            pair->midpoint[2] + inverse_shift[2]};
+      hydro_shadowfax_gradients_collect(part_right, part_left, midpoint,
+                                        pair->surface_area, inverse_shift, 0);
     }
   } /* loop over voronoi faces between ci and cj */
 }
@@ -465,18 +464,15 @@ cell_shadowfax_do_self1_gradient(const struct engine *e,
     struct part *part_right = pair->right;
     if (part_left->force.active == 1 && part_right->force.active == 1) {
       hydro_shadowfax_gradients_collect(part_left, part_right, pair->midpoint,
-                                        pair->surface_area, shift);
+                                        pair->surface_area, shift, 1);
     } else if (part_left->force.active) {
-      hydro_shadowfax_gradients_nonsym_collect(
-          part_left, part_right, pair->midpoint, pair->surface_area, shift);
+      hydro_shadowfax_gradients_collect(
+          part_left, part_right, pair->midpoint, pair->surface_area, shift, 0);
     } else if (part_right->force.active) {
-      double inverse_shift[3];
-      for (int k = 0; k < 3; k++) {
-        inverse_shift[k] = -shift[k];
-      }
-      hydro_shadowfax_gradients_nonsym_collect(
+      /* Shift is always {0, 0, 0} for self interactions */
+      hydro_shadowfax_gradients_collect(
           part_right, part_left, pair->midpoint, pair->surface_area,
-          inverse_shift);
+          shift, 0);
     }
   }
 }
