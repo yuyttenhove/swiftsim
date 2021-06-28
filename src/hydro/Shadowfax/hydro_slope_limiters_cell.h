@@ -56,29 +56,29 @@ hydro_slope_limit_cell_collect(struct part* pi, const struct part* pj,
   /* basic slope limiter: collect the maximal and the minimal value for the
    * primitive variables among the ngbs */
   pi->primitives.limiter.rho[0] =
-      fmin(pj->primitives.rho, pi->primitives.limiter.rho[0]);
+      fminf(pj->primitives.rho, pi->primitives.limiter.rho[0]);
   pi->primitives.limiter.rho[1] =
-      fmax(pj->primitives.rho, pi->primitives.limiter.rho[1]);
+      fmaxf(pj->primitives.rho, pi->primitives.limiter.rho[1]);
 
   pi->primitives.limiter.v[0][0] =
-      fmin(pj->primitives.v[0], pi->primitives.limiter.v[0][0]);
+      fminf(pj->primitives.v[0], pi->primitives.limiter.v[0][0]);
   pi->primitives.limiter.v[0][1] =
-      fmax(pj->primitives.v[0], pi->primitives.limiter.v[0][1]);
+      fmaxf(pj->primitives.v[0], pi->primitives.limiter.v[0][1]);
   pi->primitives.limiter.v[1][0] =
-      fmin(pj->primitives.v[1], pi->primitives.limiter.v[1][0]);
+      fminf(pj->primitives.v[1], pi->primitives.limiter.v[1][0]);
   pi->primitives.limiter.v[1][1] =
-      fmax(pj->primitives.v[1], pi->primitives.limiter.v[1][1]);
+      fmaxf(pj->primitives.v[1], pi->primitives.limiter.v[1][1]);
   pi->primitives.limiter.v[2][0] =
-      fmin(pj->primitives.v[2], pi->primitives.limiter.v[2][0]);
+      fminf(pj->primitives.v[2], pi->primitives.limiter.v[2][0]);
   pi->primitives.limiter.v[2][1] =
-      fmax(pj->primitives.v[2], pi->primitives.limiter.v[2][1]);
+      fmaxf(pj->primitives.v[2], pi->primitives.limiter.v[2][1]);
 
   pi->primitives.limiter.P[0] =
-      fmin(pj->primitives.P, pi->primitives.limiter.P[0]);
+      fminf(pj->primitives.P, pi->primitives.limiter.P[0]);
   pi->primitives.limiter.P[1] =
-      fmax(pj->primitives.P, pi->primitives.limiter.P[1]);
+      fmaxf(pj->primitives.P, pi->primitives.limiter.P[1]);
 
-  pi->primitives.limiter.maxr = fmax(r, pi->primitives.limiter.maxr);
+  pi->primitives.limiter.maxr = fmaxf(r, pi->primitives.limiter.maxr);
 }
 
 /**
@@ -103,7 +103,7 @@ hydro_slope_limit_cell_quantity(float* grad, float qval, float qmin, float qmax,
     gradtrue *= maxr;
     gradmax = qmax - qval;
     gradmin = qval - qmin;
-    alpha = fmin(1.0f, fmin(gradmax / gradtrue, gradmin / gradtrue));
+    alpha = fminf(1.0f, fminf(gradmax / gradtrue, gradmin / gradtrue));
     grad[0] *= alpha;
     grad[1] *= alpha;
     grad[2] *= alpha;
