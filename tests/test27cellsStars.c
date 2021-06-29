@@ -163,6 +163,7 @@ struct cell *make_cell(size_t n, size_t n_stars, double *offset, double size,
   cell->hydro.h_max = h_max;
   cell->hydro.count = count;
   cell->stars.h_max = stars_h_max;
+  cell->stars.h_max_active = stars_h_max;
   cell->stars.count = scount;
   cell->hydro.dx_max_part = 0.;
   cell->hydro.dx_max_sort = 0.;
@@ -176,13 +177,10 @@ struct cell *make_cell(size_t n, size_t n_stars, double *offset, double size,
 
   cell->stars.ti_old_part = 8;
   cell->stars.ti_end_min = 8;
-  cell->stars.ti_end_max = 8;
   cell->hydro.ti_old_part = 8;
   cell->hydro.ti_end_min = 8;
-  cell->hydro.ti_end_max = 8;
   cell->grav.ti_old_part = 8;
   cell->grav.ti_end_min = 8;
-  cell->grav.ti_end_max = 8;
   cell->nodeID = NODE_ID;
 
   shuffle_particles(cell->hydro.parts, cell->hydro.count);

@@ -150,6 +150,14 @@ __attribute__((always_inline)) INLINE static void hydro_first_init_part(
   p->a_hydro[0] = 0.0f;
   p->a_hydro[1] = 0.0f;
   p->a_hydro[2] = 0.0f;
+
+  /* Set initial values for voronoi properties */
+  p->voronoi.volume = 0.;
+  p->voronoi.nface = 0;
+  p->voronoi.flag = 0;
+#ifdef SWIFT_DEBUG_CHECKS
+  p->voronoi.nfluxes = 0;
+#endif
 }
 
 /**
@@ -169,6 +177,14 @@ __attribute__((always_inline)) INLINE static void hydro_init_part(
 
   /* Set the active flag to active. */
   p->force.active = 1;
+
+  /* Set initial values for voronoi properties */
+  p->voronoi.volume = 0.;
+  p->voronoi.nface = 0;
+  p->voronoi.flag = 0;
+#ifdef SWIFT_DEBUG_CHECKS
+  p->voronoi.nfluxes = 0;
+#endif
 }
 
 /**
@@ -368,7 +384,11 @@ __attribute__((always_inline)) INLINE static void hydro_predict_extra(
  * @param p Particle to act upon.
  */
 __attribute__((always_inline)) INLINE static void hydro_end_force(
-    struct part* p, const struct cosmology* cosmo) {}
+    struct part* p, const struct cosmology* cosmo) {
+#if defined(SWIFT_DEBUG_CHECKS) && defined(VORONOI_STORE_CELL_STATS)
+//  assert(p->voronoi.nface == p->voronoi.nfluxes);
+#endif
+}
 
 /**
  * @brief Extra operations done during the kick

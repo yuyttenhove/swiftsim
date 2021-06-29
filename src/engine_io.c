@@ -31,55 +31,15 @@
 #include "engine.h"
 
 /* Local headers. */
+#include "csds_io.h"
 #include "distributed_io.h"
 #include "kick.h"
 #include "line_of_sight.h"
-#include "logger_io.h"
 #include "parallel_io.h"
 #include "serial_io.h"
 #include "single_io.h"
 
 #include <stdio.h>
-
-/**
- * @brief Check whether an index file has to be written during this
- * step.
- *
- * @param e The #engine.
- */
-void engine_check_for_index_dump(struct engine *e) {
-#ifdef WITH_LOGGER
-  /* Get a few variables */
-  struct logger_writer *log = e->logger;
-  const size_t dump_size = log->dump.count;
-  const size_t old_dump_size = log->index.dump_size_last_output;
-  const float mem_frac = log->index.mem_frac;
-  const size_t total_nr_parts =
-      (e->total_nr_parts + e->total_nr_gparts + e->total_nr_sparts +
-       e->total_nr_bparts + e->total_nr_DM_background_gparts);
-  const size_t index_file_size =
-      total_nr_parts * sizeof(struct logger_part_data);
-
-  size_t number_part_history = 0;
-  for (int i = 0; i < swift_type_count; i++) {
-    number_part_history +=
-        log->history_new[i].size + log->history_removed[i].size;
-  }
-  const int history_too_large = number_part_history > log->maximal_size_history;
-
-  /* Check if we should write a file */
-  if (mem_frac * (dump_size - old_dump_size) > index_file_size ||
-      history_too_large) {
-    /* Write an index file */
-    engine_dump_index(e);
-
-    /* Update the dump size for last output */
-    log->index.dump_size_last_output = dump_size;
-  }
-#else
-  error("This function should not be called without the logger.");
-#endif
-}
 
 /**
  * @brief dump restart files if it is time to do so and dumps are enabled.
@@ -218,7 +178,9 @@ void engine_dump_snapshot(struct engine *e) {
             (float)clocks_diff(&time1, &time2), clocks_getunit());
 
   /* Run the post-dump command if required */
-  engine_run_on_dump(e);
+  if (e->nodeID == 0) {
+    engine_run_on_dump(e);
+  }
 }
 
 /**
@@ -244,41 +206,6 @@ void engine_run_on_dump(struct engine *e) {
       message("Snapshot dump command returned error code %d", result);
     }
   }
-}
-
-/**
- * @brief Writes an index file with the current state of the engine
- *
- * @param e The #engine.
- */
-void engine_dump_index(struct engine *e) {
-
-#if defined(WITH_LOGGER)
-  struct clocks_time time1, time2;
-  clocks_gettime(&time1);
-
-  if (e->verbose) {
-    if (e->policy & engine_policy_cosmology)
-      message("Writing index at a=%e",
-              exp(e->ti_current * e->time_base) * e->cosmology->a_begin);
-    else
-      message("Writing index at t=%e",
-              e->ti_current * e->time_base + e->time_begin);
-  }
-
-  /* Dump... */
-  logger_write_index_file(e->logger, e);
-
-  /* Flag that we dumped a snapshot */
-  e->step_props |= engine_step_prop_logger_index;
-
-  clocks_gettime(&time2);
-  if (e->verbose)
-    message("writing particle indices took %.3f %s.",
-            (float)clocks_diff(&time1, &time2), clocks_getunit());
-#else
-  error("SWIFT was not compiled with the logger");
-#endif
 }
 
 /**
@@ -378,10 +305,21 @@ void engine_check_for_dumps(struct engine *e) {
         e->force_checks_snapshot_flag = 1;
 #endif
 
+        /* Free the mesh memory to get some breathing space */
+        if ((e->policy & engine_policy_self_gravity) && e->s->periodic)
+          pm_mesh_free(e->mesh);
+
         /* Do we want FoF group IDs in the snapshot? */
         if (with_fof && e->snapshot_invoke_fof) {
-          engine_fof(e, /*dump_results=*/0, /*seed_black_holes=*/0);
+          engine_fof(e, /*dump_results=*/1, /*dump_debug=*/0,
+                     /*seed_black_holes=*/0);
         }
+
+        /* Free the foreign particles to get more breathing space.
+         * This cannot be done before FOF as comms are used in there. */
+#ifdef WITH_MPI
+        space_free_foreign_parts(e->s, /*clear_cell_pointers=*/1);
+#endif
 
         /* Do we want a corresponding VELOCIraptor output? */
         if (with_stf && e->snapshot_invoke_stf && !e->stf_this_timestep) {
@@ -407,6 +345,13 @@ void engine_check_for_dumps(struct engine *e) {
 #endif
         }
 
+        /* Reallocate freed memory */
+        if ((e->policy & engine_policy_self_gravity) && e->s->periodic)
+          pm_mesh_allocate(e->mesh);
+#ifdef WITH_MPI
+        engine_allocate_foreign_particles(e);
+#endif
+
         /* ... and find the next output time */
         engine_compute_next_snapshot_time(e);
         break;
@@ -423,12 +368,26 @@ void engine_check_for_dumps(struct engine *e) {
 
       case output_stf:
 
+        /* Free the mesh memory to get some breathing space */
+        if ((e->policy & engine_policy_self_gravity) && e->s->periodic)
+          pm_mesh_free(e->mesh);
+#ifdef WITH_MPI
+        space_free_foreign_parts(e->s, /*clear_cell_pointers=*/1);
+#endif
+
 #ifdef HAVE_VELOCIRAPTOR
         /* Unleash the raptor! */
         if (!e->stf_this_timestep) {
           velociraptor_invoke(e, /*linked_with_snap=*/0);
           e->step_props |= engine_step_prop_stf;
         }
+
+        /* Reallocate freed memory */
+        if ((e->policy & engine_policy_self_gravity) && e->s->periodic)
+          pm_mesh_allocate(e->mesh);
+#ifdef WITH_MPI
+        engine_allocate_foreign_particles(e);
+#endif
 
         /* ... and find the next output time */
         engine_compute_next_stf_time(e);
@@ -851,56 +810,74 @@ void engine_compute_next_fof_time(struct engine *e) {
  * @param e The #engine.
  * @param params The #swift_params.
  */
-void engine_init_output_lists(struct engine *e, struct swift_params *params) {
+void engine_init_output_lists(struct engine *e, struct swift_params *params,
+                              const struct output_options *output_options) {
+
   /* Deal with snapshots */
-  double snaps_time_first;
   e->output_list_snapshots = NULL;
   output_list_init(&e->output_list_snapshots, e, "Snapshots",
-                   &e->delta_time_snapshot, &snaps_time_first);
+                   &e->delta_time_snapshot);
 
   if (e->output_list_snapshots) {
+
+    /* If we are using a different output selection for the
+     * various entries, verify that the user did not specify
+     * invalid selections. */
+    if (e->output_list_snapshots->select_output_on)
+      output_list_check_selection(e->output_list_snapshots, output_options);
+
+    engine_compute_next_snapshot_time(e);
+
     if (e->policy & engine_policy_cosmology)
-      e->a_first_snapshot = snaps_time_first;
+      e->a_first_snapshot =
+          exp(e->ti_next_snapshot * e->time_base) * e->cosmology->a_begin;
     else
-      e->time_first_snapshot = snaps_time_first;
+      e->time_first_snapshot =
+          e->ti_next_snapshot * e->time_base + e->time_begin;
   }
 
   /* Deal with stats */
-  double stats_time_first;
   e->output_list_stats = NULL;
   output_list_init(&e->output_list_stats, e, "Statistics",
-                   &e->delta_time_statistics, &stats_time_first);
+                   &e->delta_time_statistics);
 
   if (e->output_list_stats) {
+    engine_compute_next_statistics_time(e);
+
     if (e->policy & engine_policy_cosmology)
-      e->a_first_statistics = stats_time_first;
+      e->a_first_statistics =
+          exp(e->ti_next_stats * e->time_base) * e->cosmology->a_begin;
     else
-      e->time_first_statistics = stats_time_first;
+      e->time_first_statistics =
+          e->ti_next_stats * e->time_base + e->time_begin;
   }
 
   /* Deal with stf */
-  double stf_time_first;
   e->output_list_stf = NULL;
   output_list_init(&e->output_list_stf, e, "StructureFinding",
-                   &e->delta_time_stf, &stf_time_first);
+                   &e->delta_time_stf);
 
   if (e->output_list_stf) {
+    engine_compute_next_stf_time(e);
+
     if (e->policy & engine_policy_cosmology)
-      e->a_first_stf_output = stf_time_first;
+      e->a_first_stf_output =
+          exp(e->ti_next_stf * e->time_base) * e->cosmology->a_begin;
     else
-      e->time_first_stf_output = stf_time_first;
+      e->time_first_stf_output = e->ti_next_stf * e->time_base + e->time_begin;
   }
 
   /* Deal with line of sight */
-  double los_time_first;
   e->output_list_los = NULL;
-  output_list_init(&e->output_list_los, e, "LineOfSight", &e->delta_time_los,
-                   &los_time_first);
+  output_list_init(&e->output_list_los, e, "LineOfSight", &e->delta_time_los);
 
   if (e->output_list_los) {
+    engine_compute_next_los_time(e);
+
     if (e->policy & engine_policy_cosmology)
-      e->a_first_los = los_time_first;
+      e->a_first_los =
+          exp(e->ti_next_los * e->time_base) * e->cosmology->a_begin;
     else
-      e->time_first_los = los_time_first;
+      e->time_first_los = e->ti_next_los * e->time_base + e->time_begin;
   }
 }

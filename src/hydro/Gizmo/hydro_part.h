@@ -24,6 +24,7 @@
 #include "cooling_struct.h"
 #include "feedback_struct.h"
 #include "particle_splitting_struct.h"
+#include "rt_struct.h"
 #include "star_formation_struct.h"
 #include "timestep_limiter_struct.h"
 #include "tracers_struct.h"
@@ -56,7 +57,7 @@ struct xpart {
   struct star_formation_xpart_data sf_data;
 
   /* Additional data used by the feedback */
-  struct feedback_part_data feedback_data;
+  struct feedback_xpart_data feedback_data;
 
 } SWIFT_STRUCT_ALIGN;
 

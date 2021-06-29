@@ -102,10 +102,12 @@ void engine_activate_fof_tasks(struct engine *e) {
  *
  * @param e the engine
  * @param dump_results Are we writing group catalogues to output files?
+ * @param dump_debug_results Are we writing a txt-file debug catalogue
+ * (including BH seed info)?
  * @param seed_black_holes Are we seeding black holes?
  */
 void engine_fof(struct engine *e, const int dump_results,
-                const int seed_black_holes) {
+                const int dump_debug_results, const int seed_black_holes) {
 
 #ifdef WITH_FOF
 
@@ -115,7 +117,8 @@ void engine_fof(struct engine *e, const int dump_results,
   const long long total_nr_baryons =
       e->total_nr_parts + e->total_nr_sparts + e->total_nr_bparts;
   const long long total_nr_dmparts =
-      e->total_nr_gparts - e->total_nr_DM_background_gparts - total_nr_baryons;
+      e->total_nr_gparts - e->total_nr_DM_background_gparts -
+      e->total_nr_neutrino_gparts - total_nr_baryons;
 
   /* Initialise FOF parameters and allocate FOF arrays. */
   fof_allocate(e->s, total_nr_dmparts, e->fof_properties);
@@ -136,7 +139,7 @@ void engine_fof(struct engine *e, const int dump_results,
    * find groups which require black hole seeding.  */
   fof_search_tree(e->fof_properties, e->black_holes_properties,
                   e->physical_constants, e->cosmology, e->s, dump_results,
-                  seed_black_holes);
+                  dump_debug_results, seed_black_holes);
 
   /* Reset flag. */
   e->run_fof = 0;

@@ -65,7 +65,7 @@ __attribute__((always_inline)) INLINE static void hydro_gradients_init(
  * @param grad Current value of the gradient for the quantity (is updated).
  */
 __attribute__((always_inline)) INLINE void hydro_gradients_single_quantity(
-    float qL, float qR, float *cLR, const float *xLR, float rLR, float A,
+    float qL, float qR, const float *cLR, const float *xLR, float rLR, float A,
     float *grad) {
 
   grad[0] += A * ((qR - qL) * cLR[0] / rLR - 0.5f * (qL + qR) * xLR[0] / rLR);
@@ -113,7 +113,7 @@ hydro_gradients_nonsym_collect(float r2, const float *dx, float hi, float hj,
 __attribute__((always_inline)) INLINE static void hydro_gradients_finalize(
     struct part *p) {
 
-  float volume = p->voronoi.volume;
+  float volume = (float)p->voronoi.volume;
 
   p->primitives.gradients.rho[0] /= volume;
   p->primitives.gradients.rho[1] /= volume;

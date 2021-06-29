@@ -225,6 +225,11 @@ struct part {
     /* Volume of associated cell */
     double volume;
 
+#ifdef SWIFT_DEBUG_CHECKS
+    /* Number of fluxes this cell had exchanged with neighbour cells. */
+    int nfluxes;
+#endif
+
   } voronoi;
 
 } SWIFT_STRUCT_ALIGN;

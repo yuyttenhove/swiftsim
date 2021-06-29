@@ -7,7 +7,7 @@
 
 #include "hydro_slope_limiters.h"
 
-#if defined(SHADOWFAX_GRADIENTS)
+#ifdef SHADOWFAX_GRADIENTS
 
 #define HYDRO_GRADIENT_IMPLEMENTATION "Shadowfax gradients (Springel 2010)"
 #include "hydro_gradients_shadowfax.h"
@@ -83,13 +83,13 @@ __attribute__((always_inline)) INLINE void hydro_gradients_single_quantity(
  * gradients_none does nothing, since all gradients are zero -- are they?).
  */
 __attribute__((always_inline)) INLINE static void hydro_gradients_predict(
-    struct part* pi, struct part* pj, float hi, float hj, const float* dx,
+    const struct part* pi, const struct part* pj, float hi, float hj, const float* dx,
     float r, float* xij_i, float* Wi, float* Wj) {
 
   float dWi[5], dWj[5];
   float xij_j[3];
 
-  /* xij_j = real_midpoint - pj->x
+  /* xij_j = real_centroid - pj->x
            = xij_i + pi->x - pj->x
            = xij_i + dx */
   xij_j[0] = xij_i[0] + dx[0];
@@ -158,4 +158,4 @@ __attribute__((always_inline)) INLINE static void hydro_gradients_predict(
   }
 }
 
-#endif  // SWIFT_HYDRO_GRADIENTS_H
+#endif  // SWIFTSIM_HYDRO_GRADIENTS_H

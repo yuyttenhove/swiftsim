@@ -399,6 +399,31 @@ hydro_set_drifted_physical_internal_energy(struct part *p,
 }
 
 /**
+ * @brief Correct the signal velocity of the particle partaking in
+ * supernova (kinetic) feedback based on the velocity kick the particle receives
+ *
+ * @param p The particle of interest.
+ * @param cosmo Cosmology data structure
+ * @param dv_phys The velocity kick received by the particle expressed in
+ * physical units (note that dv_phys must be positive or equal to zero)
+ */
+__attribute__((always_inline)) INLINE static void
+hydro_set_v_sig_based_on_velocity_kick(struct part *p,
+                                       const struct cosmology *cosmo,
+                                       const float dv_phys) {
+
+  /* Compute the velocity kick in comoving coordinates */
+  const float dv = dv_phys / cosmo->a_factor_sound_speed;
+
+  /* Sound speed */
+  const float soundspeed = hydro_get_comoving_soundspeed(p);
+
+  /* Update the signal velocity */
+  p->viscosity.v_sig =
+      max(2.f * soundspeed, p->viscosity.v_sig + const_viscosity_beta * dv);
+}
+
+/**
  * @brief Update the value of the viscosity alpha for the scheme.
  *
  * @param p the particle of interest
@@ -494,6 +519,23 @@ __attribute__((always_inline)) INLINE static void hydro_init_part(
 
   p->viscosity.div_v = 0.f;
   p->diffusion.laplace_u = 0.f;
+
+#ifdef SWIFT_HYDRO_DENSITY_CHECKS
+  p->N_density = 1; /* Self contribution */
+  p->N_force = 0;
+  p->N_gradient = 1;
+  p->N_density_exact = 0;
+  p->N_force_exact = 0;
+  p->rho_exact = 0.f;
+  p->n_gradient = 0.f;
+  p->n_gradient_exact = 0.f;
+  p->n_density = 0.f;
+  p->n_density_exact = 0.f;
+  p->n_force = 0.f;
+  p->n_force_exact = 0.f;
+  p->inhibited_exact = 0;
+  p->limited_part = 0;
+#endif
 }
 
 /**
@@ -541,6 +583,11 @@ __attribute__((always_inline)) INLINE static void hydro_end_density(
   /* Finish calculation of the velocity divergence */
   p->viscosity.div_v *= h_inv_dim_plus_one * rho_inv * a_inv2;
   p->viscosity.div_v += cosmo->H * hydro_dimension;
+
+#ifdef SWIFT_HYDRO_DENSITY_CHECKS
+  p->n_density += kernel_root;
+  p->n_density *= h_inv_dim;
+#endif
 }
 
 /**
@@ -590,12 +637,14 @@ __attribute__((always_inline)) INLINE static void hydro_prepare_gradient(
    *
    * f_ij = 1.f - grad_h_term_i / m_j */
   const float common_factor = p->h * hydro_dimension_inv / p->density.wcount;
-  float grad_h_term = common_factor * p->density.rho_dh /
-                      (1.f + common_factor * p->density.wcount_dh);
+  float grad_h_term;
 
   /* Ignore changing-kernel effects when h ~= h_max */
   if (p->h > 0.9999f * hydro_props->h_max) {
     grad_h_term = 0.f;
+  } else {
+    grad_h_term = common_factor * p->density.rho_dh /
+                  (1.f + common_factor * p->density.wcount_dh);
   }
 
   /* Update variables. */
@@ -643,6 +692,10 @@ __attribute__((always_inline)) INLINE static void hydro_end_gradient(
   /* Include the extra factors in the del^2 u */
 
   p->diffusion.laplace_u *= 2.f * h_inv_dim_plus_one;
+
+#ifdef SWIFT_HYDRO_DENSITY_CHECKS
+  p->n_gradient += kernel_root;
+#endif
 }
 
 /**

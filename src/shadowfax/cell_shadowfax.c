@@ -42,17 +42,36 @@ void cell_shadowfax_do_pair1_density_recursive(const struct engine *e,
   }
 }
 
+void cell_shadowfax_do_pair1_gradient_recursive(const struct engine *e,
+                                                struct cell *restrict ci,
+                                                struct cell *restrict cj,
+                                                int sid, const double *shift) {
+  int k;
+  /* recurse? */
+  if (ci->split) {
+    for (k = 0; k < 8; k++) {
+      if (ci->progeny[k] != NULL) {
+        cell_shadowfax_do_pair1_gradient_recursive(e, ci->progeny[k], cj, sid,
+                                                   shift);
+      }
+    }
+  } else if (cj->split) {
+    for (k = 0; k < 8; k++) {
+      if (cj->progeny[k] != NULL) {
+        cell_shadowfax_do_pair1_gradient_recursive(e, ci, cj->progeny[k], sid,
+                                                   shift);
+      }
+    }
+  } else {
+    cell_shadowfax_do_pair1_gradient(e, ci, cj, sid, shift);
+  }
+}
+
 void cell_shadowfax_do_pair2_force_recursive(const struct engine *e,
                                              struct cell *restrict ci,
                                              struct cell *restrict cj, int sid,
                                              const double *shift) {
-  /* We don't actually care about cj, we just do all the force interactions for
-   * the pairs corresponding to direction sid, INCLUDING those resulting from
-   * recursive SELF interactions! */
   int k;
-  if (ci->loc[0] ==  0.83333333333333326 && ci->loc[1] == 0.) {
-    k = 0;
-  }
   /* recurse? */
   if (ci->split) {
     for (k = 0; k < 8; k++) {
@@ -152,6 +171,31 @@ void cell_shadowfax_do_self1_density_recursive(const struct engine *e,
   }
 }
 
+void cell_shadowfax_do_self1_gradient_recursive(const struct engine *e,
+                                                struct cell *restrict c) {
+  double shift[3] = {0., 0., 0.};
+  int sid;
+  /* recurse? */
+  if (c->split) {
+    for (int k = 0; k < 8; k++) {
+      if (c->progeny[k] != NULL) {
+        cell_shadowfax_do_self1_gradient_recursive(e, c->progeny[k]);
+        for (int l = k + 1; l < 8; l++) {
+          if (c->progeny[l] != NULL) {
+            struct cell *ck = c->progeny[k];
+            struct cell *cl = c->progeny[l];
+            /* this might swap ck and cl! */
+            sid = space_getsid(e->s, &ck, &cl, shift);
+            cell_shadowfax_do_pair1_gradient_recursive(e, ck, cl, sid, shift);
+          }
+        }
+      }
+    }
+  } else {
+    cell_shadowfax_do_self1_gradient(e, c);
+  }
+}
+
 void cell_shadowfax_do_self2_force_recursive(const struct engine *e,
                                              struct cell *restrict c) {
   double shift[3] = {0., 0., 0.};
@@ -207,7 +251,8 @@ void cell_shadowfax_do_self_subset_density_recursive(
           } /* Does this sub contain all of the remaining particles? */
 
           /* recursive self interaction of this sub cells */
-          cell_shadowfax_do_self_subset_density_recursive(e, sub, parts, &ind[sub_start_ind], sub_count);
+          cell_shadowfax_do_self_subset_density_recursive(
+              e, sub, parts, &ind[sub_start_ind], sub_count);
 
           /* pair interactions of this sub-cell with the other sub-cells of c*/
           for (l = 0; l < 8; l++) {

@@ -93,6 +93,9 @@ inline static void triangle_init(struct triangle* restrict t, int v0, int v1,
 inline static void triangle_swap_neighbour(struct triangle* restrict t,
                                            int index, int neighbour,
                                            int index_in_neighbour) {
+#ifdef SWIFT_DEBUG_CHECKS
+  assert(index >= 0 && index < 3);
+#endif
   t->neighbours[index] = neighbour;
   t->index_in_neighbour[index] = index_in_neighbour;
 }

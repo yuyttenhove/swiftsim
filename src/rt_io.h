@@ -26,14 +26,15 @@
 
 /* Config parameters. */
 #include "../config.h"
+#include "rt.h"
 
 /* Import the right RT definition */
 #if defined(RT_NONE)
 #include "./rt/none/rt_io.h"
 #elif defined(RT_DEBUG)
 #include "./rt/debug/rt_io.h"
-#elif defined(RT_M1)
-#include "./rt/M1closure/rt_io.h"
+#elif defined(RT_GEAR)
+#include "./rt/GEAR/rt_io.h"
 #else
 #error "Invalid choice of radiation scheme"
 #endif

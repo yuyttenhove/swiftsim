@@ -1,6 +1,7 @@
 /*******************************************************************************
  * This file is part of SWIFT.
  * Copyright (c) 2018 Matthieu Schaller (matthieu.schaller@durham.ac.uk)
+ *               2021 Edo Altamura (edoardo.altamura@manchester.ac.uk)
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published
@@ -60,11 +61,9 @@ runner_iact_nonsym_bh_gas_density(
 
   float wi, wi_dx;
 
-  /* Get r and 1/r. */
-  const float r_inv = 1.0f / sqrtf(r2);
-  const float r = r2 * r_inv;
-
-  /* Compute the kernel function */
+  /* Compute the kernel function; note that r cannot be optimised
+   * to r2 / sqrtf(r2) because of 1 / 0 behaviour. */
+  const float r = sqrtf(r2);
   const float hi_inv = 1.0f / hi;
   const float ui = r * hi_inv;
   kernel_deval(ui, &wi, &wi_dx);
@@ -93,8 +92,9 @@ runner_iact_nonsym_bh_gas_density(
      * re-calculate the sound speed using the fixed internal energy */
     const float u_EoS = entropy_floor_temperature(pj, cosmo, floor_props) *
                         bh_props->temp_to_u_factor;
-    if (pj->u < u_EoS * bh_props->fixed_T_above_EoS_factor &&
-        pj->u > bh_props->fixed_u_for_soundspeed) {
+    const float u = hydro_get_drifted_comoving_internal_energy(pj);
+    if (u < u_EoS * bh_props->fixed_T_above_EoS_factor &&
+        u > bh_props->fixed_u_for_soundspeed) {
       cj = gas_soundspeed_from_internal_energy(
           pj->rho, bh_props->fixed_u_for_soundspeed);
     }
@@ -192,8 +192,9 @@ runner_iact_nonsym_bh_gas_density(
             random_number_isotropic_AGN_feedback_ray_phi);
 
         /* Compute arc length */
-        ray_minimise_arclength(dx, r, bi->rays + i, /*switch=*/-1, gas_id,
-                               rand_theta, rand_phi, pj->mass, /*ray_ext=*/NULL,
+        ray_minimise_arclength(dx, r, bi->rays + i,
+                               /*ray_type=*/ray_feedback_thermal, gas_id,
+                               rand_theta, rand_phi, mj, /*ray_ext=*/NULL,
                                /*v=*/NULL);
       }
       break;
@@ -209,7 +210,7 @@ runner_iact_nonsym_bh_gas_density(
       /* Minimise separation between the gas particles and the BH. The rays
        * structs with smaller ids in the ray array will refer to the particles
        * with smaller distances to the BH. */
-      ray_minimise_distance(r, bi->rays, arr_size, gas_id, pj->mass);
+      ray_minimise_distance(r, bi->rays, arr_size, gas_id, mj);
       break;
     }
     case AGN_minimum_density_model: {
@@ -223,7 +224,7 @@ runner_iact_nonsym_bh_gas_density(
       /* Minimise separation between the gas particles and the BH. The rays
        * structs with smaller ids in the ray array will refer to the particles
        * with smaller distances to the BH. */
-      ray_minimise_distance(pj->rho, bi->rays, arr_size, gas_id, pj->mass);
+      ray_minimise_distance(pj->rho, bi->rays, arr_size, gas_id, mj);
       break;
     }
     case AGN_random_ngb_model: {
@@ -243,7 +244,7 @@ runner_iact_nonsym_bh_gas_density(
       /* Minimise separation between the gas particles and the BH. The rays
        * structs with smaller ids in the ray array will refer to the particles
        * with smaller 'fake' distances to the BH. */
-      ray_minimise_distance(dist, bi->rays, arr_size, gas_id, pj->mass);
+      ray_minimise_distance(dist, bi->rays, arr_size, gas_id, mj);
       break;
     }
   }
@@ -281,11 +282,9 @@ runner_iact_nonsym_bh_gas_swallow(
 
   float wi;
 
-  /* Get r and 1/r. */
-  const float r_inv = 1.0f / sqrtf(r2);
-  const float r = r2 * r_inv;
-
-  /* Compute the kernel function */
+  /* Compute the kernel function; note that r cannot be optimised
+   * to r2 / sqrtf(r2) because of 1 / 0 behaviour. */
+  const float r = sqrtf(r2);
   const float hi_inv = 1.0f / hi;
   const float hi_inv_dim = pow_dimension(hi_inv);
   const float ui = r * hi_inv;
@@ -321,7 +320,8 @@ runner_iact_nonsym_bh_gas_swallow(
       /* Compute the maximum allowed velocity */
       float v2_max = bh_props->max_reposition_velocity_ratio *
                      bh_props->max_reposition_velocity_ratio *
-                     bi->sound_speed_gas * bi->sound_speed_gas;
+                     bi->sound_speed_gas * bi->sound_speed_gas *
+                     cosmo->a_factor_sound_speed * cosmo->a_factor_sound_speed;
 
       /* If desired, limit the value of the threshold (v2_max) to be no
        * smaller than a user-defined value */
@@ -512,7 +512,8 @@ runner_iact_nonsym_bh_bh_swallow(const float r2, const float *dx,
       /* Compute the maximum allowed velocity */
       float v2_max = bh_props->max_reposition_velocity_ratio *
                      bh_props->max_reposition_velocity_ratio *
-                     bi->sound_speed_gas * bi->sound_speed_gas;
+                     bi->sound_speed_gas * bi->sound_speed_gas *
+                     cosmo->a_factor_sound_speed * cosmo->a_factor_sound_speed;
 
       /* If desired, limit the value of the threshold (v2_max) to be no
        * smaller than a user-defined value */
@@ -673,6 +674,9 @@ runner_iact_nonsym_bh_gas_feedback(
      * AGN energy in thermal form */
     if (num_of_energy_inj_received_by_gas > 0) {
 
+      /* Save gas density and entropy before feedback */
+      tracers_before_black_holes_feedback(pj, xpj, cosmo->a);
+
       /* Compute new energy per unit mass of this particle
        * The energy the particle receives is proportional to the number of rays
        * (num_of_energy_inj_received_by_gas) to which the particle was found to
@@ -690,8 +694,8 @@ runner_iact_nonsym_bh_gas_feedback(
 
       /* Store the feedback energy */
       const double delta_energy = delta_u * hydro_get_mass(pj);
-      tracers_after_black_holes_feedback(xpj, with_cosmology, cosmo->a, time,
-                                         delta_energy);
+      tracers_after_black_holes_feedback(pj, xpj, with_cosmology, cosmo->a,
+                                         time, delta_energy);
 
       /* message( */
       /*     "We did some AGN heating! id %llu BH id %llu probability " */

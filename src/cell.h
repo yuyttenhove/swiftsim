@@ -64,7 +64,8 @@ extern int cell_next_tag;
 
 /*! Counter for cell IDs (when exceeding max values for uniqueness) */
 #if defined(SWIFT_DEBUG_CHECKS) || defined(SWIFT_CELL_GRAPH)
-extern long long last_cell_id;
+extern unsigned long long last_cell_id;
+extern unsigned long long last_leaf_cell_id;
 #endif
 
 /* Struct to temporarily buffer the particle locations and bin id. */
@@ -113,9 +114,6 @@ struct pcell {
     /*! Minimal integer end-of-timestep in this cell for hydro tasks */
     integertime_t ti_end_min;
 
-    /*! Maximal integer end-of-timestep in this cell for hydro tasks */
-    integertime_t ti_end_max;
-
     /*! Maximal integer beginning-of-timestep in this cell for hydro tasks */
     integertime_t ti_beg_max;
 
@@ -145,9 +143,6 @@ struct pcell {
     /*! Minimal integer end-of-timestep in this cell for gravity tasks */
     integertime_t ti_end_min;
 
-    /*! Maximal integer end-of-timestep in this cell for gravity tasks */
-    integertime_t ti_end_max;
-
     /*! Maximal integer beginning-of-timestep in this cell for gravity tasks */
     integertime_t ti_beg_max;
 
@@ -174,9 +169,6 @@ struct pcell {
     /*! Minimal integer end-of-timestep in this cell for stars tasks */
     integertime_t ti_end_min;
 
-    /*! Maximal integer end-of-timestep in this cell for stars tasks */
-    integertime_t ti_end_max;
-
     /*! Integer time of the last drift of the #spart in this cell */
     integertime_t ti_old_part;
 
@@ -193,9 +185,6 @@ struct pcell {
 
     /*! Minimal integer end-of-timestep in this cell for black hole tasks */
     integertime_t ti_end_min;
-
-    /*! Maximal integer end-of-timestep in this cell for black hole tasks */
-    integertime_t ti_end_max;
 
     /*! Integer time of the last drift of the #spart in this cell */
     integertime_t ti_old_part;
@@ -214,9 +203,6 @@ struct pcell {
     /*! Minimal integer end-of-timestep in this cell for sinks tasks */
     integertime_t ti_end_min;
 
-    /*! Maximal integer end-of-timestep in this cell for sinks tasks */
-    integertime_t ti_end_max;
-
     /*! Integer time of the last drift of the #sink in this cell */
     integertime_t ti_old_part;
 
@@ -230,7 +216,7 @@ struct pcell {
 
 #ifdef SWIFT_DEBUG_CHECKS
   /* Cell ID (for debugging) */
-  long long cellID;
+  unsigned long long cellID;
 #endif
 
 } SWIFT_STRUCT_ALIGN;
@@ -243,9 +229,6 @@ struct pcell_step_hydro {
   /*! Minimal integer end-of-timestep in this cell (hydro) */
   integertime_t ti_end_min;
 
-  /*! Minimal integer end-of-timestep in this cell (hydro) */
-  integertime_t ti_end_max;
-
   /*! Maximal distance any #part has travelled since last rebuild */
   float dx_max_part;
 };
@@ -254,18 +237,12 @@ struct pcell_step_grav {
 
   /*! Minimal integer end-of-timestep in this cell (gravity) */
   integertime_t ti_end_min;
-
-  /*! Minimal integer end-of-timestep in this cell (gravity) */
-  integertime_t ti_end_max;
 };
 
 struct pcell_step_stars {
 
   /*! Minimal integer end-of-timestep in this cell (stars) */
   integertime_t ti_end_min;
-
-  /*! Maximal integer end-of-timestep in this cell (stars) */
-  integertime_t ti_end_max;
 
   /*! Maximal distance any #part has travelled since last rebuild */
   float dx_max_part;
@@ -275,9 +252,6 @@ struct pcell_step_black_holes {
 
   /*! Minimal integer end-of-timestep in this cell (black_holes) */
   integertime_t ti_end_min;
-
-  /*! Maximal integer end-of-timestep in this cell (black_holes) */
-  integertime_t ti_end_max;
 
   /*! Maximal distance any #part has travelled since last rebuild */
   float dx_max_part;
@@ -358,11 +332,14 @@ struct cell {
   /*! Pointers to the next level of cells. */
   struct cell *progeny[8];
 
-  /*! Linking pointer for "memory management". */
-  struct cell *next;
+  union {
 
-  /*! Parent cell. */
-  struct cell *parent;
+    /*! Linking pointer for "memory management". */
+    struct cell *next;
+
+    /*! Parent cell. */
+    struct cell *parent;
+  };
 
   /*! Pointer to the top-level cell in a hierarchy */
   struct cell *top;
@@ -431,9 +408,9 @@ struct cell {
    * feedback */
   struct task *timestep_sync;
 
-#ifdef WITH_LOGGER
-  /*! The logger task */
-  struct task *logger;
+#ifdef WITH_CSDS
+  /*! The csds task */
+  struct task *csds;
 #endif
 
   /*! Minimum dimension, i.e. smallest edge of this cell (min(width)). */
@@ -465,10 +442,10 @@ struct cell {
 #ifdef SWIFT_DEBUG_CHECKS
 
   /*! The list of tasks that have been executed on this cell */
-  char tasks_executed[64];
+  char tasks_executed[task_type_count];
 
   /*! The list of sub-tasks that have been executed on this cell */
-  char subtasks_executed[64];
+  char subtasks_executed[task_type_count];
 #endif
 
 } SWIFT_STRUCT_ALIGN;
@@ -548,7 +525,8 @@ void cell_check_multipole_drift_point(struct cell *c, void *data);
 void cell_reset_task_counters(struct cell *c);
 int cell_unskip_hydro_tasks(struct cell *c, struct scheduler *s);
 int cell_unskip_stars_tasks(struct cell *c, struct scheduler *s,
-                            const int with_star_formation);
+                            const int with_star_formation,
+                            const int with_star_formation_sink);
 int cell_unskip_sinks_tasks(struct cell *c, struct scheduler *s);
 int cell_unskip_rt_tasks(struct cell *c, struct scheduler *s);
 int cell_unskip_black_holes_tasks(struct cell *c, struct scheduler *s);
@@ -566,6 +544,9 @@ void cell_store_pre_drift_values(struct cell *c);
 void cell_set_star_resort_flag(struct cell *c);
 void cell_activate_star_formation_tasks(struct cell *c, struct scheduler *s,
                                         const int with_feedback);
+void cell_activate_star_formation_sink_tasks(struct cell *c,
+                                             struct scheduler *s,
+                                             const int with_feedback);
 void cell_activate_sink_formation_tasks(struct cell *c, struct scheduler *s);
 void cell_activate_subcell_hydro_tasks(struct cell *ci, struct cell *cj,
                                        struct scheduler *s,
@@ -575,6 +556,7 @@ int cell_activate_subcell_grav_tasks(struct cell *ci, struct cell *cj,
 void cell_activate_subcell_stars_tasks(struct cell *ci, struct cell *cj,
                                        struct scheduler *s,
                                        const int with_star_formation,
+                                       const int with_star_formation_sink,
                                        const int with_timestep_sync);
 void cell_activate_subcell_sinks_tasks(struct cell *ci, struct cell *cj,
                                        struct scheduler *s,
@@ -612,6 +594,8 @@ void cell_remove_gpart(const struct engine *e, struct cell *c,
                        struct gpart *gp);
 void cell_remove_spart(const struct engine *e, struct cell *c,
                        struct spart *sp);
+void cell_remove_sink(const struct engine *e, struct cell *c,
+                      struct sink *sink);
 void cell_remove_bpart(const struct engine *e, struct cell *c,
                        struct bpart *bp);
 struct spart *cell_add_spart(struct engine *e, struct cell *c);
@@ -619,6 +603,8 @@ struct gpart *cell_add_gpart(struct engine *e, struct cell *c);
 struct spart *cell_spawn_new_spart_from_part(struct engine *e, struct cell *c,
                                              const struct part *p,
                                              const struct xpart *xp);
+struct spart *cell_spawn_new_spart_from_sink(struct engine *e, struct cell *c,
+                                             const struct sink *s);
 struct gpart *cell_convert_part_to_gpart(const struct engine *e, struct cell *c,
                                          struct part *p, struct xpart *xp);
 struct gpart *cell_convert_spart_to_gpart(const struct engine *e,
@@ -629,7 +615,7 @@ struct sink *cell_convert_part_to_sink(struct engine *e, struct cell *c,
                                        struct part *p, struct xpart *xp);
 void cell_reorder_extra_parts(struct cell *c, const ptrdiff_t parts_offset);
 void cell_reorder_extra_gparts(struct cell *c, struct part *parts,
-                               struct spart *sparts);
+                               struct spart *sparts, struct sink *sinks);
 void cell_reorder_extra_sparts(struct cell *c, const ptrdiff_t sparts_offset);
 void cell_reorder_extra_sinks(struct cell *c, const ptrdiff_t sinks_offset);
 int cell_can_use_pair_mm(const struct cell *ci, const struct cell *cj,
@@ -1103,11 +1089,15 @@ __attribute__((always_inline)) INLINE static void cell_malloc_hydro_sorts(
 __attribute__((always_inline)) INLINE static void cell_free_hydro_sorts(
     struct cell *c) {
 
+#ifdef NONE_SPH
+  /* Nothing to do as we have no particles and hence no sorts */
+#else
   if (c->hydro.sort != NULL) {
     swift_free("hydro.sort", c->hydro.sort);
     c->hydro.sort = NULL;
     c->hydro.sort_allocated = 0;
   }
+#endif
 }
 
 /**
@@ -1216,11 +1206,15 @@ __attribute__((always_inline)) INLINE static void cell_malloc_stars_sorts(
 __attribute__((always_inline)) INLINE static void cell_free_stars_sorts(
     struct cell *c) {
 
+#ifdef STARS_NONE
+  /* Nothing to do as we have no particles and hence no sorts */
+#else
   if (c->stars.sort != NULL) {
     swift_free("stars.sort", c->stars.sort);
     c->stars.sort = NULL;
     c->stars.sort_allocated = 0;
   }
+#endif
 }
 
 /**
@@ -1296,14 +1290,18 @@ __attribute__((always_inline)) INLINE static struct task *cell_get_recv(
  * @brief Generate the cell ID for top level cells. Only used for debugging.
  *
  * Cell IDs are stored in the long long `cell->cellID`. Top level cells get
- * their index according to their location on the top level grid, and are
- * marked with a minus sign.
+ * their index according to their location on the top level grid.
  * We have 15 bits set aside in `cell->cellID` for the top level cells. Hence
  * if we have more that 32^3 top level cells, the cell IDs won't be guaranteed
- * to be unique. Top level cells will still be recognizable by the minus sign.
+ * to be unique and reproducible between two runs, but only unique.
+ *
+ * @param c #cell to work with
+ * @param cdim number of cells in each dimension
+ * @param dim spatial extent.
+ * @param iwidth inverse of top cell width
  */
 __attribute__((always_inline)) INLINE void cell_assign_top_level_cell_index(
-    struct cell *c, int cdim[3], double dim[3], double width[3]) {
+    struct cell *c, int cdim[3], double dim[3], double iwidth[3]) {
 
 #if defined(SWIFT_DEBUG_CHECKS) || defined(SWIFT_CELL_GRAPH)
   if (c->depth != 0) {
@@ -1311,20 +1309,23 @@ __attribute__((always_inline)) INLINE void cell_assign_top_level_cell_index(
   } else {
     if (cdim[0] * cdim[1] * cdim[2] > 32 * 32 * 32) {
       /* print warning only once */
-      if (last_cell_id == 1) {
+      if (last_cell_id == 1ULL) {
         message(
-            "Warning: Got %d x %d x %d top level cells."
-            "Cell IDs are only guaranteed to be unique if count is < 32^3",
+            "WARNING: Got %d x %d x %d top level cells. "
+            "Cell IDs are only guaranteed to be "
+            "reproduceably unique if count is < 32^3",
             cdim[0], cdim[1], cdim[2]);
       }
-      c->cellID = -last_cell_id;
-      atomic_inc(&last_cell_id);
+      /* Do this in same line. Otherwise, bad things happen. */
+      c->cellID = atomic_inc(&last_cell_id);
+    } else {
+      int i = (int)(c->loc[0] * iwidth[0] + 0.5);
+      int j = (int)(c->loc[1] * iwidth[1] + 0.5);
+      int k = (int)(c->loc[2] * iwidth[2] + 0.5);
+      c->cellID = (unsigned long long)(cell_getid(cdim, i, j, k) + 1);
     }
-
-    int i = (int)(c->loc[0] / width[0]);
-    int j = (int)(c->loc[1] / width[1]);
-    int k = (int)(c->loc[2] / width[2]);
-    c->cellID = -(long long)(cell_getid(cdim, i, j, k) + 1);
+    /* in both cases, keep track of first prodigy index */
+    atomic_inc(&last_leaf_cell_id);
   }
 #endif
 }
@@ -1332,51 +1333,58 @@ __attribute__((always_inline)) INLINE void cell_assign_top_level_cell_index(
 /**
  * @brief Generate the cell ID for progeny cells. Only used for debugging.
  *
- * Cell IDs are stored in the long long `cell->cellID`.
- * We have 15 bits set aside in `cell->cellID` for the top level cells, and
- * one for a minus sign to mark top level cells. The remaining 48 bits are
- * for all other cells. Each progeny cell gets a unique ID by inheriting
- * its parent ID and adding 3 bits on the right side, which are set according
- * to the progeny's location within its parent cell. Hence we can store up to
- * 16 levels of depth uniquely.
+ * Cell IDs are stored in the unsigned long long `cell->cellID`.
+ * We have 15 bits set aside in `cell->cellID` for the top level cells, with
+ * 49 remaining. Each progeny cell gets a unique ID by inheriting
+ * its parent ID and adding 3 bits on the left side, which are set according
+ * to the progeny's location within its parent cell. Finally, a 1 is set as the
+ * leading bit such that all recursive children with index (000) are still
+ * recognized as such. This allows us to give IDs to 16 levels of depth
+ * uniquely.
  * If the depth exceeds 16, we use the old scheme where we just add up a
- * counter. This gives us 32^3 new unique cell IDs, previously reserved for
- * top level cells, but the IDs won't be thread safe and will vary each run.
- * After the 32^3 cells are filled, we reach degeneracy.
+ * counter, which is not a reproducible way of giving IDs to cells, but
+ * guarantees uniqueness.
  */
 __attribute__((always_inline)) INLINE void cell_assign_cell_index(
     struct cell *c, const struct cell *parent) {
 
 #if defined(SWIFT_DEBUG_CHECKS) || defined(SWIFT_CELL_GRAPH)
-  if (c->depth == 0) {
-    error("assigning progeny cell index to top level cell.");
-  } else if (c->depth > 16 || last_cell_id > 1) {
+  if (c->depth == 0) error("assigning progeny cell index to top level cell.");
+  if (c->depth > 16 || last_cell_id > 1ULL) {
     /* last_cell_id > 1 => too many top level cells for clever IDs */
-    /* print warning only once */
-    if (last_cell_id == 1) {
+    if (last_cell_id == 1ULL) { /* warning not yet printed; do it only once */
       message(
-          "Warning: Got depth %d > 16."
+          "WARNING: Got depth %d > 16."
           "IDs are only guaranteed unique if depth <= 16",
           c->depth);
+      last_cell_id += 1ULL;
     }
-    c->cellID = last_cell_id;
-    atomic_inc(&last_cell_id);
+    /* Do this in same line. Otherwise, bad things happen. */
+    c->cellID = atomic_inc(&last_leaf_cell_id);
   } else {
     /* we're good to go for unique IDs */
-    /* first inherit the parent's ID and mark it as not top-level*/
-    long long child_id = llabs(parent->cellID);
+    /* first inherit the parent's ID */
+    unsigned long long child_id = parent->cellID;
 
-    /* make place for new bits */
-    /* parent's ID needs to be leading bits, so 000 children still
-     * change the value of the cellID */
-    child_id <<= 3;
+    /* if parent isn't top level cell, we have to
+     * remove the marker (leading 1) of the previous depth first,
+     * as we're going to add 3 bits for this new depth at that
+     * position in the variable now. So turn that leading 1 into a 0 */
+    if (c->depth > 1) child_id &= ~(1ULL << ((c->depth - 1) * 3 + 15));
+
+    /* Now add marker (leading 1) for this depth 3 bits further to the left*/
+    child_id |= 1ULL << (15 + c->depth * 3);
 
     /* get progeny index in parent cell */
-    if (c->loc[0] > parent->loc[0]) child_id |= 1LL;
-    if (c->loc[1] > parent->loc[1]) child_id |= 2LL;
-    if (c->loc[2] > parent->loc[2]) child_id |= 4LL;
+    unsigned long long local_id = 0LL;
+    if (c->loc[0] > parent->loc[0]) local_id |= 1LL;
+    if (c->loc[1] > parent->loc[1]) local_id |= 2LL;
+    if (c->loc[2] > parent->loc[2]) local_id |= 4LL;
+    local_id <<= (15 + (c->depth - 1) * 3);
 
     /* add progeny index to cell index */
+    child_id |= local_id;
+
     c->cellID = child_id;
   }
 
