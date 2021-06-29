@@ -38,7 +38,7 @@ hydro_slope_limit_face_quantity(float phi_i, float phi_j, float phi_mid0,
   const float psi2 = 0.25f;
 
   if (phi_i == phi_j) {
-    return 0.0f;
+    return phi_i;
   }
 
   delta1 = psi1 * fabsf(phi_i - phi_j);
