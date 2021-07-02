@@ -137,7 +137,8 @@ cell_shadowfax_do_pair1_density(const struct engine *e, struct cell *ci,
         /* Hit or miss? */
         if (r2 < hig2) {
           delaunay_add_new_vertex(&ci->hydro.deltess, pj->x[0] + shift[0],
-                                  pj->x[1] + shift[1], 26 - sid, cj, pj);
+                                  pj->x[1] + shift[1], pj->x[2] + shift[2],
+                                  26 - sid, cj, pj);
         }
       } /* loop over the parts in cj. */
     }   /* loop over the parts in ci. */
@@ -190,7 +191,8 @@ cell_shadowfax_do_pair1_density(const struct engine *e, struct cell *ci,
         /* Hit or miss? */
         if (r2 < hjg2) {
           delaunay_add_new_vertex(&cj->hydro.deltess, pi->x[0] - shift[0],
-                                  pi->x[1] - shift[1], sid, ci, pi);
+                                  pi->x[1] - shift[1], pi->x[2] - shift[2], sid,
+                                  ci, pi);
         }
       } /* loop over the parts in ci. */
     }   /* loop over the parts in cj. */
@@ -360,7 +362,8 @@ cell_shadowfax_do_pair_subset_density(const struct engine *e,
         /* Hit or miss? */
         if (r2 < hig2) {
           delaunay_add_new_vertex(&ci->hydro.deltess, pj->x[0] + shift[0],
-                                  pj->x[1] + shift[1], 26 - sid, cj, pj);
+                                  pj->x[1] + shift[1], pj->x[2] + shift[2],
+                                  26 - sid, cj, pj);
         }
       } /* loop over the parts in cj. */
     }   /* loop over the parts in ci. */
@@ -403,7 +406,8 @@ cell_shadowfax_do_pair_subset_density(const struct engine *e,
         /* Hit or miss? */
         if (r2 < hig2) {
           delaunay_add_new_vertex(&ci->hydro.deltess, pj->x[0] + shift[0],
-                                  pj->x[1] + shift[1], sid, cj, pj);
+                                  pj->x[1] + shift[1], pj->x[2] + shift[2], sid,
+                                  cj, pj);
         }
       } /* loop over the parts in cj. */
     }   /* loop over the parts in ci. */
@@ -427,7 +431,8 @@ cell_shadowfax_do_self1_density(const struct engine *e,
 
     /* Get a pointer to the ith particle. */
     struct part *restrict p = &parts[i];
-    delaunay_add_local_vertex(&c->hydro.deltess, i, p->x[0], p->x[1], p);
+    delaunay_add_local_vertex(&c->hydro.deltess, i, p->x[0], p->x[1], p->x[2],
+                              p);
   }
 }
 
@@ -454,13 +459,12 @@ cell_shadowfax_do_self1_gradient(const struct engine *e,
       hydro_shadowfax_gradients_collect(part_left, part_right, pair->midpoint,
                                         pair->surface_area, shift, 1);
     } else if (part_left->force.active) {
-      hydro_shadowfax_gradients_collect(
-          part_left, part_right, pair->midpoint, pair->surface_area, shift, 0);
+      hydro_shadowfax_gradients_collect(part_left, part_right, pair->midpoint,
+                                        pair->surface_area, shift, 0);
     } else if (part_right->force.active) {
       /* Shift is always {0, 0, 0} for self interactions */
-      hydro_shadowfax_gradients_collect(
-          part_right, part_left, pair->midpoint, pair->surface_area,
-          shift, 0);
+      hydro_shadowfax_gradients_collect(part_right, part_left, pair->midpoint,
+                                        pair->surface_area, shift, 0);
     }
   }
 }
@@ -525,7 +529,7 @@ void cell_shadowfax_do_self_subset_density_recursive(const struct engine *e,
 
 __attribute__((always_inline)) INLINE static void cell_shadowfax_end_density(
     struct cell *restrict c) {
-  voronoi_init(&c->hydro.vortess, &c->hydro.deltess, c->hydro.parts);
+  voronoi_init(&c->hydro.vortess, &c->hydro.deltess);
 
   struct part *p;
   for (int i = 0; i < c->hydro.vortess.number_of_cells; i++) {
@@ -562,7 +566,7 @@ __attribute__((always_inline)) INLINE static void cell_shadowfax_do_pair_naive(
     /* Get a pointer to the ith particle. */
     struct part *restrict pi = &parts_i[pid];
     delaunay_add_new_vertex(&cj->hydro.deltess, pi->x[0] - shift[0],
-                            pi->x[1] - shift[1], sid, ci, pi);
+                            pi->x[1] - shift[1], pi->x[2] - shift[2], sid, ci, pi);
   }
 
   /* Loop over the parts in cj. */
@@ -571,7 +575,8 @@ __attribute__((always_inline)) INLINE static void cell_shadowfax_do_pair_naive(
     /* Get a pointer to the jth particle. */
     struct part *restrict pj = &parts_j[pjd];
     delaunay_add_new_vertex(&ci->hydro.deltess, pj->x[0] + shift[0],
-                            pj->x[1] + shift[1], 26 - sid, cj, pj);
+                            pj->x[1] + shift[1], pj->x[2] + shift[2], 26 - sid,
+                            cj, pj);
   }
 }
 

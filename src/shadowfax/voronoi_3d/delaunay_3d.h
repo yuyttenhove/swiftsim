@@ -2,10 +2,18 @@
 // Created by yuyttenh on 02/07/2021.
 //
 
+/**
+ * @file delaunay3d.h
+ *
+ * @brief 3D Delaunay struct and construction algorithm.
+ */
+
 #ifndef SWIFTSIM_DELAUNAY3D_H
 #define SWIFTSIM_DELAUNAY3D_H
 
 #include "geometry_3d.h"
+#include "queues.h"
+#include "tetrahedron.h"
 
 struct delaunay {
 

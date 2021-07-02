@@ -28,40 +28,6 @@
 #ifndef SWIFTSIM_DELAUNAY_FUNCTIONS_2D_H
 #define SWIFTSIM_DELAUNAY_FUNCTIONS_2D_H
 
-/**
- * @brief Convert the given double precision floating point value to an integer,
- * by reading out its 52-bit mantissa.
- *
- * A floating point variable consists of a mantissa and an exponent, and can be
- * thought of as the base 2 equivalent of scientific notation:
- * @f[
- *    V = M \times[} 2^E
- * @f]
- * The sign of the mantissa (highest bit of the mantissa) determines the sign
- * of the floating point value.
- *
- * This code was taken from the AREPO-code with some small adaptations.
- *
- * @param d Input double precision floating point value.
- * @return Integer value of the 52-bit mantissa.
- */
-static inline unsigned long int delaunay_double_to_int(double d) {
-  /* the idea here is pretty simple: we set up a union consisting of a 64-bit
-     double precision floating point value and a 64-bit unsigned long integer
-     that occupy the same 64-bits in memory.
-     We then copy the value we want to convert into the double precision
-     variable and access its individual bits through the 64-bit unsigned long
-     integer variable. */
-  union {
-    double d;
-    unsigned long int ull;
-  } u;
-  u.d = d;
-  /* the mask filters out the lowest 52 bits of the binary sequence, which
-     correspond to the mantissa of the floating point variable */
-  return (u.ull & 0xFFFFFFFFFFFFFllu);
-}
-
 inline static void delaunay_init_vertex(struct delaunay* restrict d, int v,
                                         double x, double y,
                                         struct part* part_pointer) {

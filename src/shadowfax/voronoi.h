@@ -15,6 +15,32 @@
 /*! @brief Store cell generators. */
 #define VORONOI_STORE_GENERATORS
 
+/*! @brief Activate runtime assertions. */
+#define VORONOI_DO_ASSERTIONS
+
+#define VORONOI_CHECKS
+
+/**
+ *@brief Evaluate the given condition and abort if it evaluates to true.
+ *
+ * This macro is similar to the standard assert() macro.
+ * This macro is only defined when VORONOI_DO_ASSERTIONS is active.
+ */
+#ifdef VORONOI_DO_ASSERTIONS
+#define voronoi_assert(condition)                                     \
+  if (!(condition)) {                                                 \
+    fprintf(stderr, "%s:%s():%i: Condition failed: " #condition "\n", \
+            __FILE__, __FUNCTION__, __LINE__);                        \
+    abort();                                                          \
+  }
+#else
+#define voronoi_assert(condition)
+#endif
+
+#define voronoi_error(s, ...) \
+  fprintf(stderr, s, ##__VA_ARGS__); \
+  abort();
+
 #if defined(HYDRO_DIMENSION_3D)
 #include "voronoi_3d/voronoi_3d.h"
 #elif defined(HYDRO_DIMENSION_2D)

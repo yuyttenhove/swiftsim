@@ -63,7 +63,7 @@ inline static void geometry3d_destroy(struct geometry3d* restrict g) {
              g->da, g->ac, g->bd, g->result, NULL);
 }
 
-inline static double geometry3d_orient() {
+inline static double geometry3d_orient(void) {
   // TODO
   return -1.;
 }
@@ -142,7 +142,7 @@ inline static int geometry3d_orient_exact(
   return mpz_sgn(g->result);
 }
 
-inline static double geometry3d_in_sphere() {
+inline static double geometry3d_in_sphere(void) {
   // TODO
   return -1.;
 }
