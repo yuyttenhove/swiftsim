@@ -28,6 +28,8 @@
 #ifndef SWIFT_TRIANGLE_H
 #define SWIFT_TRIANGLE_H
 
+#include "error.h"
+
 /**
  * @brief Triangle.
  *

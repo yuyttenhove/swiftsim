@@ -1,0 +1,8 @@
+//
+// Created by yuyttenh on 02/07/2021.
+//
+
+#ifndef SWIFTSIM_VORONOI_FUNCTIONS_3D_H
+#define SWIFTSIM_VORONOI_FUNCTIONS_3D_H
+
+#endif  // SWIFTSIM_VORONOI_FUNCTIONS_3D_H
