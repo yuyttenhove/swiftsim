@@ -139,6 +139,12 @@ inline static void delaunay_reset(struct delaunay* restrict d,
   d->vertex_start = 0;
   d->vertex_end = vertex_size;
 
+  /* Reset all the queues */
+  int_lifo_queue_reset(&d->tetrahedra_to_check);
+  int_lifo_queue_reset(&d->free_tetrahedron_indices);
+  int_lifo_queue_reset(&d->tetrahedra_containing_vertex);
+  int3_fifo_queue_reset(&d->get_radius_neighbour_info_queue);
+
   /* determine the size of a box large enough to accommodate the entire
    * simulation volume and all possible ghost vertex_indices required to deal
    * with boundaries. Note that we convert the generally rectangular box to a
@@ -173,8 +179,9 @@ inline static void delaunay_reset(struct delaunay* restrict d,
   int v3 = delaunay_new_vertex(d, d->anchor[0], d->anchor[1],
                                d->anchor[2] + box_side, NULL);
 
-  /* Set the offset. */
+  /* Set the offset and index. */
   d->ngb_offset = d->vertex_index;
+  d->ngb_index = 0;
 
   /* Create initial large tetrahedron and 4 dummy neighbours */
   int dummy0 = delaunay_new_tetrahedron(d); /* opposite of v0 */
@@ -1555,6 +1562,7 @@ inline static int delaunay_check_tetrahedron(struct delaunay* d, const int t,
     delaunay_assert(v4 == -1);
     return -1;
   }
+  delaunay_assert(v4 != -1);
 
   /* Get the coordinates of all vertex_indices */
 #ifdef DELAUNAY_NONEXACT
@@ -1873,9 +1881,6 @@ inline static int get_next_tetrahedron_to_check(struct delaunay* restrict d) {
  * @param d Delaunay tessellation.
  */
 inline static void delaunay_consolidate(struct delaunay* restrict d) {
-  /* Set ghost offset. Any vertex_indices added from this point onward will be
-   * considered ghost vertex_indices. */
-  d->ghost_offset = d->vertex_index;
   /* perform a consistency test if enabled */
   delaunay_check_tessellation(d);
 #ifdef DELAUNAY_CHECKS

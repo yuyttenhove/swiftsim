@@ -125,7 +125,7 @@ inline static void voronoi_init(struct voronoi *restrict v,
      * FUTURE NOTE: In swift we should read this from the particles themselves!
      * */
     double v0x, v0y, v0z, v1x, v1y, v1z, v2x, v2y, v2z, v3x, v3y, v3z;
-    if (v0 < d->vertex_end || v0 >= d->ghost_offset) {
+    if (v0 < d->vertex_end || v0 >= d->ngb_offset) {
       v0x = d->vertices[3 * v0];
       v0y = d->vertices[3 * v0 + 1];
       v0z = d->vertices[3 * v0 + 2];
@@ -137,7 +137,7 @@ inline static void voronoi_init(struct voronoi *restrict v,
           "Vertex is part of tetrahedron with Dummy vertex! This could mean "
           "that one of the neighbouring cells is empty.");
     }
-    if (v1 < d->vertex_end || v1 >= d->ghost_offset) {
+    if (v1 < d->vertex_end || v1 >= d->ngb_offset) {
       v1x = d->vertices[3 * v1];
       v1y = d->vertices[3 * v1 + 1];
       v1z = d->vertices[3 * v1 + 2];
@@ -146,7 +146,7 @@ inline static void voronoi_init(struct voronoi *restrict v,
           "Vertex is part of tetrahedron with Dummy vertex! This could mean "
           "that one of the neighbouring cells is empty.");
     }
-    if (v2 < d->vertex_end || v2 >= d->ghost_offset) {
+    if (v2 < d->vertex_end || v2 >= d->ngb_offset) {
       v2x = d->vertices[3 * v2];
       v2y = d->vertices[3 * v2 + 1];
       v2z = d->vertices[3 * v2 + 2];
@@ -156,7 +156,7 @@ inline static void voronoi_init(struct voronoi *restrict v,
           "that "
           "one of the neighbouring cells is empty.");
     }
-    if (v3 < d->vertex_end || v3 >= d->ghost_offset) {
+    if (v3 < d->vertex_end || v3 >= d->ngb_offset) {
       v3x = d->vertices[3 * v3];
       v3y = d->vertices[3 * v3 + 1];
       v3z = d->vertices[3 * v3 + 2];
@@ -268,7 +268,7 @@ inline static void voronoi_init(struct voronoi *restrict v,
       int axis_idx_in_d = info._1;
       int axis_idx_in_t = info._2;
       voronoi_assert(axis_idx_in_d >= 0 && (axis_idx_in_d < d->vertex_end ||
-                                            axis_idx_in_d >= d->ghost_offset));
+                                            axis_idx_in_d >= d->ngb_offset));
       struct tetrahedron *first_t = &d->tetrahedra[first_t_idx];
 
       /* Get a non axis vertex from first_t */

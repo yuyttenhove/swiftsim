@@ -89,11 +89,6 @@ struct delaunay {
    * vertex_indices within the vertex array. */
   int vertex_end;
 
-  /*! @brief Offset of the ghost vertex_indices. This will be set by
-   * delaunay_consolidate() and is used in the construction of the voronoi
-   * grid. */
-  int ghost_offset;
-
   /*! @brief Tetrahedra that make up the tessellation. */
   struct tetrahedron* tetrahedra;
 
