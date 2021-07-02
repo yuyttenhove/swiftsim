@@ -138,9 +138,6 @@ inline static void delaunay_reset(struct delaunay* restrict d,
   /* Initialise the indices indicating where the local vertices start and end.*/
   d->vertex_start = 0;
   d->vertex_end = vertex_size;
-  /* The ghost offset will be set in the consolidate method. As long as this is
-   * 0, the voronoi construction will not work. */
-  d->ghost_offset = 0;
 
   /* determine the size of a box large enough to accommodate the entire
    * simulation volume and all possible ghost vertex_indices required to deal
@@ -174,6 +171,10 @@ inline static void delaunay_reset(struct delaunay* restrict d,
                                d->anchor[2]);
   int v3 = delaunay_new_vertex(d, d->anchor[0], d->anchor[1],
                                d->anchor[2] + box_side);
+
+  /* Set the offset. */
+  d->ngb_offset = d->vertex_index;
+
   /* Create initial large tetrahedron and 4 dummy neighbours */
   int dummy0 = delaunay_new_tetrahedron(d); /* opposite of v0 */
   int dummy1 = delaunay_new_tetrahedron(d); /* opposite of v1 */
@@ -563,7 +564,7 @@ inline static int delaunay_find_tetrahedra_containing_vertex(
       abort();
     }
 #endif
-    int non_axis_v_idx[2];
+    int non_axis_v_idx[4];
     /* Check whether the point is inside or outside all four faces */
     const int test_abce =
         geometry3d_orient_exact(&d->geometry, aix, aiy, aiz, bix, biy, biz, cix,

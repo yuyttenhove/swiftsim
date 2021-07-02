@@ -187,7 +187,7 @@ inline static void voronoi_init(struct voronoi *restrict v,
   } /* loop over the Delaunay tetrahedra and compute the circumcenters */
 
   /* Allocate memory for the voronoi pairs (faces). */
-  for (int i = 0; i < 2; ++i) {
+  for (int i = 0; i < 27; ++i) {
     v->pairs[i] =
         (struct voronoi_pair *)malloc(10 * sizeof(struct voronoi_pair));
     v->pair_index[i] = 0;
@@ -426,7 +426,7 @@ inline static void voronoi_init(struct voronoi *restrict v,
  */
 inline static void voronoi_destroy(struct voronoi *restrict v) {
   free(v->cells);
-  for (int i = 0; i < 2; ++i) {
+  for (int i = 0; i < 27; ++i) {
     for (int j = 0; j < v->pair_index[i]; j++) {
       voronoi_pair_destroy(&v->pairs[i][j]);
     }
