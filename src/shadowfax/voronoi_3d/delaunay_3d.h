@@ -17,8 +17,14 @@
 
 struct delaunay {
 
+  /* Activity flag, useful for debugging. */
+  int active;
+
   /*! @brief Anchor of the simulation volume. */
   double anchor[3];
+
+  /*! @brief Side length of the simulation volume. */
+  double side;
 
   /*! @brief Inverse side length of the simulation volume. */
   double inverse_side;
@@ -61,6 +67,9 @@ struct delaunay {
    *  the radius of the largest circumsphere of the tetrahedra that vertex is
    *  part of. */
   double* search_radii;
+
+  /*! @brief Direct pointers to particles corresponding to vertices */
+  struct part** part_pointers;
 
   /*! @brief Next available index within the vertex array. Corresponds to the
    *  actual size of the vertex array. */
@@ -133,6 +142,27 @@ struct delaunay {
    *  geometry3d tests that need to be stored in between tests, since allocating
    *  and deallocating them for every test is too expensive. */
   struct geometry3d geometry;
+
+  /*! @brief Cell neighbour sids keeping track of which neighbouring cells
+   *  contains a specific neighbouring vertex. */
+  int* ngb_cell_sids;
+
+  /*! @brief Pointers to neighbour cells containing corresponding particles */
+  struct cell** ngb_cell_ptrs;
+
+  /*! @brief Current used size of the neighbouring vertex bookkeeping arrays
+   *  (and next valid index in this array). */
+  int ngb_index;
+
+  /*! @brief Current size in memory of the neighbouring vertex bookkeeping
+   *  arrays. More memory needs to be allocated if ngb_index reaches this
+   *  value. */
+  int ngb_size;
+
+  /*! @brief Offset of the neighbouring vertices within the vertex array (so
+   *  that neighbouring information for vertex v is stored in
+   *  ngb_cell_sids[v-ngb_offset]). */
+  int ngb_offset;
 };
 
 #endif  // SWIFTSIM_DELAUNAY3D_H

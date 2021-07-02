@@ -5,15 +5,14 @@
 #ifndef SWIFTSIM_VORONOI_FUNCTIONS_3D_H
 #define SWIFTSIM_VORONOI_FUNCTIONS_3D_H
 
-
 /* Forward declarations */
 inline static int double_cmp(double double1, double double2,
                              unsigned long precision);
 inline static int voronoi_new_face(struct voronoi *v, int sid,
                                    struct cell *restrict c,
-                                   int left_part_pointer,
-                                   int right_part_pointer, double *vertices,
-                                   int n_vertices);
+                                   struct part *left_part_pointer,
+                                   struct part *right_part_pointer,
+                                   double *vertices, int n_vertices);
 inline static void voronoi_check_grid(struct voronoi *restrict v);
 
 /**
@@ -92,7 +91,7 @@ inline static void voronoi_init(struct voronoi *restrict v,
   v->number_of_cells = d->vertex_end - d->vertex_start;
   /* allocate memory for the voronoi cells */
   v->cells = (struct voronoi_cell_new *)malloc(v->number_of_cells *
-                                           sizeof(struct voronoi_cell_new));
+                                               sizeof(struct voronoi_cell_new));
   /* Allocate memory to store voronoi vertices (will be freed at end) */
   double *voronoi_vertices =
       (double *)malloc(3 * (d->tetrahedron_index - 4) * sizeof(double));
@@ -223,7 +222,8 @@ inline static void voronoi_init(struct voronoi *restrict v,
     neighbour_flags[gen_idx_in_d] = 1;
 
     /* Create a new voronoi cell for this generator */
-    struct voronoi_cell_new *this_cell = &v->cells[gen_idx_in_d - d->vertex_start];
+    struct voronoi_cell_new *this_cell =
+        &v->cells[gen_idx_in_d - d->vertex_start];
     this_cell->volume = 0.;
     this_cell->centroid[0] = 0.;
     this_cell->centroid[1] = 0.;
@@ -281,8 +281,8 @@ inline static void voronoi_init(struct voronoi *restrict v,
       if (!neighbour_flags[non_axis_idx_in_d]) {
         /* Add this vertex and tetrahedron to the queue and update its flag */
         int3 new_info = {._0 = first_t_idx,
-            ._1 = non_axis_idx_in_d,
-            ._2 = non_axis_idx_in_first_t};
+                         ._1 = non_axis_idx_in_d,
+                         ._2 = non_axis_idx_in_first_t};
         int3_fifo_queue_push(&neighbour_info_q, new_info);
         neighbour_flags[non_axis_idx_in_d] |= 1;
       }
@@ -306,8 +306,8 @@ inline static void voronoi_init(struct voronoi *restrict v,
       int next_non_axis_idx_in_d = cur_t->vertices[next_t_idx_in_cur_t];
       if (!neighbour_flags[next_non_axis_idx_in_d]) {
         int3 new_info = {._0 = cur_t_idx,
-            ._1 = next_non_axis_idx_in_d,
-            ._2 = next_t_idx_in_cur_t};
+                         ._1 = next_non_axis_idx_in_d,
+                         ._2 = next_t_idx_in_cur_t};
         int3_fifo_queue_push(&neighbour_info_q, new_info);
         neighbour_flags[next_non_axis_idx_in_d] |= 1;
       }
@@ -373,8 +373,8 @@ inline static void voronoi_init(struct voronoi *restrict v,
         next_non_axis_idx_in_d = cur_t->vertices[next_t_idx_in_cur_t];
         if (!neighbour_flags[next_non_axis_idx_in_d]) {
           int3 new_info = {._0 = cur_t_idx,
-              ._1 = next_non_axis_idx_in_d,
-              ._2 = next_t_idx_in_cur_t};
+                           ._1 = next_non_axis_idx_in_d,
+                           ._2 = next_t_idx_in_cur_t};
           int3_fifo_queue_push(&neighbour_info_q, new_info);
           neighbour_flags[next_non_axis_idx_in_d] |= 1;
         }
@@ -382,11 +382,15 @@ inline static void voronoi_init(struct voronoi *restrict v,
       if (axis_idx_in_d < d->vertex_end) {
         /* Store faces only once */
         if (gen_idx_in_d < axis_idx_in_d) {
-          voronoi_new_face(v, 0, NULL, gen_idx_in_d, axis_idx_in_d,
-                           face_vertices, face_vertices_index);
+          voronoi_new_face(v, 13, NULL, d->part_pointers[gen_idx_in_d],
+                           d->part_pointers[axis_idx_in_d], face_vertices,
+                           face_vertices_index);
         }
       } else { /* axis_idx_in_d >= d->ghost_offset */
-        voronoi_new_face(v, 1, NULL, gen_idx_in_d, axis_idx_in_d, face_vertices,
+        int sid = d->ngb_cell_sids[axis_idx_in_d - d->ngb_offset];
+        struct cell *c = d->ngb_cell_ptrs[axis_idx_in_d - d->ngb_offset];
+        voronoi_new_face(v, sid, c, d->part_pointers[gen_idx_in_d],
+                         d->part_pointers[axis_idx_in_d], face_vertices,
                          face_vertices_index);
       }
     }
@@ -459,9 +463,9 @@ inline static void voronoi_destroy(struct voronoi *restrict v) {
  */
 inline static int voronoi_new_face(struct voronoi *v, int sid,
                                    struct cell *restrict c,
-                                   int left_part_pointer,
-                                   int right_part_pointer, double *vertices,
-                                   int n_vertices) {
+                                   struct part *left_part_pointer,
+                                   struct part *right_part_pointer,
+                                   double *vertices, int n_vertices) {
   if (v->pair_index[sid] == v->pair_size[sid]) {
     v->pair_size[sid] <<= 1;
     v->pairs[sid] = (struct voronoi_pair *)realloc(
@@ -504,10 +508,8 @@ inline static void voronoi_check_grid(struct voronoi *restrict v) {
  * @param v Voronoi grid.
  * @param file File to write to.
  */
-inline static void voronoi_print_grid(const struct voronoi *v,
-                                      const char *filename) {
-  FILE *file = fopen(filename, "w");
-
+inline static void voronoi_write_grid(const struct voronoi *restrict v,
+                                      FILE *file) {
   /* first write the cells (and generators, if those are stored) */
   for (int i = 0; i < v->number_of_cells; ++i) {
     struct voronoi_cell_new *this_cell = &v->cells[i];
@@ -538,6 +540,22 @@ inline static void voronoi_print_grid(const struct voronoi *v,
       fprintf(file, "\n");
     }
   }
+
+  fclose(file);
+}
+
+/**
+ * @brief Print the Voronoi grid to a file with the given name.
+ *
+ * @param v Voronoi grid (read-only).
+ * @param file_name Name of the output file.
+ */
+static inline void voronoi_print_grid(const struct voronoi *restrict v,
+                                      const char *file_name) {
+
+  FILE *file = fopen(file_name, "w");
+
+  voronoi_write_grid(v, file);
 
   fclose(file);
 }
