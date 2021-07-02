@@ -386,7 +386,7 @@ inline static void voronoi_init(struct voronoi *restrict v,
                            d->part_pointers[axis_idx_in_d], face_vertices,
                            face_vertices_index);
         }
-      } else { /* axis_idx_in_d >= d->ghost_offset */
+      } else { /* axis_idx_in_d >= d->ngb_offset */
         int sid = d->ngb_cell_sids[axis_idx_in_d - d->ngb_offset];
         struct cell *c = d->ngb_cell_ptrs[axis_idx_in_d - d->ngb_offset];
         voronoi_new_face(v, sid, c, d->part_pointers[gen_idx_in_d],
@@ -471,6 +471,8 @@ inline static int voronoi_new_face(struct voronoi *v, int sid,
     v->pairs[sid] = (struct voronoi_pair *)realloc(
         v->pairs[sid], v->pair_size[sid] * sizeof(struct voronoi_pair));
   }
+  left_part_pointer->force.active = left_part_pointer->force.active;
+  right_part_pointer->force.active = right_part_pointer->force.active;
   /* Initialize pair */
   struct voronoi_pair *this_pair = &v->pairs[sid][v->pair_index[sid]];
   voronoi_pair_init(this_pair, c, left_part_pointer, right_part_pointer,
@@ -526,7 +528,7 @@ inline static void voronoi_write_grid(const struct voronoi *restrict v,
   }
 
   /* now write the faces */
-  for (int ngb = 0; ngb < 2; ++ngb) {
+  for (int ngb = 0; ngb < 27; ++ngb) {
     for (int i = 0; i < v->pair_index[ngb]; ++i) {
       struct voronoi_pair *pair = &v->pairs[ngb][i];
       fprintf(file, "F\t%i\t%g\t%g\t%g\t%g", ngb, pair->surface_area,
@@ -540,8 +542,6 @@ inline static void voronoi_write_grid(const struct voronoi *restrict v,
       fprintf(file, "\n");
     }
   }
-
-  fclose(file);
 }
 
 /**

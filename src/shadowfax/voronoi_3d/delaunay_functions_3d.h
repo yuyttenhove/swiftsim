@@ -11,7 +11,7 @@ inline static void delaunay_reset(struct delaunay* restrict d,
                                   const double* cell_width, int vertex_size);
 inline static void delaunay_check_tessellation(struct delaunay* d);
 inline static int delaunay_new_vertex(struct delaunay* restrict d, double x,
-                                      double y, double z);
+                                      double y, double z, struct part* p);
 inline static int delaunay_add_vertex(struct delaunay* restrict d, int v);
 inline static int delaunay_new_tetrahedron(struct delaunay* restrict d);
 inline static void delaunay_init_tetrahedron(struct delaunay* d, int t, int v0,
@@ -164,13 +164,14 @@ inline static void delaunay_reset(struct delaunay* restrict d,
   d->inverse_side = (1. - 1.e-13) / box_side;
 
   /* set up vertex_indices for large initial tetrahedron */
-  int v0 = delaunay_new_vertex(d, d->anchor[0], d->anchor[1], d->anchor[2]);
+  int v0 =
+      delaunay_new_vertex(d, d->anchor[0], d->anchor[1], d->anchor[2], NULL);
   int v1 = delaunay_new_vertex(d, d->anchor[0] + box_side, d->anchor[1],
-                               d->anchor[2]);
+                               d->anchor[2], NULL);
   int v2 = delaunay_new_vertex(d, d->anchor[0], d->anchor[1] + box_side,
-                               d->anchor[2]);
+                               d->anchor[2], NULL);
   int v3 = delaunay_new_vertex(d, d->anchor[0], d->anchor[1],
-                               d->anchor[2] + box_side);
+                               d->anchor[2] + box_side, NULL);
 
   /* Set the offset. */
   d->ngb_offset = d->vertex_index;
@@ -224,7 +225,8 @@ inline static void delaunay_destroy(struct delaunay* restrict d) {
 #endif
   swift_free("delaunay integer vertices", d->integer_vertices);
   swift_free("delaunay vertex-tetrahedron links", d->vertex_tetrahedron_links);
-  swift_free("delaunay vertex indices in linked tetrahedra", d->vertex_tetrahedron_index);
+  swift_free("delaunay vertex indices in linked tetrahedra",
+             d->vertex_tetrahedron_index);
   swift_free("delaunay search radii", d->search_radii);
   swift_free("delaunay part pointers", d->part_pointers);
   swift_free("delaunay tetrahedra", d->tetrahedra);
@@ -232,7 +234,8 @@ inline static void delaunay_destroy(struct delaunay* restrict d) {
   int_lifo_queue_destroy(&d->free_tetrahedron_indices);
   int_lifo_queue_destroy(&d->tetrahedra_containing_vertex);
   int3_fifo_queue_destroy(&d->get_radius_neighbour_info_queue);
-  swift_free("delaunay flags used by the get_radius function", d->get_radius_neighbour_flags);
+  swift_free("delaunay flags used by the get_radius function",
+             d->get_radius_neighbour_flags);
   geometry3d_destroy(&d->geometry);
   swift_free("delaunay ngb cells", d->ngb_cell_sids);
   swift_free("delaunay ngb cell pointers", d->ngb_cell_ptrs);
@@ -297,7 +300,7 @@ inline static void delaunay_init_tetrahedron(struct delaunay* d, int t, int v0,
 
 inline static void delaunay_init_vertex(struct delaunay* restrict d,
                                         const int v, double x, double y,
-                                        double z) {
+                                        double z, struct part* restrict p) {
   /* store a copy of the vertex coordinates (we should get rid of this for
      SWIFT) */
   d->vertices[3 * v] = x;
@@ -341,6 +344,9 @@ inline static void delaunay_init_vertex(struct delaunay* restrict d,
 
   /* initialize the get_radius_flag to 0 */
   d->get_radius_neighbour_flags[v] = 0;
+
+  /* Set part pointer */
+  d->part_pointers[v] = p;
 }
 
 /**
@@ -356,7 +362,7 @@ inline static void delaunay_init_vertex(struct delaunay* restrict d,
  * @return Index of the new vertex within the vertex array.
  */
 inline static int delaunay_new_vertex(struct delaunay* restrict d, double x,
-                                      double y, double z) {
+                                      double y, double z, struct part* p) {
   delaunay_log("Adding new vertex at %i with coordinates: %g %g %g",
                d->vertex_index, x, y, z);
   /* check the size of the vertex arrays against the allocated memory size */
@@ -390,7 +396,7 @@ inline static int delaunay_new_vertex(struct delaunay* restrict d, double x,
         d->get_radius_neighbour_flags, d->vertex_size * sizeof(int));
   }
 
-  delaunay_init_vertex(d, d->vertex_index, x, y, z);
+  delaunay_init_vertex(d, d->vertex_index, x, y, z, p);
 
   /* return the vertex index and then increase it by 1.
      After this operation, n_vertices will correspond to the size of the
@@ -411,7 +417,7 @@ inline static void delaunay_add_local_vertex(struct delaunay* restrict d, int v,
   delaunay_assert(v < d->vertex_end && d->vertex_start <= v);
   delaunay_log("Adding local vertex at %i with coordinates: %g %g %g", v, x, y,
                z);
-  delaunay_init_vertex(d, v, x, y, z);
+  delaunay_init_vertex(d, v, x, y, z, p);
   delaunay_add_vertex(d, v);
 }
 
@@ -424,7 +430,7 @@ inline static void delaunay_add_new_vertex(struct delaunay* restrict d,
                                            double x, double y, double z,
                                            int sid, struct cell* restrict c,
                                            struct part* restrict p) {
-  int v = delaunay_new_vertex(d, x, y, z);
+  int v = delaunay_new_vertex(d, x, y, z, p);
   int flag = delaunay_add_vertex(d, v);
   if (flag == -1) {
     /* vertex already exists, delete the last vertex */
