@@ -156,8 +156,7 @@ static inline void voronoi_destroy(struct voronoi *restrict v) {
  * @param parts Local cell generators (read-only).
  */
 static inline void voronoi_init(struct voronoi *restrict v,
-                                const struct delaunay *restrict d,
-                                const struct part *restrict parts) {
+                                const struct delaunay *restrict d) {
 
   /* dealloc voronoi tesselation */
   voronoi_destroy(v);
@@ -192,35 +191,32 @@ static inline void voronoi_init(struct voronoi *restrict v,
     }
 
     double v0x, v0y, v1x, v1y, v2x, v2y;
-    if (v0 < d->vertex_end) {
-      v0x = parts[v0].x[0];
-      v0y = parts[v0].x[1];
-    } else if (v0 < d->ngb_offset) {
+    if (v0 < d->vertex_end || v0 >= d->ngb_offset) {
+      v0x = d->vertices[2 * v0];
+      v0y = d->vertices[2 * v0 + 1];
+    } else {
       /* This could mean that a neighbouring cell of this grids cell is empty!
        * Or that we did not add all the necessary ghost vertices to the delaunay
        * tesselation. */
-      error("Vertex is part of triangle with Dummy vertex! This could mean that one of the neighbouring cells is empty.");
-    } else {
-      v0x = d->vertices[2 * v0];
-      v0y = d->vertices[2 * v0 + 1];
+      error(
+          "Vertex is part of triangle with Dummy vertex! This could mean that "
+          "one of the neighbouring cells is empty.");
     }
-    if (v1 < d->vertex_end) {
-      v1x = parts[v1].x[0];
-      v1y = parts[v1].x[1];
-    } else if (v1 < d->ngb_offset) {
-      error("Vertex is part of triangle with Dummy vertex! This could mean that one of the neighbouring cells is empty.");
-    } else {
+    if (v1 < d->vertex_end || v1 >= d->ngb_offset) {
       v1x = d->vertices[2 * v1];
       v1y = d->vertices[2 * v1 + 1];
-    }
-    if (v2 < d->vertex_end) {
-      v2x = parts[v2].x[0];
-      v2y = parts[v2].x[1];
-    } else if (v2 < d->ngb_offset) {
-      error("Vertex is part of triangle with Dummy vertex! This could mean that one of the neighbouring cells is empty.");
     } else {
+      error(
+          "Vertex is part of triangle with Dummy vertex! This could mean that "
+          "one of the neighbouring cells is empty.");
+    }
+    if (v2 < d->vertex_end || v2 >= d->ngb_offset) {
       v2x = d->vertices[2 * v2];
       v2y = d->vertices[2 * v2 + 1];
+    } else {
+      error(
+          "Vertex is part of triangle with Dummy vertex! This could mean that "
+          "one of the neighbouring cells is empty.");
     }
 
     double ax = v1x - v0x;
@@ -258,8 +254,8 @@ static inline void voronoi_init(struct voronoi *restrict v,
        calculations */
     double ax, ay;
     if (i < d->ngb_offset) {
-      ax = parts[i].x[0];
-      ay = parts[i].x[1];
+      ax = d->vertices[2 * i];
+      ay = d->vertices[2 * i + 1];
     } else {
       error(
           "Found a ghost particle while looping over non-ghost, non-dummy "

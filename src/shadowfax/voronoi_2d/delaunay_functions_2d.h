@@ -1274,7 +1274,7 @@ inline static int delaunay_add_vertex(struct delaunay* restrict d, int v,
 }
 
 inline static void delaunay_add_local_vertex(struct delaunay* restrict d, int v,
-                                             double x, double y,
+                                             double x, double y, double z,
                                              struct part* part_pointer) {
   delaunay_init_vertex(d, v, x, y, part_pointer);
   if (delaunay_add_vertex(d, v, x, y) != 0) {
@@ -1283,7 +1283,7 @@ inline static void delaunay_add_local_vertex(struct delaunay* restrict d, int v,
 }
 
 inline static void delaunay_add_new_vertex(struct delaunay* d, double x,
-                                           double y, int cell_sid,
+                                           double y, double z, int cell_sid,
                                            struct cell* c,
                                            struct part* part_pointer) {
   if (d->active != 1) {
