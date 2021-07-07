@@ -421,6 +421,7 @@ inline static int delaunay_new_vertex(struct delaunay* restrict d, double x,
 inline static void delaunay_add_local_vertex(struct delaunay* restrict d, int v,
                                              double x, double y, double z,
                                              struct part* p) {
+  delaunay_assert(d->active == 1);
   delaunay_assert(v < d->vertex_end && d->vertex_start <= v);
   delaunay_log("Adding local vertex at %i with coordinates: %g %g %g", v, x, y,
                z);
@@ -437,6 +438,7 @@ inline static void delaunay_add_new_vertex(struct delaunay* restrict d,
                                            double x, double y, double z,
                                            int sid, struct cell* restrict c,
                                            struct part* restrict p) {
+  delaunay_assert(d->active == 1);
   int v = delaunay_new_vertex(d, x, y, z, p);
   int flag = delaunay_add_vertex(d, v);
   if (flag == -1) {
