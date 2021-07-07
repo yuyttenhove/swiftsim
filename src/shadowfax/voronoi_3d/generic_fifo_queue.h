@@ -12,6 +12,8 @@
 /* QUEUE_TYPE and optionally QUEUE_NAME must be defined before importing this
  * header! */
 
+#include "memuse.h"
+
 #define PASTE(x, y) x##_##y
 
 #ifndef QUEUE_NAME
@@ -49,14 +51,14 @@ struct QUEUE_NAME {
 };
 
 inline static void QUEUE_INIT(struct QUEUE_NAME *q, int size) {
-  q->values = (QUEUE_TYPE *)malloc(size * sizeof(QUEUE_TYPE));
+  q->values = (QUEUE_TYPE *)swift_malloc("fifo_queue", size * sizeof(QUEUE_TYPE));
   q->size = size;
   q->start = 0;
   q->end = 0;
 }
 
 inline static void QUEUE_DESTROY(struct QUEUE_NAME *q) {
-  free(q->values);
+  swift_free("fifo_queue", q->values);
 }
 
 inline static void QUEUE_RESET(struct QUEUE_NAME *q) {
@@ -71,7 +73,7 @@ inline static int QUEUE_IS_EMPTY(struct QUEUE_NAME *q) {
 inline static void QUEUE_PUSH(struct QUEUE_NAME *q, QUEUE_TYPE value) {
   if (q->size == q->end) {
     q->size <<= 1;
-    q->values = realloc(q->values, q->size * sizeof(QUEUE_TYPE));
+    q->values = swift_realloc("fifo_queue", q->values, q->size * sizeof(QUEUE_TYPE));
   }
   q->values[q->end] = value;
   q->end++;

@@ -1035,7 +1035,7 @@ void cell_clean(struct cell *c) {
 
 #ifdef SHADOWFAX_NEW_SPH
   if (!c->split) {
-    cell_destroy_tesselations(c);
+    cell_destroy_tessellations(c);
   }
 #endif
 

@@ -1460,6 +1460,7 @@ int main(int argc, char *argv[]) {
       message("Time integration ready to start. End of dry-run.");
     engine_clean(&e, /*fof=*/0, /*restart=*/0);
     free(params);
+    free(output_options);
     return 0;
   }
 

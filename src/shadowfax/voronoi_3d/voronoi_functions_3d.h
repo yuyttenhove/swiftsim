@@ -14,6 +14,7 @@ inline static int voronoi_new_face(struct voronoi *v, int sid,
                                    struct part *right_part_pointer,
                                    double *vertices, int n_vertices);
 inline static void voronoi_check_grid(struct voronoi *restrict v);
+inline static void voronoi_destroy(struct voronoi *restrict v);
 
 /**
  * @brief Initializes a voronoi pair (i.e. a face). The vertices of the face are
@@ -84,17 +85,21 @@ inline static void voronoi_pair_destroy(struct voronoi_pair *pair) {
  */
 inline static void voronoi_init(struct voronoi *restrict v,
                                 struct delaunay *restrict d) {
+
+  /* dealloc previous voronoi tesselation */
+  voronoi_destroy(v);
+
   delaunay_assert(d->vertex_end > 0);
 
   /* the number of cells equals the number of non-ghost and non-dummy
      vertex_indices in the Delaunay tessellation */
   v->number_of_cells = d->vertex_end - d->vertex_start;
   /* allocate memory for the voronoi cells */
-  v->cells = (struct voronoi_cell_new *)malloc(v->number_of_cells *
+  v->cells = (struct voronoi_cell_new *)swift_malloc("Voronoi cells", v->number_of_cells *
                                                sizeof(struct voronoi_cell_new));
   /* Allocate memory to store voronoi vertices (will be freed at end) */
   double *voronoi_vertices =
-      (double *)malloc(3 * (d->tetrahedron_index - 4) * sizeof(double));
+      (double *)swift_malloc("Voronoi vertices", 3 * (d->tetrahedron_index - 4) * sizeof(double));
 
   /* loop over the tetrahedra in the Delaunay tessellation and compute the
      midpoints of their circumspheres. These happen to be the vertices of
@@ -189,13 +194,13 @@ inline static void voronoi_init(struct voronoi *restrict v,
   /* Allocate memory for the voronoi pairs (faces). */
   for (int i = 0; i < 27; ++i) {
     v->pairs[i] =
-        (struct voronoi_pair *)malloc(10 * sizeof(struct voronoi_pair));
+        (struct voronoi_pair *)swift_malloc("Voronoi pairs", 10 * sizeof(struct voronoi_pair));
     v->pair_index[i] = 0;
     v->pair_size[i] = 10;
   }
 
   /* Allocate memory for the neighbour flags and initialize them to 0 */
-  int *neighbour_flags = (int *)malloc(d->vertex_index * sizeof(int));
+  int *neighbour_flags = (int *)swift_malloc("Voronoi neighbour flags", d->vertex_index * sizeof(int));
   for (int i = 0; i < d->vertex_index; i++) {
     neighbour_flags[i] = 0;
   }
@@ -209,7 +214,7 @@ inline static void voronoi_init(struct voronoi *restrict v,
   int face_vertices_size = 10;
   /* Temporary array to store face vertices in */
   double *face_vertices =
-      (double *)malloc(3 * face_vertices_size * sizeof(double));
+      (double *)swift_malloc("Voronoi face vertices", 3 * face_vertices_size * sizeof(double));
 
   /* loop over all cell generators, and hence over all non-ghost, non-dummy
      Delaunay vertex_indices */
@@ -325,7 +330,7 @@ inline static void voronoi_init(struct voronoi *restrict v,
          * next_t */
         if (face_vertices_index + 6 > face_vertices_size) {
           face_vertices_size <<= 1;
-          face_vertices = (double *)realloc(
+          face_vertices = (double *)swift_realloc("Voronoi face vertices",
               face_vertices, 3 * face_vertices_size * sizeof(double));
         }
         const int vor_vertex1_idx = cur_t_idx - 4;
@@ -412,10 +417,10 @@ inline static void voronoi_init(struct voronoi *restrict v,
     }
 #endif
   }
-  free(voronoi_vertices);
-  free(neighbour_flags);
+  swift_free("Voronoi vertices", voronoi_vertices);
+  swift_free("Voronoi neighbour flags", neighbour_flags);
   int3_fifo_queue_destroy(&neighbour_info_q);
-  free(face_vertices);
+  swift_free("Voronoi face vertices", face_vertices);
   voronoi_check_grid(v);
 }
 
@@ -425,12 +430,12 @@ inline static void voronoi_init(struct voronoi *restrict v,
  * @param v Voronoi grid.
  */
 inline static void voronoi_destroy(struct voronoi *restrict v) {
-  free(v->cells);
+  swift_free("Voronoi cells", v->cells);
   for (int i = 0; i < 27; ++i) {
     for (int j = 0; j < v->pair_index[i]; j++) {
       voronoi_pair_destroy(&v->pairs[i][j]);
     }
-    free(v->pairs[i]);
+    swift_free("Voronoi pairs", v->pairs[i]);
   }
 }
 
@@ -468,7 +473,7 @@ inline static int voronoi_new_face(struct voronoi *v, int sid,
                                    double *vertices, int n_vertices) {
   if (v->pair_index[sid] == v->pair_size[sid]) {
     v->pair_size[sid] <<= 1;
-    v->pairs[sid] = (struct voronoi_pair *)realloc(
+    v->pairs[sid] = (struct voronoi_pair *)swift_realloc("Voronoi pairs",
         v->pairs[sid], v->pair_size[sid] * sizeof(struct voronoi_pair));
   }
   left_part_pointer->force.active = left_part_pointer->force.active;

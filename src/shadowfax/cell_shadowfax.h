@@ -62,7 +62,7 @@ cell_malloc_delaunay_tessellation(struct cell *c) {
 
 void cell_malloc_delaunay_tessellation_recursive(struct cell *c);
 
-__attribute__((always_inline)) INLINE static void cell_destroy_tesselations(
+__attribute__((always_inline)) INLINE static void cell_destroy_tessellations(
     struct cell *c) {
   delaunay_destroy(&c->hydro.deltess);
   voronoi_destroy(&c->hydro.vortess);
