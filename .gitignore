@@ -173,6 +173,7 @@ tests/testComovingCooling
 tests/testHashmap
 tests/testNeutrinoCosmology
 tests/testNeutrinoFermiDirac
+tests/testFluxExchange
 tests/testLog
 tests/*.png
 tests/*.txt
