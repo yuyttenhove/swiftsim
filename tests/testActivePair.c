@@ -95,7 +95,7 @@ struct cell *make_cell(size_t n, double *offset, double size, double h,
         part->id = ++(*partId);
 
 /* Set the mass */
-#if defined(GIZMO_MFV_SPH) || defined(SHADOWFAX_SPH)
+#if defined(GIZMO_MFV_SPH) || defined(SHADOWFAX_SPH) || defined(SHADOWFAX_NEW_SPH)
         part->conserved.mass = density * volume / count;
 
 #ifdef SHADOWFAX_SPH

@@ -150,7 +150,7 @@ struct cell *make_cell(size_t n, double *offset, double size, double h,
         h_max = fmaxf(h_max, part->h);
         part->id = ++(*partId);
 
-#if defined(GIZMO_MFV_SPH) || defined(SHADOWFAX_SPH)
+#if defined(GIZMO_MFV_SPH) || defined(SHADOWFAX_SPH) || defined(SHADOWFAX_NEW_SPH)
         part->conserved.mass = density * volume / count;
 
 #ifdef SHADOWFAX_SPH
@@ -272,7 +272,7 @@ void dump_particle_fields(char *fileName, struct cell *main_cell,
             main_cell->hydro.parts[pid].v[0], main_cell->hydro.parts[pid].v[1],
             main_cell->hydro.parts[pid].v[2],
             hydro_get_comoving_density(&main_cell->hydro.parts[pid]),
-#if defined(GIZMO_MFV_SPH) || defined(SHADOWFAX_SPH)
+#if defined(GIZMO_MFV_SPH) || defined(SHADOWFAX_SPH) || defined(SHADOWFAX_NEW_SPH)
             0.f,
 #elif defined(HOPKINS_PU_SPH) || defined(HOPKINS_PU_SPH_MONAGHAN) || \
     defined(ANARCHY_PU_SPH)
@@ -321,7 +321,7 @@ void dump_particle_fields(char *fileName, struct cell *main_cell,
               cj->hydro.parts[pjd].v[0], cj->hydro.parts[pjd].v[1],
               cj->hydro.parts[pjd].v[2],
               hydro_get_comoving_density(&cj->hydro.parts[pjd]),
-#if defined(GIZMO_MFV_SPH) || defined(SHADOWFAX_SPH)
+#if defined(GIZMO_MFV_SPH) || defined(SHADOWFAX_SPH) || defined(SHADOWFAX_NEW_SPH)
               0.f,
 #else
               main_cell->hydro.parts[pjd].density.rho_dh,
