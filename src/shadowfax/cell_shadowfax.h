@@ -62,6 +62,12 @@ cell_malloc_delaunay_tessellation(struct cell *c) {
 
 void cell_malloc_delaunay_tessellation_recursive(struct cell *c);
 
+__attribute__((always_inline)) INLINE static void cell_destroy_tesselations(
+    struct cell *c) {
+  delaunay_destroy(&c->hydro.deltess);
+  voronoi_destroy(&c->hydro.vortess);
+}
+
 __attribute__((always_inline)) INLINE static void
 cell_shadowfax_do_pair1_density(const struct engine *e, struct cell *ci,
                                 struct cell *cj, int sid, const double *shift) {
@@ -566,7 +572,8 @@ __attribute__((always_inline)) INLINE static void cell_shadowfax_do_pair_naive(
     /* Get a pointer to the ith particle. */
     struct part *restrict pi = &parts_i[pid];
     delaunay_add_new_vertex(&cj->hydro.deltess, pi->x[0] - shift[0],
-                            pi->x[1] - shift[1], pi->x[2] - shift[2], sid, ci, pi);
+                            pi->x[1] - shift[1], pi->x[2] - shift[2], sid, ci,
+                            pi);
   }
 
   /* Loop over the parts in cj. */
