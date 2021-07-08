@@ -8,8 +8,8 @@ void cell_malloc_delaunay_tessellation_recursive(struct cell *c) {
   /* recurse? */
   if (c->split) {
     if (c->hydro.shadowfax_enabled) {
-      /* Tessellations were allocated here in a previous iteration. Free them
-       * now. */
+      /* Tessellations were allocated here in a previous iteration. We don't
+       * need them any more, so free them now. */
       cell_destroy_tessellations(c);
     }
     for (int k = 0; k < 8; k++) {

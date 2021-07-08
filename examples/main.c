@@ -1603,7 +1603,7 @@ int main(int argc, char *argv[]) {
       }
       fclose(vfile);
     }
-//    if (j == 2000) break;
+    if (j == 2) break;
 
     /* Print the timers. */
     if (with_verbose_timers) timers_print(e.step);

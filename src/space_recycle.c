@@ -50,8 +50,15 @@ void space_rebuild_recycle_rec(struct space *s, struct cell *c,
                                struct cell **cell_rec_end,
                                struct gravity_tensors **multipole_rec_begin,
                                struct gravity_tensors **multipole_rec_end) {
-  if (c->split)
-    for (int k = 0; k < 8; k++)
+#ifdef SHADOWFAX_NEW_SPH
+  /* Free tessellations if necessary */
+  if (c->hydro.shadowfax_enabled) {
+    cell_destroy_tessellations(c);
+  }
+#endif
+  /* Recurse? */
+  if (c->split) {
+    for (int k = 0; k < 8; k++) {
       if (c->progeny[k] != NULL) {
         space_rebuild_recycle_rec(s, c->progeny[k], cell_rec_begin,
                                   cell_rec_end, multipole_rec_begin,
@@ -66,12 +73,15 @@ void space_rebuild_recycle_rec(struct space *s, struct cell *c,
         }
 
         if (*cell_rec_end == NULL) *cell_rec_end = *cell_rec_begin;
-        if (s->with_self_gravity && *multipole_rec_end == NULL)
+        if (s->with_self_gravity && *multipole_rec_end == NULL) {
           *multipole_rec_end = *multipole_rec_begin;
+        }
 
         c->progeny[k]->grav.multipole = NULL;
         c->progeny[k] = NULL;
       }
+    }
+  }
 }
 
 void space_rebuild_recycle_mapper(void *map_data, int num_elements,
@@ -218,13 +228,6 @@ void space_rebuild_recycle_mapper(void *map_data, int num_elements,
 
     cell_free_hydro_sorts(c);
     cell_free_stars_sorts(c);
-
-#ifdef SHADOWFAX_NEW_SPH
-    /* Free tessellations if necessary */
-    if (c->hydro.shadowfax_enabled) {
-      cell_destroy_tessellations(c);
-    }
-#endif
 
 #if WITH_MPI
     c->mpi.tag = -1;
