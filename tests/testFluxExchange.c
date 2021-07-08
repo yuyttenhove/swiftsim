@@ -110,6 +110,11 @@ void clean_up(struct cell *ci) {
   free(ci);
 }
 
+/* Just a forward declaration... */
+void runner_dopair1_branch_density(struct runner *r, struct cell *ci,
+                                   struct cell *cj);
+void runner_doself1_branch_density(struct runner *r, struct cell *c);
+
 /* And go... */
 int main(int argc, char *argv[]) {
 
@@ -129,7 +134,7 @@ int main(int argc, char *argv[]) {
   /* Get some randomness going */
   srand(0);
 
-  double h = 1.23485, rho = 1.;
+  double h = 2, rho = 1.;
 
   /* Build the infrastructure */
   struct space space;
@@ -181,6 +186,16 @@ int main(int argc, char *argv[]) {
   /* Store the main cell for future use */
   struct cell *main_cell = cells[13];
   int code = 8 == main_cell->hydro.count;
+
+  /* Build delaunay tesselation of main cell. */
+  /* Run all the pairs */
+  for (int j = 0; j < 27; ++j) {
+    if (cells[j] != main_cell) {
+      runner_dopair1_branch_density(&runner, main_cell, cells[j]);
+    }
+  }
+  /* And now the self-interaction */
+  runner_doself1_branch_density(&runner, main_cell);
 
   /* Clean things to make the sanitizer happy ... */
   for (int i = 0; i < 27; ++i) clean_up(cells[i]);
