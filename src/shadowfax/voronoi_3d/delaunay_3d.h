@@ -12,7 +12,7 @@
 #define SWIFTSIM_DELAUNAY3D_H
 
 #include "geometry_3d.h"
-#include "queues.h"
+#include "src/shadowfax/queues.h"
 #include "tetrahedron.h"
 
 struct delaunay {

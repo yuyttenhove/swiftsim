@@ -14,9 +14,9 @@
 #include "tuples.h"
 
 #define QUEUE_TYPE int
-#include "generic_lifo_queue.h"
+#include "shadowfax/queues/generic_lifo_queue.h"
 
 #define QUEUE_TYPE int3
-#include "generic_fifo_queue.h"
+#include "shadowfax/queues/generic_fifo_queue.h"
 
 #endif  // SWIFTSIM_QUEUES_H
