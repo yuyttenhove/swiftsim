@@ -92,9 +92,9 @@ static inline unsigned long int delaunay_double_to_int(double d) {
 }
 
 #if defined(HYDRO_DIMENSION_3D)
-#include "voronoi_3d/delaunay_3d.h"
+#include "algorithm_3d/delaunay_3d.h"
 #elif defined(HYDRO_DIMENSION_2D)
-#include "voronoi_2d/delaunay_2d.h"
+#include "algorithm_2d/delaunay_2d.h"
 #else
 #error "Only 2D or 3D moving mesh are supported!"
 #endif

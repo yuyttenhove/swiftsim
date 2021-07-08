@@ -43,9 +43,9 @@
   abort();
 
 #if defined(HYDRO_DIMENSION_3D)
-#include "voronoi_3d/voronoi_3d.h"
+#include "algorithm_3d/voronoi_3d.h"
 #elif defined(HYDRO_DIMENSION_2D)
-#include "voronoi_2d/voronoi_2d.h"
+#include "algorithm_2d/voronoi_2d.h"
 #else
 #error "Only 2D or 3D moving mesh are supported!"
 #endif
