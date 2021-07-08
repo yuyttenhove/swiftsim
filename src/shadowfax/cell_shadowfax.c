@@ -7,12 +7,18 @@ void cell_malloc_delaunay_tessellation_recursive(struct cell *c) {
   if (c->hydro.count == 0) return;
   /* recurse? */
   if (c->split) {
+    if (c->hydro.shadowfax_enabled) {
+      /* Tessellations were allocated here in a previous iteration. Free them
+       * now. */
+      cell_destroy_tessellations(c);
+    }
     for (int k = 0; k < 8; k++) {
       if (c->progeny[k] != NULL) {
         cell_malloc_delaunay_tessellation_recursive(c->progeny[k]);
       }
     }
   } else {
+    /* Base case */
     cell_malloc_delaunay_tessellation(c);
   }
 }

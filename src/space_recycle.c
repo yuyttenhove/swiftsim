@@ -22,6 +22,8 @@
 /* Config parameters. */
 #include "../config.h"
 
+#include <shadowfax/cell_shadowfax.h>
+
 /* This object's header. */
 #include "space.h"
 
@@ -216,6 +218,14 @@ void space_rebuild_recycle_mapper(void *map_data, int num_elements,
 
     cell_free_hydro_sorts(c);
     cell_free_stars_sorts(c);
+
+#ifdef SHADOWFAX_NEW_SPH
+    /* Free tessellations if necessary */
+    if (c->hydro.shadowfax_enabled) {
+      cell_destroy_tessellations(c);
+    }
+#endif
+
 #if WITH_MPI
     c->mpi.tag = -1;
     c->mpi.recv = NULL;

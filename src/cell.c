@@ -1034,7 +1034,8 @@ void cell_clean(struct cell *c) {
   cell_free_stars_sorts(c);
 
 #ifdef SHADOWFAX_NEW_SPH
-  if (!c->split) {
+  /* Did we build the tessellations for this cell? */
+  if (c->hydro.shadowfax_enabled) {
     cell_destroy_tessellations(c);
   }
 #endif
