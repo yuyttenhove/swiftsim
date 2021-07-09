@@ -88,6 +88,9 @@ inline static void voronoi_init(struct voronoi *restrict v,
 
   /* dealloc previous voronoi tesselation */
   voronoi_destroy(v);
+  if (v->active) {
+    voronoi_destroy(v);
+  }
 
   delaunay_assert(d->vertex_end > 0);
 
@@ -422,6 +425,7 @@ inline static void voronoi_init(struct voronoi *restrict v,
   int3_fifo_queue_destroy(&neighbour_info_q);
   swift_free("Voronoi face vertices", face_vertices);
   voronoi_check_grid(v);
+  v->active = 1;
 }
 
 /**
@@ -437,6 +441,7 @@ inline static void voronoi_destroy(struct voronoi *restrict v) {
     }
     swift_free("Voronoi pairs", v->pairs[i]);
   }
+  v->active = 0;
 }
 
 /**
