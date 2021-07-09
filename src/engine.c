@@ -1304,7 +1304,7 @@ void engine_rebuild(struct engine *e, const int repartitioned,
   struct cell *top_level_cells = e->s->cells_top;
   int nr_cells = e->s->nr_cells;
   for (int k = 0; k < nr_cells; k++) {
-    cell_malloc_delaunay_tessellation_recursive(&top_level_cells[k]);
+    cell_malloc_delaunay_tessellation_recursive(&top_level_cells[k], e);
   }
 #endif
 

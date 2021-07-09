@@ -116,6 +116,11 @@ struct voronoi {
 
   /*! @brief Allocated number of pairs per cell index. */
   int pair_size[27];
+
+  /*! @brief Flag indicating whether this voronoi struct is active (has memory
+   * allocated)
+   */
+  int active;
 };
 
 #endif /* SWIFT_VORONOI_STRUCT_H */

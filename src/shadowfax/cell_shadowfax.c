@@ -2,9 +2,11 @@
 
 #include "../space_getsid.h"
 
-void cell_malloc_delaunay_tessellation_recursive(struct cell *c) {
+void cell_malloc_delaunay_tessellation_recursive(struct cell *restrict c, const struct engine *restrict e) {
   /* anything to do here? */
   if (c->hydro.count == 0) return;
+  if (!cell_is_active_hydro(c, e)) return;
+
   /* recurse? */
   if (c->split) {
     if (c->hydro.shadowfax_enabled) {
@@ -14,7 +16,7 @@ void cell_malloc_delaunay_tessellation_recursive(struct cell *c) {
     }
     for (int k = 0; k < 8; k++) {
       if (c->progeny[k] != NULL) {
-        cell_malloc_delaunay_tessellation_recursive(c->progeny[k]);
+        cell_malloc_delaunay_tessellation_recursive(c->progeny[k], e);
       }
     }
   } else {
@@ -301,8 +303,12 @@ void cell_shadowfax_write_tesselations(const struct cell *c, FILE *dfile,
         cell_shadowfax_write_tesselations(c->progeny[k], dfile, vfile, offset);
       }
     }
-  } else {
+  } else if (c->hydro.shadowfax_enabled){
     //    delaunay_write_tessellation(&c->hydro.deltess, dfile, offset);
+#ifdef SWIFT_DEBUG_CHECKS
+    assert(c->hydro.vortess.active == c->hydro.deltess.active);
+    assert(c->hydro.vortess.active);
+#endif
     voronoi_write_grid(&c->hydro.vortess, vfile);
   }
 }

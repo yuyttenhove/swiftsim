@@ -136,6 +136,7 @@ static inline void voronoi_destroy(struct voronoi *restrict v) {
   for (int i = 0; i < 27; ++i) {
     free(v->pairs[i]);
   }
+  v->active = 0;
 }
 
 /**
@@ -159,7 +160,9 @@ static inline void voronoi_init(struct voronoi *restrict v,
                                 const struct delaunay *restrict d) {
 
   /* dealloc voronoi tesselation */
-  voronoi_destroy(v);
+  if (v->active) {
+    voronoi_destroy(v);
+  }
 
   delaunay_assert(d->vertex_end > 0);
 
@@ -379,6 +382,9 @@ static inline void voronoi_init(struct voronoi *restrict v,
   } /* loop over all cell generators */
 
   free(vertices);
+
+  /* Update flag */
+  v->active = 1;
 }
 
 /**

@@ -60,7 +60,8 @@ cell_malloc_delaunay_tessellation(struct cell *c) {
   c->hydro.shadowfax_enabled = 1;
 }
 
-void cell_malloc_delaunay_tessellation_recursive(struct cell *c);
+void cell_malloc_delaunay_tessellation_recursive(
+    struct cell *c, const struct engine *restrict e);
 
 __attribute__((always_inline)) INLINE static void cell_destroy_tessellations(
     struct cell *c) {
@@ -227,33 +228,75 @@ cell_shadowfax_do_pair1_gradient(const struct engine *e,
   if (ci == cj) error("Interacting cell with itself!");
 
   /* anything to do here? */
-  if (!(cell_is_active_hydro(ci, e) || cell_is_active_hydro(cj, e))) return;
+  int ci_active = cell_is_active_hydro(ci, e);
+  int cj_active = cell_is_active_hydro(cj, e);
+  if (!(ci_active || cj_active)) return;
 
-  struct voronoi *vortess = &ci->hydro.vortess;
-  /* loop over voronoi faces between ci and cj */
-  for (int i = 0; i < vortess->pair_index[26 - sid]; ++i) {
-    struct voronoi_pair *pair = &vortess->pairs[26 - sid][i];
-    struct part *part_left = pair->left;
-    struct part *part_right = pair->right;
-    /* check if right particle in cj */
-    if (pair->right_cell != cj) {
-      continue;
+  if (ci_active && cj_active) {
+    struct voronoi *vortess = &ci->hydro.vortess;
+    double inverse_shift[3] = {-shift[0], -shift[1], -shift[2]};
+
+    /* loop over voronoi faces between ci and cj */
+    for (int i = 0; i < vortess->pair_index[26 - sid]; ++i) {
+      struct voronoi_pair *pair = &vortess->pairs[26 - sid][i];
+      struct part *part_left = pair->left;
+      struct part *part_right = pair->right;
+
+      /* check if right particle in cj */
+      if (pair->right_cell != cj) {
+        continue;
+      }
+      if (part_left->force.active == 1 && part_right->force.active == 1) {
+        hydro_shadowfax_gradients_collect(part_left, part_right, pair->midpoint,
+                                          pair->surface_area, shift, 1);
+      } else if (part_left->force.active) {
+        hydro_shadowfax_gradients_collect(part_left, part_right, pair->midpoint,
+                                          pair->surface_area, shift, 0);
+      } else if (part_right->force.active) {
+        double midpoint[3] = {pair->midpoint[0] + inverse_shift[0],
+                              pair->midpoint[1] + inverse_shift[1],
+                              pair->midpoint[2] + inverse_shift[2]};
+        hydro_shadowfax_gradients_collect(part_right, part_left, midpoint,
+                                          pair->surface_area, inverse_shift, 0);
+      }
+    } /* loop over voronoi faces between ci and cj */
+  } else if (ci_active) {
+    struct voronoi *vortess = &ci->hydro.vortess;
+
+    /* loop over voronoi faces between ci and cj */
+    for (int i = 0; i < vortess->pair_index[26 - sid]; ++i) {
+      struct voronoi_pair *pair = &vortess->pairs[26 - sid][i];
+      struct part *part_left = pair->left;
+      struct part *part_right = pair->right;
+      /* check if right particle in cj */
+      if (pair->right_cell != cj) {
+        continue;
+      }
+      if (part_left->force.active) {
+        hydro_shadowfax_gradients_collect(part_left, part_right, pair->midpoint,
+                                          pair->surface_area, shift, 0);
+      }
     }
-    if (part_left->force.active == 1 && part_right->force.active == 1) {
-      hydro_shadowfax_gradients_collect(part_left, part_right, pair->midpoint,
-                                        pair->surface_area, shift, 1);
-    } else if (part_left->force.active) {
-      hydro_shadowfax_gradients_collect(part_left, part_right, pair->midpoint,
-                                        pair->surface_area, shift, 0);
-    } else if (part_right->force.active) {
-      double inverse_shift[3] = {-shift[0], -shift[1], -shift[2]};
-      double midpoint[3] = {pair->midpoint[0] + inverse_shift[0],
-                            pair->midpoint[1] + inverse_shift[1],
-                            pair->midpoint[2] + inverse_shift[2]};
-      hydro_shadowfax_gradients_collect(part_right, part_left, midpoint,
-                                        pair->surface_area, inverse_shift, 0);
+  } else {
+    assert(cj_active);
+    struct voronoi *vortess = &cj->hydro.vortess;
+    double inverse_shift[3] = {-shift[0], -shift[1], -shift[2]};
+
+    /* loop over voronoi faces between cj and ci */
+    for (int i = 0; i < vortess->pair_index[sid]; ++i) {
+      struct voronoi_pair *pair = &vortess->pairs[sid][i];
+      struct part *part_left = pair->left;   /* in cj */
+      struct part *part_right = pair->right; /* in ci */
+      /* check if right particle in ci */
+      if (pair->right_cell != ci) {
+        continue;
+      }
+      if (part_left->force.active) {
+        hydro_shadowfax_gradients_collect(part_left, part_right, pair->midpoint,
+                                          pair->surface_area, inverse_shift, 0);
+      }
     }
-  } /* loop over voronoi faces between ci and cj */
+  }
 }
 
 void cell_shadowfax_do_pair1_gradient_recursive(const struct engine *e,
@@ -280,34 +323,75 @@ __attribute__((always_inline)) INLINE static void cell_shadowfax_do_pair2_force(
     int sid, const double *shift) {
 
   /* anything to do here? */
-  if (!cell_is_active_hydro(ci, e)) return;
+  int ci_active = cell_is_active_hydro(ci, e);
+  int cj_active = cell_is_active_hydro(cj, e);
+  if (!(ci_active || cj_active)) return;
 
-  struct voronoi *vortess = &ci->hydro.vortess;
-  /* loop over voronoi faces between ci and cj */
-  for (int i = 0; i < vortess->pair_index[26 - sid]; ++i) {
-    struct voronoi_pair *pair = &vortess->pairs[26 - sid][i];
-    struct part *part_left = pair->left;
-    struct part *part_right = pair->right;
+  if (ci_active && cj_active) {
+    struct voronoi *vortess = &ci->hydro.vortess;
+    double inverse_shift[3] = {-shift[0], -shift[1], -shift[2]};
 
-    /* check if right particle in cj */
-    if (pair->right_cell != cj) {
-      continue;
-    }
-    if (part_left->force.active == 1 && part_right->force.active == 1) {
-      hydro_shadowfax_flux_exchange(part_left, part_right, pair->midpoint,
-                                    pair->surface_area, shift, 1);
-    } else if (part_left->force.active) {
-      hydro_shadowfax_flux_exchange(part_left, part_right, pair->midpoint,
-                                    pair->surface_area, shift, 0);
-    } else if (part_right->force.active) {
-      double inverse_shift[3];
-      for (int k = 0; k < 3; k++) {
-        inverse_shift[k] = -shift[k];
+    /* loop over voronoi faces between ci and cj */
+    for (int i = 0; i < vortess->pair_index[26 - sid]; ++i) {
+      struct voronoi_pair *pair = &vortess->pairs[26 - sid][i];
+      struct part *part_left = pair->left;
+      struct part *part_right = pair->right;
+
+      /* check if right particle in cj */
+      if (pair->right_cell != cj) {
+        continue;
       }
-      hydro_shadowfax_flux_exchange(part_right, part_left, pair->midpoint,
-                                    pair->surface_area, inverse_shift, 0);
+      if (part_left->force.active == 1 && part_right->force.active == 1) {
+        hydro_shadowfax_flux_exchange(part_left, part_right, pair->midpoint,
+                                      pair->surface_area, shift, 1);
+      } else if (part_left->force.active) {
+        hydro_shadowfax_flux_exchange(part_left, part_right, pair->midpoint,
+                                      pair->surface_area, shift, 0);
+      } else if (part_right->force.active) {
+        double midpoint[3] = {pair->midpoint[0] + inverse_shift[0],
+                              pair->midpoint[1] + inverse_shift[1],
+                              pair->midpoint[2] + inverse_shift[2]};
+        hydro_shadowfax_flux_exchange(part_right, part_left, midpoint,
+                                      pair->surface_area, inverse_shift, 0);
+      }
+    } /* loop over voronoi faces between ci and cj */
+  } else if (ci_active) {
+    struct voronoi *vortess = &ci->hydro.vortess;
+
+    /* loop over voronoi faces between ci and cj */
+    for (int i = 0; i < vortess->pair_index[26 - sid]; ++i) {
+      struct voronoi_pair *pair = &vortess->pairs[26 - sid][i];
+      struct part *part_left = pair->left;
+      struct part *part_right = pair->right;
+      /* check if right particle in cj */
+      if (pair->right_cell != cj) {
+        continue;
+      }
+      if (part_left->force.active) {
+        hydro_shadowfax_flux_exchange(part_left, part_right, pair->midpoint,
+                                      pair->surface_area, shift, 0);
+      }
     }
-  } /* loop over voronoi faces between ci and cj */
+  } else {
+    assert(cj_active);
+    struct voronoi *vortess = &cj->hydro.vortess;
+    double inverse_shift[3] = {-shift[0], -shift[1], -shift[2]};
+
+    /* loop over voronoi faces between cj and ci */
+    for (int i = 0; i < vortess->pair_index[sid]; ++i) {
+      struct voronoi_pair *pair = &vortess->pairs[sid][i];
+      struct part *part_left = pair->left;   /* in cj */
+      struct part *part_right = pair->right; /* in ci */
+      /* check if right particle in ci */
+      if (pair->right_cell != ci) {
+        continue;
+      }
+      if (part_left->force.active) {
+        hydro_shadowfax_flux_exchange(part_left, part_right, pair->midpoint,
+                                      pair->surface_area, inverse_shift, 0);
+      }
+    }
+  }
 }
 
 void cell_shadowfax_do_pair2_force_recursive(const struct engine *e,
