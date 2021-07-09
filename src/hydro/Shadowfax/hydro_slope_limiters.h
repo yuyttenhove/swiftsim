@@ -37,7 +37,7 @@ __attribute__((always_inline)) INLINE static void hydro_slope_limit_face(
 
 #endif
 
-#ifdef SHADOWFAX_SLOPE_LIMITER_CELL_WIDE
+#if defined(SHADOWFAX_SLOPE_LIMITER_CELL_WIDE) || defined(SHADOWFAX_SLOPE_LIMITER_CELL_WIDE_EXACT)
 
 #define HYDRO_SLOPE_LIMITER_CELL_IMPLEMENTATION \
   "Cell wide slope limiter (Springel 2010)"

@@ -88,6 +88,7 @@
 /* SHADOWFAX_SPH slope limiters */
 //#define SHADOWFAX_SLOPE_LIMITER_PER_FACE
 //#define SHADOWFAX_SLOPE_LIMITER_CELL_WIDE
+//#define SHADOWFAX_SLOPE_LIMITER_CELL_WIDE_EXACT
 
 /* Options to control SHADOWFAX_SPH */
 /* This option disables cell movement */

@@ -133,5 +133,21 @@ __attribute__((always_inline)) INLINE static void hydro_gradients_finalize(
   p->primitives.gradients.P[1] /= volume;
   p->primitives.gradients.P[2] /= volume;
 
+#ifdef SHADOWFAX_SLOPE_LIMITER_CELL_WIDE_EXACT
+  /* Uncorrected gradients were used for the extrapolation... */
+  p->primitives.limiter.extrapolations.rho[0] /= volume;
+  p->primitives.limiter.extrapolations.rho[1] /= volume;
+
+  p->primitives.limiter.extrapolations.v[0][0] /= volume;
+  p->primitives.limiter.extrapolations.v[0][1] /= volume;
+  p->primitives.limiter.extrapolations.v[1][0] /= volume;
+  p->primitives.limiter.extrapolations.v[1][1] /= volume;
+  p->primitives.limiter.extrapolations.v[2][0] /= volume;
+  p->primitives.limiter.extrapolations.v[2][1] /= volume;
+
+  p->primitives.limiter.extrapolations.P[0] /= volume;
+  p->primitives.limiter.extrapolations.P[1] /= volume;
+#endif
+
   hydro_slope_limit_cell(p);
 }
