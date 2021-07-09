@@ -83,11 +83,11 @@
 
 /* Types of gradients to use for SHADOWFAX_SPH */
 /* If no option is chosen, no gradients are used (first order scheme) */
-#define SHADOWFAX_GRADIENTS
+//#define SHADOWFAX_GRADIENTS
 
 /* SHADOWFAX_SPH slope limiters */
 //#define SHADOWFAX_SLOPE_LIMITER_PER_FACE
-#define SHADOWFAX_SLOPE_LIMITER_CELL_WIDE
+//#define SHADOWFAX_SLOPE_LIMITER_CELL_WIDE
 //#define SHADOWFAX_SLOPE_LIMITER_CELL_WIDE_EXACT
 
 /* Options to control SHADOWFAX_SPH */
