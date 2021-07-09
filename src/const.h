@@ -87,12 +87,12 @@
 
 /* SHADOWFAX_SPH slope limiters */
 //#define SHADOWFAX_SLOPE_LIMITER_PER_FACE
-//#define SHADOWFAX_SLOPE_LIMITER_CELL_WIDE
+#define SHADOWFAX_SLOPE_LIMITER_CELL_WIDE
 //#define SHADOWFAX_SLOPE_LIMITER_CELL_WIDE_EXACT
 
 /* Options to control SHADOWFAX_SPH */
 /* This option disables cell movement */
-#define SHADOWFAX_FIX_CELLS
+//#define SHADOWFAX_FIX_CELLS
 /* This option enables cell steering, i.e. trying to keep the cells regular by
    adding a correction to the cell velocities.*/
 //#define SHADOWFAX_STEER_CELL_MOTION

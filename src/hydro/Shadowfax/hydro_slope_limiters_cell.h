@@ -96,62 +96,6 @@ hydro_slope_limit_cell_collect(struct part* pi, const struct part* pj,
 #endif
 }
 
-/*!
- * @brief Collect information about extrapolated primitives for the cell wide
- * limiter.
- *
- * @param p Particle to extrapolate quantities for
- * @param midpoint Position of the midpoint of a face of the voronoi cell
- * associated with p.
- */
-__attribute__((always_inline)) INLINE static void
-hydro_slope_limit_cell_collect_extrapolations(struct part* p,
-                                              const double* midpoint) {
-  float dx[3] = {(float)midpoint[0] - (float)p->x[0],
-                 (float)midpoint[1] - (float)p->x[1],
-                 (float)midpoint[2] - (float)p->x[2]};
-
-  float extrapolated_rho = (p->primitives.gradients.rho[0] * dx[0] +
-                            p->primitives.gradients.rho[1] * dx[1] +
-                            p->primitives.gradients.rho[2] * dx[2]);
-  p->primitives.limiter.extrapolations.rho[0] =
-      fminf(p->primitives.limiter.extrapolations.rho[0], extrapolated_rho);
-  p->primitives.limiter.extrapolations.rho[1] =
-      fmaxf(p->primitives.limiter.extrapolations.rho[1], extrapolated_rho);
-
-  float extrapolated_v[3] = {
-      (p->primitives.gradients.v[0][0] * dx[0] +
-       p->primitives.gradients.v[0][1] * dx[1] +
-       p->primitives.gradients.v[0][2] * dx[2]),
-      (p->primitives.gradients.v[1][0] * dx[0] +
-       p->primitives.gradients.v[1][1] * dx[1] +
-       p->primitives.gradients.v[1][2] * dx[2]),
-      (p->primitives.gradients.v[2][0] * dx[0] +
-       p->primitives.gradients.v[2][1] * dx[1] +
-       p->primitives.gradients.v[2][2] * dx[2]),
-  };
-  p->primitives.limiter.extrapolations.v[0][0] =
-      fminf(extrapolated_v[0], p->primitives.limiter.extrapolations.v[0][0]);
-  p->primitives.limiter.extrapolations.v[0][1] =
-      fmaxf(extrapolated_v[0], p->primitives.limiter.extrapolations.v[0][1]);
-  p->primitives.limiter.extrapolations.v[1][0] =
-      fminf(extrapolated_v[1], p->primitives.limiter.extrapolations.v[1][0]);
-  p->primitives.limiter.extrapolations.v[1][1] =
-      fmaxf(extrapolated_v[1], p->primitives.limiter.extrapolations.v[1][1]);
-  p->primitives.limiter.extrapolations.v[2][0] =
-      fminf(extrapolated_v[2], p->primitives.limiter.extrapolations.v[2][0]);
-  p->primitives.limiter.extrapolations.v[2][1] =
-      fmaxf(extrapolated_v[2], p->primitives.limiter.extrapolations.v[2][1]);
-
-  float extrapolated_P = (p->primitives.gradients.P[0] * dx[0] +
-                          p->primitives.gradients.P[1] * dx[1] +
-                          p->primitives.gradients.P[2] * dx[2]);
-  p->primitives.limiter.extrapolations.P[0] =
-      fminf(p->primitives.limiter.extrapolations.P[0], extrapolated_P);
-  p->primitives.limiter.extrapolations.P[1] =
-      fmaxf(p->primitives.limiter.extrapolations.P[1], extrapolated_P);
-}
-
 #ifdef SHADOWFAX_SLOPE_LIMITER_CELL_WIDE
 /**
  * @brief Apply the cell wide slope limiter to the gradient of a single quantity
@@ -214,6 +158,62 @@ __attribute__((always_inline)) INLINE static void hydro_slope_limit_cell(
 }
 
 #elif defined(SHADOWFAX_SLOPE_LIMITER_CELL_WIDE_EXACT)
+/*!
+ * @brief Collect information about extrapolated primitives for the cell wide
+ * limiter.
+ *
+ * @param p Particle to extrapolate quantities for
+ * @param midpoint Position of the midpoint of a face of the voronoi cell
+ * associated with p.
+ */
+__attribute__((always_inline)) INLINE static void
+hydro_slope_limit_cell_collect_extrapolations(struct part* p,
+                                              const double* midpoint) {
+  float dx[3] = {(float)midpoint[0] - (float)p->x[0],
+                 (float)midpoint[1] - (float)p->x[1],
+                 (float)midpoint[2] - (float)p->x[2]};
+
+  float extrapolated_rho = (p->primitives.gradients.rho[0] * dx[0] +
+                            p->primitives.gradients.rho[1] * dx[1] +
+                            p->primitives.gradients.rho[2] * dx[2]);
+  p->primitives.limiter.extrapolations.rho[0] =
+      fminf(p->primitives.limiter.extrapolations.rho[0], extrapolated_rho);
+  p->primitives.limiter.extrapolations.rho[1] =
+      fmaxf(p->primitives.limiter.extrapolations.rho[1], extrapolated_rho);
+
+  float extrapolated_v[3] = {
+      (p->primitives.gradients.v[0][0] * dx[0] +
+       p->primitives.gradients.v[0][1] * dx[1] +
+       p->primitives.gradients.v[0][2] * dx[2]),
+      (p->primitives.gradients.v[1][0] * dx[0] +
+       p->primitives.gradients.v[1][1] * dx[1] +
+       p->primitives.gradients.v[1][2] * dx[2]),
+      (p->primitives.gradients.v[2][0] * dx[0] +
+       p->primitives.gradients.v[2][1] * dx[1] +
+       p->primitives.gradients.v[2][2] * dx[2]),
+  };
+  p->primitives.limiter.extrapolations.v[0][0] =
+      fminf(extrapolated_v[0], p->primitives.limiter.extrapolations.v[0][0]);
+  p->primitives.limiter.extrapolations.v[0][1] =
+      fmaxf(extrapolated_v[0], p->primitives.limiter.extrapolations.v[0][1]);
+  p->primitives.limiter.extrapolations.v[1][0] =
+      fminf(extrapolated_v[1], p->primitives.limiter.extrapolations.v[1][0]);
+  p->primitives.limiter.extrapolations.v[1][1] =
+      fmaxf(extrapolated_v[1], p->primitives.limiter.extrapolations.v[1][1]);
+  p->primitives.limiter.extrapolations.v[2][0] =
+      fminf(extrapolated_v[2], p->primitives.limiter.extrapolations.v[2][0]);
+  p->primitives.limiter.extrapolations.v[2][1] =
+      fmaxf(extrapolated_v[2], p->primitives.limiter.extrapolations.v[2][1]);
+
+  float extrapolated_P = (p->primitives.gradients.P[0] * dx[0] +
+                          p->primitives.gradients.P[1] * dx[1] +
+                          p->primitives.gradients.P[2] * dx[2]);
+  p->primitives.limiter.extrapolations.P[0] =
+      fminf(p->primitives.limiter.extrapolations.P[0], extrapolated_P);
+  p->primitives.limiter.extrapolations.P[1] =
+      fmaxf(p->primitives.limiter.extrapolations.P[1], extrapolated_P);
+}
+
 /**
  * @brief Apply the cell wide slope limiter to the gradient of a single quantity
  *
