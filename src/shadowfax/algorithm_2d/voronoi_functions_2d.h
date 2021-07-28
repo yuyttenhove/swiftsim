@@ -28,6 +28,9 @@
 #ifndef SWIFTSIM_VORONOI_FUNCTIONS_2D_H
 #define SWIFTSIM_VORONOI_FUNCTIONS_2D_H
 
+/* Forward declarations */
+static inline void voronoi_check_grid(const struct voronoi *restrict v);
+
 /**
  * @brief Compute the midpoint and surface area of the face with the given
  * vertices.
@@ -139,6 +142,48 @@ static inline void voronoi_destroy(struct voronoi *restrict v) {
   v->active = 0;
 }
 
+inline static void voronoi_init(struct voronoi *restrict v, int number_of_cells,
+    double min_surface_area) {
+  v->number_of_cells = number_of_cells;
+  /* allocate memory for the voronoi cells */
+  v->cells = (struct voronoi_cell_new *)swift_malloc(
+      "Voronoi cells", v->number_of_cells * sizeof(struct voronoi_cell_new));
+  v->cells_size = v->number_of_cells;
+
+  /* Allocate memory for the voronoi pairs (faces). */
+  for (int i = 0; i < 27; ++i) {
+    v->pairs[i] = (struct voronoi_pair *)swift_malloc(
+        "Voronoi pairs", 10 * sizeof(struct voronoi_pair));
+    v->pair_index[i] = 0;
+    v->pair_size[i] = 10;
+  }
+
+  v->min_surface_area = min_surface_area;
+  v->active = 1;
+}
+
+inline static void voronoi_reset(struct voronoi *restrict v,
+    int number_of_cells, double min_surface_area) {
+  voronoi_assert(v->active);
+
+  v->number_of_cells = number_of_cells;
+  if (v->cells_size < v->number_of_cells) {
+    /* allocate memory for the voronoi cells */
+    v->cells = (struct voronoi_cell_new *)swift_realloc(
+        "Voronoi cells", v->cells,
+        v->number_of_cells * sizeof(struct voronoi_cell_new));
+    v->cells_size = v->number_of_cells;
+  }
+
+  /* reset indices for the voronoi pairs (faces). */
+  for (int i = 0; i < 27; ++i) {
+    v->pair_index[i] = 0;
+  }
+
+  v->min_surface_area = min_surface_area;
+}
+
+
 /**
  * @brief Initialise the Voronoi grid based on the given Delaunay tessellation.
  *
@@ -156,22 +201,25 @@ static inline void voronoi_destroy(struct voronoi *restrict v) {
  * @param d Delaunay tessellation (read-only).
  * @param parts Local cell generators (read-only).
  */
-static inline void voronoi_init(struct voronoi *restrict v,
-                                const struct delaunay *restrict d) {
-
-  /* dealloc voronoi tesselation */
-  if (v->active) {
-    voronoi_destroy(v);
-  }
+static inline void voronoi_build(struct voronoi *restrict v,
+                                 const struct delaunay *restrict d,
+                                 double *dim) {
 
   delaunay_assert(d->vertex_end > 0);
 
-  /* the number of cells equals the number of non-ghost and non-dummy vertices
-     in the Delaunay tessellation */
-  v->number_of_cells = d->vertex_end - d->vertex_start;
-  /* allocate memory for the generators and the vertices */
-  v->cells = (struct voronoi_cell_new *)malloc(v->number_of_cells *
-                                               sizeof(struct voronoi_cell_new));
+  /* the number of cells equals the number of non-ghost and non-dummy
+     vertex_indices in the Delaunay tessellation */
+  int number_of_cells = d->vertex_end - d->vertex_start;
+  /* Set minimal face surface area */
+  double min_size_1d =
+      min_rel_voronoi_face_size * fmin(dim[0], fmin(dim[1], dim[2]));
+  double min_surface_area = min_size_1d * min_size_1d;
+
+  if (v->active) {
+    voronoi_reset(v, number_of_cells, min_surface_area);
+  } else {
+    voronoi_init(v, number_of_cells, min_surface_area);
+  }
 
   /* loop over the triangles in the Delaunay tessellation and compute the
      midpoints of their circumcircles. These happen to be the vertices of the
@@ -237,12 +285,6 @@ static inline void voronoi_init(struct voronoi *restrict v,
     vertices[2 * i + 1] = v0y + Ry;
   } /* loop over the Delaunay triangles and compute the circumcenters */
 
-  for (int i = 0; i < 27; ++i) {
-    v->pairs[i] =
-        (struct voronoi_pair *)malloc(10 * sizeof(struct voronoi_pair));
-    v->pair_index[i] = 0;
-    v->pair_size[i] = 10;
-  }
   /* loop over all cell generators, and hence over all non-ghost, non-dummy
      Delaunay vertices and create the voronoi cell. */
   for (int i = 0; i < v->number_of_cells; ++i) {
@@ -381,10 +423,8 @@ static inline void voronoi_init(struct voronoi *restrict v,
 #endif
   } /* loop over all cell generators */
 
+  voronoi_check_grid(v);
   free(vertices);
-
-  /* Update flag */
-  v->active = 1;
 }
 
 /**
@@ -398,7 +438,7 @@ static inline void voronoi_check_grid(const struct voronoi *restrict v) {
     V += v->cells[i].volume;
   }
 
-  printf("Total volume: %g\n", V);
+//  printf("Total volume: %g\n", V);
 }
 
 /**

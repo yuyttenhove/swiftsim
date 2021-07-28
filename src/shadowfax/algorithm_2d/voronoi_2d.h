@@ -104,6 +104,9 @@ struct voronoi {
   /*! @brief Number of cells. */
   int number_of_cells;
 
+  /*! @brief Allocated size of cells array */
+  int cells_size;
+
   /*! @brief Voronoi cell pairs. We store these per (SWIFT) cell, i.e. pairs[0]
    *  contains all pairs that are completely contained within this cell, while
    *  pairs[1] corresponds to pairs crossing the boundary between this cell and
@@ -121,6 +124,10 @@ struct voronoi {
    * allocated)
    */
   int active;
+
+  /*! @brief The absolute minimal surface area of faces in this voronoi
+ * tessellation */
+  double min_surface_area;
 };
 
 #endif /* SWIFT_VORONOI_STRUCT_H */

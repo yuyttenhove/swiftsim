@@ -1603,7 +1603,7 @@ int main(int argc, char *argv[]) {
       }
       fclose(vfile);
     }
-//    if (j == 2) break;
+//    if (j == 3) break;
 
     /* Print the timers. */
     if (with_verbose_timers) timers_print(e.step);
