@@ -8,7 +8,7 @@
 /* Forward declarations */
 inline static int double_cmp(double double1, double double2,
                              unsigned long precision);
-inline static int voronoi_new_face(struct voronoi *v, int sid,
+inline static void voronoi_new_face(struct voronoi *v, int sid,
                                    struct cell *restrict c,
                                    struct part *left_part_pointer,
                                    struct part *right_part_pointer,
@@ -51,20 +51,55 @@ inline static void voronoi_pair_init(struct voronoi_pair *pair,
 #endif
 }
 
-/**
- * @brief Free up memory allocated by a voronoi pair (only necessary if
- * VORONOI_STORE_CONNECTIONS is defined).
- *
- * @param pair
- */
-inline static void voronoi_pair_destroy(struct voronoi_pair *pair) {
+inline static void voronoi_init(struct voronoi *restrict v, int number_of_cells,
+                                double min_surface_area) {
+  v->number_of_cells = number_of_cells;
+  /* allocate memory for the voronoi cells */
+  v->cells = (struct voronoi_cell_new *)swift_malloc(
+      "Voronoi cells", v->number_of_cells * sizeof(struct voronoi_cell_new));
+  v->cells_size = v->number_of_cells;
+
+  /* Allocate memory for the voronoi pairs (faces). */
+  for (int i = 0; i < 27; ++i) {
+    v->pairs[i] = (struct voronoi_pair *)swift_malloc(
+        "Voronoi pairs", 10 * sizeof(struct voronoi_pair));
+    v->pair_index[i] = 0;
+    v->pair_size[i] = 10;
+  }
+
+  v->min_surface_area = min_surface_area;
+  v->active = 1;
+}
+
+inline static void voronoi_reset(struct voronoi *restrict v,
+                                 int number_of_cells, double min_surface_area) {
+  voronoi_assert(v->active);
+
+  v->number_of_cells = number_of_cells;
+  if (v->cells_size < v->number_of_cells) {
+    /* allocate memory for the voronoi cells */
+    v->cells = (struct voronoi_cell_new *)swift_realloc(
+        "Voronoi cells", v->cells,
+        v->number_of_cells * sizeof(struct voronoi_cell_new));
+    v->cells_size = v->number_of_cells;
+  }
+
+  /* reset indices for the voronoi pairs (faces). */
+  for (int i = 0; i < 27; ++i) {
+    /* Free any allocations made for the old pairs */
 #ifdef VORONOI_STORE_CONNECTIONS
-  free(pair->vertices);
+    for (int j = 0; j < v->pair_index[i]; j++) {
+      free(v->pairs[i][j].vertices);
+    }
 #endif
+    v->pair_index[i] = 0;
+  }
+
+  v->min_surface_area = min_surface_area;
 }
 
 /**
- * @brief Initialise the Voronoi grid based on the given Delaunay tessellation.
+ * @brief Build the Voronoi grid based on the given Delaunay tessellation.
  *
  * This function allocates the memory for the Voronoi grid arrays and creates
  * the grid in linear time by
@@ -83,26 +118,28 @@ inline static void voronoi_pair_destroy(struct voronoi_pair *pair) {
  * @param v Voronoi grid.
  * @param d Delaunay tessellation (read-only).
  */
-inline static void voronoi_init(struct voronoi *restrict v,
-                                struct delaunay *restrict d) {
-
-  /* dealloc previous voronoi tesselation */
-  voronoi_destroy(v);
-  if (v->active) {
-    voronoi_destroy(v);
-  }
-
+inline static void voronoi_build(struct voronoi *restrict v,
+                                 struct delaunay *restrict d, double *dim) {
   delaunay_assert(d->vertex_end > 0);
 
   /* the number of cells equals the number of non-ghost and non-dummy
      vertex_indices in the Delaunay tessellation */
-  v->number_of_cells = d->vertex_end - d->vertex_start;
-  /* allocate memory for the voronoi cells */
-  v->cells = (struct voronoi_cell_new *)swift_malloc("Voronoi cells", v->number_of_cells *
-                                               sizeof(struct voronoi_cell_new));
-  /* Allocate memory to store voronoi vertices (will be freed at end) */
-  double *voronoi_vertices =
-      (double *)swift_malloc("Voronoi vertices", 3 * (d->tetrahedron_index - 4) * sizeof(double));
+  int number_of_cells = d->vertex_end - d->vertex_start;
+  /* Set minimal face surface area */
+  double min_size_1d =
+      min_rel_voronoi_face_size * fmin(dim[0], fmin(dim[1], dim[2]));
+  double min_surface_area = min_size_1d * min_size_1d;
+
+  if (v->active) {
+    voronoi_reset(v, number_of_cells, min_surface_area);
+  } else {
+    voronoi_init(v, number_of_cells, min_surface_area);
+  }
+
+  /* Allocate memory to store voronoi vertices (will be freed at end of this
+   * function!) */
+  double *voronoi_vertices = (double *)swift_malloc(
+      "Voronoi vertices", 3 * (d->tetrahedron_index - 4) * sizeof(double));
 
   /* loop over the tetrahedra in the Delaunay tessellation and compute the
      midpoints of their circumspheres. These happen to be the vertices of
@@ -119,8 +156,8 @@ inline static void voronoi_init(struct voronoi *restrict v,
 
     /* if the tetrahedron is inactive or not linked to a non-ghost, non-dummy
      * vertex, it is not a grid vertex and we can skip it. */
-    if (!t->active || (v0 >= v->number_of_cells && v1 >= v->number_of_cells &&
-                       v2 >= v->number_of_cells && v3 >= v->number_of_cells)) {
+    if (!t->active || (v0 >= d->vertex_end && v1 >= d->vertex_end &&
+                       v2 >= d->vertex_end && v3 >= d->vertex_end)) {
       voronoi_vertices[3 * i] = NAN;
       voronoi_vertices[3 * i + 1] = NAN;
       voronoi_vertices[3 * i + 2] = NAN;
@@ -194,34 +231,30 @@ inline static void voronoi_init(struct voronoi *restrict v,
 #endif
   } /* loop over the Delaunay tetrahedra and compute the circumcenters */
 
-  /* Allocate memory for the voronoi pairs (faces). */
-  for (int i = 0; i < 27; ++i) {
-    v->pairs[i] =
-        (struct voronoi_pair *)swift_malloc("Voronoi pairs", 10 * sizeof(struct voronoi_pair));
-    v->pair_index[i] = 0;
-    v->pair_size[i] = 10;
-  }
-
-  /* Allocate memory for the neighbour flags and initialize them to 0 */
-  int *neighbour_flags = (int *)swift_malloc("Voronoi neighbour flags", d->vertex_index * sizeof(int));
+  /* Allocate memory for the neighbour flags and initialize them to 0 (will be
+   * freed at the end of this function!) */
+  int *neighbour_flags = (int *)swift_malloc("Voronoi neighbour flags",
+                                             d->vertex_index * sizeof(int));
   for (int i = 0; i < d->vertex_index; i++) {
     neighbour_flags[i] = 0;
   }
 
-  /* Allocate a tetrahedron_vertex_queue */
+  /* Allocate a tetrahedron_vertex_queue (will be freed at the end of this
+   * function!) */
   struct int3_fifo_queue neighbour_info_q;
   int3_fifo_queue_init(&neighbour_info_q, 10);
 
   /* The size of the array used to temporarily store the vertices of the voronoi
    * faces in */
   int face_vertices_size = 10;
-  /* Temporary array to store face vertices in */
-  double *face_vertices =
-      (double *)swift_malloc("Voronoi face vertices", 3 * face_vertices_size * sizeof(double));
+  /* Temporary array to store face vertices in (will be freed at the end of this
+   * function!) */
+  double *face_vertices = (double *)swift_malloc(
+      "Voronoi face vertices", 3 * face_vertices_size * sizeof(double));
 
   /* loop over all cell generators, and hence over all non-ghost, non-dummy
      Delaunay vertex_indices */
-  for (int gen_idx_in_d = 0; gen_idx_in_d < v->number_of_cells;
+  for (int gen_idx_in_d = d->vertex_start; gen_idx_in_d < d->vertex_end;
        gen_idx_in_d++) {
     /* First reset the tetrahedron_vertex_queue */
     int3_fifo_queue_reset(&neighbour_info_q);
@@ -333,8 +366,9 @@ inline static void voronoi_init(struct voronoi *restrict v,
          * next_t */
         if (face_vertices_index + 6 > face_vertices_size) {
           face_vertices_size <<= 1;
-          face_vertices = (double *)swift_realloc("Voronoi face vertices",
-              face_vertices, 3 * face_vertices_size * sizeof(double));
+          face_vertices =
+              (double *)swift_realloc("Voronoi face vertices", face_vertices,
+                                      3 * face_vertices_size * sizeof(double));
         }
         const int vor_vertex1_idx = cur_t_idx - 4;
         face_vertices[3 * face_vertices_index] =
@@ -425,7 +459,6 @@ inline static void voronoi_init(struct voronoi *restrict v,
   int3_fifo_queue_destroy(&neighbour_info_q);
   swift_free("Voronoi face vertices", face_vertices);
   voronoi_check_grid(v);
-  v->active = 1;
 }
 
 /**
@@ -436,9 +469,11 @@ inline static void voronoi_init(struct voronoi *restrict v,
 inline static void voronoi_destroy(struct voronoi *restrict v) {
   swift_free("Voronoi cells", v->cells);
   for (int i = 0; i < 27; ++i) {
+#ifdef VORONOI_STORE_CONNECTIONS
     for (int j = 0; j < v->pair_index[i]; j++) {
-      voronoi_pair_destroy(&v->pairs[i][j]);
+      free(v->pairs[i][j].vertices);
     }
+#endif
     swift_free("Voronoi pairs", v->pairs[i]);
   }
   v->active = 0;
@@ -471,24 +506,27 @@ inline static void voronoi_destroy(struct voronoi *restrict v) {
  * @param vertices Vertices of the interface.
  * @param n_vertices Number of vertices in the vertices array.
  */
-inline static int voronoi_new_face(struct voronoi *v, int sid,
+inline static void voronoi_new_face(struct voronoi *v, int sid,
                                    struct cell *restrict c,
                                    struct part *left_part_pointer,
                                    struct part *right_part_pointer,
                                    double *vertices, int n_vertices) {
   if (v->pair_index[sid] == v->pair_size[sid]) {
     v->pair_size[sid] <<= 1;
-    v->pairs[sid] = (struct voronoi_pair *)swift_realloc("Voronoi pairs",
-        v->pairs[sid], v->pair_size[sid] * sizeof(struct voronoi_pair));
+    v->pairs[sid] = (struct voronoi_pair *)swift_realloc(
+        "Voronoi pairs", v->pairs[sid],
+        v->pair_size[sid] * sizeof(struct voronoi_pair));
   }
-  left_part_pointer->force.active = left_part_pointer->force.active;
-  right_part_pointer->force.active = right_part_pointer->force.active;
+
   /* Initialize pair */
   struct voronoi_pair *this_pair = &v->pairs[sid][v->pair_index[sid]];
   voronoi_pair_init(this_pair, c, left_part_pointer, right_part_pointer,
                     vertices, n_vertices);
-  /* return and then increase */
-  return v->pair_index[sid]++;
+
+  /* increase index if surface area is large enough */
+  if (this_pair->surface_area > v->min_surface_area) {
+    v->pair_index[sid]++;
+  }
 }
 
 /**

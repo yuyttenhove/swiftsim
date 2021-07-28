@@ -42,6 +42,11 @@
   fprintf(stderr, s, ##__VA_ARGS__); \
   abort();
 
+/**
+ * @brief minimal 1d relative size of voronoi faces
+ */
+extern double min_rel_voronoi_face_size;
+
 #if defined(HYDRO_DIMENSION_3D)
 #include "algorithm_3d/voronoi_3d.h"
 #elif defined(HYDRO_DIMENSION_2D)

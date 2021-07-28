@@ -148,6 +148,9 @@ if HAVE_GRAVITY_MULTISOFTENING
 GRAVITY_CSDS += gravity/MultiSoftening/gravity_csds.c
 endif
 
+# source files for the Shadowfax hydro scheme
+SHADOWFAX_SOURCES = shadowfax/cell_shadowfax.c shadowfax/voronoi.c
+
 # Common source files
 AM_SOURCES = space.c space_rebuild.c space_regrid.c space_unique_id.c 
 AM_SOURCES += space_sort.c space_split.c space_extras.c space_first_init.c space_init.c 
@@ -179,7 +182,7 @@ AM_SOURCES += fof.c fof_catalogue_io.c
 AM_SOURCES += hashmap.c pressure_floor.c
 AM_SOURCES += runner_neutrino.c
 AM_SOURCES += neutrino/Default/fermi_dirac.c
-AM_SOURCES += shadowfax/cell_shadowfax.c
+AM_SOURCES += $(SHADOWFAX_SOURCES)
 AM_SOURCES += $(QLA_COOLING_SOURCES) 
 AM_SOURCES += $(EAGLE_COOLING_SOURCES) $(EAGLE_FEEDBACK_SOURCES) 
 AM_SOURCES += $(GRACKLE_COOLING_SOURCES) $(GEAR_FEEDBACK_SOURCES) 
