@@ -524,7 +524,7 @@ inline static void voronoi_new_face(struct voronoi *v, int sid,
                     vertices, n_vertices);
 
   /* increase index if surface area is large enough */
-  if (this_pair->surface_area > v->min_surface_area) {
+  if (this_pair->surface_area >= v->min_surface_area) {
     v->pair_index[sid]++;
   }
 }
