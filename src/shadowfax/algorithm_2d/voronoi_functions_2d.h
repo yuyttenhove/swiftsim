@@ -91,11 +91,16 @@ static inline void voronoi_add_pair(struct voronoi *v, int sid,
 #ifdef SWIFT_DEBUG_CHECKS
   assert(c == NULL || !c->split);
 #endif
+  /* Skip degenerate faces (approximately 0 surface area) */
+  double surface_area = voronoi_compute_midpoint_area_face(ax, ay, bx, by, this_pair->midpoint);
+  if (surface_area < v->min_surface_area) {
+    return;
+  }
+
+  this_pair->surface_area = surface_area;
   this_pair->right_cell = c;
   this_pair->left = left_part_pointer;
   this_pair->right = right_part_pointer;
-  this_pair->surface_area =
-      voronoi_compute_midpoint_area_face(ax, ay, bx, by, this_pair->midpoint);
 #ifdef VORONOI_STORE_CONNECTIONS
   this_pair->a[0] = ax;
   this_pair->a[1] = ay;
