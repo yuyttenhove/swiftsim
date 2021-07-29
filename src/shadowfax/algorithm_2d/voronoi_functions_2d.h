@@ -218,12 +218,11 @@ static inline void voronoi_build(struct voronoi *restrict v,
   /* Set minimal face surface area */
   double min_size_1d =
       min_rel_voronoi_face_size * fmin(dim[0], fmin(dim[1], dim[2]));
-  double min_surface_area = min_size_1d * min_size_1d;
 
   if (v->active) {
-    voronoi_reset(v, number_of_cells, min_surface_area);
+    voronoi_reset(v, number_of_cells, min_size_1d);
   } else {
-    voronoi_init(v, number_of_cells, min_surface_area);
+    voronoi_init(v, number_of_cells, min_size_1d);
   }
 
   /* loop over the triangles in the Delaunay tessellation and compute the
