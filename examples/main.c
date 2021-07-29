@@ -1591,7 +1591,7 @@ int main(int argc, char *argv[]) {
     engine_step(&e);
 
     if ((j % 50) == 0) {
-      char fname[20];
+      char fname[50];
       sprintf(fname, "voronoi%d.txt", j);
       FILE *vfile = fopen(fname, "w");
 //      sprintf(fname, "delaunay%d.txt", j);

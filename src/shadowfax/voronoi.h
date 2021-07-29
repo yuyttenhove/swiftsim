@@ -7,7 +7,7 @@
 
 /*! @brief Store the edges of faces (so that the actual Voronoi grid can be
  *  reconstructed). */
-#define VORONOI_STORE_CONNECTIONS
+//#define VORONOI_STORE_CONNECTIONS
 
 /*! @brief Store information about the number of faces per cell. */
 #define VORONOI_STORE_CELL_STATS
@@ -16,7 +16,7 @@
 #define VORONOI_STORE_GENERATORS
 
 /*! @brief Activate runtime assertions. */
-#define VORONOI_DO_ASSERTIONS
+//#define VORONOI_DO_ASSERTIONS
 
 /*! @brief Activate extra checks */
 //#define VORONOI_CHECKS

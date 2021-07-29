@@ -39,17 +39,16 @@ __attribute__((always_inline)) INLINE static void get_shift(
 __attribute__((always_inline)) INLINE static void
 cell_malloc_delaunay_tessellation(struct cell *c) {
 
-  const int count = c->hydro.count;
-  double *loc, *width;
-
-  if (c->hydro.super != NULL) {
-    loc = c->hydro.super->loc;
-    width = c->hydro.super->width;
-  } else {
+  if (c->hydro.super == NULL) {
     error(
         "Trying to allocate a delaunay tesselation for a cell above the super "
         "level!");
   }
+
+  const int count = c->hydro.count;
+  double *loc = c->hydro.super->loc;
+  double *width = c->hydro.super->width;
+
 
   if (c->hydro.shadowfax_enabled == 1) {
     delaunay_reset(&c->hydro.deltess, loc, width, count);
