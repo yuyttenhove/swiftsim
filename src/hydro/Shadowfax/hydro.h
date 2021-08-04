@@ -688,7 +688,23 @@ hydro_get_comoving_internal_energy(const struct part* restrict p) {
     return gas_internal_energy_from_pressure(p->primitives.rho,
                                              p->primitives.P);
   else
-    return 0.;
+    return 0.f;
+}
+
+/**
+ * @brief Returns the comoving internal energy of a particle drifted to the
+ * current time.
+ *
+ * @param p The particle of interest
+ */
+__attribute__((always_inline)) INLINE static float
+hydro_get_drifted_comoving_internal_energy(const struct part *restrict p) {
+
+  if (p->primitives.rho > 0.)
+    return gas_internal_energy_from_pressure(p->primitives.rho,
+                                             p->primitives.P);
+  else
+    return 0.f;
 }
 
 /**
@@ -702,7 +718,22 @@ __attribute__((always_inline)) INLINE static float hydro_get_comoving_entropy(
   if (p->primitives.rho > 0.) {
     return gas_entropy_from_pressure(p->primitives.rho, p->primitives.P);
   } else {
-    return 0.;
+    return 0.f;
+  }
+}
+
+/**
+ * @brief Returns the comoving entropy of a particle drifted to the
+ * current time.
+ *
+ * @param p The particle of interest.
+ */
+__attribute__((always_inline)) INLINE static float
+hydro_get_drifted_comoving_entropy(const struct part *restrict p) {
+  if (p->primitives.rho > 0.) {
+    return gas_entropy_from_pressure(p->primitives.rho, p->primitives.P);
+  } else {
+    return 0.f;
   }
 }
 
@@ -717,7 +748,7 @@ hydro_get_comoving_soundspeed(const struct part* restrict p) {
   if (p->primitives.rho > 0.)
     return gas_soundspeed_from_pressure(p->primitives.rho, p->primitives.P);
   else
-    return 0.;
+    return 0.f;
 }
 
 /**

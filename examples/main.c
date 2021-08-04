@@ -1460,6 +1460,7 @@ int main(int argc, char *argv[]) {
       message("Time integration ready to start. End of dry-run.");
     engine_clean(&e, /*fof=*/0, /*restart=*/0);
     free(params);
+    free(output_options);
     return 0;
   }
 
@@ -1590,7 +1591,7 @@ int main(int argc, char *argv[]) {
     engine_step(&e);
 
     if ((j % 50) == 0) {
-      char fname[20];
+      char fname[50];
       sprintf(fname, "voronoi%d.txt", j);
       FILE *vfile = fopen(fname, "w");
 //      sprintf(fname, "delaunay%d.txt", j);
@@ -1602,7 +1603,7 @@ int main(int argc, char *argv[]) {
       }
       fclose(vfile);
     }
-//    if (j == 2000) break;
+//    if (j == 3) break;
 
     /* Print the timers. */
     if (with_verbose_timers) timers_print(e.step);

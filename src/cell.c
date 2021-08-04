@@ -29,6 +29,7 @@
 #include <limits.h>
 #include <math.h>
 #include <pthread.h>
+#include <shadowfax/cell_shadowfax.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1031,6 +1032,13 @@ void cell_clean(struct cell *c) {
 
   /* Stars */
   cell_free_stars_sorts(c);
+
+#ifdef SHADOWFAX_NEW_SPH
+  /* Did we build the tessellations for this cell? */
+  if (c->hydro.shadowfax_enabled) {
+    cell_destroy_tessellations(c);
+  }
+#endif
 
   /* Recurse */
   for (int k = 0; k < 8; k++)

@@ -34,11 +34,16 @@ __attribute__((always_inline)) INLINE static void hydro_debug_particle(
       "rho=[%.3e,%.3e,%.3e], "
       "v=[[%.3e,%.3e,%.3e],[%.3e,%.3e,%.3e],[%.3e,%.3e,%.3e]], "
       "P=[%.3e,%.3e,%.3e]}, "
+#if defined(SHADOWFAX_SLOPE_LIMITER_CELL) || defined(SHADOWFAX_SLOPE_LIMITER_CELL_EXACT)
       "limiter={"
       "rho=[%.3e,%.3e], "
       "v=[[%.3e,%.3e],[%.3e,%.3e],[%.3e,%.3e]], "
       "P=[%.3e,%.3e], "
-      "maxr=%.3e}}, "
+#ifdef SHADOWFAX_SLOPE_LIMITER_CELL
+      "maxr=%.3e"
+#endif
+      "}}, "
+#endif
       "conserved={"
       "momentum=[%.3e,%.3e,%.3e], "
       "mass=%.3e, "
@@ -59,12 +64,17 @@ __attribute__((always_inline)) INLINE static void hydro_debug_particle(
       p->primitives.gradients.v[2][0], p->primitives.gradients.v[2][1],
       p->primitives.gradients.v[2][2], p->primitives.gradients.P[0],
       p->primitives.gradients.P[1], p->primitives.gradients.P[2],
+#if defined(SHADOWFAX_SLOPE_LIMITER_CELL) || defined(SHADOWFAX_SLOPE_LIMITER_CELL_EXACT)
       p->primitives.limiter.rho[0], p->primitives.limiter.rho[1],
       p->primitives.limiter.v[0][0], p->primitives.limiter.v[0][1],
       p->primitives.limiter.v[1][0], p->primitives.limiter.v[1][1],
       p->primitives.limiter.v[2][0], p->primitives.limiter.v[2][1],
       p->primitives.limiter.P[0], p->primitives.limiter.P[1],
-      p->primitives.limiter.maxr, p->conserved.momentum[0],
+#ifdef SHADOWFAX_SLOPE_LIMITER_CELL_WIDE
+      p->primitives.limiter.maxr,
+#endif
+#endif
+      p->conserved.momentum[0],
       p->conserved.momentum[1], p->conserved.momentum[2], p->conserved.mass,
       p->conserved.energy, p->timestepvars.vmax, p->density.wcount_dh,
       p->density.wcount);

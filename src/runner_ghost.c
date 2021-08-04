@@ -982,6 +982,18 @@ void runner_do_extra_ghost(struct runner *r, struct cell *c, int timer) {
       if (c->progeny[k] != NULL) runner_do_extra_ghost(r, c->progeny[k], 0);
   } else {
 
+#ifdef SHADOWFAX_SLOPE_LIMITER_CELL_WIDE_EXACT
+    /* Loop again over all pairs to calculate the maximal extrapolated primitive
+     * quantities (used by slope limiters) */
+    for (int sid = 0; sid < 27; sid++) {
+      for (int i = 0; i < c->hydro.vortess.pair_index[sid]; i++) {
+        struct voronoi_pair *pair = &c->hydro.vortess.pairs[sid][i];
+        hydro_slope_limit_cell_collect_extrapolations(pair->left,
+                                                      pair->midpoint);
+      }
+    }
+#endif
+
     /* Loop over the parts in this cell. */
     for (int i = 0; i < count; i++) {
 
@@ -1173,7 +1185,8 @@ void runner_do_ghost(struct runner *r, struct cell *c, int timer) {
           /* Are we using the alternative definition of the
              number of neighbours? */
           if (use_mass_weighted_num_ngb) {
-#if defined(GIZMO_MFV_SPH) || defined(GIZMO_MFM_SPH) || defined(SHADOWFAX_SPH) || defined(SHADOWFAX_NEW_SPH)
+#if defined(GIZMO_MFV_SPH) || defined(GIZMO_MFM_SPH) || \
+    defined(SHADOWFAX_SPH) || defined(SHADOWFAX_NEW_SPH)
             error(
                 "Can't use alternative neighbour definition with this scheme!");
 #else
