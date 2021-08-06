@@ -230,13 +230,22 @@ hydro_slope_limit_cell_collect_extrapolations(struct part* p,
  */
 __attribute__((always_inline)) INLINE static void
 hydro_slope_limit_cell_quantity(float* grad, float qval, float qmin, float qmax,
-                                float emax, float emin) {
-  float gradmax = qmax - qval;
-  float gradmin = qval - qmin;
-  float alpha = fminf(1.0f, fminf(gradmax / emax, gradmin / emin));
-  grad[0] *= alpha;
-  grad[1] *= alpha;
-  grad[2] *= alpha;
+                                float emin, float emax) {
+  float delta_max = qmax - qval;
+  float delta_min = qmin - qval;
+  float alpha = 1.f;
+  if (emin != 0 && emax != 0) {
+    alpha = fminf(1.0f, fminf(delta_max / emax, delta_min / emin));
+  } else if (emin != 0){
+    alpha = fminf(1.0f, delta_min / emin);
+  } else if (emax != 0) {
+    alpha = fminf(1.0f, delta_max / emax);
+  }
+  if (alpha != 1.f) {
+    grad[0] *= alpha;
+    grad[1] *= alpha;
+    grad[2] *= alpha;
+  }
 }
 
 /**
