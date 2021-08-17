@@ -245,11 +245,7 @@ static inline void voronoi_build(struct voronoi *restrict v,
       continue;
     }
 
-    double v0x, v0y, v1x, v1y, v2x, v2y;
-    if (v0 < d->vertex_end || v0 >= d->ngb_offset) {
-      v0x = d->vertices[2 * v0];
-      v0y = d->vertices[2 * v0 + 1];
-    } else {
+    if (v0 >= d->vertex_end && v0 < d->ngb_offset) {
       /* This could mean that a neighbouring cell of this grids cell is empty!
        * Or that we did not add all the necessary ghost vertices to the delaunay
        * tesselation. */
@@ -257,22 +253,24 @@ static inline void voronoi_build(struct voronoi *restrict v,
           "Vertex is part of triangle with Dummy vertex! This could mean that "
           "one of the neighbouring cells is empty.");
     }
-    if (v1 < d->vertex_end || v1 >= d->ngb_offset) {
-      v1x = d->vertices[2 * v1];
-      v1y = d->vertices[2 * v1 + 1];
-    } else {
+    double v0x = d->vertices[2 * v0];
+    double v0y = d->vertices[2 * v0 + 1];
+
+    if (v1 >= d->vertex_end && v1 < d->ngb_offset) {
       error(
           "Vertex is part of triangle with Dummy vertex! This could mean that "
           "one of the neighbouring cells is empty.");
     }
-    if (v2 < d->vertex_end || v2 >= d->ngb_offset) {
-      v2x = d->vertices[2 * v2];
-      v2y = d->vertices[2 * v2 + 1];
-    } else {
+    double v1x = d->vertices[2 * v1];
+    double v1y = d->vertices[2 * v1 + 1];
+
+    if (v2 >= d->vertex_end && v2 < d->ngb_offset) {
       error(
           "Vertex is part of triangle with Dummy vertex! This could mean that "
           "one of the neighbouring cells is empty.");
     }
+    double v2x = d->vertices[2 * v2];
+    double v2y = d->vertices[2 * v2 + 1];
 
     double ax = v1x - v0x;
     double ay = v1y - v0y;
@@ -301,15 +299,13 @@ static inline void voronoi_build(struct voronoi *restrict v,
 
     /* get the generator position, we use it during centroid/volume
        calculations */
-    double ax, ay;
-    if (i < d->ngb_offset) {
-      ax = d->vertices[2 * i];
-      ay = d->vertices[2 * i + 1];
-    } else {
+    if (i >= d->ngb_offset) {
       error(
           "Found a ghost particle while looping over non-ghost, non-dummy "
           "particles!");
     }
+    double ax = d->vertices[2 * i];
+    double ay = d->vertices[2 * i + 1];
 
 #ifdef VORONOI_STORE_GENERATORS
     this_cell->generator[0] = ax;
