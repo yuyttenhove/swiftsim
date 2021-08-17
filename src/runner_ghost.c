@@ -990,6 +990,10 @@ void runner_do_extra_ghost(struct runner *r, struct cell *c, int timer) {
         struct voronoi_pair *pair = &c->hydro.vortess.pairs[sid][i];
         hydro_slope_limit_cell_collect_extrapolations(pair->left,
                                                       pair->midpoint);
+        if (sid == 13) {
+          hydro_slope_limit_cell_collect_extrapolations(pair->right,
+                                                        pair->midpoint);
+        }
       }
     }
 #endif
