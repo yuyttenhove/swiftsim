@@ -1216,26 +1216,27 @@ int main(int argc, char *argv[]) {
 #if defined(WITH_MPI)
     long long N_long[swift_type_count + 1] = {0};
     N_long[swift_type_gas] = Ngas;
-    N_long[swift_type_dark_matter] =
-        with_gravity ? Ngpart - Ngpart_background - Nbaryons : 0;
     N_long[swift_type_dark_matter_background] = Ngpart_background;
     N_long[swift_type_sink] = Nsink;
     N_long[swift_type_stars] = Nspart;
     N_long[swift_type_black_hole] = Nbpart;
     N_long[swift_type_neutrino] = Nnupart;
     N_long[swift_type_count] = Ngpart;
+    N_long[swift_type_dark_matter] =
+        with_gravity ? Ngpart - Ngpart_background - Nbaryons - Nnupart : 0;
+
     MPI_Allreduce(&N_long, &N_total, swift_type_count + 1, MPI_LONG_LONG_INT,
                   MPI_SUM, MPI_COMM_WORLD);
 #else
     N_total[swift_type_gas] = Ngas;
-    N_total[swift_type_dark_matter] =
-        with_gravity ? Ngpart - Ngpart_background - Nbaryons : 0;
     N_total[swift_type_dark_matter_background] = Ngpart_background;
     N_total[swift_type_sink] = Nsink;
     N_total[swift_type_stars] = Nspart;
     N_total[swift_type_black_hole] = Nbpart;
     N_total[swift_type_neutrino] = Nnupart;
     N_total[swift_type_count] = Ngpart;
+    N_total[swift_type_dark_matter] =
+        with_gravity ? Ngpart - Ngpart_background - Nbaryons - Nnupart : 0;
 #endif
 
     if (myrank == 0)
@@ -1432,8 +1433,7 @@ int main(int argc, char *argv[]) {
     /* Get some info to the user. */
     if (myrank == 0) {
       const long long N_DM = N_total[swift_type_dark_matter] +
-                             N_total[swift_type_dark_matter_background] +
-                             N_total[swift_type_neutrino];
+                             N_total[swift_type_dark_matter_background];
       message(
           "Running on %lld gas particles, %lld sink particles, %lld stars "
           "particles %lld black hole particles, %lld neutrino particles, and "
@@ -1500,6 +1500,8 @@ int main(int argc, char *argv[]) {
     if (with_cosmology && with_self_gravity && !dry_run) {
       const int check_neutrinos = !neutrino_properties.use_delta_f;
       space_check_cosmology(&s, &cosmo, with_hydro, myrank, check_neutrinos);
+      neutrino_check_cosmology(&s, &cosmo, &prog_const, params,
+                               &neutrino_properties, myrank, verbose);
     }
 
     /* Write the state of the system before starting time integration. */
@@ -1603,7 +1605,7 @@ int main(int argc, char *argv[]) {
       }
       fclose(vfile);
     }
-//    if (j == 3) break;
+    if (j == 3) break;
 
     /* Print the timers. */
     if (with_verbose_timers) timers_print(e.step);
