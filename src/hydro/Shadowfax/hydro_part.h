@@ -232,15 +232,12 @@ struct part {
 
   /* New Voronoi cell. */
   struct {
+    /*! Pointer to voronoi cell corresponding to particle */
+    struct voronoi_cell_new *cell;
+
     /* Flag that keeps track of where this particle was added to the Delaunay
        tessellation. */
     int flag;
-
-    /* Number of times this cell interacted with other cells. */
-    int nface;
-
-    /* Volume of associated cell */
-    double volume;
 
 #ifdef SWIFT_DEBUG_CHECKS
     /* Number of fluxes this cell had exchanged with neighbour cells. */

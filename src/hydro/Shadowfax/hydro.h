@@ -53,12 +53,12 @@ __attribute__((always_inline)) INLINE static float hydro_compute_timestep(
       sqrtf(hydro_gamma * p->primitives.P / p->primitives.rho);
   vmax = max(vmax, p->timestepvars.vmax);
 
-  if (p->voronoi.volume == 0.) {
+  if (p->voronoi.cell->volume == 0.) {
     error("Voronoi cell with volume 0!");
   }
   const float psize =
       cosmo->a *
-      powf(p->voronoi.volume / hydro_dimension_unit_sphere, hydro_dimension_inv);
+      powf(p->voronoi.cell->volume / hydro_dimension_unit_sphere, hydro_dimension_inv);
   float dt = FLT_MAX;
   if (vmax > 0.) {
     dt = psize / vmax;
@@ -152,8 +152,6 @@ __attribute__((always_inline)) INLINE static void hydro_first_init_part(
   p->a_hydro[2] = 0.0f;
 
   /* Set initial values for voronoi properties */
-  p->voronoi.volume = 0.;
-  p->voronoi.nface = 0;
   p->voronoi.flag = 0;
 #ifdef SWIFT_DEBUG_CHECKS
   p->voronoi.nfluxes = 0;
@@ -179,8 +177,6 @@ __attribute__((always_inline)) INLINE static void hydro_init_part(
   p->force.active = 1;
 
   /* Set initial values for voronoi properties */
-  p->voronoi.volume = 0.;
-  p->voronoi.nface = 0;
   p->voronoi.flag = 0;
 #ifdef SWIFT_DEBUG_CHECKS
   p->voronoi.nfluxes = 0;
@@ -442,15 +438,15 @@ __attribute__((always_inline)) INLINE static void hydro_kick_extra(
     p->v[2] = p->conserved.momentum[2] * inverse_mass;
 
 #ifdef SHADOWFAX_STEER_CELL_MOTION
-    float centroid[3], d[3];
-    float volume, csnd, R, vfac, fac, dnrm;
-    voronoi_get_centroid(&p->cell, centroid);
+    double d[3];
+    double volume, csnd, R, vfac, fac, dnrm;
+    double *centroid = p->voronoi.cell->centroid;
     d[0] = centroid[0] - p->x[0];
     d[1] = centroid[1] - p->x[1];
     d[2] = centroid[2] - p->x[2];
     dnrm = sqrtf(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
     csnd = sqrtf(hydro_gamma * p->primitives.P / p->primitives.rho);
-    volume = p->cell.volume;
+    volume = p->voronoi.cell->volume;
     R = get_radius_dimension_sphere(volume);
     fac = 4.0f * dnrm / R;
     if (fac > 0.9f) {
@@ -466,9 +462,9 @@ __attribute__((always_inline)) INLINE static void hydro_kick_extra(
 #endif
 
   } else {
-    p->v[0] = 0.;
-    p->v[1] = 0.;
-    p->v[2] = 0.;
+    p->v[0] = 0.f;
+    p->v[1] = 0.f;
+    p->v[2] = 0.f;
   }
 #endif
 

@@ -625,10 +625,7 @@ __attribute__((always_inline)) INLINE static void cell_shadowfax_end_density(
   for (int i = 0; i < c->hydro.vortess.number_of_cells; i++) {
     p = &c->hydro.parts[i];
     p->density.wcount = 1.0f;
-    p->voronoi.volume = c->hydro.vortess.cells[i].volume;
-#ifdef VORONOI_STORE_CELL_STATS
-    p->voronoi.nface = c->hydro.vortess.cells[i].nface;
-#endif
+    p->voronoi.cell = &c->hydro.vortess.cells[i];
     hydro_gradients_init(p);
     hydro_shadowfax_convert_conserved_to_primitive(p);
   }

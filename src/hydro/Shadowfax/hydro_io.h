@@ -207,7 +207,7 @@ INLINE static void hydro_write_particles(const struct part* parts,
 
   list[8] =
       io_make_output_field("Volumes", FLOAT, 1, UNIT_CONV_VOLUME, -3.f, parts,
-                           voronoi.volume, "Co-moving volumes of the particles");
+                           voronoi.cell->volume, "Co-moving volumes of the particles");
 
 
   list[9] = io_make_output_field("GradDensities", FLOAT, 3, UNIT_CONV_DENSITY,
@@ -227,7 +227,7 @@ INLINE static void hydro_write_particles(const struct part* parts,
       parts, xparts, convert_Etot, "Total (co-moving) energy of the particles");
 
   list[13] = io_make_output_field("NumFaceInteractions", INT, 1,
-                                  UNIT_CONV_NO_UNITS, 0.f, parts, voronoi.nface,
+                                  UNIT_CONV_NO_UNITS, 0.f, parts, voronoi.cell->nface,
                                   "Number of Voronoi face interactions");
 }
 

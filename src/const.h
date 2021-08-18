@@ -95,7 +95,7 @@
 //#define SHADOWFAX_FIX_CELLS
 /* This option enables cell steering, i.e. trying to keep the cells regular by
    adding a correction to the cell velocities.*/
-//#define SHADOWFAX_STEER_CELL_MOTION
+#define SHADOWFAX_STEER_CELL_MOTION
 /* This option evolves the total energy instead of the thermal energy */
 //#define SHADOWFAX_TOTAL_ENERGY
 /* This option performs a simple check whether or not a particle was already

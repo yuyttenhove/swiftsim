@@ -21,7 +21,7 @@ hydro_shadowfax_convert_conserved_to_primitive(struct part *restrict p) {
     momentum[0] = p->conserved.momentum[0];
     momentum[1] = p->conserved.momentum[1];
     momentum[2] = p->conserved.momentum[2];
-    p->primitives.rho = (float)(m / p->voronoi.volume);
+    p->primitives.rho = (float)(m / p->voronoi.cell->volume);
     p->primitives.v[0] = momentum[0] / m;
     p->primitives.v[1] = momentum[1] / m;
     p->primitives.v[2] = momentum[2] / m;

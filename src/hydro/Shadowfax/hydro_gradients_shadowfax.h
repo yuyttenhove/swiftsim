@@ -18,7 +18,7 @@
  ******************************************************************************/
 
 #include "hydro_slope_limiters.h"
-
+#include "shadowfax/voronoi.h"
 /**
  * @brief Initialize gradient variables
  *
@@ -113,7 +113,7 @@ hydro_gradients_nonsym_collect(float r2, const float *dx, float hi, float hj,
 __attribute__((always_inline)) INLINE static void hydro_gradients_finalize(
     struct part *p) {
 
-  float volume = (float)p->voronoi.volume;
+  float volume = (float)p->voronoi.cell->volume;
 
   p->primitives.gradients.rho[0] /= volume;
   p->primitives.gradients.rho[1] /= volume;
