@@ -27,6 +27,7 @@
 #include "hydro_properties.h"
 #include "hydro_space.h"
 #include "hydro_gradients.h"
+#include "shadowfax/voronoi.h"
 
 #include <float.h>
 
@@ -379,14 +380,14 @@ __attribute__((always_inline)) INLINE static void hydro_predict_extra(
 /**
  * @brief Set the particle acceleration after the flux loop.
  *
- * Not used, velocities are updated via momentum flux
+ * Used only for debug checks, velocities are updated via momentum flux
  *
  * @param p Particle to act upon.
  */
 __attribute__((always_inline)) INLINE static void hydro_end_force(
     struct part* p, const struct cosmology* cosmo) {
 #if defined(SWIFT_DEBUG_CHECKS) && defined(VORONOI_STORE_CELL_STATS)
-//  assert(p->voronoi.nface == p->voronoi.nfluxes);
+  assert(p->voronoi.cell->nface == p->voronoi.nfluxes);
 #endif
 }
 
