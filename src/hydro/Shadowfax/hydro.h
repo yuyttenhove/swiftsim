@@ -30,6 +30,10 @@
 
 #include <float.h>
 
+
+__attribute__((always_inline)) INLINE static float hydro_get_soundspeed(
+    const struct part* restrict p);
+
 /**
  * @brief Computes the hydro time-step of a given particle
  *
@@ -448,7 +452,7 @@ __attribute__((always_inline)) INLINE static void hydro_kick_extra(
     double R = get_radius_dimension_sphere(p->voronoi.cell->volume);
     double fac = 4.0f * d_norm / R;
     if (fac > 0.9f) {
-      double sound_speed = sqrtf(hydro_gamma * p->primitives.P / p->primitives.rho);
+      float sound_speed = hydro_get_soundspeed(p);
       if (fac < 1.1f) {
         vfac = sound_speed * (d_norm - 0.225f * R) / d_norm / (0.05f * R);
       } else {
