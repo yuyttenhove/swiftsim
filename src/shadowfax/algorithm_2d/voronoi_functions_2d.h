@@ -310,6 +310,7 @@ static inline void voronoi_build(struct voronoi *restrict v,
 #ifdef VORONOI_STORE_GENERATORS
     this_cell->generator[0] = ax;
     this_cell->generator[1] = ay;
+    this_cell->generator[2] = 0.;
 #endif
 
     /* Get a triangle containing this generator and the index of the generator
@@ -418,6 +419,7 @@ static inline void voronoi_build(struct voronoi *restrict v,
     this_cell->volume = cell_volume;
     this_cell->centroid[0] = cell_centroid[0];
     this_cell->centroid[1] = cell_centroid[1];
+    this_cell->centroid[2] = 0.;
 #ifdef VORONOI_STORE_CELL_STATS
     this_cell->nface = nface;
 #endif

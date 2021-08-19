@@ -438,22 +438,21 @@ __attribute__((always_inline)) INLINE static void hydro_kick_extra(
     p->v[2] = p->conserved.momentum[2] * inverse_mass;
 
 #ifdef SHADOWFAX_STEER_CELL_MOTION
-    double d[3];
-    double volume, csnd, R, vfac, fac, dnrm;
+    double d[3], vfac;
     double *centroid = p->voronoi.cell->centroid;
     d[0] = centroid[0] - p->x[0];
     d[1] = centroid[1] - p->x[1];
     d[2] = centroid[2] - p->x[2];
-    dnrm = sqrtf(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
-    csnd = sqrtf(hydro_gamma * p->primitives.P / p->primitives.rho);
-    volume = p->voronoi.cell->volume;
-    R = get_radius_dimension_sphere(volume);
-    fac = 4.0f * dnrm / R;
+
+    double d_norm = sqrtf(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+    double R = get_radius_dimension_sphere(p->voronoi.cell->volume);
+    double fac = 4.0f * d_norm / R;
     if (fac > 0.9f) {
+      double sound_speed = sqrtf(hydro_gamma * p->primitives.P / p->primitives.rho);
       if (fac < 1.1f) {
-        vfac = csnd * (dnrm - 0.225f * R) / dnrm / (0.05f * R);
+        vfac = sound_speed * (d_norm - 0.225f * R) / d_norm / (0.05f * R);
       } else {
-        vfac = csnd / dnrm;
+        vfac = sound_speed / d_norm;
       }
       p->v[0] += vfac * d[0];
       p->v[1] += vfac * d[1];

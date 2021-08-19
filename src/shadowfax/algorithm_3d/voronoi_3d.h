@@ -47,29 +47,6 @@ struct voronoi_pair {
 #endif
 };
 
-/**
- * @brief Voronoi cell.
- *
- * A cell stores geometrical information about a Voronoi cell: its volume and
- * the location of its centroid.
- */
-struct voronoi_cell_new {
-  /*! Cell volume. */
-  double volume;
-
-  /*! Cell centroid. */
-  double centroid[3];
-
-#ifdef VORONOI_STORE_GENERATORS
-  /*! Position of the cell generator. */
-  double generator[3];
-#endif
-
-#ifdef VORONOI_STORE_CELL_STATS
-  /*! Number of faces of this cell. */
-  int nface;
-#endif
-};
 
 struct voronoi {
   /*! @brief Voronoi cells. */

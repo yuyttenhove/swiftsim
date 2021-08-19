@@ -168,7 +168,7 @@ INLINE static void hydro_write_particles(const struct part* parts,
                                          struct io_props* list,
                                          int* num_fields) {
 
-  *num_fields = 14;
+  *num_fields = 12;
 
   /* List what we want to write */
   list[0] = io_make_output_field_convert_part(
@@ -205,30 +205,29 @@ INLINE static void hydro_write_particles(const struct part* parts,
                                  parts, primitives.rho,
                                  "Co-moving mass densities of the particles");
 
-  list[8] =
-      io_make_output_field("Volumes", FLOAT, 1, UNIT_CONV_VOLUME, -3.f, parts,
-                           voronoi.cell->volume, "Co-moving volumes of the particles");
-
-
-  list[9] = io_make_output_field("GradDensities", FLOAT, 3, UNIT_CONV_DENSITY,
+  list[8] = io_make_output_field("GradDensities", FLOAT, 3, UNIT_CONV_DENSITY,
                                  1.f, parts, primitives.gradients.rho,
                                  "Gradient densities of the particles");
 
-  list[10] = io_make_output_field_convert_part(
+  list[9] = io_make_output_field_convert_part(
       "Entropies", FLOAT, 1, UNIT_CONV_ENTROPY, 1.f, parts, xparts, convert_A,
       "Co-moving entropies of the particles");
 
-  list[11] = io_make_output_field("Pressures", FLOAT, 1, UNIT_CONV_PRESSURE,
+  list[10] = io_make_output_field("Pressures", FLOAT, 1, UNIT_CONV_PRESSURE,
                                   -3.f * hydro_gamma, parts, primitives.P,
                                   "Co-moving pressures of the particles");
 
-  list[12] = io_make_output_field_convert_part(
+  list[11] = io_make_output_field_convert_part(
       "TotalEnergies", FLOAT, 1, UNIT_CONV_ENERGY, -3.f * hydro_gamma_minus_one,
       parts, xparts, convert_Etot, "Total (co-moving) energy of the particles");
 
-  list[13] = io_make_output_field("NumFaceInteractions", INT, 1,
-                                  UNIT_CONV_NO_UNITS, 0.f, parts, voronoi.cell->nface,
-                                  "Number of Voronoi face interactions");
+//  list[12] =
+//      io_make_output_field("Volumes", FLOAT, 1, UNIT_CONV_VOLUME, -3.f, parts,
+//                           voronoi.cell->volume, "Co-moving volumes of the particles");
+
+//  list[13] = io_make_output_field("NumFaceInteractions", INT, 1,
+//                                  UNIT_CONV_NO_UNITS, 0.f, parts, voronoi.cell->nface,
+//                                  "Number of Voronoi face interactions");
 }
 
 /**

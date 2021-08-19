@@ -47,6 +47,31 @@
  */
 extern double min_rel_voronoi_face_size;
 
+/**
+ * @brief Voronoi cell.
+ *
+ * A cell stores geometrical information about a Voronoi cell: its volume and
+ * the location of its centroid (for compatibility reasons, these must always be
+ * 3D vectors (also for the 2D voronoi algorithm).
+ */
+struct voronoi_cell_new {
+  /*! Cell volume. */
+  double volume;
+
+  /*! Cell centroid. */
+  double centroid[3];
+
+#ifdef VORONOI_STORE_GENERATORS
+  /*! Position of the cell generator. */
+  double generator[3];
+#endif
+
+#ifdef VORONOI_STORE_CELL_STATS
+  /*! Number of faces of this cell. */
+  int nface;
+#endif
+};
+
 #if defined(HYDRO_DIMENSION_3D)
 #include "algorithm_3d/voronoi_3d.h"
 #elif defined(HYDRO_DIMENSION_2D)
