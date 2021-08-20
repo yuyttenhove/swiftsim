@@ -385,6 +385,7 @@ inline static double geometry3d_compute_centroid_volume_tetrahedron(
 
 inline static double geometry3d_compute_centroid_area(
     const double* restrict points, int n_points, double* result) {
+  /* Calculate centroid */
   result[0] = 0.;
   result[1] = 0.;
   result[2] = 0.;
@@ -393,7 +394,11 @@ inline static double geometry3d_compute_centroid_area(
     result[1] += points[3 * i + 1];
     result[2] += points[3 * i + 2];
   }
+  result[0] /= n_points;
+  result[1] /= n_points;
+  result[2] /= n_points;
 
+  /* Calculate area */
   if (n_points < 2) return 0.;
 
   double V = 0.;
