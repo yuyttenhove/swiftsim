@@ -235,6 +235,8 @@ struct part {
     /*! Pointer to voronoi cell corresponding to particle */
     struct voronoi_cell_new *cell;
 
+    float volume;
+
     /* Flag that keeps track of where this particle was added to the Delaunay
        tessellation. */
     int flag;

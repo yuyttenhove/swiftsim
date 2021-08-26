@@ -168,7 +168,7 @@ INLINE static void hydro_write_particles(const struct part* parts,
                                          struct io_props* list,
                                          int* num_fields) {
 
-  *num_fields = 12;
+  *num_fields = 13;
 
   /* List what we want to write */
   list[0] = io_make_output_field_convert_part(
@@ -221,9 +221,9 @@ INLINE static void hydro_write_particles(const struct part* parts,
       "TotalEnergies", FLOAT, 1, UNIT_CONV_ENERGY, -3.f * hydro_gamma_minus_one,
       parts, xparts, convert_Etot, "Total (co-moving) energy of the particles");
 
-//  list[12] =
-//      io_make_output_field("Volumes", FLOAT, 1, UNIT_CONV_VOLUME, -3.f, parts,
-//                           voronoi.cell->volume, "Co-moving volumes of the particles");
+  list[12] =
+      io_make_output_field("Volumes", FLOAT, 1, UNIT_CONV_VOLUME, -3.f, parts,
+                           voronoi.volume, "Co-moving volumes of the particles");
 
 //  list[13] = io_make_output_field("NumFaceInteractions", INT, 1,
 //                                  UNIT_CONV_NO_UNITS, 0.f, parts, voronoi.cell->nface,
