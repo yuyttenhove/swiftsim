@@ -148,7 +148,7 @@ struct delaunay {
   /*! @brief Geometry variables. Auxiliary variables used by the exact integer
    *  geometry tests that need to be stored in between tests, since allocating
    *  and deallocating them for every test is too expensive. */
-  struct geometry geometry;
+  struct geometry2d geometry;
 
   /*! @brief Cell neighbour sids keeping track of which neighbouring cells
    *  contains a specific neighbouring vertex. */

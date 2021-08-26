@@ -28,14 +28,17 @@
 #ifndef SWIFT_GEOMETRY_H
 #define SWIFT_GEOMETRY_H
 
+#include "shadowfax/utils.h"
+
 #include <gmp.h>
+#include <float.h>
 
 /**
  * @brief Auxiliary variables used by the arbirary exact tests. Since allocating
  * and deallocating these variables poses a significant overhead, they are best
  * reused.
  */
-struct geometry {
+struct geometry2d {
   /*! @brief Arbitrary exact vertex coordinates */
   mpz_t aix, aiy, bix, biy, cix, ciy, dix, diy;
 
@@ -57,7 +60,7 @@ struct geometry {
  *
  * @param g Geometry object.
  */
-inline static void geometry_init(struct geometry* restrict g) {
+inline static void geometry_init(struct geometry2d* restrict g) {
   mpz_inits(g->aix, g->aiy, g->bix, g->biy, g->cix, g->ciy, g->dix, g->diy,
             g->s1x, g->s1y, g->s2x, g->s2y, g->s3x, g->s3y, g->tmp1, g->tmp2,
             g->result, NULL);
@@ -68,7 +71,7 @@ inline static void geometry_init(struct geometry* restrict g) {
  *
  * @param g Geometry object.
  */
-inline static void geometry_destroy(struct geometry* restrict g) {
+inline static void geometry_destroy(struct geometry2d* restrict g) {
   mpz_clears(g->aix, g->aiy, g->bix, g->biy, g->cix, g->ciy, g->dix, g->diy,
              g->s1x, g->s1y, g->s2x, g->s2y, g->s3x, g->s3y, g->tmp1, g->tmp2,
              g->result, NULL);
@@ -97,30 +100,45 @@ inline static void geometry_destroy(struct geometry* restrict g) {
  * @param cx, cy Third point.
  * @return Signed double area of the triangle formed by a, b and c.
  */
-inline static double geometry_orient2d(double ax, double ay, double bx,
-                                       double by, double cx, double cy) {
+inline static int geometry2d_orient(const double ax, const double ay,
+                                    const double bx, const double by,
+                                    const double cx, const double cy) {
 
-  /* the code below stays as close as possible to the implementation of the
-     exact test below */
-  double s1x, s1y, s2x, s2y, result;
+  double det_left = (ax - cx) * (by - cy);
+  double det_right = (ay - cy) * (bx - cx);
 
-  /* compute the relative positions of a and b w.r.t. */
-  s1x = ax - cx;
-  s1y = ay - cy;
+  double err_bound;
+  double result = det_left - det_right;
 
-  s2x = bx - cx;
-  s2y = by - cy;
+  if (det_left > 0.0) {
+    if (det_right <= 0.0) {
+      return sgn(result);
+    } else {
+      err_bound = det_left + det_right;
+    }
+  } else if (det_left < 0.0) {
+    if (det_right >= 0.0) {
+      return sgn(result);
+    } else {
+      err_bound = -det_left - det_right;
+    }
+  } else {
+    return sgn(result);
+  }
 
-  /* compute the result in two steps */
-  result = 0.;
-  result += s1x * s2y;
-  result -= s1y * s2x;
+  // actual value is smaller, but this will do
+  //  err_bound *= 1.e-10;
+  err_bound *= DBL_EPSILON * 4;
 
-  return result;
+  if ((result >= err_bound) || (-result >= err_bound)) {
+    return sgn(result);
+  }
+
+  return 0;
 }
 
 /**
- * @brief Arbitrary exact alternative for geometry_orient2d().
+ * @brief Arbitrary exact alternative for geometry2d_orient().
  *
  * This function calculates exactly the same thing as the non-exact version, but
  * does so in an integer coordinate basis, using arbitrarily large integers.
@@ -131,8 +149,8 @@ inline static double geometry_orient2d(double ax, double ay, double bx,
  * @param g Geometry object (containing temporary variables that will be used).
  * @param ax, ay, bx, by, cx, cy Integer coordinates of the three points.
  */
-inline static int geometry_orient2d_exact(
-    struct geometry* restrict g, unsigned long int ax, unsigned long int ay,
+inline static int geometry2d_orient_exact(
+    struct geometry2d* restrict g, unsigned long int ax, unsigned long int ay,
     unsigned long int bx, unsigned long int by, unsigned long int cx,
     unsigned long int cy) {
 
@@ -162,12 +180,29 @@ inline static int geometry_orient2d_exact(
   return mpz_sgn(g->result);
 }
 
+inline static int geometry2d_orient_adaptive(struct geometry2d* restrict g,
+                                             const unsigned long* al,
+                                             const unsigned long* bl,
+                                             const unsigned long* cl,
+                                             const double* ad, const double* bd,
+                                             const double* cd) {
+
+  int result = geometry2d_orient(ad[0], ad[1], bd[0], bd[1], cd[0], cd[1]);
+
+  if (result == 0) {
+    result =
+        geometry2d_orient_exact(g, al[0], al[1], bl[0], bl[1], cl[0], cl[1]);
+  }
+
+  return result;
+}
+
 /**
  * @brief Non-exact 2D in-circle test.
  *
  * This test determines whether the point d is inside the circle through the
  * points a, b and c. Assuming a, b and c are positively oriented (positive
- * return value of geometry_orient2d()), a negative return value means d is
+ * return value of geometry2d_orient()), a negative return value means d is
  * outside the circle and a positive value it is inside. A return value of 0
  * means d lies on the circle.
  *
@@ -189,51 +224,52 @@ inline static int geometry_orient2d_exact(
  * @param cx, cy Third point.
  * @param dx, dy Fourth point.
  */
-inline static double geometry_in_circle(double ax, double ay, double bx,
-                                        double by, double cx, double cy,
-                                        double dx, double dy) {
+inline static int geometry2d_in_circle(const double ax, const double ay,
+                                       const double bx, const double by,
+                                       const double cx, const double cy,
+                                       const double dx, const double dy) {
+  /* Compute relative coordinates */
+  const double adx = ax - dx;
+  const double ady = ay - dy;
 
-  /* the code below stays as close as possible to the implementation of the
-     exact test below */
-  double s1x, s1y, s2x, s2y, s3x, s3y, tmp1, tmp2, result;
+  const double bdx = bx - dx;
+  const double bdy = by - dy;
 
-  /* compute the relative coordinates of a, b and c w.r.t. d */
-  s1x = ax - dx;
-  s1y = ay - dy;
+  const double cdx = cx - dx;
+  const double cdy = cy - dy;
 
-  s2x = bx - dx;
-  s2y = by - dy;
+  /* Compute intermediate variables */
+  const double bdxcdy = bdx * cdy;
+  const double cdxbdy = cdx * bdy;
+  const double adnrm2 = adx * adx + ady * ady;
 
-  s3x = cx - dx;
-  s3y = cy - dy;
+  const double cdxady = cdx * ady;
+  const double adxcdy = adx * cdy;
+  const double bdnrm2 = bdx * bdx + bdy * bdy;
 
-  /* compute the result in 3 steps */
-  result = 0.;
+  const double adxbdy = adx * bdy;
+  const double bdxady = bdx * ady;
+  const double cdnrm2 = cdx * cdx + cdy * cdy;
 
-  /* accumulate some terms in tmp1 and tmp2 and then update the result */
-  tmp1 = s2x * s3y;
-  tmp1 -= s3x * s2y;
-  tmp2 = s1x * s1x;
-  tmp2 += s1y * s1y;
-  result += tmp1 * tmp2;
+  /* Compute errorbound */
+  double errbound = (fabs(bdxcdy) + fabs(cdxbdy)) * adnrm2 +
+                    (fabs(cdxady) + fabs(adxcdy)) * bdnrm2 +
+                    (fabs(adxbdy) + fabs(bdxady)) * cdnrm2;
+  // actual value is smaller, but this will do
+  //  errbound *= 1.e-10;
+  errbound *= DBL_EPSILON * 11;
 
-  tmp1 = s3x * s1y;
-  tmp1 -= s1x * s3y;
-  tmp2 = s2x * s2x;
-  tmp2 += s2y * s2y;
-  result += tmp1 * tmp2;
-
-  tmp1 = s1x * s2y;
-  tmp1 -= s2x * s1y;
-  tmp2 = s3x * s3x;
-  tmp2 += s3y * s3y;
-  result += tmp1 * tmp2;
-
-  return result;
+  /* Compute result */
+  const double result = adnrm2 * (bdxcdy - cdxbdy) +
+                        bdnrm2 * (cdxady - adxcdy) + cdnrm2 * (adxbdy - bdxady);
+  if (result < -errbound || result > errbound) {
+    return sgn(result);
+  }
+  return 0;
 }
 
 /**
- * @brief Arbitrary exact alternative for geometry_in_circle().
+ * @brief Arbitrary exact alternative for geometry2d_in_circle().
  *
  * This function calculates exactly the same thing as the non-exact version, but
  * does so in an integer coordinate basis, using arbitrarily large integers.
@@ -244,8 +280,8 @@ inline static double geometry_in_circle(double ax, double ay, double bx,
  * @param g Geometry object (containing temporary variables that will be used).
  * @param ax, ay, bx, by, cx, cy, dx, dy Integer coordinates of the four points.
  */
-inline static int geometry_in_circle_exact(
-    struct geometry* restrict g, unsigned long int ax, unsigned long int ay,
+inline static int geometry2d_in_circle_exact(
+    struct geometry2d* restrict g, unsigned long int ax, unsigned long int ay,
     unsigned long int bx, unsigned long int by, unsigned long int cx,
     unsigned long int cy, unsigned long int dx, unsigned long int dy) {
 
@@ -296,6 +332,22 @@ inline static int geometry_in_circle_exact(
 
   /* evaluate the sign of the result and return */
   return mpz_sgn(g->result);
+}
+
+inline static int geometry2d_in_circle_adaptive(
+    struct geometry2d* restrict g, const unsigned long* al,
+    const unsigned long* bl, const unsigned long* cl, const unsigned long* dl,
+    const double* ad, const double* bd, const double* cd, const double* dd) {
+
+  int result = geometry2d_in_circle(ad[0], ad[1], bd[0], bd[1], cd[0], cd[1],
+                                    dd[0], dd[1]);
+
+  if (result == 0) {
+    result = geometry2d_in_circle_exact(g, al[0], al[1], bl[0], bl[1], cl[0],
+                                        cl[1], dl[0], dl[1]);
+  }
+
+  return result;
 }
 
 #endif /* SWIFT_GEOMETRY_H */
