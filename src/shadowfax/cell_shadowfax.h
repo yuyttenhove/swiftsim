@@ -8,6 +8,10 @@
 #include "hydro_shadowfax.h"
 #include "voronoi_functions.h"
 
+#ifdef SHADOWFAX_HILBERT_ORDERING
+#include "hilbert.h"
+#endif
+
 #ifdef SHADOWFAX_CHECK_DELAUNAY_FLAG
 __attribute__((always_inline)) INLINE static void shadowfax_flag_particle_added(
     struct part *restrict p, int sid) {
@@ -49,7 +53,6 @@ cell_malloc_delaunay_tessellation(struct cell *c) {
   double *loc = c->hydro.super->loc;
   double *width = c->hydro.super->width;
 
-
   if (c->hydro.shadowfax_enabled == 1) {
     delaunay_reset(&c->hydro.deltess, loc, width, count);
   } else {
@@ -57,6 +60,14 @@ cell_malloc_delaunay_tessellation(struct cell *c) {
   }
 
   c->hydro.shadowfax_enabled = 1;
+
+#ifdef SHADOWFAX_HILBERT_ORDERING
+  /* Malloc hilbert keys */
+  c->hydro.hilbert_keys = (unsigned long *)swift_malloc(
+      "Cell hilbert keys", count * sizeof(unsigned long));
+  c->hydro.hilbert_r_sort =
+      (int *)swift_malloc("Cell hilbert sorting indices", count * sizeof(int));
+#endif
 }
 
 void cell_malloc_delaunay_tessellation_recursive(
@@ -67,7 +78,41 @@ __attribute__((always_inline)) INLINE static void cell_destroy_tessellations(
   c->hydro.shadowfax_enabled = 0;
   delaunay_destroy(&c->hydro.deltess);
   voronoi_destroy(&c->hydro.vortess);
+#ifdef SHADOWFAX_HILBERT_ORDERING
+  swift_free("Cell hilbert keys", c->hydro.hilbert_keys);
+  swift_free("Cell hilbert sorting indices", c->hydro.hilbert_r_sort);
+#endif
 }
+
+#ifdef SHADOWFAX_HILBERT_ORDERING
+/*! @brief Calculate the hilbert keys of the vertices
+ *
+ * @param c Cell containing the vertices
+ */
+static inline void cell_update_hilbert_keys(struct cell *c) {
+  for (int i = 0; i < c->hydro.count; i++) {
+#if defined(HYDRO_DIMENSION_2D)
+    unsigned long bits[2];
+    int nbits = 32;
+    bits[0] =
+        (c->hydro.parts[i].x[0] - c->loc[0]) / c->width[0] * (1ul << nbits);
+    bits[1] =
+        (c->hydro.parts[i].x[1] - c->loc[1]) / c->width[1] * (1ul << nbits);
+    c->hydro.hilbert_keys[i] = hilbert_get_key_2d(bits, nbits);
+#elif defined(HYDRO_DIMENSION_3D)
+    unsigned long bits[3];
+    int nbits = 21;
+    bits[0] =
+        (c->hydro.parts[i].x[0] - c->loc[0]) / c->width[0] * (1ul << nbits);
+    bits[1] =
+        (c->hydro.parts[i].x[1] - c->loc[1]) / c->width[1] * (1ul << nbits);
+    bits[2] =
+        (c->hydro.parts[i].x[2] - c->loc[2]) / c->width[2] * (1ul << nbits);
+    c->hydro.hilbert_keys[i] = hilbert_get_key_3d(bits, nbits);
+#endif
+  }
+}
+#endif
 
 __attribute__((always_inline)) INLINE static void
 cell_shadowfax_do_pair1_density(const struct engine *e, struct cell *ci,
@@ -534,12 +579,26 @@ cell_shadowfax_do_self1_density(const struct engine *e,
   const int count = c->hydro.count;
   struct part *restrict parts = c->hydro.parts;
 
+#ifdef SHADOWFAX_HILBERT_ORDERING
+  /* Update hilbert keys + sort */
+  cell_update_hilbert_keys(c);
+  for (int i = 0; i < count; i++) {
+    c->hydro.hilbert_r_sort[i] = i;
+  }
+  qsort_r(c->hydro.hilbert_r_sort, count, sizeof(int), sort_h_comp,
+          c->hydro.hilbert_keys);
+#endif
+
   /* Loop over the parts in c. */
   for (int i = 0; i < count; i++) {
-
+#ifdef SHADOWFAX_HILBERT_ORDERING
+    int idx = c->hydro.hilbert_r_sort[i];
     /* Get a pointer to the ith particle. */
+    struct part *restrict p = &parts[idx];
+#else
     struct part *restrict p = &parts[i];
-    delaunay_add_local_vertex(&c->hydro.deltess, i, p->x[0], p->x[1], p->x[2],
+#endif
+    delaunay_add_local_vertex(&c->hydro.deltess, idx, p->x[0], p->x[1], p->x[2],
                               p);
   }
 }

@@ -57,6 +57,12 @@ struct cell_hydro {
     struct delaunay deltess;
     /*! Voronoi tessellation. */
     struct voronoi vortess;
+#ifdef SHADOWFAX_HILBERT_ORDERING
+    /*! Hilbert keys */
+    unsigned long* hilbert_keys;
+    /*! Hilbert key sorting array */
+    int* hilbert_r_sort;
+#endif
 #endif
 
     /*! Pointer for the sorted indices. */

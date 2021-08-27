@@ -28,13 +28,51 @@
 #ifndef SWIFT_HILBERT_H
 #define SWIFT_HILBERT_H
 
+/**
+ * @brief Comparison function for two unsigned long values.
+ *
+ * @param a First value.
+ * @param b Second value.
+ * @return -1 if a < b, 0 if a == b, +1 if a > b.
+ */
+inline static int compare_unsigned_long(const unsigned long a, const unsigned long b) {
+  if (a < b) {
+    return -1;
+  } else {
+    if (a > b) {
+      return 1;
+    } else {
+      return 0;
+    }
+  }
+}
+
+/**
+ * @brief Sorting function used to sort vertex_indices on their Hilbert key.
+ *
+ * @param a First index.
+ * @param b Second index.
+ * @param x Hilbert key array to sort.
+ * @return Return value of compare_unsigned_long() for the hilbert key of
+ * vertex_indices a and b.
+ */
+inline static int sort_h_comp(const void *a, const void *b, void *x) {
+  int ai = *(int *)a;
+  int bi = *(int *)b;
+  unsigned long *keys = (unsigned long *)x;
+  unsigned long ah = keys[ai];
+  unsigned long bh = keys[bi];
+  return compare_unsigned_long(ah, bh);
+}
+
+
 static const unsigned int t2d[8][4][2] = {
     {{7, 0}, {0, 1}, {6, 3}, {0, 2}}, {{1, 2}, {7, 3}, {1, 1}, {6, 0}},
     {{2, 1}, {2, 2}, {4, 0}, {5, 3}}, {{4, 3}, {5, 0}, {3, 2}, {3, 1}},
     {{3, 3}, {4, 2}, {2, 0}, {4, 1}}, {{5, 1}, {3, 0}, {5, 2}, {2, 3}},
     {{6, 2}, {6, 1}, {0, 3}, {1, 0}}, {{0, 0}, {1, 3}, {7, 1}, {7, 2}}};
 
-unsigned long hilbert_get_key_2d(unsigned long* bits, unsigned int nbits) {
+inline static unsigned long hilbert_get_key_2d(unsigned long* bits, unsigned int nbits) {
   unsigned long key = 0;
   unsigned long mask = 1;
   mask <<= (nbits - 1);
@@ -67,7 +105,7 @@ static const unsigned int t3d[12][8][2] = {
     {{11, 2}, {11, 1}, {3, 5}, {3, 6}, {5, 3}, {2, 0}, {5, 4}, {8, 7}},
     {{7, 4}, {7, 3}, {4, 5}, {2, 2}, {6, 7}, {10, 0}, {4, 6}, {2, 1}}};
 
-unsigned long hilbert_get_key_3d(unsigned long* bits, unsigned int nbits) {
+inline static unsigned long hilbert_get_key_3d(unsigned long* bits, unsigned int nbits) {
   unsigned long key = 0;
   unsigned long mask = 1;
   mask <<= nbits - 1;
