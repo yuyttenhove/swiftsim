@@ -27,6 +27,7 @@
 /* Local includes. */
 #include "lock.h"
 #include "timeline.h"
+#include "const.h"
 
 #ifdef SHADOWFAX_NEW_SPH
 #include "shadowfax/delaunay.h"
