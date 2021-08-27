@@ -63,6 +63,8 @@ struct cell_hydro {
     unsigned long* hilbert_keys;
     /*! Hilbert key sorting array */
     int* hilbert_r_sort;
+    /* Size of hilbert keys array */
+    int hilbert_keys_size;
 #endif
 #endif
 

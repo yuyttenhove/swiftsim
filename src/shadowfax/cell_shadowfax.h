@@ -55,19 +55,29 @@ cell_malloc_delaunay_tessellation(struct cell *c) {
 
   if (c->hydro.shadowfax_enabled == 1) {
     delaunay_reset(&c->hydro.deltess, loc, width, count);
+#ifdef SHADOWFAX_HILBERT_ORDERING
+    if (c->hydro.hilbert_keys_size < count) {
+      c->hydro.hilbert_keys = (unsigned long *)swift_realloc(
+          "Cell hilbert keys", c->hydro.hilbert_keys,
+          count * sizeof(unsigned long));
+      c->hydro.hilbert_r_sort =
+          (int *)swift_realloc("Cell hilbert sorting indices",
+                               c->hydro.hilbert_r_sort, count * sizeof(int));
+      c->hydro.hilbert_keys_size = count;
+    }
+#endif
   } else {
     delaunay_init(&c->hydro.deltess, loc, width, count, 10 * count);
-  }
-
-  c->hydro.shadowfax_enabled = 1;
-
 #ifdef SHADOWFAX_HILBERT_ORDERING
-  /* Malloc hilbert keys */
-  c->hydro.hilbert_keys = (unsigned long *)swift_malloc(
-      "Cell hilbert keys", count * sizeof(unsigned long));
-  c->hydro.hilbert_r_sort =
-      (int *)swift_malloc("Cell hilbert sorting indices", count * sizeof(int));
+    /* Malloc hilbert keys */
+    c->hydro.hilbert_keys = (unsigned long *)swift_malloc(
+        "Cell hilbert keys", count * sizeof(unsigned long));
+    c->hydro.hilbert_r_sort = (int *)swift_malloc(
+        "Cell hilbert sorting indices", count * sizeof(int));
+    c->hydro.hilbert_keys_size = count;
 #endif
+    c->hydro.shadowfax_enabled = 1;
+  }
 }
 
 void cell_malloc_delaunay_tessellation_recursive(
