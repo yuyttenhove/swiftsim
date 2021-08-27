@@ -15,6 +15,7 @@
 
 #include <gmp.h>
 #include <math.h>
+#include <float.h>
 
 /**
  * @brief Auxiliary variables used by the arbirary exact tests. Since allocating
@@ -258,52 +259,52 @@ inline static int geometry3d_in_sphere(
   const double dez = dz - ez;
 
   /* Compute intermediate values */
-  double aexbey = aex * bey;
-  double bexaey = bex * aey;
-  double ab = aexbey - bexaey;
-  double bexcey = bex * cey;
-  double cexbey = cex * bey;
-  double bc = bexcey - cexbey;
-  double cexdey = cex * dey;
-  double dexcey = dex * cey;
-  double cd = cexdey - dexcey;
-  double dexaey = dex * aey;
-  double aexdey = aex * dey;
-  double da = dexaey - aexdey;
-  double aexcey = aex * cey;
-  double cexaey = cex * aey;
-  double ac = aexcey - cexaey;
-  double bexdey = bex * dey;
-  double dexbey = dex * bey;
-  double bd = bexdey - dexbey;
+  const double aexbey = aex * bey;
+  const double bexaey = bex * aey;
+  const double ab = aexbey - bexaey;
+  const double bexcey = bex * cey;
+  const double cexbey = cex * bey;
+  const double bc = bexcey - cexbey;
+  const double cexdey = cex * dey;
+  const double dexcey = dex * cey;
+  const double cd = cexdey - dexcey;
+  const double dexaey = dex * aey;
+  const double aexdey = aex * dey;
+  const double da = dexaey - aexdey;
+  const double aexcey = aex * cey;
+  const double cexaey = cex * aey;
+  const double ac = aexcey - cexaey;
+  const double bexdey = bex * dey;
+  const double dexbey = dex * bey;
+  const double bd = bexdey - dexbey;
 
-  double abc = aez * bc - bez * ac + cez * ab;
-  double bcd = bez * cd - cez * bd + dez * bc;
-  double cda = cez * da + dez * ac + aez * cd;
-  double dab = dez * ab + aez * bd + bez * da;
+  const double abc = aez * bc - bez * ac + cez * ab;
+  const double bcd = bez * cd - cez * bd + dez * bc;
+  const double cda = cez * da + dez * ac + aez * cd;
+  const double dab = dez * ab + aez * bd + bez * da;
 
-  double aenrm2 = aex * aex + aey * aey + aez * aez;
-  double benrm2 = bex * bex + bey * bey + bez * bez;
-  double cenrm2 = cex * cex + cey * cey + cez * cez;
-  double denrm2 = dex * dex + dey * dey + dez * dez;
+  const double aenrm2 = aex * aex + aey * aey + aez * aez;
+  const double benrm2 = bex * bex + bey * bey + bez * bez;
+  const double cenrm2 = cex * cex + cey * cey + cez * cez;
+  const double denrm2 = dex * dex + dey * dey + dez * dez;
 
   /* Compute errorbound */
-  double aezplus = fabs(aez);
-  double bezplus = fabs(bez);
-  double cezplus = fabs(cez);
-  double dezplus = fabs(dez);
-  double aexbeyplus = fabs(aexbey);
-  double bexaeyplus = fabs(bexaey);
-  double bexceyplus = fabs(bexcey);
-  double cexbeyplus = fabs(cexbey);
-  double cexdeyplus = fabs(cexdey);
-  double dexceyplus = fabs(dexcey);
-  double dexaeyplus = fabs(dexaey);
-  double aexdeyplus = fabs(aexdey);
-  double aexceyplus = fabs(aexcey);
-  double cexaeyplus = fabs(cexaey);
-  double bexdeyplus = fabs(bexdey);
-  double dexbeyplus = fabs(dexbey);
+  const double aezplus = fabs(aez);
+  const double bezplus = fabs(bez);
+  const double cezplus = fabs(cez);
+  const double dezplus = fabs(dez);
+  const double aexbeyplus = fabs(aexbey);
+  const double bexaeyplus = fabs(bexaey);
+  const double bexceyplus = fabs(bexcey);
+  const double cexbeyplus = fabs(cexbey);
+  const double cexdeyplus = fabs(cexdey);
+  const double dexceyplus = fabs(dexcey);
+  const double dexaeyplus = fabs(dexaey);
+  const double aexdeyplus = fabs(aexdey);
+  const double aexceyplus = fabs(aexcey);
+  const double cexaeyplus = fabs(cexaey);
+  const double bexdeyplus = fabs(bexdey);
+  const double dexbeyplus = fabs(dexbey);
 
   double errbound = ((cexdeyplus + dexceyplus) * bezplus +
                      (dexbeyplus + bexdeyplus) * cezplus +
@@ -326,7 +327,7 @@ inline static int geometry3d_in_sphere(
   errbound *= DBL_EPSILON * 11;
 
   /* Compute result */
-  double result = (denrm2 * abc - cenrm2 * dab) + (benrm2 * cda - aenrm2 * bcd);
+  const double result = (denrm2 * abc - cenrm2 * dab) + (benrm2 * cda - aenrm2 * bcd);
 
   if (result < -errbound || result > errbound) {
     return sgn(result);
