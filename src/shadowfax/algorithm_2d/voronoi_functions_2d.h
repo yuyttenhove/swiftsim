@@ -122,8 +122,7 @@ static inline double voronoi_compute_centroid_volume_triangle(
     double ax, double ay, double bx, double by, double cx, double cy,
     double *result) {
 
-  result[0] = (ax + bx + cx) / 3.;
-  result[1] = (ay + by + cy) / 3.;
+  geometry2d_compute_centroid_triangle(ax, ay, bx, by, cx, cy, result);
 
   double s10x = bx - ax;
   double s10y = by - ay;

@@ -30,8 +30,8 @@
 
 #include "shadowfax/utils.h"
 
-#include <gmp.h>
 #include <float.h>
+#include <gmp.h>
 
 /**
  * @brief Auxiliary variables used by the arbirary exact tests. Since allocating
@@ -348,6 +348,31 @@ inline static int geometry2d_in_circle_adaptive(
   }
 
   return result;
+}
+
+inline static void geometry2d_compute_centroid_triangle(double ax, double ay,
+                                                        double bx, double by,
+                                                        double cx, double cy,
+                                                        double* result) {
+  result[0] = (ax + bx + cx) / 3;
+  result[1] = (ay + by + cy) / 3;
+}
+
+inline static int geometry2d_test_line_segment_intersection(
+    const double* restrict p1, const double* restrict p2,
+    const double* restrict p3, const double* restrict p4) {
+  double t =
+      (p1[0] - p3[0]) * (p3[1] - p4[1]) - (p1[1] - p3[1]) * (p3[0] - p4[0]);
+  double u =
+      (p2[0] - p1[0]) * (p1[1] - p3[1]) - (p2[1] - p1[1]) * (p1[0] - p3[0]);
+
+  double denominator =
+      (p1[0] - p2[0]) * (p3[1] - p4[1]) - (p1[1] - p2[1]) * (p3[0] - p4[0]);
+
+  int test1 = (fabs(t) <= fabs(denominator)) && (sgn(t) == sgn(denominator));
+  int test2 = (fabs(u) <= fabs(denominator)) && (sgn(u) == sgn(denominator));
+
+  return test1 && test2;
 }
 
 #endif /* SWIFT_GEOMETRY_H */
