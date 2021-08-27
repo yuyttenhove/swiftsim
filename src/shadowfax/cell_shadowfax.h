@@ -87,8 +87,10 @@ cell_shadowfax_do_pair1_density(const struct engine *e, struct cell *ci,
   const struct sort_entry *restrict sort_j = cell_get_hydro_sorts(cj, sid);
 
   /* Get some other useful values. */
-  const double hi_max = ci->hydro.h_max * kernel_gamma - rshift;
-  const double hj_max = cj->hydro.h_max * kernel_gamma;
+  //  const double hi_max = ci->hydro.h_max * kernel_gamma - rshift;
+  //  const double hj_max = cj->hydro.h_max * kernel_gamma;
+  const double hi_max = ci->hydro.h_max - rshift;
+  const double hj_max = cj->hydro.h_max;
   const int count_i = ci->hydro.count;
   const int count_j = cj->hydro.count;
   struct part *restrict parts_i = ci->hydro.parts;
@@ -115,11 +117,14 @@ cell_shadowfax_do_pair1_density(const struct engine *e, struct cell *ci,
       }
 
       /* Is there anything we need to interact with ? */
-      const double di = sort_i[pid].d + hi * kernel_gamma + dx_max - rshift;
+      //      const double di = sort_i[pid].d + hi * kernel_gamma + dx_max -
+      //      rshift;
+      const double di = sort_i[pid].d + hi + dx_max - rshift;
       if (di < dj_min) continue;
 
       /* Get some additional information about pi */
-      const float hig2 = hi * hi * kernel_gamma2;
+      //      const float hig2 = hi * hi * kernel_gamma2;
+      const float hig2 = hi * hi;
       const float pix = pi->x[0] - (cj->loc[0] + shift[0]);
       const float piy = pi->x[1] - (cj->loc[1] + shift[1]);
       const float piz = pi->x[2] - (cj->loc[2] + shift[2]);
@@ -169,11 +174,14 @@ cell_shadowfax_do_pair1_density(const struct engine *e, struct cell *ci,
       }
 
       /* Is there anything we need to interact with ? */
-      const double dj = sort_j[pjd].d - hj * kernel_gamma - dx_max + rshift;
+      //      const double dj = sort_j[pjd].d - hj * kernel_gamma - dx_max +
+      //      rshift;
+      const double dj = sort_j[pjd].d - hj - dx_max + rshift;
       if (dj - rshift > di_max) continue;
 
       /* Get some additional information about pj */
-      const float hjg2 = hj * hj * kernel_gamma2;
+      //      const float hjg2 = hj * hj * kernel_gamma2;
+      const float hjg2 = hj * hj;
       const float pjx = pj->x[0] - cj->loc[0];
       const float pjy = pj->x[1] - cj->loc[1];
       const float pjz = pj->x[2] - cj->loc[2];
@@ -427,8 +435,13 @@ cell_shadowfax_do_pair_subset_density(const struct engine *e,
       const double piy = pi->x[1] - (shift[1]);
       const double piz = pi->x[2] - (shift[2]);
       const float hi = pi->h;
-      const float hig2 = hi * hi * kernel_gamma2;
-      const double di = hi * kernel_gamma + dxj + pix * runner_shift[sid][0] +
+      //      const float hig2 = hi * hi * kernel_gamma2;
+      const float hig2 = hi * hi;
+      //      const double di = hi * kernel_gamma + dxj + pix *
+      //      runner_shift[sid][0] +
+      //                        piy * runner_shift[sid][1] + piz *
+      //                        runner_shift[sid][2];
+      const double di = hi + dxj + pix * runner_shift[sid][0] +
                         piy * runner_shift[sid][1] + piz * runner_shift[sid][2];
 
       /* Loop over the parts in cj. */
@@ -471,8 +484,13 @@ cell_shadowfax_do_pair_subset_density(const struct engine *e,
       const double piy = pi->x[1] - (shift[1]);
       const double piz = pi->x[2] - (shift[2]);
       const float hi = pi->h;
-      const float hig2 = hi * hi * kernel_gamma2;
-      const double di = -hi * kernel_gamma - dxj + pix * runner_shift[sid][0] +
+      //      const float hig2 = hi * hi * kernel_gamma2;
+      const float hig2 = hi * hi;
+      //      const double di = -hi * kernel_gamma - dxj + pix *
+      //      runner_shift[sid][0] +
+      //                        piy * runner_shift[sid][1] + piz *
+      //                        runner_shift[sid][2];
+      const double di = -hi - dxj + pix * runner_shift[sid][0] +
                         piy * runner_shift[sid][1] + piz * runner_shift[sid][2];
 
       /* Loop over the parts in cj. */
