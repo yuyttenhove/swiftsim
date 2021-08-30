@@ -58,13 +58,11 @@ struct delaunay {
    *  main() and we probably want to get rid of it in a SWIFT implementation. */
   double* vertices;
 
-#ifdef DELAUNAY_NONEXACT
   /*! @brief Vertex positions, rescaled to the range 1-2. Kept here in case we
    *  want to adopt hybrid geometrical checks (floating point checks when safe,
    *  integer checks when there is a risk of numerical error leading to the
    *  wrong result) to speed things up. */
   double* rescaled_vertices;
-#endif
 
   /*! @brief Integer vertices. These are the vertex coordinates that are
    *  actually used during the incremental construction. */
