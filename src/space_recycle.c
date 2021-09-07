@@ -22,8 +22,6 @@
 /* Config parameters. */
 #include "../config.h"
 
-#include <shadowfax/cell_shadowfax.h>
-
 /* This object's header. */
 #include "space.h"
 
@@ -32,6 +30,9 @@
 #include "engine.h"
 #include "star_formation_logger.h"
 #include "threadpool.h"
+#ifdef SHADOWFAX_NEW_SPH
+#include "shadowfax/cell_shadowfax.h"
+#endif
 
 /**
  * @brief Recursively dismantle a cell tree.

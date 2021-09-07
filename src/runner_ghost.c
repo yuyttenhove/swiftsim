@@ -982,7 +982,7 @@ void runner_do_extra_ghost(struct runner *r, struct cell *c, int timer) {
       if (c->progeny[k] != NULL) runner_do_extra_ghost(r, c->progeny[k], 0);
   } else {
 
-#ifdef SHADOWFAX_SLOPE_LIMITER_CELL_WIDE_EXACT
+#if defined(SHADOWFAX_NEW_SPH) && defined(SHADOWFAX_SLOPE_LIMITER_CELL_WIDE_EXACT)
     /* Loop again over all pairs to calculate the maximal extrapolated primitive
      * quantities (used by slope limiters) */
     for (int sid = 0; sid < 27; sid++) {

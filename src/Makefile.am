@@ -107,7 +107,10 @@ GEAR_FEEDBACK_SOURCES += feedback/GEAR/stellar_evolution.c feedback/GEAR/feedbac
 endif
 
 # source files for the Shadowfax hydro scheme
-SHADOWFAX_SOURCES = shadowfax/cell_shadowfax.c shadowfax/voronoi.c
+SHADOWFAX_SOURCES =
+if HAVE_SHADOWFAX
+SHADOWFAX_SOURCES += shadowfax/cell_shadowfax.c shadowfax/voronoi.c
+endif
 
 # Common source files
 AM_SOURCES = space.c space_rebuild.c space_regrid.c space_unique_id.c 

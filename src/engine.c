@@ -29,7 +29,6 @@
 #include <float.h>
 #include <limits.h>
 #include <sched.h>
-#include <shadowfax/cell_shadowfax.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -98,6 +97,9 @@
 #include "tools.h"
 #include "units.h"
 #include "velociraptor_interface.h"
+#ifdef SHADOWFAX_NEW_SPH
+#include "shadowfax/cell_shadowfax.h"
+#endif
 
 const char *engine_policy_names[] = {"none",
                                      "rand",

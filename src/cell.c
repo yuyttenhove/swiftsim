@@ -29,7 +29,6 @@
 #include <limits.h>
 #include <math.h>
 #include <pthread.h>
-#include <shadowfax/cell_shadowfax.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -53,6 +52,9 @@
 #include "multipole.h"
 #include "space.h"
 #include "tools.h"
+#ifdef SHADOWFAX_NEW_SPH
+#include "shadowfax/cell_shadowfax.h"
+#endif
 
 /* Global variables. */
 int cell_next_tag = 0;

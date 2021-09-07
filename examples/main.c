@@ -29,7 +29,6 @@
 #include <errno.h>
 #include <fenv.h>
 #include <libgen.h>
-#include <shadowfax/cell_shadowfax.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -44,6 +43,9 @@
 /* Local headers. */
 #include "argparse.h"
 #include "swift.h"
+#ifdef SHADOWFAX_NEW_SPH
+#include "shadowfax/cell_shadowfax.h"
+#endif
 
 /* Engine policy flags. */
 #ifndef ENGINE_POLICY
@@ -1485,6 +1487,7 @@ int main(int argc, char *argv[]) {
     /* Initialise the particles */
     engine_init_particles(&e, flag_entropy_ICs, clean_smoothing_length_values);
 
+#ifdef SHADOWFAX_NEW_SPH
     FILE *file = fopen("delaunay.txt", "w");
     FILE *vfile = fopen("voronoi.txt", "w");
     size_t offset = 0;
@@ -1494,6 +1497,7 @@ int main(int argc, char *argv[]) {
     fclose(file);
     fclose(vfile);
     voronoi_print_grid(&s.cells_top[0].hydro.vortess, "voronoi_connections.txt");
+#endif
 
     /* Check that the matter content matches the cosmology given in the
      * parameter file. */
@@ -1592,6 +1596,7 @@ int main(int argc, char *argv[]) {
     /* Take a step. */
     engine_step(&e);
 
+#ifdef SHADOWFAX_NEW_SPH
     if ((j % 50) == 0) {
       char fname[50];
       sprintf(fname, "voronoi%d.txt", j);
@@ -1605,7 +1610,7 @@ int main(int argc, char *argv[]) {
       }
       fclose(vfile);
     }
-//    if (j == 3) break;
+#endif
 
     /* Print the timers. */
     if (with_verbose_timers) timers_print(e.step);
