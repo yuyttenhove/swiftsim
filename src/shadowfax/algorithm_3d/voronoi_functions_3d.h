@@ -9,10 +9,10 @@
 inline static int double_cmp(double double1, double double2,
                              unsigned long precision);
 inline static void voronoi_new_face(struct voronoi *v, int sid,
-                                   struct cell *restrict c,
-                                   struct part *left_part_pointer,
-                                   struct part *right_part_pointer,
-                                   double *vertices, int n_vertices);
+                                    struct cell *restrict c,
+                                    struct part *left_part_pointer,
+                                    struct part *right_part_pointer,
+                                    double *vertices, int n_vertices);
 inline static void voronoi_check_grid(struct voronoi *restrict v);
 inline static void voronoi_destroy(struct voronoi *restrict v);
 
@@ -56,13 +56,14 @@ inline static void voronoi_init(struct voronoi *restrict v, int number_of_cells,
   v->number_of_cells = number_of_cells;
   /* allocate memory for the voronoi cells */
   v->cells = (struct voronoi_cell_new *)swift_malloc(
-      "Voronoi cells", v->number_of_cells * sizeof(struct voronoi_cell_new));
+      "c.h.v.cells",
+      v->number_of_cells * sizeof(struct voronoi_cell_new));
   v->cells_size = v->number_of_cells;
 
   /* Allocate memory for the voronoi pairs (faces). */
   for (int i = 0; i < 27; ++i) {
     v->pairs[i] = (struct voronoi_pair *)swift_malloc(
-        "Voronoi pairs", 10 * sizeof(struct voronoi_pair));
+        "c.h.v.pairs", 10 * sizeof(struct voronoi_pair));
     v->pair_index[i] = 0;
     v->pair_size[i] = 10;
   }
@@ -79,7 +80,7 @@ inline static void voronoi_reset(struct voronoi *restrict v,
   if (v->cells_size < v->number_of_cells) {
     /* allocate memory for the voronoi cells */
     v->cells = (struct voronoi_cell_new *)swift_realloc(
-        "Voronoi cells", v->cells,
+        "c.h.v.cells", v->cells,
         v->number_of_cells * sizeof(struct voronoi_cell_new));
     v->cells_size = v->number_of_cells;
   }
@@ -138,8 +139,8 @@ inline static void voronoi_build(struct voronoi *restrict v,
 
   /* Allocate memory to store voronoi vertices (will be freed at end of this
    * function!) */
-  double *voronoi_vertices = (double *)swift_malloc(
-      "Voronoi vertices", 3 * (d->tetrahedron_index - 4) * sizeof(double));
+  double *voronoi_vertices =
+      (double *)malloc(3 * (d->tetrahedron_index - 4) * sizeof(double));
 
   /* loop over the tetrahedra in the Delaunay tessellation and compute the
      midpoints of their circumspheres. These happen to be the vertices of
@@ -233,8 +234,7 @@ inline static void voronoi_build(struct voronoi *restrict v,
 
   /* Allocate memory for the neighbour flags and initialize them to 0 (will be
    * freed at the end of this function!) */
-  int *neighbour_flags = (int *)swift_malloc("Voronoi neighbour flags",
-                                             d->vertex_index * sizeof(int));
+  int *neighbour_flags = (int *)malloc(d->vertex_index * sizeof(int));
   for (int i = 0; i < d->vertex_index; i++) {
     neighbour_flags[i] = 0;
   }
@@ -249,8 +249,8 @@ inline static void voronoi_build(struct voronoi *restrict v,
   int face_vertices_size = 10;
   /* Temporary array to store face vertices in (will be freed at the end of this
    * function!) */
-  double *face_vertices = (double *)swift_malloc(
-      "Voronoi face vertices", 3 * face_vertices_size * sizeof(double));
+  double *face_vertices =
+      (double *)malloc(3 * face_vertices_size * sizeof(double));
 
   /* loop over all cell generators, and hence over all non-ghost, non-dummy
      Delaunay vertex_indices */
@@ -366,9 +366,8 @@ inline static void voronoi_build(struct voronoi *restrict v,
          * next_t */
         if (face_vertices_index + 6 > face_vertices_size) {
           face_vertices_size <<= 1;
-          face_vertices =
-              (double *)swift_realloc("Voronoi face vertices", face_vertices,
-                                      3 * face_vertices_size * sizeof(double));
+          face_vertices = (double *)realloc(
+              face_vertices, 3 * face_vertices_size * sizeof(double));
         }
         const int vor_vertex1_idx = cur_t_idx - 4;
         face_vertices[3 * face_vertices_index] =
@@ -387,7 +386,7 @@ inline static void voronoi_build(struct voronoi *restrict v,
         face_vertices_index += 2;
 
         /* Update cell volume and tetrahedron_centroid */
-        double tetrahedron_centroid[3];
+        double tetrahedron_centroid[3] = {0., 0., 0.};
         const double V = geometry3d_compute_centroid_volume_tetrahedron(
             ax, ay, az, face_vertices[0], face_vertices[1], face_vertices[2],
             face_vertices[3 * face_vertices_index - 6],
@@ -454,10 +453,10 @@ inline static void voronoi_build(struct voronoi *restrict v,
     }
 #endif
   }
-  swift_free("Voronoi vertices", voronoi_vertices);
-  swift_free("Voronoi neighbour flags", neighbour_flags);
+  free(voronoi_vertices);
+  free(neighbour_flags);
   int3_fifo_queue_destroy(&neighbour_info_q);
-  swift_free("Voronoi face vertices", face_vertices);
+  free(face_vertices);
   voronoi_check_grid(v);
 }
 
@@ -467,14 +466,14 @@ inline static void voronoi_build(struct voronoi *restrict v,
  * @param v Voronoi grid.
  */
 inline static void voronoi_destroy(struct voronoi *restrict v) {
-  swift_free("Voronoi cells", v->cells);
+  swift_free("c.h.v.cells", v->cells);
   for (int i = 0; i < 27; ++i) {
 #ifdef VORONOI_STORE_CONNECTIONS
     for (int j = 0; j < v->pair_index[i]; j++) {
       free(v->pairs[i][j].vertices);
     }
 #endif
-    swift_free("Voronoi pairs", v->pairs[i]);
+    swift_free("c.h.v.pairs", v->pairs[i]);
   }
   v->active = 0;
 }
@@ -507,14 +506,14 @@ inline static void voronoi_destroy(struct voronoi *restrict v) {
  * @param n_vertices Number of vertices in the vertices array.
  */
 inline static void voronoi_new_face(struct voronoi *v, int sid,
-                                   struct cell *restrict c,
-                                   struct part *left_part_pointer,
-                                   struct part *right_part_pointer,
-                                   double *vertices, int n_vertices) {
+                                    struct cell *restrict c,
+                                    struct part *left_part_pointer,
+                                    struct part *right_part_pointer,
+                                    double *vertices, int n_vertices) {
   if (v->pair_index[sid] == v->pair_size[sid]) {
     v->pair_size[sid] <<= 1;
     v->pairs[sid] = (struct voronoi_pair *)swift_realloc(
-        "Voronoi pairs", v->pairs[sid],
+        "c.h.v.pairs", v->pairs[sid],
         v->pair_size[sid] * sizeof(struct voronoi_pair));
   }
 
