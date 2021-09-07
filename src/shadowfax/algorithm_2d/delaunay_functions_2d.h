@@ -90,25 +90,25 @@ inline static int delaunay_new_vertex(struct delaunay* restrict d, double x,
   if (d->vertex_index == d->vertex_size) {
     /* dynamically grow the size of the arrays with a factor 2 */
     d->vertex_size <<= 1;
-    d->vertices = (double*)swift_realloc("delaunay vertices", d->vertices,
+    d->vertices = (double*)swift_realloc("c.h.d.vertices", d->vertices,
                                          d->vertex_size * 2 * sizeof(double));
     d->rescaled_vertices = (double*)swift_realloc(
-        "delaunay rescaled vertices", d->rescaled_vertices,
+        "c.h.d.rescaled_vertices", d->rescaled_vertices,
         d->vertex_size * 2 * sizeof(double));
     d->integer_vertices = (unsigned long int*)swift_realloc(
-        "delaunay integer vertices", d->integer_vertices,
+        "c.h.d.integer_vertices", d->integer_vertices,
         d->vertex_size * 2 * sizeof(unsigned long int));
     d->vertex_triangles =
-        (int*)swift_realloc("delaunay vertex-triangle links",
+        (int*)swift_realloc("c.h.d.vertex_triangles",
                             d->vertex_triangles, d->vertex_size * sizeof(int));
     d->vertex_triangle_index = (int*)swift_realloc(
-        "delaunay vertex-triangle index links", d->vertex_triangle_index,
+        "c.h.d.vertex_triangle_index", d->vertex_triangle_index,
         d->vertex_size * sizeof(int));
     d->search_radii =
-        (double*)swift_realloc("delaunay search radii", d->search_radii,
+        (double*)swift_realloc("c.h.d.search_radii", d->search_radii,
                                d->vertex_size * sizeof(double));
     d->part_pointers = (struct part**)swift_realloc(
-        "delaunay particle pointers", d->part_pointers,
+        "c.h.d.part_pointers", d->part_pointers,
         d->vertex_size * sizeof(struct part*));
   }
 
@@ -139,7 +139,7 @@ inline static int delaunay_new_triangle(struct delaunay* restrict d) {
        reallocate it in memory */
     d->triangle_size <<= 1;
     d->triangles = (struct triangle*)swift_realloc(
-        "delaunay triangles", d->triangles,
+        "c.h.d.triangles", d->triangles,
         d->triangle_size * sizeof(struct triangle));
   }
 
@@ -430,37 +430,37 @@ inline static void delaunay_init(struct delaunay* restrict d,
   d->active = 1;
 
   /* allocate memory for the vertex arrays */
-  d->vertices = (double*)swift_malloc("delaunay vertices",
+  d->vertices = (double*)swift_malloc("c.h.d.vertices",
                                       vertex_size * 2 * sizeof(double));
   d->rescaled_vertices = (double*)swift_malloc(
-      "delaunay rescaled vertices", vertex_size * 2 * sizeof(double));
+      "c.h.d.rescaled_vertices", vertex_size * 2 * sizeof(double));
   d->integer_vertices = (unsigned long int*)swift_malloc(
-      "delaunay integer vertices", vertex_size * 2 * sizeof(unsigned long int));
-  d->vertex_triangles = (int*)swift_malloc("delaunay vertex-triangle links",
+      "c.h.d.integer_vertices", vertex_size * 2 * sizeof(unsigned long int));
+  d->vertex_triangles = (int*)swift_malloc("c.h.d.vertex_triangles",
                                            vertex_size * sizeof(int));
   d->vertex_triangle_index = (int*)swift_malloc(
-      "delaunay vertex-triangle index links", vertex_size * sizeof(int));
-  d->search_radii = (double*)swift_malloc("delaunay search radii",
+      "c.h.d.vertex_triangle_index", vertex_size * sizeof(int));
+  d->search_radii = (double*)swift_malloc("c.h.d.search_radii",
                                           vertex_size * sizeof(double));
   d->part_pointers = (struct part**)swift_malloc(
-      "delaunay part pointers", vertex_size * sizeof(struct part*));
+      "c.h.d.part_pointers", vertex_size * sizeof(struct part*));
   d->vertex_size = vertex_size;
 
   /* allocate memory for the triangle array */
   d->triangles = (struct triangle*)swift_malloc(
-      "delaunay triangles", triangle_size * sizeof(struct triangle));
+      "c.h.d.triangles", triangle_size * sizeof(struct triangle));
   d->triangle_size = triangle_size;
 
   /* allocate memory for the queue (note that the queue size of 10 was chosen
      arbitrarily, and a proper value should be chosen based on performance
      measurements) */
-  d->queue = (int*)swift_malloc("delaunay queue", 10 * sizeof(int));
+  d->queue = (int*)swift_malloc("c.h.d.queue", 10 * sizeof(int));
   d->queue_size = 10;
 
   d->ngb_cell_sids =
-      (int*)swift_malloc("delaunay ngb cells", vertex_size * sizeof(int));
+      (int*)swift_malloc("c.h.d.ngb_cell_sids", vertex_size * sizeof(int));
   d->ngb_cell_ptrs = (struct cell**)swift_malloc(
-      "delaunay ngb cells", vertex_size * sizeof(struct cell*));
+      "c.h.d.ngb_cell_ptrs", vertex_size * sizeof(struct cell*));
   d->ngb_size = vertex_size;
 
   /* initialise the structure used to perform exact geometrical tests */
@@ -477,18 +477,18 @@ inline static void delaunay_init(struct delaunay* restrict d,
 inline static void delaunay_destroy(struct delaunay* restrict d) {
   d->active = 0;
   if (d->vertices != NULL) {
-    swift_free("delaunay vertices", d->vertices);
-    swift_free("delaunay rescaled vertices", d->rescaled_vertices);
-    swift_free("delaunay integer vertices", d->integer_vertices);
-    swift_free("delaunay vertex-triangle links", d->vertex_triangles);
-    swift_free("delaunay vertex-triangle index links",
+    swift_free("c.h.d.vertices", d->vertices);
+    swift_free("c.h.d.rescaled_vertices", d->rescaled_vertices);
+    swift_free("c.h.d.integer_vertices", d->integer_vertices);
+    swift_free("c.h.d.vertex_triangles", d->vertex_triangles);
+    swift_free("c.h.d.vertex_triangle_index",
                d->vertex_triangle_index);
-    swift_free("delaunay search radii", d->search_radii);
-    swift_free("delaunay part pointers", d->part_pointers);
-    swift_free("delaunay triangles", d->triangles);
-    swift_free("delaunay queue", d->queue);
-    swift_free("delaunay ngb cells", d->ngb_cell_sids);
-    swift_free("delaunay ngb cell pointers", d->ngb_cell_ptrs);
+    swift_free("c.h.d.search_radii", d->search_radii);
+    swift_free("c.h.d.part_pointers", d->part_pointers);
+    swift_free("c.h.d.triangles", d->triangles);
+    swift_free("c.h.d.queue", d->queue);
+    swift_free("c.h.d.ngb_cell_sids", d->ngb_cell_sids);
+    swift_free("c.h.d.ngb_cell_ptrs", d->ngb_cell_ptrs);
     geometry_destroy(&d->geometry);
   }
 }
@@ -789,7 +789,7 @@ inline static void delaunay_enqueue(struct delaunay* restrict d, int t) {
   if (d->queue_index == d->queue_size) {
     /* there isn't: increase the size of the queue with a factor 2. */
     d->queue_size <<= 1;
-    d->queue = (int*)swift_realloc("delaunay queue", d->queue,
+    d->queue = (int*)swift_realloc("c.h.d.queue", d->queue,
                                    d->queue_size * sizeof(int));
   }
 
@@ -1219,9 +1219,9 @@ inline static void delaunay_add_new_vertex(struct delaunay* d, double x,
     if (d->ngb_index == d->ngb_size) {
       d->ngb_size <<= 1;
       d->ngb_cell_sids = (int*)swift_realloc(
-          "delaunay ngb cells", d->ngb_cell_sids, d->ngb_size * sizeof(int));
+          "c.h.d.ngb_cell_sids", d->ngb_cell_sids, d->ngb_size * sizeof(int));
       d->ngb_cell_ptrs = (struct cell**)swift_realloc(
-          "delaunay ngb cell pointers", d->ngb_cell_ptrs,
+          "c.h.d.ngb_cell_ptrs", d->ngb_cell_ptrs,
           d->ngb_size * sizeof(struct cell*));
     }
     delaunay_assert(d->ngb_index == v - d->ngb_offset);

@@ -84,7 +84,7 @@ static inline void voronoi_add_pair(struct voronoi *v, int sid,
 
   if (v->pair_index[sid] == v->pair_size[sid]) {
     v->pair_size[sid] <<= 1;
-    v->pairs[sid] = (struct voronoi_pair *)realloc(
+    v->pairs[sid] = (struct voronoi_pair *)swift_realloc("c.h.v.pairs",
         v->pairs[sid], v->pair_size[sid] * sizeof(struct voronoi_pair));
   }
   struct voronoi_pair *this_pair = &v->pairs[sid][v->pair_index[sid]];
@@ -139,9 +139,9 @@ static inline double voronoi_compute_centroid_volume_triangle(
  * @param v Voronoi grid.
  */
 static inline void voronoi_destroy(struct voronoi *restrict v) {
-  free(v->cells);
+  swift_free("c.h.v.cells", v->cells);
   for (int i = 0; i < 27; ++i) {
-    free(v->pairs[i]);
+    swift_free("c.h.v.pairs", v->pairs[i]);
   }
   v->active = 0;
 }
@@ -151,13 +151,13 @@ inline static void voronoi_init(struct voronoi *restrict v, int number_of_cells,
   v->number_of_cells = number_of_cells;
   /* allocate memory for the voronoi cells */
   v->cells = (struct voronoi_cell_new *)swift_malloc(
-      "Voronoi cells", v->number_of_cells * sizeof(struct voronoi_cell_new));
+      "c.h.v.cells", v->number_of_cells * sizeof(struct voronoi_cell_new));
   v->cells_size = v->number_of_cells;
 
   /* Allocate memory for the voronoi pairs (faces). */
   for (int i = 0; i < 27; ++i) {
     v->pairs[i] = (struct voronoi_pair *)swift_malloc(
-        "Voronoi pairs", 10 * sizeof(struct voronoi_pair));
+        "c.h.v.pairs", 10 * sizeof(struct voronoi_pair));
     v->pair_index[i] = 0;
     v->pair_size[i] = 10;
   }
@@ -174,7 +174,7 @@ inline static void voronoi_reset(struct voronoi *restrict v,
   if (v->cells_size < v->number_of_cells) {
     /* allocate memory for the voronoi cells */
     v->cells = (struct voronoi_cell_new *)swift_realloc(
-        "Voronoi cells", v->cells,
+        "c.h.v.cells", v->cells,
         v->number_of_cells * sizeof(struct voronoi_cell_new));
     v->cells_size = v->number_of_cells;
   }
