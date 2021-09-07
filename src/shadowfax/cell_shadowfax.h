@@ -58,10 +58,10 @@ cell_malloc_delaunay_tessellation(struct cell *c) {
 #ifdef SHADOWFAX_HILBERT_ORDERING
     if (c->hydro.hilbert_keys_size < count) {
       c->hydro.hilbert_keys = (unsigned long *)swift_realloc(
-          "Cell hilbert keys", c->hydro.hilbert_keys,
+          "c.h.hilbert_keys", c->hydro.hilbert_keys,
           count * sizeof(unsigned long));
       c->hydro.hilbert_r_sort =
-          (int *)swift_realloc("Cell hilbert sorting indices",
+          (int *)swift_realloc("c.h.hilbert_r_sort",
                                c->hydro.hilbert_r_sort, count * sizeof(int));
       c->hydro.hilbert_keys_size = count;
     }
@@ -71,9 +71,9 @@ cell_malloc_delaunay_tessellation(struct cell *c) {
 #ifdef SHADOWFAX_HILBERT_ORDERING
     /* Malloc hilbert keys */
     c->hydro.hilbert_keys = (unsigned long *)swift_malloc(
-        "Cell hilbert keys", count * sizeof(unsigned long));
+        "c.h.hilbert_keys", count * sizeof(unsigned long));
     c->hydro.hilbert_r_sort = (int *)swift_malloc(
-        "Cell hilbert sorting indices", count * sizeof(int));
+        "c.h.hilbert_r_sort", count * sizeof(int));
     c->hydro.hilbert_keys_size = count;
 #endif
     c->hydro.shadowfax_enabled = 1;
@@ -89,8 +89,8 @@ __attribute__((always_inline)) INLINE static void cell_destroy_tessellations(
   delaunay_destroy(&c->hydro.deltess);
   voronoi_destroy(&c->hydro.vortess);
 #ifdef SHADOWFAX_HILBERT_ORDERING
-  swift_free("Cell hilbert keys", c->hydro.hilbert_keys);
-  swift_free("Cell hilbert sorting indices", c->hydro.hilbert_r_sort);
+  swift_free("c.h.hilbert_keys", c->hydro.hilbert_keys);
+  swift_free("c.h.hilbert_r_sort", c->hydro.hilbert_r_sort);
 #endif
 }
 
