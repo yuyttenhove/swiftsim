@@ -61,12 +61,13 @@ __attribute__((always_inline)) INLINE static void hydro_gradients_init(
  * @param cLR Vector pointing from the midpoint of the particle pair to the
  * geometrical centroid of the face in between the particles.
  * @param xLR Vector pointing from the right particle to the left particle.
+ * @param rLR Distance between two particles.
  * @param A Surface area of the face in between the particles.
  * @param grad Current value of the gradient for the quantity (is updated).
  */
 __attribute__((always_inline)) INLINE void hydro_gradients_single_quantity(
-    float qL, float qR, const float *cLR, const float *xLR, float rLR, float A,
-    float *grad) {
+    double qL, double qR, const double *cLR, const double *xLR, double rLR, double A,
+    double *grad) {
 
   grad[0] += A * ((qR - qL) * cLR[0] / rLR - 0.5f * (qL + qR) * xLR[0] / rLR);
   grad[1] += A * ((qR - qL) * cLR[1] / rLR - 0.5f * (qL + qR) * xLR[1] / rLR);

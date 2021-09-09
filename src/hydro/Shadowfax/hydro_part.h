@@ -96,13 +96,13 @@ struct part {
     struct {
 
       /* Density gradients. */
-      float rho[3];
+      double rho[3];
 
       /* Fluid velocity gradients. */
-      float v[3][3];
+      double v[3][3];
 
       /* Pressure gradients. */
-      float P[3];
+      double P[3];
 
     } gradients;
 

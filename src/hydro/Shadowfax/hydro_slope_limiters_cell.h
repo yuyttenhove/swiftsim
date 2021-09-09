@@ -109,12 +109,12 @@ hydro_slope_limit_cell_collect(struct part* pi, const struct part* pj,
  * @param maxr Maximal distance between the generator and all of its neighbours
  */
 __attribute__((always_inline)) INLINE static void
-hydro_slope_limit_cell_quantity(float* grad, float qval, float qmin, float qmax,
+hydro_slope_limit_cell_quantity(double* grad, float qval, float qmin, float qmax,
                                 float maxr) {
 
   float gradtrue, gradmax, gradmin, alpha;
 
-  gradtrue = sqrtf(grad[0] * grad[0] + grad[1] * grad[1] + grad[2] * grad[2]);
+  gradtrue = (float)sqrt(grad[0] * grad[0] + grad[1] * grad[1] + grad[2] * grad[2]);
   if (gradtrue) {
     gradtrue *= maxr;
     gradmax = qmax - qval;

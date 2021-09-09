@@ -214,59 +214,57 @@ hydro_shadowfax_gradients_collect(struct part *pi, struct part *pj,
   }
 
   /* Initialize local variables */
-  float dx[3];
-  for (int k = 0; k < 3; k++) {
-    dx[k] = (float)pi->x[k] - (float)pj->x[k] - (float)shift[k];
-  }
-  const float r2 = dx[0] * dx[0] + dx[1] * dx[1] + dx[2] * dx[2];
+  const double dx[3] = {pi->x[0] - pj->x[0] - shift[0],
+                        pi->x[1] - pj->x[1] - shift[1],
+                        pi->x[2] - pj->x[2] - shift[2]};
+  const double r2 = dx[0] * dx[0] + dx[1] * dx[1] + dx[2] * dx[2];
 
-  float c[3];
   /* c is supposed to be the vector pointing from the midpoint of pi and pj to
      the centroid of the face between pi and pj.
      The coordinates of the centroid of the face of the voronoi cell of particle
      pi are given in the case of periodic boundary conditions. */
-  c[0] = (float)(midpoint[0] - 0.5 * (pi->x[0] + pj->x[0] + shift[0]));
-  c[1] = (float)(midpoint[1] - 0.5 * (pi->x[1] + pj->x[1] + shift[1]));
-  c[2] = (float)(midpoint[2] - 0.5 * (pi->x[2] + pj->x[2] + shift[2]));
+  const double c[3] = {midpoint[0] - 0.5 * (pi->x[0] + pj->x[0] + shift[0]),
+                       midpoint[1] - 0.5 * (pi->x[1] + pj->x[1] + shift[1]),
+                       midpoint[2] - 0.5 * (pi->x[2] + pj->x[2] + shift[2])};
 
-  float r = sqrtf(r2);
-  float area = (float)surface_area;
+  double r = sqrt(r2);
   hydro_gradients_single_quantity(pi->primitives.rho, pj->primitives.rho, c, dx,
-                                  r, area,
+                                  r, surface_area,
                                   pi->primitives.gradients.rho);
   hydro_gradients_single_quantity(pi->primitives.v[0], pj->primitives.v[0], c,
-                                  dx, r, area,
+                                  dx, r, surface_area,
                                   pi->primitives.gradients.v[0]);
   hydro_gradients_single_quantity(pi->primitives.v[1], pj->primitives.v[1], c,
-                                  dx, r, area,
+                                  dx, r, surface_area,
                                   pi->primitives.gradients.v[1]);
   hydro_gradients_single_quantity(pi->primitives.v[2], pj->primitives.v[2], c,
-                                  dx, r, area,
+                                  dx, r, surface_area,
                                   pi->primitives.gradients.v[2]);
   hydro_gradients_single_quantity(pi->primitives.P, pj->primitives.P, c, dx, r,
-                                  area, pi->primitives.gradients.P);
+                                  surface_area, pi->primitives.gradients.P);
 
   hydro_slope_limit_cell_collect(pi, pj, r);
 
   if (symmetric) {
-    float mindx[3];
+    double mindx[3];
     mindx[0] = -dx[0];
     mindx[1] = -dx[1];
     mindx[2] = -dx[2];
     hydro_gradients_single_quantity(pj->primitives.rho, pi->primitives.rho, c,
-                                    mindx, r, area,
+                                    mindx, r, surface_area,
                                     pj->primitives.gradients.rho);
     hydro_gradients_single_quantity(pj->primitives.v[0], pi->primitives.v[0], c,
-                                    mindx, r, area,
+                                    mindx, r, surface_area,
                                     pj->primitives.gradients.v[0]);
     hydro_gradients_single_quantity(pj->primitives.v[1], pi->primitives.v[1], c,
-                                    mindx, r, area,
+                                    mindx, r, surface_area,
                                     pj->primitives.gradients.v[1]);
     hydro_gradients_single_quantity(pj->primitives.v[2], pi->primitives.v[2], c,
-                                    mindx, r, area,
+                                    mindx, r, surface_area,
                                     pj->primitives.gradients.v[2]);
-    hydro_gradients_single_quantity(pj->primitives.P, pi->primitives.P, c, mindx,
-                                    r, area, pj->primitives.gradients.P);
+    hydro_gradients_single_quantity(pj->primitives.P, pi->primitives.P, c,
+                                    mindx, r, surface_area,
+                                    pj->primitives.gradients.P);
 
     hydro_slope_limit_cell_collect(pj, pi, r);
   }
