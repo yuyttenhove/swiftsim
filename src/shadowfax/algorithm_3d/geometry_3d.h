@@ -13,9 +13,9 @@
 
 #include "shadowfax/utils.h"
 
+#include <float.h>
 #include <gmp.h>
 #include <math.h>
-#include <float.h>
 
 /**
  * @brief Auxiliary variables used by the arbirary exact tests. Since allocating
@@ -327,7 +327,8 @@ inline static int geometry3d_in_sphere(
   errbound *= DBL_EPSILON * 11;
 
   /* Compute result */
-  const double result = (denrm2 * abc - cenrm2 * dab) + (benrm2 * cda - aenrm2 * bcd);
+  const double result =
+      (denrm2 * abc - cenrm2 * dab) + (benrm2 * cda - aenrm2 * bcd);
 
   if (result < -errbound || result > errbound) {
     return sgn(result);
@@ -593,32 +594,39 @@ inline static double geometry3d_compute_centroid_volume_tetrahedron(
 
 inline static double geometry3d_compute_centroid_area(
     const double* restrict points, int n_points, double* result) {
-  /* Calculate centroid */
+
+  if (n_points < 2) {
+    error("Must pass at least 3 points!");
+  }
+
+  /* Calculate area and centroid from triangles (more robust) */
+  double area = 0.;
   result[0] = 0.;
   result[1] = 0.;
   result[2] = 0.;
-  for (int i = 0; i < n_points; i++) {
-    result[0] += points[3 * i];
-    result[1] += points[3 * i + 1];
-    result[2] += points[3 * i + 2];
-  }
-  result[0] /= n_points;
-  result[1] /= n_points;
-  result[2] /= n_points;
 
-  /* Calculate area */
-  if (n_points < 2) return 0.;
-
-  double V = 0.;
   const double v0x = points[0];
   const double v0y = points[1];
   const double v0z = points[2];
+
   for (int i = 2; i < n_points; i++) {
-    V += geometry3d_compute_area_triangle(
+    double area_triangle = geometry3d_compute_area_triangle(
         v0x, v0y, v0z, points[3 * i - 3], points[3 * i - 2], points[3 * i - 1],
         points[3 * i], points[3 * i + 1], points[3 * i + 2]);
+    area += area_triangle;
+
+    double centroid_triangle[3];
+    geometry3d_compute_centroid_triangle(
+        v0x, v0y, v0z, points[3 * i - 3], points[3 * i - 2], points[3 * i - 1],
+        points[3 * i], points[3 * i + 1], points[3 * i + 2], centroid_triangle);
+    result[0] += area_triangle * centroid_triangle[0];
+    result[1] += area_triangle * centroid_triangle[1];
+    result[2] += area_triangle * centroid_triangle[2];
   }
-  return V;
+  result [0] /= area;
+  result [1] /= area;
+  result [2] /= area;
+  return area;
 }
 
 #endif  // SWIFTSIM_GEOMETRY_3D_H
