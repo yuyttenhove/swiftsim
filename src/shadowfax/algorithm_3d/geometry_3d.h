@@ -11,6 +11,7 @@
 #ifndef SWIFTSIM_GEOMETRY_3D_H
 #define SWIFTSIM_GEOMETRY_3D_H
 
+#include "error.h"
 #include "shadowfax/utils.h"
 
 #include <float.h>
