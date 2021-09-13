@@ -1143,12 +1143,14 @@ void runner_do_ghost(struct runner *r, struct cell *c, int timer) {
         float hnew = delaunay_get_search_radius(
             &c->hydro.deltess, pid[i] + c->hydro.deltess.vertex_start);
         if (hnew >= p->h) {
+          /* Use h_0 array for previous search radii */
+          h_0[redo] = p->h;
           p->h *= 1.1f;
           /* Check if h_max is increased */
           h_max = max(h_max, p->h);
           h_max_active = max(h_max_active, p->h);
           pid[redo] = pid[i];
-          h_0[redo] = h_0[i];
+//          h_0[redo] = h_0[i];
           left[redo] = left[i];
           right[redo] = right[i];
           redo += 1;
