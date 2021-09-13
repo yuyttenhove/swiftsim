@@ -23,12 +23,12 @@
 struct voronoi_pair {
   /*! Pointer to particle corresponding to the generator on the left of the
    * interface (always a particle within the local cell). */
-  struct part* left;
+  struct part *left;
 
   /*! Pointer to particle corresponding to the generator on the right of the
    * interface (can be a local particle, but also a particle in a
    * neighbouring cell). */
-  struct part* right;
+  struct part *right;
 
   struct cell *right_cell;
 
@@ -46,7 +46,6 @@ struct voronoi_pair {
   int n_vertices;
 #endif
 };
-
 
 struct voronoi {
   /*! @brief Voronoi cells. */
@@ -78,7 +77,10 @@ struct voronoi {
 
   /*! @brief The absolute minimal surface area of faces in this voronoi
    * tessellation */
-   double min_surface_area;
+  double min_surface_area;
+
+  /*! Pointer to swift cell containing this tesselation */
+  struct cell *swift_cell;
 };
 
 #endif  // SWIFTSIM_VORONOI_3D_H

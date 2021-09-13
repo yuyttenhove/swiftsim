@@ -6,8 +6,6 @@
 #define SWIFTSIM_VORONOI_FUNCTIONS_3D_H
 
 /* Forward declarations */
-inline static int double_cmp(double double1, double double2,
-                             unsigned long precision);
 inline static void voronoi_new_face(struct voronoi *v, int sid,
                                     struct cell *restrict c,
                                     struct part *left_part_pointer,
@@ -52,12 +50,12 @@ inline static void voronoi_pair_init(struct voronoi_pair *pair,
 }
 
 inline static void voronoi_init(struct voronoi *restrict v, int number_of_cells,
-                                double min_surface_area) {
+                                double min_surface_area,
+                                struct cell *restrict swift_cell) {
   v->number_of_cells = number_of_cells;
   /* allocate memory for the voronoi cells */
   v->cells = (struct voronoi_cell_new *)swift_malloc(
-      "c.h.v.cells",
-      v->number_of_cells * sizeof(struct voronoi_cell_new));
+      "c.h.v.cells", v->number_of_cells * sizeof(struct voronoi_cell_new));
   v->cells_size = v->number_of_cells;
 
   /* Allocate memory for the voronoi pairs (faces). */
@@ -67,6 +65,8 @@ inline static void voronoi_init(struct voronoi *restrict v, int number_of_cells,
     v->pair_index[i] = 0;
     v->pair_size[i] = 10;
   }
+
+  v->swift_cell = swift_cell;
 
   v->min_surface_area = min_surface_area;
   v->active = 1;
@@ -120,7 +120,8 @@ inline static void voronoi_reset(struct voronoi *restrict v,
  * @param d Delaunay tessellation (read-only).
  */
 inline static void voronoi_build(struct voronoi *restrict v,
-                                 struct delaunay *restrict d, double *dim) {
+                                 struct delaunay *restrict d, double *dim,
+                                 struct cell *restrict swift_cell) {
   delaunay_assert(d->vertex_end > 0);
 
   /* the number of cells equals the number of non-ghost and non-dummy
@@ -134,7 +135,7 @@ inline static void voronoi_build(struct voronoi *restrict v,
   if (v->active) {
     voronoi_reset(v, number_of_cells, min_surface_area);
   } else {
-    voronoi_init(v, number_of_cells, min_surface_area);
+    voronoi_init(v, number_of_cells, min_surface_area, swift_cell);
   }
 
   /* Allocate memory to store voronoi vertices (will be freed at end of this
@@ -227,8 +228,8 @@ inline static void voronoi_build(struct voronoi *restrict v,
                       (cz - v2z) * (cz - v2z);
     const double r3 = (cx - v3x) * (cx - v3x) + (cy - v3y) * (cy - v3y) +
                       (cz - v3z) * (cz - v3z);
-    voronoi_assert(double_cmp(r0, r1, 1e10) && double_cmp(r0, r2, 1e10) &&
-                   double_cmp(r0, r3, 1e10));
+    voronoi_assert(double_cmp(r0, r1, 1e5) && double_cmp(r0, r2, 1e5) &&
+                   double_cmp(r0, r3, 1e5));
 #endif
   } /* loop over the Delaunay tetrahedra and compute the circumcenters */
 
@@ -528,6 +529,14 @@ inline static void voronoi_new_face(struct voronoi *v, int sid,
   }
 }
 
+static inline double voronoi_compute_volume(const struct voronoi *restrict v) {
+  double total_volume = 0.;
+  for (int i = 0; i < v->number_of_cells; ++i) {
+    total_volume += v->cells[i].volume;
+  }
+  return total_volume;
+}
+
 /**
  * @brief Sanity checks on the grid.
  *
@@ -535,11 +544,7 @@ inline static void voronoi_new_face(struct voronoi *v, int sid,
  */
 inline static void voronoi_check_grid(struct voronoi *restrict v) {
 #ifdef VORONOI_CHECKS
-  double total_volume = 0.;
-  for (int i = 0; i < v->number_of_cells; i++) {
-    total_volume += v->cells[i].volume;
-  }
-  fprintf(stderr, "Total volume: %g\n", total_volume);
+  fprintf(stderr, "Total volume: %g\n", voronoi_compute_volume(v));
 #endif
 }
 
@@ -605,28 +610,6 @@ static inline void voronoi_print_grid(const struct voronoi *restrict v,
   voronoi_write_grid(v, file);
 
   fclose(file);
-}
-
-/**
- * @brief Check whether two doubles are equal up to the given precision.
- *
- * @param double1
- * @param double2
- * @param precision
- * @return 1 for equality 0 else.
- */
-inline static int double_cmp(double double1, double double2,
-                             unsigned long precision) {
-  long long1, long2;
-  if (double1 > 0)
-    long1 = (long)(double1 * precision + .5);
-  else
-    long1 = (long)(double1 * precision - .5);
-  if (double2 > 0)
-    long2 = (long)(double2 * precision + .5);
-  else
-    long2 = (long)(double2 * precision - .5);
-  return (long1 == long2);
 }
 
 #endif  // SWIFTSIM_VORONOI_FUNCTIONS_3D_H

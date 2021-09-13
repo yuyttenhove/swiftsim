@@ -147,7 +147,7 @@ static inline void voronoi_destroy(struct voronoi *restrict v) {
 }
 
 inline static void voronoi_init(struct voronoi *restrict v, int number_of_cells,
-    double min_surface_area) {
+    double min_surface_area, struct cell *restrict swift_cell) {
   v->number_of_cells = number_of_cells;
   /* allocate memory for the voronoi cells */
   v->cells = (struct voronoi_cell_new *)swift_malloc(
@@ -164,6 +164,7 @@ inline static void voronoi_init(struct voronoi *restrict v, int number_of_cells,
 
   v->min_surface_area = min_surface_area;
   v->active = 1;
+  v->swift_cell = swift_cell;
 }
 
 inline static void voronoi_reset(struct voronoi *restrict v,
@@ -207,7 +208,7 @@ inline static void voronoi_reset(struct voronoi *restrict v,
  */
 static inline void voronoi_build(struct voronoi *restrict v,
                                  const struct delaunay *restrict d,
-                                 double *dim) {
+                                 double *dim, struct cell *restrict swift_cell) {
 
   delaunay_assert(d->vertex_end > 0);
 
@@ -221,7 +222,7 @@ static inline void voronoi_build(struct voronoi *restrict v,
   if (v->active) {
     voronoi_reset(v, number_of_cells, min_size_1d);
   } else {
-    voronoi_init(v, number_of_cells, min_size_1d);
+    voronoi_init(v, number_of_cells, min_size_1d, swift_cell);
   }
 
   /* loop over the triangles in the Delaunay tessellation and compute the
@@ -428,18 +429,23 @@ static inline void voronoi_build(struct voronoi *restrict v,
   free(vertices);
 }
 
+static inline double voronoi_compute_volume(const struct voronoi *restrict v) {
+  double total_volume = 0.;
+  for (int i = 0; i < v->number_of_cells; ++i) {
+    total_volume += v->cells[i].volume;
+  }
+  return total_volume;
+}
+
 /**
  * @brief Sanity checks on the grid.
  *
  * Right now, this only checks the total volume of the cells.
  */
 static inline void voronoi_check_grid(const struct voronoi *restrict v) {
-  double V = 0.;
-  for (int i = 0; i < v->number_of_cells; ++i) {
-    V += v->cells[i].volume;
-  }
-
-//  printf("Total volume: %g\n", V);
+#ifdef VORONOI_CHECKS
+  fprintf(stderr, "Total volume: %g\n", voronoi_compute_volume(v));
+#endif
 }
 
 /**

@@ -102,8 +102,11 @@ struct voronoi {
   int active;
 
   /*! @brief The absolute minimal surface area of faces in this voronoi
- * tessellation */
+   * tessellation */
   double min_surface_area;
+
+  /*! Pointer to swift cell containing this tesselation */
+  struct cell *swift_cell;
 };
 
 #endif /* SWIFT_VORONOI_STRUCT_H */

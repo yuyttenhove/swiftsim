@@ -27,7 +27,7 @@
  * This macro is similar to the standard assert() macro.
  * This macro is only defined when VORONOI_DO_ASSERTIONS is active.
  */
-#ifdef VORONOI_DO_ASSERTIONS
+#if defined(VORONOI_DO_ASSERTIONS) || defined(VORONOI_CHECKS)
 #define voronoi_assert(condition)                                     \
   if (!(condition)) {                                                 \
     fprintf(stderr, "%s:%s():%i: Condition failed: " #condition "\n", \

@@ -706,7 +706,7 @@ void cell_shadowfax_do_self_subset_density_recursive(const struct engine *e,
 
 __attribute__((always_inline)) INLINE static void cell_shadowfax_end_density(
     struct cell *restrict c) {
-  voronoi_build(&c->hydro.vortess, &c->hydro.deltess, c->width);
+  voronoi_build(&c->hydro.vortess, &c->hydro.deltess, c->width, c);
 
   struct part *p;
   for (int i = 0; i < c->hydro.vortess.number_of_cells; i++) {
@@ -785,5 +785,7 @@ cell_shadowfax_do_pair_subset_naive(const struct engine *e,
 
 void cell_shadowfax_write_tesselations(const struct cell *c, FILE *dfile,
                                        FILE *vfile, size_t *offset);
+
+double cell_shadowfax_voronoi_volume(const struct cell *c);
 
 #endif /* SWIFT_CELL_SHADOWFAX_H */

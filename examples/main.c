@@ -1488,6 +1488,18 @@ int main(int argc, char *argv[]) {
     engine_init_particles(&e, flag_entropy_ICs, clean_smoothing_length_values);
 
 #ifdef SHADOWFAX_NEW_SPH
+#ifdef VORONOI_CHECKS
+    double voronoi_volume = 0.;
+    for (int i = 0; i < s.nr_cells; i++) {
+      voronoi_volume += cell_shadowfax_voronoi_volume(&s.cells_top[i]);
+    }
+    double space_volume = s.dim[0] * s.dim[1];
+#ifdef HYDRO_DIMENSION_3D
+    space_volume *= s.dim[2];
+#endif
+    printf("Voronoi volume: %g\nSpace volume: %g\n", voronoi_volume, space_volume);
+    assert(fabs(voronoi_volume - space_volume) / space_volume < 1e-5);
+#endif
     FILE *file = fopen("delaunay.txt", "w");
     FILE *vfile = fopen("voronoi.txt", "w");
     size_t offset = 0;
@@ -1597,6 +1609,18 @@ int main(int argc, char *argv[]) {
     engine_step(&e);
 
 #ifdef SHADOWFAX_NEW_SPH
+#ifdef VORONOI_CHECKS
+    double voronoi_volume = 0.;
+    for (int i = 0; i < s.nr_cells; i++) {
+      voronoi_volume += cell_shadowfax_voronoi_volume(&s.cells_top[i]);
+    }
+    double space_volume = s.dim[0] * s.dim[1];
+#ifdef HYDRO_DIMENSION_3D
+    space_volume *= s.dim[2];
+#endif
+    printf("Voronoi volume: %g\nSpace volume: %g\n", voronoi_volume, space_volume);
+//    assert(fabs(voronoi_volume - space_volume) / space_volume < 1e-5);
+#endif
     if ((j % 50) == 0) {
       char fname[50];
       sprintf(fname, "voronoi%d.txt", j);

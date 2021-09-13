@@ -312,3 +312,17 @@ void cell_shadowfax_write_tesselations(const struct cell *c, FILE *dfile,
     voronoi_write_grid(&c->hydro.vortess, vfile);
   }
 }
+
+double cell_shadowfax_voronoi_volume(const struct cell *c) {
+  double total_volume = 0.;
+  if (c->split) {
+    for (int k = 0; k < 8; k++) {
+      if (c->progeny[k] != NULL) {
+        total_volume += cell_shadowfax_voronoi_volume(c->progeny[k]);
+      }
+    }
+  } else if (c->hydro.shadowfax_enabled) {
+    total_volume = voronoi_compute_volume(&c->hydro.vortess);
+  }
+  return total_volume;
+ }
