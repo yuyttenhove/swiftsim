@@ -73,8 +73,8 @@ __attribute__((always_inline)) INLINE static void hydro_gradients_finalize(
  * @param grad Current value of the gradient for the quantity (is updated).
  */
 __attribute__((always_inline)) INLINE void hydro_gradients_single_quantity(
-    float qL, float qR, float *cLR, const float *xLR, float rLR, float A,
-    float *grad) {}
+    float qL, float qR, double *cLR, const double *xLR, double rLR, double A,
+    double *grad) {}
 
 #endif
 

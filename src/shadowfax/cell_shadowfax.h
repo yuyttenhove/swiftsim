@@ -603,11 +603,11 @@ cell_shadowfax_do_self1_density(const struct engine *e,
   for (int i = 0; i < count; i++) {
 #ifdef SHADOWFAX_HILBERT_ORDERING
     int idx = c->hydro.hilbert_r_sort[i];
-    /* Get a pointer to the ith particle. */
-    struct part *restrict p = &parts[idx];
 #else
-    struct part *restrict p = &parts[i];
+    int idx = i;
 #endif
+    /* Get a pointer to the idx-th particle. */
+    struct part *restrict p = &parts[i];
     delaunay_add_local_vertex(&c->hydro.deltess, idx, p->x[0], p->x[1], p->x[2],
                               p);
   }

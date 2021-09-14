@@ -223,9 +223,9 @@ hydro_shadowfax_gradients_collect(struct part *pi, struct part *pj,
      the centroid of the face between pi and pj.
      The coordinates of the centroid of the face of the voronoi cell of particle
      pi are given in the case of periodic boundary conditions. */
-  const double c[3] = {midpoint[0] - 0.5 * (pi->x[0] + pj->x[0] + shift[0]),
-                       midpoint[1] - 0.5 * (pi->x[1] + pj->x[1] + shift[1]),
-                       midpoint[2] - 0.5 * (pi->x[2] + pj->x[2] + shift[2])};
+  double c[3] = {midpoint[0] - 0.5 * (pi->x[0] + pj->x[0] + shift[0]),
+                 midpoint[1] - 0.5 * (pi->x[1] + pj->x[1] + shift[1]),
+                 midpoint[2] - 0.5 * (pi->x[2] + pj->x[2] + shift[2])};
 
   double r = sqrt(r2);
   hydro_gradients_single_quantity(pi->primitives.rho, pj->primitives.rho, c, dx,
