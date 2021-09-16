@@ -1140,7 +1140,7 @@ void runner_do_ghost(struct runner *r, struct cell *c, int timer) {
         struct xpart *xp = &xparts[pid[i]];
 
 #ifdef SHADOWFAX_NEW_SPH
-        float hnew = delaunay_get_search_radius(
+        float hnew = (float)delaunay_get_search_radius(
             &c->hydro.deltess, pid[i] + c->hydro.deltess.vertex_start);
         if (hnew >= p->h) {
           /* Use h_0 array for previous search radii */
