@@ -64,8 +64,8 @@ inline static void delaunay_init(struct delaunay* restrict d,
   d->active = 1;
 
   /* allocate memory for all the arrays and queues */
-  d->vertices = (double*)swift_malloc("c.h.d.vertices",
-                                      vertex_size * 3 * sizeof(double));
+  d->vertices =
+      (double*)swift_malloc("c.h.d.vertices", vertex_size * 3 * sizeof(double));
   d->vertex_size = vertex_size;
   d->rescaled_vertices = (double*)swift_malloc(
       "c.h.d.rescaled_vertices", vertex_size * 3 * sizeof(double));
@@ -73,11 +73,10 @@ inline static void delaunay_init(struct delaunay* restrict d,
       "c.h.d.integer_vertices", vertex_size * 3 * sizeof(unsigned long int));
   d->vertex_tetrahedron_links = (int*)swift_malloc(
       "c.h.d.vertex_tetrahedron_links", vertex_size * sizeof(int));
-  d->vertex_tetrahedron_index =
-      (int*)swift_malloc("c.h.d.vertex_tetrahedron_index",
-                         vertex_size * sizeof(int));
-  d->search_radii = (double*)swift_malloc("c.h.d.search_radii",
-                                          vertex_size * sizeof(double));
+  d->vertex_tetrahedron_index = (int*)swift_malloc(
+      "c.h.d.vertex_tetrahedron_index", vertex_size * sizeof(int));
+  d->search_radii =
+      (double*)swift_malloc("c.h.d.search_radii", vertex_size * sizeof(double));
   d->part_pointers = (struct part**)swift_malloc(
       "c.h.d.part_pointers", vertex_size * sizeof(struct part*));
   d->tetrahedra = (struct tetrahedron*)swift_malloc(
@@ -87,9 +86,8 @@ inline static void delaunay_init(struct delaunay* restrict d,
   int_lifo_queue_init(&d->tetrahedra_to_check, 10);
   int_lifo_queue_init(&d->free_tetrahedron_indices, 10);
   int3_fifo_queue_init(&d->get_radius_neighbour_info_queue, 10);
-  d->get_radius_neighbour_flags =
-      (int*)swift_malloc("c.h.d.get_radius_neighbour_flags",
-                         vertex_size * sizeof(int));
+  d->get_radius_neighbour_flags = (int*)swift_malloc(
+      "c.h.d.get_radius_neighbour_flags", vertex_size * sizeof(int));
 
   /* initialise the structure used to perform exact geometrical tests */
   geometry3d_init(&d->geometry);
@@ -228,8 +226,7 @@ inline static void delaunay_destroy(struct delaunay* restrict d) {
   swift_free("c.h.d.rescaled_vertices", d->rescaled_vertices);
   swift_free("c.h.d.integer_vertices", d->integer_vertices);
   swift_free("c.h.d.vertex_tetrahedron_links", d->vertex_tetrahedron_links);
-  swift_free("c.h.d.vertex_tetrahedron_index",
-             d->vertex_tetrahedron_index);
+  swift_free("c.h.d.vertex_tetrahedron_index", d->vertex_tetrahedron_index);
   swift_free("c.h.d.search_radii", d->search_radii);
   swift_free("c.h.d.part_pointers", d->part_pointers);
   swift_free("c.h.d.tetrahedra", d->tetrahedra);
@@ -237,8 +234,7 @@ inline static void delaunay_destroy(struct delaunay* restrict d) {
   int_lifo_queue_destroy(&d->free_tetrahedron_indices);
   int_lifo_queue_destroy(&d->tetrahedra_containing_vertex);
   int3_fifo_queue_destroy(&d->get_radius_neighbour_info_queue);
-  swift_free("c.h.d.get_radius_neighbour_flags",
-             d->get_radius_neighbour_flags);
+  swift_free("c.h.d.get_radius_neighbour_flags", d->get_radius_neighbour_flags);
   geometry3d_destroy(&d->geometry);
   swift_free("c.h.d.ngb_cell_sids", d->ngb_cell_sids);
   swift_free("c.h.d.ngb_cell_ptrs", d->ngb_cell_ptrs);
@@ -277,7 +273,7 @@ inline static void delaunay_init_tetrahedron(struct delaunay* d, int t, int v0,
       v1, v2, v3);
 #ifdef DELAUNAY_CHECKS
   const int test = delaunay_test_orientation(d, v0, v1, v2, v3);
-  if (test > 0) {
+  if (test >= 0) {
     fprintf(stderr, "Initializing tetrahedron with incorrect orientation!\n");
     fprintf(stderr, "\tTetrahedron: %i\n\tVertices: %i %i %i %i\n", t, v0, v1,
             v2, v3);
@@ -372,9 +368,9 @@ inline static int delaunay_new_vertex(struct delaunay* restrict d, double x,
     d->vertex_size <<= 1;
     d->vertices = (double*)swift_realloc("c.h.d.vertices", d->vertices,
                                          d->vertex_size * 3 * sizeof(double));
-    d->rescaled_vertices = (double*)swift_realloc(
-        "c.h.d.rescaled_vertices", d->rescaled_vertices,
-        d->vertex_size * 3 * sizeof(double));
+    d->rescaled_vertices =
+        (double*)swift_realloc("c.h.d.rescaled_vertices", d->rescaled_vertices,
+                               d->vertex_size * 3 * sizeof(double));
     d->integer_vertices = (unsigned long int*)swift_realloc(
         "c.h.d.integer_vertices", d->integer_vertices,
         d->vertex_size * 3 * sizeof(unsigned long int));
@@ -384,15 +380,14 @@ inline static int delaunay_new_vertex(struct delaunay* restrict d, double x,
     d->vertex_tetrahedron_index = (int*)swift_realloc(
         "c.h.d.vertex_tetrahedron_index", d->vertex_tetrahedron_index,
         d->vertex_size * sizeof(int));
-    d->search_radii =
-        (double*)swift_realloc("c.h.d.search_radii", d->search_radii,
-                               d->vertex_size * sizeof(double));
-    d->part_pointers = (struct part**)swift_realloc(
-        "c.h.d.part_pointers", d->part_pointers,
-        d->vertex_size * sizeof(struct part*));
+    d->search_radii = (double*)swift_realloc(
+        "c.h.d.search_radii", d->search_radii, d->vertex_size * sizeof(double));
+    d->part_pointers =
+        (struct part**)swift_realloc("c.h.d.part_pointers", d->part_pointers,
+                                     d->vertex_size * sizeof(struct part*));
     d->get_radius_neighbour_flags = (int*)swift_realloc(
-        "c.h.d.get_radius_neighbour_flags",
-        d->get_radius_neighbour_flags, d->vertex_size * sizeof(int));
+        "c.h.d.get_radius_neighbour_flags", d->get_radius_neighbour_flags,
+        d->vertex_size * sizeof(int));
   }
 
   delaunay_init_vertex(d, d->vertex_index, x, y, z, p);
@@ -442,9 +437,9 @@ inline static void delaunay_add_new_vertex(struct delaunay* restrict d,
       d->ngb_size <<= 1;
       d->ngb_cell_sids = (int*)swift_realloc(
           "c.h.d.ngb_cell_sids", d->ngb_cell_sids, d->ngb_size * sizeof(int));
-      d->ngb_cell_ptrs = (struct cell**)swift_realloc(
-          "c.h.d.ngb_cell_ptrs", d->ngb_cell_ptrs,
-          d->ngb_size * sizeof(struct cell*));
+      d->ngb_cell_ptrs =
+          (struct cell**)swift_realloc("c.h.d.ngb_cell_ptrs", d->ngb_cell_ptrs,
+                                       d->ngb_size * sizeof(struct cell*));
     }
     delaunay_assert(d->ngb_index == v - d->ngb_offset);
     d->ngb_cell_sids[d->ngb_index] = sid;
