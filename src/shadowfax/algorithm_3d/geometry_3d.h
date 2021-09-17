@@ -667,7 +667,8 @@ static inline void geometry3d_compute_circumcenter_relative_adaptive(
  * See https://mathworld.wolfram.com/Circumsphere.html
  *
  * @param v0, v1, v2, v3 Rescaled coordinates of the corners of the tetrahedron.
- * @param v0ul, v1ul, v2ul, v3ul Integer coordinates of the corners of the tetrahedron.
+ * @param v0ul, v1ul, v2ul, v3ul Integer coordinates of the corners of the
+ * tetrahedron.
  * @param circumcenter (Returned) coordinates of center of circumsphere
  * @param box_side Side of box used to rescale coordinates
  * @param box_anchor Anchor of box used to rescale coordinates
@@ -810,6 +811,38 @@ inline static double geometry3d_compute_centroid_area(
   result[1] /= area;
   result[2] /= area;
   return area;
+}
+
+inline static double geometry3d_ray_plane_intersect(double* restrict v_start,
+                                                    double* restrict v_end,
+                                                    double* restrict p1,
+                                                    double* restrict p2,
+                                                    double* restrict p3) {
+
+  /* Setup useful variables */
+  /* Vectors determining plane */
+  const double v1[3] = {p1[0] - p3[0], p1[1] - p3[1], p1[2] - p3[2]};
+  const double v2[3] = {p2[0] - p3[0], p2[1] - p3[1], p2[2] - p3[2]};
+  /* Normal vector to plane */
+  const double n[3] = {v1[1] * v2[2] - v1[2] * v2[1],
+                       v2[0] * v1[2] - v2[2] * v1[0],
+                       v1[0] * v2[2] - v1[2] * v2[0]};
+  /* ray direction */
+  const double k[3] = {v_end[0] - v_start[0], v_end[1] - v_start[1],
+                       v_end[2] - v_start[2]};
+  double norm_k = sqrt(k[0] * k[0] + k[1] * k[1] + k[2] * k[2]);
+
+  /* Compute result (see Camps 2013) */
+  double numerator = n[0] * (p3[0] - v_start[0]) + n[1] * (p3[1] - v_start[1]) +
+                     n[1] * (p3[1] - v_start[1]);
+  double denominator =
+      n[0] * k[0] / norm_k + n[1] * k[1] / norm_k + n[2] * k[2] / norm_k;
+
+  if (denominator == 0.) {
+    return DBL_MAX;
+  }
+
+  return numerator / denominator;
 }
 
 #endif  // SWIFTSIM_GEOMETRY_3D_H
