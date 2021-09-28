@@ -826,22 +826,19 @@ inline static double geometry3d_ray_plane_intersect(double* restrict v_start,
   /* Normal vector to plane */
   const double n[3] = {v1[1] * v2[2] - v1[2] * v2[1],
                        v2[0] * v1[2] - v2[2] * v1[0],
-                       v1[0] * v2[2] - v1[2] * v2[0]};
+                       v1[0] * v2[1] - v1[1] * v2[0]};
   /* ray direction */
   const double k[3] = {v_end[0] - v_start[0], v_end[1] - v_start[1],
                        v_end[2] - v_start[2]};
   double norm_k = sqrt(k[0] * k[0] + k[1] * k[1] + k[2] * k[2]);
 
   /* Compute result (see Camps 2013) */
-  double numerator = n[0] * (p3[0] - v_start[0]) + n[1] * (p3[1] - v_start[1]) +
-                     n[1] * (p3[1] - v_start[1]);
-  double denominator =
-      n[0] * k[0] / norm_k + n[1] * k[1] / norm_k + n[2] * k[2] / norm_k;
-
+  double denominator = (n[0] * k[0] + n[1] * k[1] + n[2] * k[2]) / norm_k;
   if (denominator == 0.) {
     return DBL_MAX;
   }
-
+  double numerator = n[0] * (p3[0] - v_start[0]) + n[1] * (p3[1] - v_start[1]) +
+                     n[2] * (p3[2] - v_start[2]);
   return numerator / denominator;
 }
 

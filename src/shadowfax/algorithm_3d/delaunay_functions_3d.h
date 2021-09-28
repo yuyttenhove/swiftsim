@@ -559,9 +559,8 @@ inline static int delaunay_find_tetrahedra_containing_vertex(
     }
 #endif
     int non_axis_v_idx[4];
-    int possible_next_tetrahedra[4];
-    int possible_next_tetrahedra_faces[12];
-    int n_possible_next_tetrahedra = 0;
+    int next_tetrahedron_idx = -1;
+    double min_dist = DBL_MAX;
     double centroid[3];
     geometry3d_compute_centroid_tetrahedron(
         d->vertices[3 * v0], d->vertices[3 * v0 + 1], d->vertices[3 * v0 + 2],
@@ -575,53 +574,61 @@ inline static int delaunay_find_tetrahedra_containing_vertex(
                                                      el, ad, bd, cd, ed);
     if (test_abce > 0) {
       /* v outside face opposite of v3 */
-      possible_next_tetrahedra_faces[3 * n_possible_next_tetrahedra] = v0;
-      possible_next_tetrahedra_faces[3 * n_possible_next_tetrahedra + 1] = v1;
-      possible_next_tetrahedra_faces[3 * n_possible_next_tetrahedra + 2] = v2;
-      possible_next_tetrahedra[n_possible_next_tetrahedra] =
-          tetrahedron->neighbours[3];
-      n_possible_next_tetrahedra++;
+      double dist = geometry3d_ray_plane_intersect(
+          centroid, &d->vertices[3 * v], &d->vertices[3 * v0],
+          &d->vertices[3 * v1], &d->vertices[3 * v2]);
+      if (dist < 0) {
+        error("Impossible scenario!");
+      } else if (dist < min_dist) {
+        min_dist = dist;
+        next_tetrahedron_idx = tetrahedron->neighbours[3];
+      }
     }
     const int test_acde = geometry3d_orient_adaptive(&d->geometry, al, cl, dl,
                                                      el, ad, cd, dd, ed);
     if (test_acde > 0) {
       /* v outside face opposite of v1 */
-      possible_next_tetrahedra_faces[3 * n_possible_next_tetrahedra] = v0;
-      possible_next_tetrahedra_faces[3 * n_possible_next_tetrahedra + 1] = v2;
-      possible_next_tetrahedra_faces[3 * n_possible_next_tetrahedra + 2] = v3;
-      possible_next_tetrahedra[n_possible_next_tetrahedra] =
-          tetrahedron->neighbours[1];
-      n_possible_next_tetrahedra++;
+      double dist = geometry3d_ray_plane_intersect(
+          centroid, &d->vertices[3 * v], &d->vertices[3 * v0],
+          &d->vertices[3 * v2], &d->vertices[3 * v3]);
+      if (dist < 0) {
+        error("Impossible scenario!");
+      } else if (dist < min_dist) {
+        min_dist = dist;
+        next_tetrahedron_idx = tetrahedron->neighbours[1];
+      }
     }
     const int test_adbe = geometry3d_orient_adaptive(&d->geometry, al, dl, bl,
                                                      el, ad, dd, bd, ed);
     if (test_adbe > 0) {
       /* v outside face opposite of v2 */
-      possible_next_tetrahedra_faces[3 * n_possible_next_tetrahedra] = v0;
-      possible_next_tetrahedra_faces[3 * n_possible_next_tetrahedra + 1] = v1;
-      possible_next_tetrahedra_faces[3 * n_possible_next_tetrahedra + 2] = v3;
-      possible_next_tetrahedra[n_possible_next_tetrahedra] =
-          tetrahedron->neighbours[2];
-      n_possible_next_tetrahedra++;
+      double dist = geometry3d_ray_plane_intersect(
+          centroid, &d->vertices[3 * v], &d->vertices[3 * v0],
+          &d->vertices[3 * v1], &d->vertices[3 * v3]);
+      if (dist < 0) {
+        error("Impossible scenario!");
+      } else if (dist < min_dist) {
+        min_dist = dist;
+        next_tetrahedron_idx = tetrahedron->neighbours[2];
+      }
     }
     const int test_bdce = geometry3d_orient_adaptive(&d->geometry, bl, dl, cl,
                                                      el, bd, dd, cd, ed);
     if (test_bdce > 0) {
       /* v outside face opposite of v0 */
-      possible_next_tetrahedra_faces[3 * n_possible_next_tetrahedra] = v1;
-      possible_next_tetrahedra_faces[3 * n_possible_next_tetrahedra + 1] = v2;
-      possible_next_tetrahedra_faces[3 * n_possible_next_tetrahedra + 2] = v3;
-      possible_next_tetrahedra[n_possible_next_tetrahedra] =
-          tetrahedron->neighbours[0];
-      n_possible_next_tetrahedra++;
+      double dist = geometry3d_ray_plane_intersect(
+          centroid, &d->vertices[3 * v], &d->vertices[3 * v1],
+          &d->vertices[3 * v2], &d->vertices[3 * v3]);
+      if (dist < 0) {
+        error("Impossible scenario!");
+      } else if (dist < min_dist) {
+        min_dist = dist;
+        next_tetrahedron_idx = tetrahedron->neighbours[0];
+      }
     }
 
-    if (n_possible_next_tetrahedra > 0) {
-      delaunay_assert(n_possible_next_tetrahedra < 4);
-      int idx = delaunay_choose(d, possible_next_tetrahedra_faces,
-                                n_possible_next_tetrahedra, centroid,
-                                &d->vertices[3 * v]);
-      tetrahedron_idx = possible_next_tetrahedra[idx];
+    if (next_tetrahedron_idx >= 0) {
+      tetrahedron_idx = next_tetrahedron_idx;
       continue;
     }
 
@@ -1615,7 +1622,7 @@ inline static int delaunay_check_tetrahedron(struct delaunay* d, const int t,
     for (i = 0; i < 4 && tests[i] < 0; ++i) {
     }
     if (i == 4) {
-      /* v4 inside sphere around v1, v2 and v4: need to do a 2 to 3 flip */
+      /* v4 inside sphere around v0, v1, v2 and v3: need to do a 2 to 3 flip */
       delaunay_log("Performing 2 to 3 flip with %i and %i", t, ngb);
       delaunay_two_to_three_flip(d, t, ngb, top, idx_in_ngb);
     } else if (tests[i] == 0) {
@@ -1960,6 +1967,14 @@ inline static void delaunay_check_tessellation(struct delaunay* restrict d) {
     int vt0_1 = d->tetrahedra[t0].vertices[1];
     int vt0_2 = d->tetrahedra[t0].vertices[2];
     int vt0_3 = d->tetrahedra[t0].vertices[3];
+
+    int test_orientation =
+        delaunay_test_orientation(d, vt0_0, vt0_1, vt0_2, vt0_3);
+    if (test_orientation >= 0) {
+      fprintf(stderr, "Tetrahedron %i has incorrect orientation!", t0);
+      abort();
+    }
+
     /* loop over neighbours */
     for (int i = 0; i < 4; i++) {
       int t_ngb = d->tetrahedra[t0].neighbours[i];
@@ -2049,35 +2064,6 @@ inline static int positive_permutation(int a, int b, int c, int d) {
   } else {
     return d % 2 == 0;
   }
-}
-
-inline static int delaunay_choose(struct delaunay* restrict d,
-                                  const int* restrict possible_faces,
-                                  int n_possible_tetrahedra,
-                                  double* restrict start,
-                                  double* restrict end) {
-  delaunay_assert(n_possible_tetrahedra > 0);
-
-  if (n_possible_tetrahedra < 2) return 0;
-
-  double min_dist = DBL_MAX;
-  int min_idx = -1;
-  for (int i = 0; i < n_possible_tetrahedra; i++) {
-    const int* face = &possible_faces[i];
-    double dist = geometry3d_ray_plane_intersect(
-        start, end, &d->vertices[3 * face[0]], &d->vertices[3 * face[1]],
-        &d->vertices[3 * face[2]]);
-
-    if (dist > 0 && dist < min_dist) {
-      min_dist = dist;
-      min_idx = i;
-    }
-  }
-  if (min_idx < 0) {
-    delaunay_log("Warning: no face found using ray plane intersection!")
-    return rand() % n_possible_tetrahedra;
-  }
-  return min_idx;
 }
 
 #endif  // SWIFTSIM_DELAUNAY_FUNCTIONS_3D_H
