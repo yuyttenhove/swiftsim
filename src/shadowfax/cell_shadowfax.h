@@ -60,9 +60,8 @@ cell_malloc_delaunay_tessellation(struct cell *c) {
       c->hydro.hilbert_keys = (unsigned long *)swift_realloc(
           "c.h.hilbert_keys", c->hydro.hilbert_keys,
           count * sizeof(unsigned long));
-      c->hydro.hilbert_r_sort =
-          (int *)swift_realloc("c.h.hilbert_r_sort",
-                               c->hydro.hilbert_r_sort, count * sizeof(int));
+      c->hydro.hilbert_r_sort = (int *)swift_realloc(
+          "c.h.hilbert_r_sort", c->hydro.hilbert_r_sort, count * sizeof(int));
       c->hydro.hilbert_keys_size = count;
     }
 #endif
@@ -72,8 +71,8 @@ cell_malloc_delaunay_tessellation(struct cell *c) {
     /* Malloc hilbert keys */
     c->hydro.hilbert_keys = (unsigned long *)swift_malloc(
         "c.h.hilbert_keys", count * sizeof(unsigned long));
-    c->hydro.hilbert_r_sort = (int *)swift_malloc(
-        "c.h.hilbert_r_sort", count * sizeof(int));
+    c->hydro.hilbert_r_sort =
+        (int *)swift_malloc("c.h.hilbert_r_sort", count * sizeof(int));
     c->hydro.hilbert_keys_size = count;
 #endif
     c->hydro.shadowfax_enabled = 1;
@@ -607,7 +606,7 @@ cell_shadowfax_do_self1_density(const struct engine *e,
     int idx = i;
 #endif
     /* Get a pointer to the idx-th particle. */
-    struct part *restrict p = &parts[i];
+    struct part *restrict p = &parts[idx];
     delaunay_add_local_vertex(&c->hydro.deltess, idx, p->x[0], p->x[1], p->x[2],
                               p);
   }
