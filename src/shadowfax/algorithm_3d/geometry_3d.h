@@ -813,33 +813,69 @@ inline static double geometry3d_compute_centroid_area(
   return area;
 }
 
-inline static double geometry3d_ray_plane_intersect(double* restrict v_start,
-                                                    double* restrict v_end,
-                                                    double* restrict p1,
-                                                    double* restrict p2,
-                                                    double* restrict p3) {
+inline static void geometry3d_cross(const double* v1, const double* v2, double* restrict out_cross) {
+  out_cross[0] = v1[1] * v2[2] - v1[2] * v2[1];
+  out_cross[1] = v2[0] * v1[2] - v2[2] * v1[0];
+  out_cross[2] = v1[0] * v2[1] - v1[1] * v2[0];
+}
+
+inline static double geometry3d_dot(const double* v1, const double* v2) {
+  return v1[0] * v2[0] + v1[1] * v2[1] + v1[2] * v2[2];
+}
+
+inline static double geometry3d_ray_plane_intersect(
+    const double* restrict ray_origin, const double* restrict ray_direction,
+    const double* restrict p1, const double* restrict p2,
+    const double* restrict p3) {
 
   /* Setup useful variables */
   /* Vectors determining plane */
   const double v1[3] = {p1[0] - p3[0], p1[1] - p3[1], p1[2] - p3[2]};
   const double v2[3] = {p2[0] - p3[0], p2[1] - p3[1], p2[2] - p3[2]};
   /* Normal vector to plane */
-  const double n[3] = {v1[1] * v2[2] - v1[2] * v2[1],
-                       v2[0] * v1[2] - v2[2] * v1[0],
-                       v1[0] * v2[1] - v1[1] * v2[0]};
-  /* ray direction */
-  const double k[3] = {v_end[0] - v_start[0], v_end[1] - v_start[1],
-                       v_end[2] - v_start[2]};
-  double norm_k = sqrt(k[0] * k[0] + k[1] * k[1] + k[2] * k[2]);
+  double n[3];
+  geometry3d_cross(v1, v2, n);
 
   /* Compute result (see Camps 2013) */
-  double denominator = (n[0] * k[0] + n[1] * k[1] + n[2] * k[2]) / norm_k;
+  double denominator = geometry3d_dot(n, ray_direction);
   if (denominator == 0.) {
     return DBL_MAX;
   }
-  double numerator = n[0] * (p3[0] - v_start[0]) + n[1] * (p3[1] - v_start[1]) +
-                     n[2] * (p3[2] - v_start[2]);
+  double numerator = n[0] * (p3[0] - ray_origin[0]) +
+                     n[1] * (p3[1] - ray_origin[1]) +
+                     n[2] * (p3[2] - ray_origin[2]);
   return numerator / denominator;
+}
+
+inline static int geometry3d_ray_triangle_intersect(
+    const double* restrict ray_origin, const double* restrict ray_direction,
+    const double* restrict p1, const double* restrict p2,
+    const double* restrict p3, double* out_distance) {
+
+  /* Setup useful variables */
+  /* edges of triangle */
+  const double edge1[3] = {p2[0] - p1[0], p2[1] - p1[1], p2[2] - p1[2]};
+  const double edge2[3] = {p3[0] - p1[0], p3[1] - p1[1], p3[2] - p1[2]};
+
+  double h[3];
+  geometry3d_cross(ray_direction, edge2, h);
+  double a = geometry3d_dot(edge1, h);
+  if (a == 0) {
+    /* Ray parallel to triangle */
+    *out_distance = DBL_MAX;
+    return 0;
+  }
+
+  double f = 1.0 / a;
+  double s[3] = {ray_origin[0] - p1[0], ray_origin[1] - p1[1], ray_origin[2] - p1[2]};
+  double u = f * geometry3d_dot(s, h);
+
+  double q[3];
+  geometry3d_cross(s, edge1, q);
+  double v = f * geometry3d_dot(ray_direction, q);
+
+  *out_distance = f * geometry3d_dot(edge2, q);
+  return (u < 0.0 || v < 0.0 || u + v > 1.0);
 }
 
 #endif  // SWIFTSIM_GEOMETRY_3D_H

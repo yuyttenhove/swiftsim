@@ -30,10 +30,6 @@ inline static int positive_permutation(int a, int b, int c, int d);
 inline static double delaunay_get_radius(struct delaunay* restrict d, int t);
 inline static int delaunay_test_orientation(struct delaunay* restrict d, int v0,
                                             int v1, int v2, int v3);
-inline static int delaunay_choose(struct delaunay* restrict d,
-                                  const int* restrict possible_faces,
-                                  int n_possible_tetrahedra,
-                                  double* restrict start, double* restrict end);
 
 /**
  * @brief Initialize the Delaunay tessellation.
@@ -561,6 +557,7 @@ inline static int delaunay_find_tetrahedra_containing_vertex(
     int non_axis_v_idx[4];
     int next_tetrahedron_idx = -1;
     double min_dist = DBL_MAX;
+    double dist;
     double centroid[3];
     geometry3d_compute_centroid_tetrahedron(
         d->vertices[3 * v0], d->vertices[3 * v0 + 1], d->vertices[3 * v0 + 2],
@@ -568,15 +565,27 @@ inline static int delaunay_find_tetrahedra_containing_vertex(
         d->vertices[3 * v2], d->vertices[3 * v2 + 1], d->vertices[3 * v2 + 2],
         d->vertices[3 * v3], d->vertices[3 * v3 + 1], d->vertices[3 * v3 + 2],
         centroid);
+    double ray_direction[3] = {d->vertices[3 * v] - centroid[0],
+                               d->vertices[3 * v + 1] - centroid[1],
+                               d->vertices[3 * v + 2] - centroid[2]};
+    double norm_ray_direction = sqrt(ray_direction[0] * ray_direction[0] +
+                                     ray_direction[1] * ray_direction[1] +
+                                     ray_direction[2] * ray_direction[2]);
+    ray_direction[0] /= norm_ray_direction;
+    ray_direction[1] /= norm_ray_direction;
+    ray_direction[2] /= norm_ray_direction;
 
     /* Check whether the point is inside or outside all four faces */
     const int test_abce = geometry3d_orient_adaptive(&d->geometry, al, bl, cl,
                                                      el, ad, bd, cd, ed);
     if (test_abce > 0) {
       /* v outside face opposite of v3 */
-      double dist = geometry3d_ray_plane_intersect(
-          centroid, &d->vertices[3 * v], &d->vertices[3 * v0],
-          &d->vertices[3 * v1], &d->vertices[3 * v2]);
+      if (geometry3d_ray_triangle_intersect(
+          centroid, ray_direction, &d->vertices[3 * v0],
+          &d->vertices[3 * v1], &d->vertices[3 * v2], &dist)) {
+        tetrahedron_idx = tetrahedron->neighbours[3];
+        continue;
+      }
       if (dist < 0) {
         error("Impossible scenario!");
       } else if (dist < min_dist) {
@@ -588,9 +597,12 @@ inline static int delaunay_find_tetrahedra_containing_vertex(
                                                      el, ad, cd, dd, ed);
     if (test_acde > 0) {
       /* v outside face opposite of v1 */
-      double dist = geometry3d_ray_plane_intersect(
-          centroid, &d->vertices[3 * v], &d->vertices[3 * v0],
-          &d->vertices[3 * v2], &d->vertices[3 * v3]);
+      if (geometry3d_ray_triangle_intersect(
+          centroid, ray_direction, &d->vertices[3 * v0],
+          &d->vertices[3 * v2], &d->vertices[3 * v3], &dist)) {
+        tetrahedron_idx = tetrahedron->neighbours[1];
+        continue;
+      }
       if (dist < 0) {
         error("Impossible scenario!");
       } else if (dist < min_dist) {
@@ -602,9 +614,12 @@ inline static int delaunay_find_tetrahedra_containing_vertex(
                                                      el, ad, dd, bd, ed);
     if (test_adbe > 0) {
       /* v outside face opposite of v2 */
-      double dist = geometry3d_ray_plane_intersect(
-          centroid, &d->vertices[3 * v], &d->vertices[3 * v0],
-          &d->vertices[3 * v1], &d->vertices[3 * v3]);
+      if (geometry3d_ray_triangle_intersect(
+          centroid, ray_direction, &d->vertices[3 * v0],
+          &d->vertices[3 * v1], &d->vertices[3 * v3], &dist)) {
+        tetrahedron_idx = tetrahedron->neighbours[2];
+        continue;
+      }
       if (dist < 0) {
         error("Impossible scenario!");
       } else if (dist < min_dist) {
@@ -616,9 +631,12 @@ inline static int delaunay_find_tetrahedra_containing_vertex(
                                                      el, bd, dd, cd, ed);
     if (test_bdce > 0) {
       /* v outside face opposite of v0 */
-      double dist = geometry3d_ray_plane_intersect(
-          centroid, &d->vertices[3 * v], &d->vertices[3 * v1],
-          &d->vertices[3 * v2], &d->vertices[3 * v3]);
+      if (geometry3d_ray_triangle_intersect(
+          centroid, ray_direction, &d->vertices[3 * v1],
+          &d->vertices[3 * v2], &d->vertices[3 * v3], &dist)) {
+        tetrahedron_idx = tetrahedron->neighbours[0];
+        continue;
+      }
       if (dist < 0) {
         error("Impossible scenario!");
       } else if (dist < min_dist) {
