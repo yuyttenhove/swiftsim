@@ -823,10 +823,10 @@ inline static double geometry3d_dot(const double* v1, const double* v2) {
   return v1[0] * v2[0] + v1[1] * v2[1] + v1[2] * v2[2];
 }
 
-inline static double geometry3d_ray_plane_intersect(
+inline static int geometry3d_ray_plane_intersect(
     const double* restrict ray_origin, const double* restrict ray_direction,
     const double* restrict p1, const double* restrict p2,
-    const double* restrict p3) {
+    const double* restrict p3, double* restrict out_distance) {
 
   /* Setup useful variables */
   /* Vectors determining plane */
@@ -839,12 +839,14 @@ inline static double geometry3d_ray_plane_intersect(
   /* Compute result (see Camps 2013) */
   double denominator = geometry3d_dot(n, ray_direction);
   if (denominator == 0.) {
-    return DBL_MAX;
+    *out_distance = DBL_MAX;
+    return 0;
   }
   double numerator = n[0] * (p3[0] - ray_origin[0]) +
                      n[1] * (p3[1] - ray_origin[1]) +
                      n[2] * (p3[2] - ray_origin[2]);
-  return numerator / denominator;
+  *out_distance = numerator / denominator;
+  return 0;
 }
 
 inline static int geometry3d_ray_triangle_intersect(

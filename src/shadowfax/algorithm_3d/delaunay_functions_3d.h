@@ -556,7 +556,7 @@ inline static int delaunay_find_tetrahedra_containing_vertex(
 #endif
     int non_axis_v_idx[4];
     int next_tetrahedron_idx = -1;
-    double min_dist = DBL_MAX;
+    double min_dist = NAN;
     double dist;
     double centroid[3];
     geometry3d_compute_centroid_tetrahedron(
@@ -571,24 +571,25 @@ inline static int delaunay_find_tetrahedra_containing_vertex(
     double norm_ray_direction = sqrt(ray_direction[0] * ray_direction[0] +
                                      ray_direction[1] * ray_direction[1] +
                                      ray_direction[2] * ray_direction[2]);
-    ray_direction[0] /= norm_ray_direction;
-    ray_direction[1] /= norm_ray_direction;
-    ray_direction[2] /= norm_ray_direction;
+    if (norm_ray_direction != 0) {
+      ray_direction[0] /= norm_ray_direction;
+      ray_direction[1] /= norm_ray_direction;
+      ray_direction[2] /= norm_ray_direction;
+    }
 
     /* Check whether the point is inside or outside all four faces */
     const int test_abce = geometry3d_orient_adaptive(&d->geometry, al, bl, cl,
                                                      el, ad, bd, cd, ed);
     if (test_abce > 0) {
       /* v outside face opposite of v3 */
-      if (geometry3d_ray_triangle_intersect(
-          centroid, ray_direction, &d->vertices[3 * v0],
-          &d->vertices[3 * v1], &d->vertices[3 * v2], &dist)) {
+      if (geometry3d_ray_plane_intersect(
+              centroid, ray_direction, &d->vertices[3 * v0],
+              &d->vertices[3 * v1], &d->vertices[3 * v2], &dist)) {
         tetrahedron_idx = tetrahedron->neighbours[3];
         continue;
       }
-      if (dist < 0) {
-        error("Impossible scenario!");
-      } else if (dist < min_dist) {
+      if (isnan(min_dist) || dist < min_dist) {
+        delaunay_assert(dist > -1e-13);
         min_dist = dist;
         next_tetrahedron_idx = tetrahedron->neighbours[3];
       }
@@ -597,15 +598,14 @@ inline static int delaunay_find_tetrahedra_containing_vertex(
                                                      el, ad, cd, dd, ed);
     if (test_acde > 0) {
       /* v outside face opposite of v1 */
-      if (geometry3d_ray_triangle_intersect(
-          centroid, ray_direction, &d->vertices[3 * v0],
-          &d->vertices[3 * v2], &d->vertices[3 * v3], &dist)) {
+      if (geometry3d_ray_plane_intersect(
+              centroid, ray_direction, &d->vertices[3 * v0],
+              &d->vertices[3 * v2], &d->vertices[3 * v3], &dist)) {
         tetrahedron_idx = tetrahedron->neighbours[1];
         continue;
       }
-      if (dist < 0) {
-        error("Impossible scenario!");
-      } else if (dist < min_dist) {
+      if (isnan(min_dist) || dist < min_dist) {
+        delaunay_assert(dist > -1e-13);
         min_dist = dist;
         next_tetrahedron_idx = tetrahedron->neighbours[1];
       }
@@ -614,15 +614,14 @@ inline static int delaunay_find_tetrahedra_containing_vertex(
                                                      el, ad, dd, bd, ed);
     if (test_adbe > 0) {
       /* v outside face opposite of v2 */
-      if (geometry3d_ray_triangle_intersect(
-          centroid, ray_direction, &d->vertices[3 * v0],
-          &d->vertices[3 * v1], &d->vertices[3 * v3], &dist)) {
+      if (geometry3d_ray_plane_intersect(
+              centroid, ray_direction, &d->vertices[3 * v0],
+              &d->vertices[3 * v1], &d->vertices[3 * v3], &dist)) {
         tetrahedron_idx = tetrahedron->neighbours[2];
         continue;
       }
-      if (dist < 0) {
-        error("Impossible scenario!");
-      } else if (dist < min_dist) {
+      if (isnan(min_dist) || dist < min_dist) {
+        delaunay_assert(dist > -1e-13);
         min_dist = dist;
         next_tetrahedron_idx = tetrahedron->neighbours[2];
       }
@@ -631,15 +630,14 @@ inline static int delaunay_find_tetrahedra_containing_vertex(
                                                      el, bd, dd, cd, ed);
     if (test_bdce > 0) {
       /* v outside face opposite of v0 */
-      if (geometry3d_ray_triangle_intersect(
-          centroid, ray_direction, &d->vertices[3 * v1],
-          &d->vertices[3 * v2], &d->vertices[3 * v3], &dist)) {
+      if (geometry3d_ray_plane_intersect(
+              centroid, ray_direction, &d->vertices[3 * v1],
+              &d->vertices[3 * v2], &d->vertices[3 * v3], &dist)) {
         tetrahedron_idx = tetrahedron->neighbours[0];
         continue;
       }
-      if (dist < 0) {
-        error("Impossible scenario!");
-      } else if (dist < min_dist) {
+      if (isnan(min_dist) || dist < min_dist) {
+        delaunay_assert(dist > -1e-13);
         min_dist = dist;
         next_tetrahedron_idx = tetrahedron->neighbours[0];
       }
@@ -651,6 +649,9 @@ inline static int delaunay_find_tetrahedra_containing_vertex(
     }
 
     /* Point inside tetrahedron, check for degenerate cases */
+    delaunay_assert(test_abce <= 0 && test_acde <= 0 && test_adbe <= 0 &&
+                    test_bdce <= 0);
+
     int n_zero_tests = 0;
     int_lifo_queue_push(&d->tetrahedra_containing_vertex, tetrahedron_idx);
     if (test_abce == 0) {
@@ -1016,6 +1017,33 @@ inline static void delaunay_n_to_2n_flip(struct delaunay* d, int v,
     }
   }
 
+#ifdef DELAUNAY_CHECKS
+  /* Check that the new vertex lies in between the axis vertices */
+  const double* v_new = &d->vertices[3 * v];
+  const double* a0 = &d->vertices[3 * t0->vertices[axis_idx_in_tj[0][0]]];
+  const double* a1 = &d->vertices[3 * t0->vertices[axis_idx_in_tj[0][1]]];
+  const double vec1[3] = {v_new[0] - a0[0], v_new[1] - a0[1], v_new[2] - a0[2]};
+  const double vec2[3] = {a1[0] - a0[0], a1[1] - a0[1], a1[2] - a0[2]};
+  const double norm1 = geometry3d_dot(vec1, vec1);
+  const double norm2 = geometry3d_dot(vec2, vec2);
+  const double dot12 = geometry3d_dot(vec1, vec2);
+  if (fabs(dot12 / sqrt(norm1 * norm2) - 1) > 1e-6) {
+    abort();
+  }
+  if (dot12 < 0 || dot12 > norm2) {
+    abort();
+  }
+
+  /* Check that this t0 has the right orientation using this notation */
+  int orientation = delaunay_test_orientation(
+      d, t0->vertices[t1_idx_in_t0], t0->vertices[axis_idx_in_tj[0][0]],
+      t0->vertices[tn_min_1_idx_in_t0], t0->vertices[axis_idx_in_tj[0][1]]);
+  if (orientation >= 0) {
+    fprintf(stderr, "Incorrect orientation with current notation!");
+    abort();
+  }
+#endif
+
   /* set some variables to the values in the documentation figure */
   int vert[n + 3], ngbs[2 * n], idx_in_ngb[2 * n];
   int tprev_in_tcur = tn_min_1_idx_in_t0;
@@ -1030,9 +1058,9 @@ inline static void delaunay_n_to_2n_flip(struct delaunay* d, int v,
     idx_in_ngb[2 * j] = tj->index_in_neighbour[axis_idx_in_tj[j][0]];
     idx_in_ngb[2 * j + 1] = tj->index_in_neighbour[axis_idx_in_tj[j][1]];
   }
-  vert[n] = d->tetrahedra[t[0]].vertices[axis_idx_in_tj[0][0]];
-  vert[n + 1] = d->tetrahedra[t[0]].vertices[axis_idx_in_tj[0][1]];
-  vert[n + 2] = v;
+  int vn = d->tetrahedra[t[0]].vertices[axis_idx_in_tj[0][1]];
+  int vn_plus_1 = d->tetrahedra[t[0]].vertices[axis_idx_in_tj[0][0]];
+  int vn_plus_2 = v;
 
   /* create n new tetrahedra and overwrite the n existing ones */
   int tn[2 * n];
@@ -1041,46 +1069,55 @@ inline static void delaunay_n_to_2n_flip(struct delaunay* d, int v,
     tn[2 * j + 1] = delaunay_new_tetrahedron(d);
   }
   for (int j = 0; j < n; j++) {
-    /* Upper tetrahedron (connected to axis0 = vert[n], see figure) */
+    /* Non-axis vertices */
+    int vj = vert[j];
+    int vj_plus_1 = vert[(j + 1) % n];
+
+    /* Upper tetrahedron (connected to axis1 = v_n, see figure) */
     int tn0 = tn[2 * j];
-    int v00 = vert[j];
-    int v01 = vert[n]; /* axis0 */
-    int v02 = vert[(j + 1) % n];
-    int v03 = vert[n + 2]; /* new vertex */
+    delaunay_init_tetrahedron(d, tn0, vj, vn_plus_2, vj_plus_1, vn);
 
-    /* Lower tetrahedron (connected to axis1 = vert[n + 1], see figure) */
+    /* Lower tetrahedron (connected to axis0 = vn_plus_1, see figure) */
     int tn1 = tn[2 * j + 1];
-    int v10 = v00;
-    int v11 = vert[n + 2]; /* new vertex */
-    int v12 = v02;
-    int v13 = vert[n + 1]; /* axis1 */
-
-    /* Initialize tetrahedra */
-    delaunay_init_tetrahedron(d, tn0, v00, v01, v02, v03);
-    delaunay_init_tetrahedron(d, tn1, v10, v11, v12, v13);
+    delaunay_init_tetrahedron(d, tn1, vj_plus_1, vn_plus_2, vj, vn_plus_1);
 
     /* Setup neighbour relations */
     /* Upper tetrahedron (see figure) */
     int t_next_upper = tn[(2 * (j + 1)) % (2 * n)];
     int t_prev_upper = tn[(2 * (j - 1) + 2 * n) % (2 * n)];
-    int t_ngb_upper = ngbs[2 * j + 1];
-    int idx_in_t_ngb_upper = idx_in_ngb[2 * j + 1];
-    tetrahedron_swap_neighbours(&d->tetrahedra[tn0], t_next_upper, tn1,
-                                t_prev_upper, t_ngb_upper, 2, 3, 0,
-                                idx_in_t_ngb_upper);
+    int t_ngb_upper = ngbs[2 * j];
+    int idx_in_t_ngb_upper = idx_in_ngb[2 * j];
+    tetrahedron_swap_neighbours(&d->tetrahedra[tn0], t_next_upper, t_ngb_upper,
+                                t_prev_upper, tn1, 2, idx_in_t_ngb_upper, 0, 3);
     tetrahedron_swap_neighbour(&d->tetrahedra[t_ngb_upper], idx_in_t_ngb_upper,
-                               tn0, 3);
+                               tn0, 1);
 
     /* Lower tetrahedron (see figure) */
     int t_next_lower = tn[(2 * (j + 1) + 1) % (2 * n)];
     int t_prev_lower = tn[(2 * (j - 1) + 1 + 2 * n) % (2 * n)];
-    int t_ngb_lower = ngbs[2 * j];
-    int idx_in_t_ngb_lower = idx_in_ngb[2 * j];
-    tetrahedron_swap_neighbours(&d->tetrahedra[tn1], t_next_lower, t_ngb_lower,
-                                t_prev_lower, tn0, 2, idx_in_t_ngb_lower, 0, 1);
+    int t_ngb_lower = ngbs[2 * j + 1];
+    int idx_in_t_ngb_lower = idx_in_ngb[2 * j + 1];
+    tetrahedron_swap_neighbours(&d->tetrahedra[tn1], t_prev_lower, t_ngb_lower,
+                                t_next_lower, tn0, 2, idx_in_t_ngb_lower, 0, 3);
     tetrahedron_swap_neighbour(&d->tetrahedra[t_ngb_lower], idx_in_t_ngb_lower,
                                tn1, 1);
   }
+
+#ifdef DELAUNAY_CHECKS
+  for (int j = 0; j < 2 * n; j++) {
+    /* Check neighbour relations */
+    int t_idx = tn[j];
+    struct tetrahedron* this_t = &d->tetrahedra[t_idx];
+    for (int i = 0; i < 4; i++) {
+      struct tetrahedron* t_ngb = &d->tetrahedra[this_t->neighbours[i]];
+      int idx_in_t_ngb = this_t->index_in_neighbour[i];
+      if (t_ngb->neighbours[idx_in_t_ngb] != t_idx) {
+        fprintf(stderr, "Wrong neighbour relation!");
+        abort();
+      }
+    }
+  }
+#endif
 
   /* add new/updated tetrahedra to the queue for checking */
   for (int j = 0; j < 2 * n; j++) {
