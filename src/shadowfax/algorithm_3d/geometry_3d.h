@@ -985,15 +985,6 @@ inline static int geometry3d_ray_triangle_intersect_exact(
   mpz_sub(g->s3y, g->eiy, g->diy);
   mpz_sub(g->s3z, g->eiz, g->diz);
 
-  double direction[3] = {mpz_get_d(g->s3x) / 0x10000000000000llu,
-                         mpz_get_d(g->s3y) / 0x10000000000000llu,
-                         mpz_get_d(g->s3z) / 0x10000000000000llu};
-  double norm = sqrt(direction[0] * direction[0] + direction[1] * direction[1] +
-                     direction[2] * direction[2]);
-  direction[0] /= norm;
-  direction[1] /= norm;
-  direction[2] /= norm;
-
   /* calculate h = direction x edge2 */
   mpz_mul(g->s4x, g->s3y, g->s2z);
   mpz_submul(g->s4x, g->s3z, g->s2y);
@@ -1001,11 +992,6 @@ inline static int geometry3d_ray_triangle_intersect_exact(
   mpz_submul(g->s4y, g->s3x, g->s2z);
   mpz_mul(g->s4z, g->s3x, g->s2y);
   mpz_submul(g->s4z, g->s3y, g->s2x);
-
-  double h[3] = {
-      mpz_get_d(g->s4x) / 0x10000000000000llu / 0x10000000000000llu / norm,
-      mpz_get_d(g->s4y) / 0x10000000000000llu / 0x10000000000000llu / norm,
-      mpz_get_d(g->s4z) / 0x10000000000000llu / 0x10000000000000llu / norm};
 
   /* calculate a = edge1 . h */
   mpz_mul(g->result, g->s1x, g->s4x);

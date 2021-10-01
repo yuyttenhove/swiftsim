@@ -5,6 +5,8 @@
 #ifndef SWIFTSIM_DELAUNAY_FUNCTIONS_3D_H
 #define SWIFTSIM_DELAUNAY_FUNCTIONS_3D_H
 
+#include "ray.h"
+
 /* forward declarations */
 inline static void delaunay_reset(struct delaunay* restrict d,
                                   const double* cell_loc,
