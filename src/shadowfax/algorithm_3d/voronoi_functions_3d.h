@@ -219,14 +219,18 @@ inline static void voronoi_build(struct voronoi *restrict v,
     const double cy = voronoi_vertices[3 * i + 1];
     const double cz = voronoi_vertices[3 * i + 2];
 
-    const double r0 = (cx - v0[0]) * (cx - v0[0]) + (cy - v0[1]) * (cy - v0[1]) +
-                      (cz - v0[2]) * (cz - v0[2]);
-    const double r1 = (cx - v1[0]) * (cx - v1[0]) + (cy - v1[1]) * (cy - v1[1]) +
-                      (cz - v1[2]) * (cz - v1[2]);
-    const double r2 = (cx - v2[0]) * (cx - v2[0]) + (cy - v2[1]) * (cy - v2[1]) +
-                      (cz - v2[2]) * (cz - v2[2]);
-    const double r3 = (cx - v3[0]) * (cx - v3[0]) + (cy - v3[1]) * (cy - v3[1]) +
-                      (cz - v3[2]) * (cz - v3[2]);
+    const double r0 = sqrt((cx - d->vertices[3 * v0]) * (cx - d->vertices[3 * v0]) +
+                           (cy - d->vertices[3 * v0 + 1]) * (cy - d->vertices[3 * v0 + 1]) +
+                           (cz - d->vertices[3 * v0 + 2]) * (cz - d->vertices[3 * v0 + 2]));
+    const double r1 = sqrt((cx - d->vertices[3 * v1]) * (cx - d->vertices[3 * v1]) +
+                           (cy - d->vertices[3 * v1 + 1]) * (cy - d->vertices[3 * v1 + 1]) +
+                           (cz - d->vertices[3 * v1 + 2]) * (cz - d->vertices[3 * v1 + 2]));
+    const double r2 = sqrt((cx - d->vertices[3 * v2]) * (cx - d->vertices[3 * v2]) +
+                           (cy - d->vertices[3 * v2 + 1]) * (cy - d->vertices[3 * v2 + 1]) +
+                           (cz - d->vertices[3 * v2 + 2]) * (cz - d->vertices[3 * v2 + 2]));
+    const double r3 = sqrt((cx - d->vertices[3 * v3]) * (cx - d->vertices[3 * v3]) +
+                           (cy - d->vertices[3 * v3 + 1]) * (cy - d->vertices[3 * v3 + 1]) +
+                           (cz - d->vertices[3 * v3 + 2]) * (cz - d->vertices[3 * v3 + 2]));
     voronoi_assert(double_cmp(r0, r1, 1e5) && double_cmp(r0, r2, 1e5) &&
                    double_cmp(r0, r3, 1e5));
 #endif
