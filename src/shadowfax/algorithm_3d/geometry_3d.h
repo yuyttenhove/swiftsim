@@ -11,8 +11,8 @@
 #ifndef SWIFTSIM_GEOMETRY_3D_H
 #define SWIFTSIM_GEOMETRY_3D_H
 
+#include "delaunay_ray.h"
 #include "error.h"
-#include "ray.h"
 #include "shadowfax/utils.h"
 
 #include <float.h>
@@ -793,7 +793,7 @@ inline static void geometry3d_compute_centroid_tetrahedron_exact(
     unsigned long ax, unsigned long ay, unsigned long az, unsigned long bx,
     unsigned long by, unsigned long bz, unsigned long cx, unsigned long cy,
     unsigned long cz, unsigned long dx, unsigned long dy, unsigned long dz,
-    unsigned long *result) {
+    unsigned long* result) {
   /* x coordinate */
   unsigned long a_rem = ax % 4;
   unsigned long b_rem = bx % 4;
@@ -879,7 +879,8 @@ inline static double geometry3d_compute_centroid_area(
   return area;
 }
 
-inline static void geometry3d_cross(const double* v1, const double* v2, double* restrict out_cross) {
+inline static void geometry3d_cross(const double* v1, const double* v2,
+                                    double* restrict out_cross) {
   out_cross[0] = v1[1] * v2[2] - v1[2] * v2[1];
   out_cross[1] = v2[0] * v1[2] - v2[2] * v1[0];
   out_cross[2] = v1[0] * v2[1] - v1[1] * v2[0];
@@ -890,9 +891,8 @@ inline static double geometry3d_dot(const double* v1, const double* v2) {
 }
 
 inline static int geometry3d_ray_plane_intersect(
-    const double* restrict ray_origin, const double* restrict ray_direction,
-    const double* restrict p1, const double* restrict p2,
-    const double* restrict p3, double* restrict out_distance) {
+    const double* ray_origin, const double* ray_direction, const double* p1,
+    const double* p2, const double* p3, double* out_distance) {
 
   /* Setup useful variables */
   /* Vectors determining plane */
@@ -915,10 +915,9 @@ inline static int geometry3d_ray_plane_intersect(
   return 0;
 }
 
-inline static int geometry3d_ray_triangle_intersect(
-    const double* restrict ray_origin, const double* restrict ray_direction,
-    const double* restrict p1, const double* restrict p2,
-    const double* restrict p3, double* out_distance) {
+inline static int geometry3d_ray_triangle_intersect_non_exact(
+    const struct delaunay_ray* r, const double* p1, const double* p2, const double* p3,
+    double* out_distance) {
 
   /* Setup useful variables */
   /* edges of triangle */
@@ -926,7 +925,7 @@ inline static int geometry3d_ray_triangle_intersect(
   const double edge2[3] = {p3[0] - p1[0], p3[1] - p1[1], p3[2] - p1[2]};
 
   double h[3];
-  geometry3d_cross(ray_direction, edge2, h);
+  geometry3d_cross(r->direction, edge2, h);
   double a = geometry3d_dot(edge1, h);
   if (a == 0) {
     /* Ray parallel to triangle */
@@ -935,21 +934,21 @@ inline static int geometry3d_ray_triangle_intersect(
   }
 
   double f = 1.0 / a;
-  double s[3] = {ray_origin[0] - p1[0], ray_origin[1] - p1[1],
-                 ray_origin[2] - p1[2]};
+  double s[3] = {r->origin[0] - p1[0], r->origin[1] - p1[1],
+                 r->origin[2] - p1[2]};
   double u = f * geometry3d_dot(s, h);
 
   double q[3];
   geometry3d_cross(s, edge1, q);
-  double v = f * geometry3d_dot(ray_direction, q);
+  double v = f * geometry3d_dot(r->direction, q);
 
   *out_distance = f * geometry3d_dot(edge2, q);
   return (u >= 0.0 && v >= 0.0 && u + v <= 1.0);
 }
 
 inline static int geometry3d_ray_triangle_intersect_exact(
-    struct geometry3d *g, const struct ray *r, const unsigned long *p1,
-    const unsigned long *p2, const unsigned long *p3, double *out_distance) {
+    struct geometry3d* g, const struct delaunay_ray* r, const unsigned long* p1,
+    const unsigned long* p2, const unsigned long* p3, double* out_distance) {
   mpz_set_ui(g->aix, p1[0]);
   mpz_set_ui(g->aiy, p1[1]);
   mpz_set_ui(g->aiz, p1[2]);
@@ -1059,6 +1058,20 @@ inline static int geometry3d_ray_triangle_intersect_exact(
     }
   }
   return 0;
+}
+
+inline static int geometry3d_ray_triangle_intersect(
+    struct geometry3d* g, const struct delaunay_ray* r, const double* p1,
+    const double* p2, const double* p3, const unsigned long* p1ul,
+    const unsigned long* p2ul, const unsigned long* p3ul,
+    double* out_distance) {
+  int intersection_result =
+      geometry3d_ray_triangle_intersect_non_exact(r, p1, p2, p3, out_distance);
+
+  if (!intersection_result) {
+    return geometry3d_ray_triangle_intersect_exact(g, r, p1ul, p2ul, p3ul,
+                                                   out_distance);
+  }
 }
 
 #endif  // SWIFTSIM_GEOMETRY_3D_H

@@ -2,17 +2,17 @@
 // Created by yuyttenh on 30/09/2021.
 //
 
-#ifndef SWIFTSIM_RAY_H
-#define SWIFTSIM_RAY_H
+#ifndef SWIFTSIM_DELAUNAY_RAY_H
+#define SWIFTSIM_DELAUNAY_RAY_H
 
-struct ray {
+struct delaunay_ray {
   double origin[3];
   double direction[3];
   unsigned long origin_ul[3];
   unsigned long end_ul[3];
 };
 
-inline static void ray_information_init(struct ray* r, const double* origin,
+inline static void delaunay_ray_init(struct delaunay_ray* r, const double* origin,
                                         const double* end,
                                         const unsigned long* origin_ul,
                                         const unsigned long* end_ul) {
@@ -30,4 +30,4 @@ inline static void ray_information_init(struct ray* r, const double* origin,
   r->direction[2] /= norm;
 }
 
-#endif  // SWIFTSIM_RAY_H
+#endif  // SWIFTSIM_DELAUNAY_RAY_H

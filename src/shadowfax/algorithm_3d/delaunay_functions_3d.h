@@ -5,7 +5,7 @@
 #ifndef SWIFTSIM_DELAUNAY_FUNCTIONS_3D_H
 #define SWIFTSIM_DELAUNAY_FUNCTIONS_3D_H
 
-#include "ray.h"
+#include "delaunay_ray.h"
 
 /* forward declarations */
 inline static void delaunay_reset(struct delaunay* restrict d,
@@ -561,32 +561,25 @@ inline static int delaunay_find_tetrahedra_containing_vertex(
     double min_dist = NAN;
     double dist;
     double centroid[3];
-    geometry3d_compute_centroid_tetrahedron(
-        d->vertices[3 * v0], d->vertices[3 * v0 + 1], d->vertices[3 * v0 + 2],
-        d->vertices[3 * v1], d->vertices[3 * v1 + 1], d->vertices[3 * v1 + 2],
-        d->vertices[3 * v2], d->vertices[3 * v2 + 1], d->vertices[3 * v2 + 2],
-        d->vertices[3 * v3], d->vertices[3 * v3 + 1], d->vertices[3 * v3 + 2],
-        centroid);
-    double ray_direction[3] = {d->vertices[3 * v] - centroid[0],
-                               d->vertices[3 * v + 1] - centroid[1],
-                               d->vertices[3 * v + 2] - centroid[2]};
-    double norm_ray_direction = sqrt(ray_direction[0] * ray_direction[0] +
-                                     ray_direction[1] * ray_direction[1] +
-                                     ray_direction[2] * ray_direction[2]);
-    if (norm_ray_direction != 0) {
-      ray_direction[0] /= norm_ray_direction;
-      ray_direction[1] /= norm_ray_direction;
-      ray_direction[2] /= norm_ray_direction;
-    }
+    geometry3d_compute_centroid_tetrahedron(ad[0], ad[1], ad[2], bd[0], bd[1],
+                                            bd[2], cd[0], cd[1], cd[2], dd[0],
+                                            dd[1], dd[2], centroid);
+
+    unsigned long centroid_ul[3];
+    geometry3d_compute_centroid_tetrahedron_exact(
+        al[0], al[1], al[2], bl[0], bl[1], bl[2], cl[0], cl[1], cl[2], dl[0],
+        dl[1], dl[2], centroid_ul);
+
+    struct delaunay_ray r;
+    delaunay_ray_init(&r, centroid, ed, centroid_ul, el);
 
     /* Check whether the point is inside or outside all four faces */
     const int test_abce = geometry3d_orient_adaptive(&d->geometry, al, bl, cl,
                                                      el, ad, bd, cd, ed);
     if (test_abce > 0) {
       /* v outside face opposite of v3 */
-      if (geometry3d_ray_plane_intersect(
-              centroid, ray_direction, &d->vertices[3 * v0],
-              &d->vertices[3 * v1], &d->vertices[3 * v2], &dist)) {
+      if (geometry3d_ray_triangle_intersect(&d->geometry, &r, ad, bd, cd, al,
+                                            bl, cl, &dist)) {
         tetrahedron_idx = tetrahedron->neighbours[3];
         continue;
       }
@@ -600,9 +593,8 @@ inline static int delaunay_find_tetrahedra_containing_vertex(
                                                      el, ad, cd, dd, ed);
     if (test_acde > 0) {
       /* v outside face opposite of v1 */
-      if (geometry3d_ray_plane_intersect(
-              centroid, ray_direction, &d->vertices[3 * v0],
-              &d->vertices[3 * v2], &d->vertices[3 * v3], &dist)) {
+      if (geometry3d_ray_triangle_intersect(&d->geometry, &r, ad, cd, dd, al,
+                                            cl, dl, &dist)) {
         tetrahedron_idx = tetrahedron->neighbours[1];
         continue;
       }
@@ -616,9 +608,8 @@ inline static int delaunay_find_tetrahedra_containing_vertex(
                                                      el, ad, dd, bd, ed);
     if (test_adbe > 0) {
       /* v outside face opposite of v2 */
-      if (geometry3d_ray_plane_intersect(
-              centroid, ray_direction, &d->vertices[3 * v0],
-              &d->vertices[3 * v1], &d->vertices[3 * v3], &dist)) {
+      if (geometry3d_ray_triangle_intersect(&d->geometry, &r, ad, dd, bd, al,
+                                            dl, bl, &dist)) {
         tetrahedron_idx = tetrahedron->neighbours[2];
         continue;
       }
@@ -632,9 +623,8 @@ inline static int delaunay_find_tetrahedra_containing_vertex(
                                                      el, bd, dd, cd, ed);
     if (test_bdce > 0) {
       /* v outside face opposite of v0 */
-      if (geometry3d_ray_plane_intersect(
-              centroid, ray_direction, &d->vertices[3 * v1],
-              &d->vertices[3 * v2], &d->vertices[3 * v3], &dist)) {
+      if (geometry3d_ray_triangle_intersect(&d->geometry, &r, bd, dd, cd, bl,
+                                            dl, cl, &dist)) {
         tetrahedron_idx = tetrahedron->neighbours[0];
         continue;
       }
