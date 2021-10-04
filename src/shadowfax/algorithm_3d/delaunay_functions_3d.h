@@ -637,6 +637,8 @@ inline static int delaunay_find_tetrahedra_containing_vertex(
 
     if (next_tetrahedron_idx >= 0) {
       tetrahedron_idx = next_tetrahedron_idx;
+      /* Should not be possible? */
+      error("Impossible scenario!");
       continue;
     }
 
