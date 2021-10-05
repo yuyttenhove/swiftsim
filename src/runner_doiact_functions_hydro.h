@@ -727,6 +727,15 @@ void DOPAIR_SUBSET(struct runner *r, struct cell *restrict ci,
 
   TIMER_TIC;
 
+#if defined(SHADOWFAX_NEW_SPH) && (FUNCTION_TASK_LOOP == TASK_LOOP_DENSITY)
+  cell_shadowfax_do_pair_subset_density_recursive(e, ci, parts_i, ind, count,
+                                                  cj, sid, flipped, shift);
+  TIMER_TOC(timer_dopair_subset);
+  return;
+#elif defined(SHADOWFAX_NEW_SPH)
+  error("Not implemented yet!");
+#endif
+
   const int count_j = cj->hydro.count;
   struct part *restrict parts_j = cj->hydro.parts;
 
@@ -737,13 +746,6 @@ void DOPAIR_SUBSET(struct runner *r, struct cell *restrict ci,
   /* Pick-out the sorted lists. */
   const struct sort_entry *sort_j = cell_get_hydro_sorts(cj, sid);
   const float dxj = cj->hydro.dx_max_sort;
-
-#if defined(SHADOWFAX_NEW_SPH) && (FUNCTION_TASK_LOOP == TASK_LOOP_DENSITY)
-  cell_shadowfax_do_pair_subset_density_recursive(e, ci, parts_i, ind, count,
-                                                  cj, sid, flipped, shift);
-#elif defined(SHADOWFAX_NEW_SPH)
-  error("Not implemented yet!");
-#endif
 
   /* Parts are on the left? */
   if (!flipped) {
@@ -954,11 +956,13 @@ void DOSELF_SUBSET(struct runner *r, struct cell *restrict ci,
   const int with_cosmology = (e->policy & engine_policy_cosmology);
 #endif
 
+  TIMER_TIC;
+
 #if defined(SHADOWFAX_NEW_SPH)
   cell_shadowfax_do_self_subset_density_recursive(e, ci, parts, ind, count);
+  TIMER_TOC(timer_doself_subset);
+  return;
 #endif
-
-  TIMER_TIC;
 
   /* Cosmological terms */
   const float a = cosmo->a;
@@ -1074,6 +1078,20 @@ void DOPAIR1(struct runner *r, struct cell *ci, struct cell *cj, const int sid,
 
   TIMER_TIC;
 
+#if defined(SHADOWFAX_NEW_SPH)
+#if FUNCTION_TASK_LOOP == TASK_LOOP_DENSITY
+  cell_shadowfax_do_pair1_density_recursive(e, ci, cj, sid, shift);
+#elif FUNCTION_TASK_LOOP == TASK_LOOP_GRADIENT
+  cell_shadowfax_do_pair1_gradient_recursive(e, ci, cj, sid, shift);
+#elif FUNCTION_TASK_LOOP == TASK_LOOP_FORCE
+  cell_shadowfax_do_pair1_force(e, ci, cj, sid, shift);
+#else
+  error("Unsupported task loop");
+#endif
+  TIMER_TOC(TIMER_DOPAIR);
+  return;
+#endif
+
   /* Get the cutoff shift. */
   double rshift = 0.0;
   for (int k = 0; k < 3; k++) rshift += shift[k] * runner_shift[sid][k];
@@ -1109,18 +1127,6 @@ void DOPAIR1(struct runner *r, struct cell *ci, struct cell *cj, const int sid,
   /* Cosmological terms */
   const float a = cosmo->a;
   const float H = cosmo->H;
-
-#if defined(SHADOWFAX_NEW_SPH)
-#if FUNCTION_TASK_LOOP == TASK_LOOP_DENSITY
-  cell_shadowfax_do_pair1_density_recursive(e, ci, cj, sid, shift);
-#elif FUNCTION_TASK_LOOP == TASK_LOOP_GRADIENT
-  cell_shadowfax_do_pair1_gradient_recursive(e, ci, cj, sid, shift);
-#elif FUNCTION_TASK_LOOP == TASK_LOOP_FORCE
-  cell_shadowfax_do_pair1_force(e, ci, cj, sid, shift);
-#else
-  error("Unsupported task loop");
-#endif
-#endif
 
   if (cell_is_active_hydro(ci, e)) {
 
@@ -1446,6 +1452,20 @@ void DOPAIR2(struct runner *r, struct cell *ci, struct cell *cj, const int sid,
 
   TIMER_TIC;
 
+#if defined(SHADOWFAX_NEW_SPH)
+#if FUNCTION_TASK_LOOP == TASK_LOOP_DENSITY
+  cell_shadowfax_do_pair2_density(e, ci, cj, sid, shift);
+#elif FUNCTION_TASK_LOOP == TASK_LOOP_GRADIENT
+  cell_shadowfax_do_pair2_gradient(e, ci, cj, sid, shift);
+#elif FUNCTION_TASK_LOOP == TASK_LOOP_FORCE
+  cell_shadowfax_do_pair2_force_recursive(e, ci, cj, sid, shift);
+#else
+  error("Unsupported task loop");
+#endif
+  TIMER_TOC(TIMER_DOPAIR);
+  return;
+#endif
+
   /* Get the cutoff shift. */
   double rshift = 0.0;
   for (int k = 0; k < 3; k++) rshift += shift[k] * runner_shift[sid][k];
@@ -1478,18 +1498,6 @@ void DOPAIR2(struct runner *r, struct cell *ci, struct cell *cj, const int sid,
   /* Cosmological terms */
   const float a = cosmo->a;
   const float H = cosmo->H;
-
-#if defined(SHADOWFAX_NEW_SPH)
-#if FUNCTION_TASK_LOOP == TASK_LOOP_DENSITY
-  cell_shadowfax_do_pair2_density(e, ci, cj, sid, shift);
-#elif FUNCTION_TASK_LOOP == TASK_LOOP_GRADIENT
-  cell_shadowfax_do_pair2_gradient(e, ci, cj, sid, shift);
-#elif FUNCTION_TASK_LOOP == TASK_LOOP_FORCE
-  cell_shadowfax_do_pair2_force_recursive(e, ci, cj, sid, shift);
-#else
-  error("Unsupported task loop");
-#endif
-#endif
 
   /* Maximal displacement since last rebuild */
   const double dx_max = (ci->hydro.dx_max_sort + cj->hydro.dx_max_sort);
@@ -2101,6 +2109,8 @@ void DOSELF1(struct runner *r, struct cell *restrict c) {
 #else
   error("Unsupported task loop");
 #endif
+  TIMER_TOC(TIMER_DOSELF);
+  return;
 #endif
 
   struct part *restrict parts = c->hydro.parts;
@@ -2353,6 +2363,8 @@ void DOSELF2(struct runner *r, struct cell *restrict c) {
 #else
   error("Unsupported task loop");
 #endif
+  TIMER_TOC(TIMER_DOSELF);
+  return;
 #endif
 
   struct part *restrict parts = c->hydro.parts;
