@@ -39,18 +39,18 @@ __attribute__((always_inline)) INLINE static void hydro_slope_limit_cell_init(
   p->primitives.limiter.P[1] = -FLT_MAX;
 
 #if defined(SHADOWFAX_SLOPE_LIMITER_CELL_WIDE)
-  p->primitives.limiter.maxr = -FLT_MAX;
+  p->primitives.limiter.maxr = -DBL_MAX;
 #elif defined(SHADOWFAX_SLOPE_LIMITER_CELL_WIDE_EXACT)
-  p->primitives.limiter.extrapolations.rho[0] = FLT_MAX;
-  p->primitives.limiter.extrapolations.rho[1] = -FLT_MAX;
-  p->primitives.limiter.extrapolations.v[0][0] = FLT_MAX;
-  p->primitives.limiter.extrapolations.v[0][1] = -FLT_MAX;
-  p->primitives.limiter.extrapolations.v[1][0] = FLT_MAX;
-  p->primitives.limiter.extrapolations.v[1][1] = -FLT_MAX;
-  p->primitives.limiter.extrapolations.v[2][0] = FLT_MAX;
-  p->primitives.limiter.extrapolations.v[2][1] = -FLT_MAX;
-  p->primitives.limiter.extrapolations.P[0] = FLT_MAX;
-  p->primitives.limiter.extrapolations.P[1] = -FLT_MAX;
+  p->primitives.limiter.extrapolations.rho[0] = DBL_MAX;
+  p->primitives.limiter.extrapolations.rho[1] = -DBL_MAX;
+  p->primitives.limiter.extrapolations.v[0][0] = DBL_MAX;
+  p->primitives.limiter.extrapolations.v[0][1] = -DBL_MAX;
+  p->primitives.limiter.extrapolations.v[1][0] = DBL_MAX;
+  p->primitives.limiter.extrapolations.v[1][1] = -DBL_MAX;
+  p->primitives.limiter.extrapolations.v[2][0] = DBL_MAX;
+  p->primitives.limiter.extrapolations.v[2][1] = -DBL_MAX;
+  p->primitives.limiter.extrapolations.P[0] = DBL_MAX;
+  p->primitives.limiter.extrapolations.P[1] = -DBL_MAX;
 #endif
 }
 
@@ -64,7 +64,7 @@ __attribute__((always_inline)) INLINE static void hydro_slope_limit_cell_init(
  */
 __attribute__((always_inline)) INLINE static void
 hydro_slope_limit_cell_collect(struct part* pi, const struct part* pj,
-                               float r) {
+                               double r) {
 
   /* basic slope limiter: collect the maximal and the minimal value for the
    * primitive variables among the ngbs */
@@ -92,7 +92,7 @@ hydro_slope_limit_cell_collect(struct part* pi, const struct part* pj,
       fmaxf(pj->primitives.P, pi->primitives.limiter.P[1]);
 
 #if defined(SHADOWFAX_SLOPE_LIMITER_CELL_WIDE)
-  pi->primitives.limiter.maxr = fmaxf(r, pi->primitives.limiter.maxr);
+  pi->primitives.limiter.maxr = fmax(r, pi->primitives.limiter.maxr);
 #endif
 }
 
@@ -109,17 +109,18 @@ hydro_slope_limit_cell_collect(struct part* pi, const struct part* pj,
  * @param maxr Maximal distance between the generator and all of its neighbours
  */
 __attribute__((always_inline)) INLINE static void
-hydro_slope_limit_cell_quantity(double* grad, float qval, float qmin, float qmax,
-                                float maxr) {
+hydro_slope_limit_cell_quantity(double* grad, float qval, float qmin,
+                                float qmax, double maxr) {
 
-  float gradtrue, gradmax, gradmin, alpha;
+  float gradmax, gradmin;
+  double alpha, gradtrue;
 
-  gradtrue = (float)sqrt(grad[0] * grad[0] + grad[1] * grad[1] + grad[2] * grad[2]);
+  gradtrue = sqrt(grad[0] * grad[0] + grad[1] * grad[1] + grad[2] * grad[2]);
   if (gradtrue) {
     gradtrue *= maxr;
     gradmax = qmax - qval;
     gradmin = qval - qmin;
-    alpha = fminf(1.0f, fminf(gradmax / gradtrue, gradmin / gradtrue));
+    alpha = fmin(1.0, fmin(gradmax / gradtrue, gradmin / gradtrue));
     grad[0] *= alpha;
     grad[1] *= alpha;
     grad[2] *= alpha;
@@ -169,19 +170,18 @@ __attribute__((always_inline)) INLINE static void hydro_slope_limit_cell(
 __attribute__((always_inline)) INLINE static void
 hydro_slope_limit_cell_collect_extrapolations(struct part* p,
                                               const double* midpoint) {
-  float dx[3] = {(float)midpoint[0] - (float)p->x[0],
-                 (float)midpoint[1] - (float)p->x[1],
-                 (float)midpoint[2] - (float)p->x[2]};
+  double dx[3] = {midpoint[0] - p->x[0], midpoint[1] - p->x[1],
+                  midpoint[2] - p->x[2]};
 
-  float extrapolated_rho = (p->primitives.gradients.rho[0] * dx[0] +
-                            p->primitives.gradients.rho[1] * dx[1] +
-                            p->primitives.gradients.rho[2] * dx[2]);
+  double extrapolated_rho = (p->primitives.gradients.rho[0] * dx[0] +
+                             p->primitives.gradients.rho[1] * dx[1] +
+                             p->primitives.gradients.rho[2] * dx[2]);
   p->primitives.limiter.extrapolations.rho[0] =
-      fminf(p->primitives.limiter.extrapolations.rho[0], extrapolated_rho);
+      fmin(p->primitives.limiter.extrapolations.rho[0], extrapolated_rho);
   p->primitives.limiter.extrapolations.rho[1] =
-      fmaxf(p->primitives.limiter.extrapolations.rho[1], extrapolated_rho);
+      fmax(p->primitives.limiter.extrapolations.rho[1], extrapolated_rho);
 
-  float extrapolated_v[3] = {
+  double extrapolated_v[3] = {
       (p->primitives.gradients.v[0][0] * dx[0] +
        p->primitives.gradients.v[0][1] * dx[1] +
        p->primitives.gradients.v[0][2] * dx[2]),
@@ -193,25 +193,25 @@ hydro_slope_limit_cell_collect_extrapolations(struct part* p,
        p->primitives.gradients.v[2][2] * dx[2]),
   };
   p->primitives.limiter.extrapolations.v[0][0] =
-      fminf(extrapolated_v[0], p->primitives.limiter.extrapolations.v[0][0]);
+      fmin(extrapolated_v[0], p->primitives.limiter.extrapolations.v[0][0]);
   p->primitives.limiter.extrapolations.v[0][1] =
-      fmaxf(extrapolated_v[0], p->primitives.limiter.extrapolations.v[0][1]);
+      fmax(extrapolated_v[0], p->primitives.limiter.extrapolations.v[0][1]);
   p->primitives.limiter.extrapolations.v[1][0] =
-      fminf(extrapolated_v[1], p->primitives.limiter.extrapolations.v[1][0]);
+      fmin(extrapolated_v[1], p->primitives.limiter.extrapolations.v[1][0]);
   p->primitives.limiter.extrapolations.v[1][1] =
-      fmaxf(extrapolated_v[1], p->primitives.limiter.extrapolations.v[1][1]);
+      fmax(extrapolated_v[1], p->primitives.limiter.extrapolations.v[1][1]);
   p->primitives.limiter.extrapolations.v[2][0] =
-      fminf(extrapolated_v[2], p->primitives.limiter.extrapolations.v[2][0]);
+      fmin(extrapolated_v[2], p->primitives.limiter.extrapolations.v[2][0]);
   p->primitives.limiter.extrapolations.v[2][1] =
-      fmaxf(extrapolated_v[2], p->primitives.limiter.extrapolations.v[2][1]);
+      fmax(extrapolated_v[2], p->primitives.limiter.extrapolations.v[2][1]);
 
-  float extrapolated_P = (p->primitives.gradients.P[0] * dx[0] +
-                          p->primitives.gradients.P[1] * dx[1] +
-                          p->primitives.gradients.P[2] * dx[2]);
+  double extrapolated_P = (p->primitives.gradients.P[0] * dx[0] +
+                           p->primitives.gradients.P[1] * dx[1] +
+                           p->primitives.gradients.P[2] * dx[2]);
   p->primitives.limiter.extrapolations.P[0] =
-      fminf(p->primitives.limiter.extrapolations.P[0], extrapolated_P);
+      fmin(p->primitives.limiter.extrapolations.P[0], extrapolated_P);
   p->primitives.limiter.extrapolations.P[1] =
-      fmaxf(p->primitives.limiter.extrapolations.P[1], extrapolated_P);
+      fmax(p->primitives.limiter.extrapolations.P[1], extrapolated_P);
 }
 
 /**
@@ -229,17 +229,17 @@ hydro_slope_limit_cell_collect_extrapolations(struct part* p,
  *             neighbours
  */
 __attribute__((always_inline)) INLINE static void
-hydro_slope_limit_cell_quantity(float* grad, float qval, float qmin, float qmax,
-                                float emin, float emax) {
-  float delta_max = qmax - qval;
-  float delta_min = qmin - qval;
-  float alpha = 1.f;
+hydro_slope_limit_cell_quantity(double* grad, float qval, float qmin,
+                                float qmax, double emin, double emax) {
+  double delta_max = qmax - qval;
+  double delta_min = qmin - qval;
+  double alpha = 1.;
   if (emin != 0 && emax != 0) {
-    alpha = fminf(1.0f, fminf(delta_max / emax, delta_min / emin));
-  } else if (emin != 0){
-    alpha = fminf(1.0f, delta_min / emin);
+    alpha = fmin(1.0, fmin(delta_max / emax, delta_min / emin));
+  } else if (emin != 0) {
+    alpha = fmin(1.0, delta_min / emin);
   } else if (emax != 0) {
-    alpha = fminf(1.0f, delta_max / emax);
+    alpha = fmin(1.0, delta_max / emax);
   }
   if (alpha != 1.f) {
     grad[0] *= alpha;

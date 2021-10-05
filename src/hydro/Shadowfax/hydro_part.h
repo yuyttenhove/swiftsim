@@ -121,18 +121,18 @@ struct part {
 
 #if defined(SHADOWFAX_SLOPE_LIMITER_CELL_WIDE)
       /* Maximal distance to all neighbouring faces. */
-      float maxr;
+      double maxr;
 
 #elif defined(SHADOWFAX_SLOPE_LIMITER_CELL_WIDE_EXACT)
       struct {
         /* Extreme values of extrapolated density among the neighbours */
-        float rho[2];
+        double rho[2];
 
         /* Extreme values of extrapolated fluid velocity among the neighbours.*/
-        float v[3][2];
+        double v[3][2];
 
         /* Extreme values of extrapolated pressure among the neighbours. */
-        float P[2];
+        double P[2];
       } extrapolations;
 #endif
 
