@@ -1014,21 +1014,24 @@ void runner_do_extra_ghost(struct runner *r, struct cell *c, int timer) {
         /* Calculate the time-step for passing to hydro_prepare_force.
          * This is the physical time between the start and end of the time-step
          * without any scale-factor powers. */
-        double dt_alpha;
+        double dt_alpha, dt_therm;
 
         if (with_cosmology) {
           const integertime_t ti_step = get_integer_timestep(p->time_bin);
           const integertime_t ti_begin =
-              get_integer_time_begin(ti_current - 1, p->time_bin);
+              get_integer_time_begin(ti_current, p->time_bin);
 
           dt_alpha =
               cosmology_get_delta_time(cosmo, ti_begin, ti_begin + ti_step);
+          dt_therm = cosmology_get_therm_kick_factor(cosmo, ti_begin,
+                                                     ti_begin + ti_step);
         } else {
           dt_alpha = get_timestep(p->time_bin, time_base);
+          dt_therm = get_timestep(p->time_bin, time_base);
         }
 
         /* Compute variables required for the force loop */
-        hydro_prepare_force(p, xp, cosmo, hydro_props, dt_alpha);
+        hydro_prepare_force(p, xp, cosmo, hydro_props, dt_alpha, dt_therm);
         timestep_limiter_prepare_force(p, xp);
 
         /* The particle force values are now set.  Do _NOT_
@@ -1254,7 +1257,7 @@ void runner_do_ghost(struct runner *r, struct cell *c, int timer) {
              * artificial viscosity and thermal conduction terms) */
             const double time_base = e->time_base;
             const integertime_t ti_current = e->ti_current;
-            double dt_alpha;
+            double dt_alpha, dt_therm;
 
             if (with_cosmology) {
               const integertime_t ti_step = get_integer_timestep(p->time_bin);
@@ -1263,14 +1266,17 @@ void runner_do_ghost(struct runner *r, struct cell *c, int timer) {
 
               dt_alpha =
                   cosmology_get_delta_time(cosmo, ti_begin, ti_begin + ti_step);
+              dt_therm = cosmology_get_therm_kick_factor(cosmo, ti_begin,
+                                                         ti_begin + ti_step);
             } else {
               dt_alpha = get_timestep(p->time_bin, time_base);
+              dt_therm = get_timestep(p->time_bin, time_base);
             }
 
             /* As of here, particle force variables will be set. */
 
             /* Compute variables required for the force loop */
-            hydro_prepare_force(p, xp, cosmo, hydro_props, dt_alpha);
+            hydro_prepare_force(p, xp, cosmo, hydro_props, dt_alpha, dt_therm);
             timestep_limiter_prepare_force(p, xp);
 
             /* The particle force values are now set.  Do _NOT_
@@ -1414,7 +1420,7 @@ void runner_do_ghost(struct runner *r, struct cell *c, int timer) {
          * artificial viscosity and thermal conduction terms) */
         const double time_base = e->time_base;
         const integertime_t ti_current = e->ti_current;
-        double dt_alpha;
+        double dt_alpha, dt_therm;
 
         if (with_cosmology) {
           const integertime_t ti_step = get_integer_timestep(p->time_bin);
@@ -1423,14 +1429,17 @@ void runner_do_ghost(struct runner *r, struct cell *c, int timer) {
 
           dt_alpha =
               cosmology_get_delta_time(cosmo, ti_begin, ti_begin + ti_step);
+          dt_therm = cosmology_get_therm_kick_factor(cosmo, ti_begin,
+                                                     ti_begin + ti_step);
         } else {
           dt_alpha = get_timestep(p->time_bin, time_base);
+          dt_therm = get_timestep(p->time_bin, time_base);
         }
 
         /* As of here, particle force variables will be set. */
 
         /* Compute variables required for the force loop */
-        hydro_prepare_force(p, xp, cosmo, hydro_props, dt_alpha);
+        hydro_prepare_force(p, xp, cosmo, hydro_props, dt_alpha, dt_therm);
         timestep_limiter_prepare_force(p, xp);
 
         /* The particle force values are now set.  Do _NOT_
