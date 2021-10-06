@@ -375,3 +375,6 @@ sympy-plots-for-*.tex/
 
 # CLion
 .idea
+
+# black formatting
+black_formatting_env

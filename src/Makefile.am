@@ -48,10 +48,10 @@ include_HEADERS += common_io.h single_io.h distributed_io.h map.h tools.h  parti
 include_HEADERS += partition.h clocks.h parser.h physical_constants.h physical_constants_cgs.h potential.h version.h 
 include_HEADERS += hydro_properties.h riemann.h threadpool.h cooling_io.h cooling.h cooling_struct.h cooling_properties.h 
 include_HEADERS += statistics.h memswap.h cache.h runner_doiact_hydro_vec.h profiler.h entropy_floor.h 
-include_HEADERS += csds.h active.h timeline.h xmf.h gravity_properties.h gravity_derivatives.h
+include_HEADERS += csds.h active.h timeline.h xmf.h gravity_properties.h gravity_derivatives.h 
 include_HEADERS += gravity_softened_derivatives.h vector_power.h collectgroup.h hydro_space.h sort_part.h 
 include_HEADERS += chemistry.h chemistry_io.h chemistry_struct.h cosmology.h restart.h space_getsid.h utilities.h 
-include_HEADERS += mesh_gravity.h cbrt.h exp10.h velociraptor_interface.h swift_velociraptor_part.h output_list.h 
+include_HEADERS += cbrt.h exp10.h velociraptor_interface.h swift_velociraptor_part.h output_list.h
 include_HEADERS += csds_io.h tracers_io.h tracers.h tracers_struct.h star_formation_io.h
 include_HEADERS += fof.h fof_struct.h fof_io.h fof_catalogue_io.h
 include_HEADERS += multipole.h multipole_accept.h multipole_struct.h binomial.h integer_power.h sincos.h 
@@ -65,11 +65,18 @@ include_HEADERS += space_unique_id.h line_of_sight.h io_compression.h
 include_HEADERS += rays.h rays_struct.h
 include_HEADERS += particle_splitting.h particle_splitting_struct.h
 include_HEADERS += chemistry_csds.h star_formation_csds.h
+include_HEADERS += mesh_gravity.h mesh_gravity_mpi.h mesh_gravity_patch.h mesh_gravity_sort.h row_major_id.h
 
-# source files for EAGLE cooling
+# source files for QLA (Ploeckinger+20) cooling
 QLA_COOLING_SOURCES =
 if HAVEQLACOOLING
 QLA_COOLING_SOURCES += cooling/QLA/cooling.c cooling/QLA/cooling_tables.c
+endif
+
+# source files for QLA (Wiersma+09) cooling
+QLA_EAGLE_COOLING_SOURCES =
+if HAVEQLAEAGLECOOLING
+QLA_COOLING_SOURCES += cooling/QLA_EAGLE/cooling.c cooling/QLA_EAGLE/cooling_tables.c
 endif
 
 # source files for EAGLE cooling
@@ -135,18 +142,20 @@ AM_SOURCES += kernel_hydro.c tools.c map.c part.c partition.c clocks.c
 AM_SOURCES += physical_constants.c units.c potential.c hydro_properties.c 
 AM_SOURCES += threadpool.c cooling.c star_formation.c 
 AM_SOURCES += hydro.c stars.c
-AM_SOURCES += statistics.c profiler.c csds.c part_type.c
+AM_SOURCES += statistics.c profiler.c csds.c part_type.c 
 AM_SOURCES += gravity_properties.c gravity.c multipole.c 
 AM_SOURCES += collectgroup.c hydro_space.c equation_of_state.c io_compression.c 
-AM_SOURCES += chemistry.c cosmology.c mesh_gravity.c velociraptor_interface.c 
+AM_SOURCES += chemistry.c cosmology.c velociraptor_interface.c
 AM_SOURCES += output_list.c velociraptor_dummy.c csds_io.c memuse.c mpiuse.c memuse_rnodes.c
 AM_SOURCES += fof.c fof_catalogue_io.c
 AM_SOURCES += hashmap.c pressure_floor.c
+AM_SOURCES += mesh_gravity.c mesh_gravity_mpi.c mesh_gravity_patch.c mesh_gravity_sort.c
 AM_SOURCES += runner_neutrino.c
 AM_SOURCES += neutrino/Default/fermi_dirac.c neutrino/Default/neutrino.c
 AM_SOURCES += $(SHADOWFAX_SOURCES)
-AM_SOURCES += $(QLA_COOLING_SOURCES) 
-AM_SOURCES += $(EAGLE_COOLING_SOURCES) $(EAGLE_FEEDBACK_SOURCES) 
+AM_SOURCES += rt_parameters.c
+AM_SOURCES += $(QLA_COOLING_SOURCES) $(QLA_EAGLE_COOLING_SOURCES)
+AM_SOURCES += $(EAGLE_COOLING_SOURCES) $(EAGLE_FEEDBACK_SOURCES)
 AM_SOURCES += $(GRACKLE_COOLING_SOURCES) $(GEAR_FEEDBACK_SOURCES) 
 AM_SOURCES += $(COLIBRE_COOLING_SOURCES)
 
@@ -256,33 +265,43 @@ nobase_noinst_HEADERS += riemann/riemann_checks.h
 nobase_noinst_HEADERS += rt.h  
 nobase_noinst_HEADERS += rt_active.h  
 nobase_noinst_HEADERS += rt_io.h 
-nobase_noinst_HEADERS += rt_properties.h 
+nobase_noinst_HEADERS += rt_parameters.h
+nobase_noinst_HEADERS += rt_properties.h
 nobase_noinst_HEADERS += rt_struct.h 
 nobase_noinst_HEADERS += rt/none/rt.h  
 nobase_noinst_HEADERS += rt/none/rt_iact.h 
 nobase_noinst_HEADERS += rt/none/rt_io.h 
-nobase_noinst_HEADERS += rt/none/rt_properties.h 
+nobase_noinst_HEADERS += rt/none/rt_parameters.h
+nobase_noinst_HEADERS += rt/none/rt_properties.h
 nobase_noinst_HEADERS += rt/none/rt_struct.h
 nobase_noinst_HEADERS += rt/debug/rt.h  
 nobase_noinst_HEADERS += rt/debug/rt_debugging.h 
 nobase_noinst_HEADERS += rt/debug/rt_gradients.h 
 nobase_noinst_HEADERS += rt/debug/rt_iact.h 
 nobase_noinst_HEADERS += rt/debug/rt_io.h 
-nobase_noinst_HEADERS += rt/debug/rt_properties.h 
+nobase_noinst_HEADERS += rt/debug/rt_parameters.h
+nobase_noinst_HEADERS += rt/debug/rt_properties.h
 nobase_noinst_HEADERS += rt/debug/rt_stellar_emission_rate.h 
 nobase_noinst_HEADERS += rt/debug/rt_struct.h
 nobase_noinst_HEADERS += rt/debug/rt_thermochemistry.h
 nobase_noinst_HEADERS += rt/GEAR/rt.h  
 nobase_noinst_HEADERS += rt/GEAR/rt_debugging.h 
-nobase_noinst_HEADERS += rt/GEAR/rt_gradients.h 
+nobase_noinst_HEADERS += rt/GEAR/rt_flux.h
+nobase_noinst_HEADERS += rt/GEAR/rt_getters.h
+nobase_noinst_HEADERS += rt/GEAR/rt_gradients.h
 nobase_noinst_HEADERS += rt/GEAR/rt_iact.h 
 nobase_noinst_HEADERS += rt/GEAR/rt_io.h 
-nobase_noinst_HEADERS += rt/GEAR/rt_properties.h 
-nobase_noinst_HEADERS += rt/GEAR/rt_slope_limiters_cell.h 
+nobase_noinst_HEADERS += rt/GEAR/rt_parameters.h
+nobase_noinst_HEADERS += rt/GEAR/rt_properties.h
+nobase_noinst_HEADERS += rt/GEAR/rt_riemann_GLF.h
+nobase_noinst_HEADERS += rt/GEAR/rt_riemann_HLL.h
+# nobase_noinst_HEADERS += rt/GEAR/rt_slope_limiters_cell.h
+nobase_noinst_HEADERS += rt/GEAR/rt_slope_limiters_face.h
 nobase_noinst_HEADERS += rt/GEAR/rt_stellar_emission_rate.h 
 nobase_noinst_HEADERS += rt/GEAR/rt_struct.h
 nobase_noinst_HEADERS += rt/GEAR/rt_thermochemistry.h
-nobase_noinst_HEADERS += stars.h stars_io.h stars_csds.h 
+nobase_noinst_HEADERS += rt/GEAR/rt_unphysical.h
+nobase_noinst_HEADERS += stars.h stars_io.h stars_csds.h
 nobase_noinst_HEADERS += stars/None/stars.h stars/None/stars_iact.h stars/None/stars_io.h 
 nobase_noinst_HEADERS += stars/None/stars_debug.h stars/None/stars_part.h
 nobase_noinst_HEADERS += stars/Basic/stars.h stars/Basic/stars_iact.h stars/Basic/stars_io.h 
@@ -321,7 +340,10 @@ nobase_noinst_HEADERS += cooling/grackle/cooling_io.h cooling/grackle/cooling_pr
 nobase_noinst_HEADERS += cooling/EAGLE/cooling.h cooling/EAGLE/cooling_struct.h cooling/EAGLE/cooling_tables.h 
 nobase_noinst_HEADERS += cooling/EAGLE/cooling_io.h cooling/EAGLE/interpolate.h cooling/EAGLE/cooling_rates.h 
 nobase_noinst_HEADERS += cooling/EAGLE/cooling_properties.h 
-nobase_noinst_HEADERS += cooling/QLA/cooling.h cooling/QLA/cooling_struct.h cooling/QLA/cooling_tables.h 
+nobase_noinst_HEADERS += cooling/QLA_EAGLE/cooling.h cooling/QLA_EAGLE/cooling_struct.h cooling/QLA_EAGLE/cooling_tables.h
+nobase_noinst_HEADERS += cooling/QLA_EAGLE/cooling_io.h cooling/QLA_EAGLE/interpolate.h cooling/QLA_EAGLE/cooling_rates.h
+nobase_noinst_HEADERS += cooling/QLA_EAGLE/cooling_properties.h
+nobase_noinst_HEADERS += cooling/QLA/cooling.h cooling/QLA/cooling_struct.h cooling/QLA/cooling_tables.h
 nobase_noinst_HEADERS += cooling/QLA/cooling_io.h cooling/QLA/interpolate.h cooling/QLA/cooling_rates.h 
 nobase_noinst_HEADERS += cooling/QLA/cooling_properties.h 
 nobase_noinst_HEADERS += cooling/COLIBRE/cooling.h cooling/COLIBRE/cooling_struct.h cooling/COLIBRE/cooling_subgrid.h 
