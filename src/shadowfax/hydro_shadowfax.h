@@ -144,6 +144,9 @@ __attribute__((always_inline)) INLINE static void hydro_shadowfax_flux_exchange(
   const float mindt = (pj->conserved.flux.dt > 0.0f)
                           ? fminf(pi->conserved.flux.dt, pj->conserved.flux.dt)
                           : pi->conserved.flux.dt;
+#ifdef SWIFT_DEBUG_CHECKS
+  assert(mindt >= 0);
+#endif
 
   float totflux[5];
   hydro_compute_flux(Wi, Wj, n_unit, vij, (float)surface_area, mindt, totflux);

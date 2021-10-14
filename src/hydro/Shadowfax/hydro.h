@@ -91,7 +91,6 @@ __attribute__((always_inline)) INLINE static void hydro_timestep_extra(
     struct part* p, float dt) {
 
   p->force.dt = dt;
-  p->force.active = 0;
 }
 
 /**
@@ -177,9 +176,6 @@ __attribute__((always_inline)) INLINE static void hydro_init_part(
   /* make sure we don't enter the no neighbour case in runner.c */
   p->density.wcount = 1.0f;
   p->density.wcount_dh = 0.0f;
-
-  /* Set the active flag to active. */
-  p->force.active = 1;
 
   /* Set initial values for voronoi properties */
   p->voronoi.flag = 0;
@@ -386,7 +382,7 @@ __attribute__((always_inline)) INLINE static void hydro_predict_extra(
 __attribute__((always_inline)) INLINE static void hydro_end_force(
     struct part* p, const struct cosmology* cosmo) {
 #if defined(SWIFT_DEBUG_CHECKS) && defined(VORONOI_STORE_CELL_STATS)
-  assert(p->voronoi.cell->nface == p->voronoi.nfluxes);
+//  assert(p->voronoi.cell->nface == p->voronoi.nfluxes);
 #endif
 }
 
