@@ -141,15 +141,15 @@ __attribute__((always_inline)) INLINE static void hydro_shadowfax_flux_exchange(
 
   /* get the time step for the flux exchange. This is always the smallest time
      step among the two particles */
-  const float mindt = (pj->conserved.flux.dt > 0.0f)
+  const float min_dt = (pj->conserved.flux.dt > 0.0f)
                           ? fminf(pi->conserved.flux.dt, pj->conserved.flux.dt)
                           : pi->conserved.flux.dt;
 #ifdef SWIFT_DEBUG_CHECKS
-  assert(mindt >= 0);
+  assert(min_dt >= 0);
 #endif
 
   float totflux[5];
-  hydro_compute_flux(Wi, Wj, n_unit, vij, (float)surface_area, mindt, totflux);
+  hydro_compute_flux(Wi, Wj, n_unit, vij, (float)surface_area, min_dt, totflux);
 
   /* Update conserved variables */
   /* eqn. (16) */

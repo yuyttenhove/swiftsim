@@ -244,8 +244,6 @@ __attribute__((always_inline)) INLINE static void hydro_prepare_force(
   p->force.v_full[1] = xp->v_full[1];
   p->force.v_full[2] = xp->v_full[2];
 
-  hydro_part_reset_hydro_fluxes(p);
-
   /* Set the time step of the particle */
   p->conserved.flux.dt = dt_therm;
 }
