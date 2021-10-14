@@ -238,7 +238,7 @@ __attribute__((always_inline)) INLINE static void hydro_part_has_no_neighbours(
 __attribute__((always_inline)) INLINE static void hydro_prepare_force(
     struct part* restrict p, struct xpart* restrict xp,
     const struct cosmology* cosmo, const struct hydro_props* hydro_props,
-    const float dt_alpha) {
+    const float dt_alpha, const float dt_therm) {
 
   /* Initialize time step criterion variables */
   p->timestepvars.vmax = 0.0f;
