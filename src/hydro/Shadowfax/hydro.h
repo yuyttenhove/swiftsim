@@ -380,7 +380,7 @@ __attribute__((always_inline)) INLINE static void hydro_predict_extra(
 __attribute__((always_inline)) INLINE static void hydro_end_force(
     struct part* p, const struct cosmology* cosmo) {
 #if defined(SWIFT_DEBUG_CHECKS) && defined(VORONOI_STORE_CELL_STATS)
-//  assert(p->voronoi.cell->nface == p->voronoi.nfluxes);
+  assert(p->voronoi.cell->nface == p->voronoi.nfluxes);
 #endif
 }
 

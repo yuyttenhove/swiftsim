@@ -83,19 +83,19 @@
 
 /* Types of gradients to use for SHADOWFAX_SPH */
 /* If no option is chosen, no gradients are used (first order scheme) */
-#define SHADOWFAX_GRADIENTS
+//#define SHADOWFAX_GRADIENTS
 
 /* SHADOWFAX_SPH slope limiters */
-#define SHADOWFAX_SLOPE_LIMITER_PER_FACE
+//#define SHADOWFAX_SLOPE_LIMITER_PER_FACE
 //#define SHADOWFAX_SLOPE_LIMITER_CELL_WIDE
-#define SHADOWFAX_SLOPE_LIMITER_CELL_WIDE_EXACT
+//#define SHADOWFAX_SLOPE_LIMITER_CELL_WIDE_EXACT
 
 /* Options to control SHADOWFAX_SPH */
 /* This option disables cell movement */
 //#define SHADOWFAX_FIX_CELLS
 /* This option enables cell steering, i.e. trying to keep the cells regular by
    adding a correction to the cell velocities. See Springel 2010. */
-#define SHADOWFAX_STEER_CELL_MOTION
+//#define SHADOWFAX_STEER_CELL_MOTION
 /* This option enables the use of the hilbert ordering during the self density
  * tasks. Inserting particles into the delaunay tesselation according to their
  * hilbert ordering increases the efficiency of building the delaunay
