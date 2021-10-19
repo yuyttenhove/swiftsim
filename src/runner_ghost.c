@@ -1040,6 +1040,12 @@ void runner_do_extra_ghost(struct runner *r, struct cell *c, int timer) {
         /* Prepare the particle for the force loop over neighbours */
         hydro_reset_acceleration(p);
       }
+#if defined(SHADOWFAX_NEW_SPH) && defined(SHADOWFAX_GRADIENTS)
+      else if(p->primitives.gradients.active) {
+        /* Finish the gradient calculation */
+        hydro_end_gradient(p);
+      }
+#endif
     }
   }
 

@@ -104,6 +104,9 @@ struct part {
       /* Pressure gradients. */
       double P[3];
 
+      /* Active flag */
+      int active;
+
     } gradients;
 
 #if defined(SHADOWFAX_SLOPE_LIMITER_CELL_WIDE) || defined(SHADOWFAX_SLOPE_LIMITER_CELL_WIDE_EXACT)
