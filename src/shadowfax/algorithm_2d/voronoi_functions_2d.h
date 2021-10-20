@@ -57,6 +57,8 @@ static inline double voronoi_compute_midpoint_area_face(double ax, double ay,
 /**
  * @brief Add a two particle pair to the grid.
  *
+ * This function also adds the correct tuple to the cell_pair_connections queue.
+ *
  * The grid connectivity is stored per cell sid: sid=0 corresponds to particle
  * pairs encountered during a self task (both particles are within the local
  * cell), while sid=1-26 correspond to particle interactions for which the right
@@ -75,39 +77,84 @@ static inline double voronoi_compute_midpoint_area_face(double ax, double ay,
  * @param right_part_pointer Direct pointer to the right particle (particle
  * within the cell determined by sid.
  * @param ax,ay,bx,by Vertices of the interface.
+ * @return 1 if the face was valid (non degenerate surface area).
  */
-static inline void voronoi_add_pair(struct voronoi *v, int sid,
-                                    struct cell *restrict c,
-                                    struct part *left_part_pointer,
-                                    struct part *right_part_pointer, double ax,
-                                    double ay, double bx, double by) {
-
-  if (v->pair_index[sid] == v->pair_size[sid]) {
-    v->pair_size[sid] <<= 1;
-    v->pairs[sid] = (struct voronoi_pair *)swift_realloc("c.h.v.pairs",
-        v->pairs[sid], v->pair_size[sid] * sizeof(struct voronoi_pair));
+static inline int voronoi_add_pair(struct voronoi *v, const struct delaunay *d,
+                                   int del_vert_idx, int ngb_del_vert_idx,
+                                   double ax, double ay, double bx, double by) {
+  int sid;
+  struct cell *c;
+  if (ngb_del_vert_idx < d->ngb_offset) {
+    if (ngb_del_vert_idx < del_vert_idx) {
+      /* Pair was already added. Find it and add it to the cell_pair_connections
+       * if necessary. If no pair is found, the face must have been degenerate.
+       * Return early. */
+#ifdef VORONOI_STORE_CONNECTIONS
+      struct voronoi_cell_new *ngb_cell =
+          &v->cells[ngb_del_vert_idx - d->vertex_start];
+      struct part *left_part = d->part_pointers[del_vert_idx];
+      for (int i = 0; i < ngb_cell->nface; i++) {
+        int2 connection = v->cell_pair_connections
+                              .values[ngb_cell->pair_connections_offset + i];
+        if (v->pairs[connection._1][connection._0].right == left_part) {
+          int2_lifo_queue_push(&v->cell_pair_connections, connection);
+          return 1;
+        }
+      }
+      return 0;
+#else
+      /* Can be wrong if the face is degenerate (surface area 0), but there is
+       * no easy way to check if we don't store the connections... */
+      return 1;
+#endif
+    }
+    sid = 13;
+    c = NULL;
+  } else {
+    sid = d->ngb_cell_sids[ngb_del_vert_idx - d->ngb_offset];
+    c = d->ngb_cell_ptrs[ngb_del_vert_idx - d->ngb_offset];
   }
-  struct voronoi_pair *this_pair = &v->pairs[sid][v->pair_index[sid]];
+
 #ifdef SWIFT_DEBUG_CHECKS
+  /* Sanity check */
   assert(c == NULL || !c->split);
 #endif
+
+  /* Need to reallocate? */
+  if (v->pair_index[sid] == v->pair_size[sid]) {
+    v->pair_size[sid] <<= 1;
+    v->pairs[sid] = (struct voronoi_pair *)swift_realloc(
+        "c.h.v.pairs", v->pairs[sid],
+        v->pair_size[sid] * sizeof(struct voronoi_pair));
+  }
+
+  struct voronoi_pair *this_pair = &v->pairs[sid][v->pair_index[sid]];
+
   /* Skip degenerate faces (approximately 0 surface area) */
-  double surface_area = voronoi_compute_midpoint_area_face(ax, ay, bx, by, this_pair->midpoint);
+  double surface_area =
+      voronoi_compute_midpoint_area_face(ax, ay, bx, by, this_pair->midpoint);
   if (surface_area < v->min_surface_area) {
-    return;
+    return 0;
   }
 
   this_pair->surface_area = surface_area;
   this_pair->right_cell = c;
-  this_pair->left = left_part_pointer;
-  this_pair->right = right_part_pointer;
+  this_pair->left = d->part_pointers[del_vert_idx];
+  this_pair->left_idx = del_vert_idx - d->vertex_start;
+  this_pair->right = d->part_pointers[ngb_del_vert_idx];
+  this_pair->right_idx = sid == 13 ? ngb_del_vert_idx - d->vertex_start : -1;
 #ifdef VORONOI_STORE_CONNECTIONS
   this_pair->a[0] = ax;
   this_pair->a[1] = ay;
   this_pair->b[0] = bx;
   this_pair->b[1] = by;
+
+  /* Add cell_pair_connection */
+  int2 connection = {._0 = v->pair_index[sid], ._1 = sid};
+  int2_lifo_queue_push(&v->cell_pair_connections, connection);
 #endif
   ++v->pair_index[sid];
+  return 1;
 }
 
 /**
@@ -143,11 +190,15 @@ static inline void voronoi_destroy(struct voronoi *restrict v) {
   for (int i = 0; i < 27; ++i) {
     swift_free("c.h.v.pairs", v->pairs[i]);
   }
+#ifdef VORONOI_STORE_CONNECTIONS
+  int2_lifo_queue_destroy(&v->cell_pair_connections);
+#endif
   v->active = 0;
 }
 
 inline static void voronoi_init(struct voronoi *restrict v, int number_of_cells,
-    double min_surface_area, struct cell *restrict swift_cell) {
+                                double min_surface_area,
+                                struct cell *restrict swift_cell) {
   v->number_of_cells = number_of_cells;
   /* allocate memory for the voronoi cells */
   v->cells = (struct voronoi_cell_new *)swift_malloc(
@@ -162,13 +213,18 @@ inline static void voronoi_init(struct voronoi *restrict v, int number_of_cells,
     v->pair_size[i] = 10;
   }
 
+#ifdef VORONOI_STORE_CONNECTIONS
+  /* Allocate memory for the cell_pair connections */
+  int2_lifo_queue_init(&v->cell_pair_connections, 6 * number_of_cells);
+#endif
+
   v->min_surface_area = min_surface_area;
   v->active = 1;
   v->swift_cell = swift_cell;
 }
 
 inline static void voronoi_reset(struct voronoi *restrict v,
-    int number_of_cells, double min_surface_area) {
+                                 int number_of_cells, double min_surface_area) {
   voronoi_assert(v->active);
 
   v->number_of_cells = number_of_cells;
@@ -184,10 +240,13 @@ inline static void voronoi_reset(struct voronoi *restrict v,
   for (int i = 0; i < 27; ++i) {
     v->pair_index[i] = 0;
   }
+#ifdef VORONOI_STORE_CONNECTIONS
+  /* Reset the cell_pair connections */
+  int2_lifo_queue_reset(&v->cell_pair_connections);
+#endif
 
   v->min_surface_area = min_surface_area;
 }
-
 
 /**
  * @brief Initialise the Voronoi grid based on the given Delaunay tessellation.
@@ -207,8 +266,8 @@ inline static void voronoi_reset(struct voronoi *restrict v,
  * @param parts Local cell generators (read-only).
  */
 static inline void voronoi_build(struct voronoi *restrict v,
-                                 const struct delaunay *restrict d,
-                                 double *dim, struct cell *restrict swift_cell) {
+                                 const struct delaunay *restrict d, double *dim,
+                                 struct cell *restrict swift_cell) {
 
   delaunay_assert(d->vertex_end > 0);
 
@@ -295,27 +354,26 @@ static inline void voronoi_build(struct voronoi *restrict v,
     double cell_volume = 0.;
     double cell_centroid[2] = {0., 0.};
     double centroid[2];
-    int nface = 1;
+    int nface = 0;
+    int pair_connections_offset = v->cell_pair_connections.index;
 
+    int del_vert_ix = i + d->vertex_start;
     /* get the generator position, we use it during centroid/volume
        calculations */
-    if (i >= d->ngb_offset) {
+    if (del_vert_ix >= d->ngb_offset) {
       error(
           "Found a ghost particle while looping over non-ghost, non-dummy "
           "particles!");
     }
-    double ax = d->vertices[2 * i];
-    double ay = d->vertices[2 * i + 1];
+    double ax = d->vertices[2 * del_vert_ix];
+    double ay = d->vertices[2 * del_vert_ix + 1];
 
 #ifdef VORONOI_STORE_GENERATORS
-    this_cell->generator[0] = ax;
-    this_cell->generator[1] = ay;
-    this_cell->generator[2] = 0.;
+    this_cell->generator = d->part_pointers[del_vert_ix];
 #endif
 
     /* Get a triangle containing this generator and the index of the generator
        within that triangle */
-    int del_vert_ix = i + d->vertex_start;
     int t0 = d->vertex_triangles[del_vert_ix];
     int del_vert_ix_in_t0 = d->vertex_triangle_index[del_vert_ix];
     /* Add the first vertex for this cell: the circumcircle midpoint of this
@@ -340,7 +398,6 @@ static inline void voronoi_build(struct voronoi *restrict v,
     /* loop around the voronoi cell generator (delaunay vertex) until we arrive
      * back at the original triangle */
     while (t1 != t0) {
-      ++nface;
       vor_vert_ix = t1 - 3;
 
       /* get the current vertex position for geometry calculations.
@@ -365,19 +422,9 @@ static inline void voronoi_build(struct voronoi *restrict v,
       /* the neighbour corresponding to the face is the same vertex that
          determines the next triangle */
       int ngb_del_vert_ix = d->triangles[t1].vertices[next_t_ix_in_cur_t];
-      if (ngb_del_vert_ix < d->ngb_offset) {
-        /* only store pairs once */
-        if (ngb_del_vert_ix > del_vert_ix) {
-          voronoi_add_pair(v, 13, NULL, d->part_pointers[del_vert_ix],
-                           d->part_pointers[ngb_del_vert_ix], bx, by, cx, cy);
-        }
-      } else {
-        /* no check on ngb_del_vert_ix > del_vert_ix required, since this is
-         * always true (del_vert_ix < d->ngb_offset) */
-        int sid = d->ngb_cell_sids[ngb_del_vert_ix - d->ngb_offset];
-        struct cell *c = d->ngb_cell_ptrs[ngb_del_vert_ix - d->ngb_offset];
-        voronoi_add_pair(v, sid, c, d->part_pointers[del_vert_ix],
-                         d->part_pointers[ngb_del_vert_ix], bx, by, cx, cy);
+      if (voronoi_add_pair(v, d, del_vert_ix, ngb_del_vert_ix, bx, by, cx,
+                           cy)) {
+        nface++;
       }
 
       cur_t_ix_in_next_t =
@@ -397,19 +444,9 @@ static inline void voronoi_build(struct voronoi *restrict v,
     cell_centroid[0] += V * centroid[0];
     cell_centroid[1] += V * centroid[1];
 
-    if (first_ngb_del_vert_ix < d->ngb_offset) {
-      if (first_ngb_del_vert_ix > del_vert_ix) {
-        /* only store pairs once */
-        voronoi_add_pair(v, 13, NULL, d->part_pointers[del_vert_ix],
-                         d->part_pointers[first_ngb_del_vert_ix], bx, by, cx,
-                         cy);
-      }
-    } else {
-      /* no check on other_vertex > i required, since this is always true */
-      int sid = d->ngb_cell_sids[first_ngb_del_vert_ix - d->ngb_offset];
-      struct cell *c = d->ngb_cell_ptrs[first_ngb_del_vert_ix - d->ngb_offset];
-      voronoi_add_pair(v, sid, c, d->part_pointers[del_vert_ix],
-                       d->part_pointers[first_ngb_del_vert_ix], bx, by, cx, cy);
+    if (voronoi_add_pair(v, d, del_vert_ix, first_ngb_del_vert_ix, bx, by, cx,
+                         cy)) {
+      nface++;
     }
 
     /* now compute the actual centroid by dividing the volume-weighted
@@ -420,8 +457,9 @@ static inline void voronoi_build(struct voronoi *restrict v,
     this_cell->centroid[0] = cell_centroid[0];
     this_cell->centroid[1] = cell_centroid[1];
     this_cell->centroid[2] = 0.;
-#ifdef VORONOI_STORE_CELL_STATS
     this_cell->nface = nface;
+#ifdef VORONOI_STORE_CONNECTIONS
+    this_cell->pair_connections_offset = pair_connections_offset;
 #endif
   } /* loop over all cell generators */
 
@@ -444,7 +482,52 @@ static inline double voronoi_compute_volume(const struct voronoi *restrict v) {
  */
 static inline void voronoi_check_grid(const struct voronoi *restrict v) {
 #ifdef VORONOI_CHECKS
-  fprintf(stderr, "Total volume: %g\n", voronoi_compute_volume(v));
+  /* Check total volume */
+  double total_volume = 0.;
+  for (int i = 0; i < v->number_of_cells; i++) {
+    total_volume += v->cells[i].volume;
+  }
+  //  fprintf(stderr, "Total volume: %g\n", total_volume);
+
+  /* For each cell check that the total surface area is not bigger than the
+   * surface area of a sphere with the same volume */
+  double *surface_areas = malloc(v->number_of_cells * sizeof(double));
+  for (int i = 0; i < v->number_of_cells; i++) {
+    surface_areas[i] = 0;
+  }
+  for (int sid = 0; sid < 27; sid++) {
+    for (int i = 0; i < v->pair_index[sid]; i++) {
+      struct voronoi_pair *pair = &v->pairs[sid][i];
+      surface_areas[pair->left_idx] += pair->surface_area;
+      if (sid == 13) {
+        assert(pair->right_idx >= 0);
+        surface_areas[pair->right_idx] += pair->surface_area;
+      } else {
+        assert(pair->right_idx == -1);
+      }
+    }
+  }
+  for (int i = 0; i < v->number_of_cells; i++) {
+    double sphere_surface_area =
+        2. * M_PI * pow(v->cells[i].volume / M_PI, 0.5);
+    voronoi_assert(sphere_surface_area < surface_areas[i]);
+  }
+  free(surface_areas);
+
+#if defined(VORONOI_STORE_CONNECTIONS) && defined(VORONOI_STORE_GENERATORS)
+  /* Check connectivity */
+  for (int i = 0; i < v->number_of_cells; i++) {
+    struct voronoi_cell_new *this_cell = &v->cells[i];
+    for (int j = this_cell->pair_connections_offset;
+         j < this_cell->pair_connections_offset + this_cell->nface; j++) {
+      int2 connection = v->cell_pair_connections.values[j];
+      int pair_idx = connection._0;
+      int sid = connection._1;
+      struct voronoi_pair *pair = &v->pairs[sid][pair_idx];
+      assert(i == pair->left_idx || (sid == 13 && i == pair->right_idx));
+    }
+  }
+#endif
 #endif
 }
 
@@ -470,14 +553,12 @@ static inline void voronoi_write_grid(const struct voronoi *restrict v,
   for (int i = 0; i < v->number_of_cells; ++i) {
     struct voronoi_cell_new *this_cell = &v->cells[i];
 #ifdef VORONOI_STORE_GENERATORS
-    fprintf(file, "G\t%g\t%g\n", this_cell->generator[0],
-            this_cell->generator[1]);
+    fprintf(file, "G\t%g\t%g\n", this_cell->generator->x[0],
+            this_cell->generator->x[1]);
 #endif
     fprintf(file, "C\t%g\t%g\t%g", this_cell->centroid[0],
             this_cell->centroid[1], this_cell->volume);
-#ifdef VORONOI_STORE_CELL_STATS
     fprintf(file, "\t%i", this_cell->nface);
-#endif
     fprintf(file, "\n");
   }
   /* now write the pairs */

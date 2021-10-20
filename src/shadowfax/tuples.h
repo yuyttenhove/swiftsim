@@ -10,6 +10,14 @@
 #define SWIFTSIM_TUPLES_H
 
 /**
+ * @brief A simple int2 tuple.
+ */
+typedef struct int2 {
+  int _0;
+  int _1;
+} int2;
+
+/**
  * @brief A simple int3 tuple.
  */
 typedef struct int3 {
