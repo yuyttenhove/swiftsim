@@ -154,8 +154,6 @@ void cell_shadowfax_do_pair_subset_density_recursive(
 
 void cell_shadowfax_do_self1_density_recursive(const struct engine *e,
                                                struct cell *restrict c) {
-  if (!cell_is_active_hydro(c, e)) return;
-
   double shift[3] = {0., 0., 0.};
   int sid;
   /* Recurse? */

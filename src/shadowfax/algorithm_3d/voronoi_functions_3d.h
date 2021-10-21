@@ -549,7 +549,31 @@ static inline double voronoi_compute_volume(const struct voronoi *restrict v) {
  */
 inline static void voronoi_check_grid(struct voronoi *restrict v) {
 #ifdef VORONOI_CHECKS
-  fprintf(stderr, "Total volume: %g\n", voronoi_compute_volume(v));
+  /* Check total volume */
+  double total_volume = 0.;
+  for (int i = 0; i < v->number_of_cells; i++) {
+    total_volume += v->cells[i].volume;
+  }
+  fprintf(stderr, "Total volume: %g\n", total_volume);
+
+  /* For each cell check that the total surface area is not bigger than the surface area of a sphere with the same
+   * volume */
+  double *surface_areas = malloc(v->number_of_cells * sizeof(double));
+  for (int i = 0; i < v->number_of_cells; i++) { surface_areas[i] = 0; }
+  for (int sid = 0; sid < 2; sid++) {
+    for (int i = 0; i < v->pair_index[sid]; i++) {
+      struct voronoi_pair *pair = &v->pairs[sid][i];
+      surface_areas[pair->left] += pair->surface_area;
+      if (sid == 0) {
+        surface_areas[pair->right] += pair->surface_area;
+      }
+    }
+  }
+  for (int i = 0; i < v->number_of_cells; i++) {
+    double sphere_surface_area = 4. * M_PI * pow(3. * v->cells[i].volume / (4. * M_PI), 2. / 3.);
+    voronoi_assert(sphere_surface_area < surface_areas[i]);
+  }
+  free(surface_areas);
 #endif
 }
 

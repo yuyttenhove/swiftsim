@@ -158,6 +158,28 @@ static inline int voronoi_add_pair(struct voronoi *v, const struct delaunay *d,
 }
 
 /**
+ * @brief Compute the circumcenter of the triangle through the given 3 points
+ * */
+inline static void voronoi_compute_circumcenter(double v0x, double v0y,
+                                                double v1x, double v1y,
+                                                double v2x, double v2y,
+                                                double *circumcenter) {
+  double ax = v1x - v0x;
+  double ay = v1y - v0y;
+  double bx = v2x - v0x;
+  double by = v2y - v0y;
+
+  double D = 2. * (ax * by - ay * bx);
+  double a2 = ax * ax + ay * ay;
+  double b2 = bx * bx + by * by;
+  double Rx = (by * a2 - ay * b2) / D;
+  double Ry = (ax * b2 - bx * a2) / D;
+
+  circumcenter[0] = v0x + Rx;
+  circumcenter[1] = v0y + Ry;
+}
+
+/**
  * @brief Compute the volume and centroid of the triangle through the given 3
  * points.
  *
@@ -331,19 +353,8 @@ static inline void voronoi_build(struct voronoi *restrict v,
     double v2x = d->vertices[2 * v2];
     double v2y = d->vertices[2 * v2 + 1];
 
-    double ax = v1x - v0x;
-    double ay = v1y - v0y;
-    double bx = v2x - v0x;
-    double by = v2y - v0y;
-
-    double D = 2. * (ax * by - ay * bx);
-    double a2 = ax * ax + ay * ay;
-    double b2 = bx * bx + by * by;
-    double Rx = (by * a2 - ay * b2) / D;
-    double Ry = (ax * b2 - bx * a2) / D;
-
-    vertices[2 * i] = v0x + Rx;
-    vertices[2 * i + 1] = v0y + Ry;
+    voronoi_compute_circumcenter(v0x, v0y, v1x, v1y, v2x, v2y,
+                                 &vertices[2 * i]);
   } /* loop over the Delaunay triangles and compute the circumcenters */
 
   /* loop over all cell generators, and hence over all non-ghost, non-dummy
@@ -360,7 +371,7 @@ static inline void voronoi_build(struct voronoi *restrict v,
     int del_vert_ix = i + d->vertex_start;
     /* get the generator position, we use it during centroid/volume
        calculations */
-    if (del_vert_ix >= d->ngb_offset) {
+    if (del_vert_ix >= d->vertex_end) {
       error(
           "Found a ghost particle while looping over non-ghost, non-dummy "
           "particles!");

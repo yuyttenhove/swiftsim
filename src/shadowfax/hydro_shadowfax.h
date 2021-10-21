@@ -145,6 +145,7 @@ __attribute__((always_inline)) INLINE static void hydro_shadowfax_flux_exchange(
                           ? fminf(pi->conserved.flux.dt, pj->conserved.flux.dt)
                           : pi->conserved.flux.dt;
 #ifdef SWIFT_DEBUG_CHECKS
+  assert(pi->conserved.flux.dt >= 0);
   assert(min_dt >= 0);
 #endif
 

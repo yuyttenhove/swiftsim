@@ -584,16 +584,16 @@ inline static int delaunay_update_search_radii(struct delaunay* restrict d,
   return count;
 }
 
-inline static float delaunay_get_search_radius(struct delaunay* restrict d,
+inline static double delaunay_get_search_radius(struct delaunay* restrict d,
                                                int vi) {
   int t0 = d->vertex_triangles[vi];
   int vi0 = d->vertex_triangle_index[vi];
   int vi0p1 = (vi0 + 1) % 3;
-  float r = 2.0f * delaunay_get_radius(d, t0);
+  double r = 2. * delaunay_get_radius(d, t0);
   int t1 = d->triangles[t0].neighbours[vi0p1];
   int vi1 = d->triangles[t0].index_in_neighbour[vi0p1];
   while (t1 != t0) {
-    r = max(r, 2.f * delaunay_get_radius(d, t1));
+    r = max(r, 2. * delaunay_get_radius(d, t1));
     int vi1p2 = (vi1 + 2) % 3;
     vi1 = d->triangles[t1].index_in_neighbour[vi1p2];
     t1 = d->triangles[t1].neighbours[vi1p2];
