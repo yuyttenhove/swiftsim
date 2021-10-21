@@ -251,8 +251,6 @@ hydro_shadowfax_gradients_collect(struct part *pi, struct part *pj,
   double r_ij = sqrt(f_ij[0] * f_ij[0] + f_ij[1] * f_ij[1] + f_ij[2] * f_ij[2]);
   hydro_slope_limit_cell_collect(pi, pj, r_ij);
 
-  pi->primitives.gradients.active = 1;
-
   if (symmetric || (pj->conserved.flux.dt < 0.0f)) {
     double mindx[3];
     mindx[0] = -dx[0];
@@ -280,8 +278,6 @@ hydro_shadowfax_gradients_collect(struct part *pi, struct part *pj,
     double r_ji =
         sqrt(f_ji[0] * f_ji[0] + f_ji[1] * f_ji[1] + f_ji[2] * f_ji[2]);
     hydro_slope_limit_cell_collect(pj, pi, r_ji);
-
-    pj->primitives.gradients.active = 1;
   }
 }
 

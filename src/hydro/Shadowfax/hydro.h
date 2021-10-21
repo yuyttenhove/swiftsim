@@ -368,7 +368,47 @@ __attribute__((always_inline)) INLINE static void hydro_convert_quantities(
 __attribute__((always_inline)) INLINE static void hydro_predict_extra(
     struct part* p, struct xpart* xp, float dt_drift, float dt_therm,
     const struct cosmology* cosmo, const struct hydro_props* hydro_props,
-    const struct entropy_floor_properties* floor_props) {}
+    const struct entropy_floor_properties* floor_props) {
+
+  const double div_v = p->primitives.gradients.v[0][0] +
+                       p->primitives.gradients.v[1][1] +
+                       p->primitives.gradients.v[2][2];
+
+  double Wprime[5];
+  Wprime[0] = p->primitives.rho -
+              dt_therm * (p->primitives.rho * div_v +
+                          p->primitives.v[0] * p->primitives.gradients.rho[0] +
+                          p->primitives.v[1] * p->primitives.gradients.rho[1] +
+                          p->primitives.v[2] * p->primitives.gradients.rho[2]);
+
+  if (p->primitives.rho != 0.0f) {
+    const double rho_inv = 1. / p->primitives.rho;
+    Wprime[1] = p->primitives.v[0] -
+                dt_therm * (p->primitives.v[0] * div_v +
+                            rho_inv * p->primitives.gradients.P[0]);
+    Wprime[2] = p->primitives.v[1] -
+                dt_therm * (p->primitives.v[1] * div_v +
+                            rho_inv * p->primitives.gradients.P[1]);
+    Wprime[3] = p->primitives.v[2] -
+                dt_therm * (p->primitives.v[2] * div_v +
+                            rho_inv * p->primitives.gradients.P[2]);
+  } else {
+    Wprime[1] = 0.0f;
+    Wprime[2] = 0.0f;
+    Wprime[3] = 0.0f;
+  }
+  Wprime[4] = p->primitives.P -
+              dt_therm * (hydro_gamma * p->primitives.P * div_v +
+                          p->primitives.v[0] * p->primitives.gradients.P[0] +
+                          p->primitives.v[1] * p->primitives.gradients.P[1] +
+                          p->primitives.v[2] * p->primitives.gradients.P[2]);
+
+  p->primitives.rho = (float)Wprime[0];
+  p->primitives.v[0] = (float)Wprime[1];
+  p->primitives.v[1] = (float)Wprime[2];
+  p->primitives.v[2] = (float)Wprime[3];
+  p->primitives.P = (float)Wprime[4];
+}
 
 /**
  * @brief Set the particle acceleration after the flux loop.
@@ -380,7 +420,7 @@ __attribute__((always_inline)) INLINE static void hydro_predict_extra(
 __attribute__((always_inline)) INLINE static void hydro_end_force(
     struct part* p, const struct cosmology* cosmo) {
 #ifdef SWIFT_DEBUG_CHECKS
-  assert(p->voronoi.cell->nface == p->voronoi.nfluxes);
+//  assert(p->voronoi.cell->nface == p->voronoi.nfluxes);
 #endif
 }
 

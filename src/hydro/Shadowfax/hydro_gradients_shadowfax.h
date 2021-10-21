@@ -47,8 +47,6 @@ __attribute__((always_inline)) INLINE static void hydro_gradients_init(
   p->primitives.gradients.P[1] = 0.0f;
   p->primitives.gradients.P[2] = 0.0f;
 
-  p->primitives.gradients.active = 0;
-
   hydro_slope_limit_cell_init(p);
 }
 
