@@ -127,11 +127,25 @@ __attribute__((always_inline)) INLINE static void hydro_shadowfax_flux_exchange(
   Wj[2] -= vij[1];
   Wj[3] -= vij[2];
 
+  /* get the time step for the flux exchange. This is always the smallest time
+     step among the two particles */
+  const float min_dt = (pj->conserved.flux.dt > 0.0f)
+                           ? fminf(pi->conserved.flux.dt, pj->conserved.flux.dt)
+                           : pi->conserved.flux.dt;
+  double dWi_time[5], dWj_time[5];
+  hydro_gradients_extrapolate_in_time(pi, Wi, min_dt, dWi_time);
+  hydro_gradients_extrapolate_in_time(pj, Wj, min_dt, dWj_time);
+
   float xij_i[3];
   for (int k = 0; k < 3; k++) {
     xij_i[k] = (float)(centroid[k] - pi->x[k]);
   }
   hydro_gradients_predict(pi, pj, pi->h, pj->h, dx, r, xij_i, Wi, Wj);
+
+  for (int i = 0; i < 5; i++) {
+    Wi[i] += (float)dWi_time[i];
+    Wj[i] += (float)dWj_time[i];
+  }
 
   /* compute the normal vector of the interface */
   float n_unit[3];
@@ -139,11 +153,6 @@ __attribute__((always_inline)) INLINE static void hydro_shadowfax_flux_exchange(
     n_unit[k] = -dx[k] / r;
   }
 
-  /* get the time step for the flux exchange. This is always the smallest time
-     step among the two particles */
-  const float min_dt = (pj->conserved.flux.dt > 0.0f)
-                          ? fminf(pi->conserved.flux.dt, pj->conserved.flux.dt)
-                          : pi->conserved.flux.dt;
 #ifdef SWIFT_DEBUG_CHECKS
   assert(pi->conserved.flux.dt >= 0);
   assert(min_dt >= 0);
