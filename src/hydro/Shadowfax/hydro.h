@@ -25,6 +25,7 @@
 #include "entropy_floor.h"
 #include "equation_of_state.h"
 #include "hydro_flux.h"
+#include "hydro_getters.h"
 #include "hydro_gradients.h"
 #include "hydro_properties.h"
 #include "hydro_space.h"
@@ -370,38 +371,12 @@ __attribute__((always_inline)) INLINE static void hydro_predict_extra(
     const struct cosmology* cosmo, const struct hydro_props* hydro_props,
     const struct entropy_floor_properties* floor_props) {
 
-  const double div_v = p->primitives.gradients.v[0][0] +
-                       p->primitives.gradients.v[1][1] +
-                       p->primitives.gradients.v[2][2];
-
+  return;
+  // TODO Is this needed?
   double Wprime[5];
-  Wprime[0] = p->primitives.rho -
-              dt_therm * (p->primitives.rho * div_v +
-                          p->primitives.v[0] * p->primitives.gradients.rho[0] +
-                          p->primitives.v[1] * p->primitives.gradients.rho[1] +
-                          p->primitives.v[2] * p->primitives.gradients.rho[2]);
-
-  if (p->primitives.rho != 0.0f) {
-    const double rho_inv = 1. / p->primitives.rho;
-    Wprime[1] = p->primitives.v[0] -
-                dt_therm * (p->primitives.v[0] * div_v +
-                            rho_inv * p->primitives.gradients.P[0]);
-    Wprime[2] = p->primitives.v[1] -
-                dt_therm * (p->primitives.v[1] * div_v +
-                            rho_inv * p->primitives.gradients.P[1]);
-    Wprime[3] = p->primitives.v[2] -
-                dt_therm * (p->primitives.v[2] * div_v +
-                            rho_inv * p->primitives.gradients.P[2]);
-  } else {
-    Wprime[1] = 0.0f;
-    Wprime[2] = 0.0f;
-    Wprime[3] = 0.0f;
-  }
-  Wprime[4] = p->primitives.P -
-              dt_therm * (hydro_gamma * p->primitives.P * div_v +
-                          p->primitives.v[0] * p->primitives.gradients.P[0] +
-                          p->primitives.v[1] * p->primitives.gradients.P[1] +
-                          p->primitives.v[2] * p->primitives.gradients.P[2]);
+  float W[5];
+  hydro_get_primitives(p, W);
+  hydro_gradients_extrapolate_in_time(p, W, dt_therm, Wprime);
 
   p->primitives.rho = (float)Wprime[0];
   p->primitives.v[0] = (float)Wprime[1];
