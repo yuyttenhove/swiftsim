@@ -15,6 +15,11 @@
 
 #define QUEUE_TYPE int
 #include "shadowfax/queues/generic_lifo_queue.h"
+#undef QUEUE_TYPE
+
+#define QUEUE_TYPE int2
+#include "shadowfax/queues/generic_lifo_queue.h"
+#undef QUEUE_TYPE
 
 #define QUEUE_TYPE int3
 #include "shadowfax/queues/generic_fifo_queue.h"

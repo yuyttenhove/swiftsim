@@ -24,13 +24,14 @@
 #include "cosmology.h"
 #include "entropy_floor.h"
 #include "equation_of_state.h"
+#include "hydro_flux.h"
+#include "hydro_getters.h"
+#include "hydro_gradients.h"
 #include "hydro_properties.h"
 #include "hydro_space.h"
-#include "hydro_gradients.h"
 #include "shadowfax/voronoi.h"
 
 #include <float.h>
-
 
 __attribute__((always_inline)) INLINE static float hydro_get_soundspeed(
     const struct part* restrict p);
@@ -62,8 +63,8 @@ __attribute__((always_inline)) INLINE static float hydro_compute_timestep(
     error("Voronoi cell with volume 0!");
   }
   const float psize =
-      cosmo->a *
-      powf(p->voronoi.cell->volume / hydro_dimension_unit_sphere, hydro_dimension_inv);
+      cosmo->a * powf(p->voronoi.cell->volume / hydro_dimension_unit_sphere,
+                      hydro_dimension_inv);
   float dt = FLT_MAX;
   if (vmax > 0.) {
     dt = psize / vmax;
@@ -91,7 +92,6 @@ __attribute__((always_inline)) INLINE static void hydro_timestep_extra(
     struct part* p, float dt) {
 
   p->force.dt = dt;
-  p->force.active = 0;
 }
 
 /**
@@ -178,9 +178,6 @@ __attribute__((always_inline)) INLINE static void hydro_init_part(
   p->density.wcount = 1.0f;
   p->density.wcount_dh = 0.0f;
 
-  /* Set the active flag to active. */
-  p->force.active = 1;
-
   /* Set initial values for voronoi properties */
   p->voronoi.flag = 0;
 #ifdef SWIFT_DEBUG_CHECKS
@@ -248,11 +245,8 @@ __attribute__((always_inline)) INLINE static void hydro_prepare_force(
   p->force.v_full[1] = xp->v_full[1];
   p->force.v_full[2] = xp->v_full[2];
 
-  p->conserved.flux.mass = 0.0f;
-  p->conserved.flux.momentum[0] = 0.0f;
-  p->conserved.flux.momentum[1] = 0.0f;
-  p->conserved.flux.momentum[2] = 0.0f;
-  p->conserved.flux.energy = 0.0f;
+  /* Set the time step of the particle */
+  p->conserved.flux.dt = dt_therm;
 }
 
 /**
@@ -375,7 +369,21 @@ __attribute__((always_inline)) INLINE static void hydro_convert_quantities(
 __attribute__((always_inline)) INLINE static void hydro_predict_extra(
     struct part* p, struct xpart* xp, float dt_drift, float dt_therm,
     const struct cosmology* cosmo, const struct hydro_props* hydro_props,
-    const struct entropy_floor_properties* floor_props) {}
+    const struct entropy_floor_properties* floor_props) {
+
+  return;
+  // TODO Is this needed?
+  double Wprime[5];
+  float W[5];
+  hydro_get_primitives(p, W);
+  hydro_gradients_extrapolate_in_time(p, W, dt_therm, Wprime);
+
+  p->primitives.rho = (float)Wprime[0];
+  p->primitives.v[0] = (float)Wprime[1];
+  p->primitives.v[1] = (float)Wprime[2];
+  p->primitives.v[2] = (float)Wprime[3];
+  p->primitives.P = (float)Wprime[4];
+}
 
 /**
  * @brief Set the particle acceleration after the flux loop.
@@ -386,7 +394,8 @@ __attribute__((always_inline)) INLINE static void hydro_predict_extra(
  */
 __attribute__((always_inline)) INLINE static void hydro_end_force(
     struct part* p, const struct cosmology* cosmo) {
-#if defined(SWIFT_DEBUG_CHECKS) && defined(VORONOI_STORE_CELL_STATS)
+
+#ifdef SWIFT_DEBUG_CHECKS
 //  assert(p->voronoi.cell->nface == p->voronoi.nfluxes);
 #endif
 }
@@ -408,25 +417,43 @@ __attribute__((always_inline)) INLINE static void hydro_end_force(
  * @param floor_props The properties of the entropy floor.
  */
 __attribute__((always_inline)) INLINE static void hydro_kick_extra(
-    struct part* p, struct xpart* xp, float dt_therm, float dt_grav, float dt_hydro,
-    float dt_kick_corr, const struct cosmology* cosmo,
+    struct part* p, struct xpart* xp, float dt_therm, float dt_grav,
+    float dt_hydro, float dt_kick_corr, const struct cosmology* cosmo,
     const struct hydro_props* hydro_props,
     const struct entropy_floor_properties* floor_props) {
 
-  /* Update the conserved variables. We do this here and not in the kick,
-     since we need the updated variables below. */
-  p->conserved.mass += p->conserved.flux.mass * dt_therm;
-  p->conserved.momentum[0] += p->conserved.flux.momentum[0] * dt_therm;
-  p->conserved.momentum[1] += p->conserved.flux.momentum[1] * dt_therm;
-  p->conserved.momentum[2] += p->conserved.flux.momentum[2] * dt_therm;
+  if (p->conserved.flux.dt > 0.0f) {
+    /* Update the conserved variables. We do this here and not in the kick,
+       since we need the updated variables below. */
+    p->conserved.mass += p->conserved.flux.mass;
+    p->conserved.momentum[0] += p->conserved.flux.momentum[0];
+    p->conserved.momentum[1] += p->conserved.flux.momentum[1];
+    p->conserved.momentum[2] += p->conserved.flux.momentum[2];
 
 #ifdef EOS_ISOTHERMAL_GAS
-  /* reset the thermal energy */
-  p->conserved.energy =
-      p->conserved.mass * gas_internal_energy_from_entropy(0.f, 0.f);
+    /* reset the thermal energy */
+    p->conserved.energy =
+        p->conserved.mass * gas_internal_energy_from_entropy(0.f, 0.f);
 #else
-  p->conserved.energy += p->conserved.flux.energy * dt_therm;
+    p->conserved.energy += p->conserved.flux.energy;
 #endif
+
+    /* reset the fluxes, so that they do not get used again in kick1 */
+    hydro_part_reset_hydro_fluxes(p);
+    /* invalidate the particle time step. It is considered to be inactive until
+       dt is set again in hydro_prepare_force() */
+    p->conserved.flux.dt = -1.0f;
+  } else if (p->conserved.flux.dt == 0.0f) {
+    /* something tricky happens at the beginning of the simulation: the flux
+       exchange is done for all particles, but using a time step of 0. This
+       in itself is not a problem. However, it causes some issues with the
+       initialisation of flux.dt for inactive particles, since this value will
+       remain 0 until the particle is active again, and its flux.dt is set to
+       the actual time step in hydro_prepare_force(). We have to make sure it
+       is properly set to -1 here, so that inactive particles are indeed found
+       to be inactive during the flux loop. */
+    p->conserved.flux.dt = -1.0f;
+  }
 
 #if defined(SHADOWFAX_FIX_CELLS)
   p->v[0] = 0.0f;
@@ -444,7 +471,7 @@ __attribute__((always_inline)) INLINE static void hydro_kick_extra(
 
 #ifdef SHADOWFAX_STEER_CELL_MOTION
     double d[3], vfac;
-    double *centroid = p->voronoi.cell->centroid;
+    double* centroid = p->voronoi.cell->centroid;
     d[0] = centroid[0] - p->x[0];
     d[1] = centroid[1] - p->x[1];
     d[2] = centroid[2] - p->x[2];
@@ -698,7 +725,7 @@ hydro_get_comoving_internal_energy(const struct part* restrict p) {
  * @param p The particle of interest
  */
 __attribute__((always_inline)) INLINE static float
-hydro_get_drifted_comoving_internal_energy(const struct part *restrict p) {
+hydro_get_drifted_comoving_internal_energy(const struct part* restrict p) {
 
   if (p->primitives.rho > 0.)
     return gas_internal_energy_from_pressure(p->primitives.rho,
@@ -729,7 +756,7 @@ __attribute__((always_inline)) INLINE static float hydro_get_comoving_entropy(
  * @param p The particle of interest.
  */
 __attribute__((always_inline)) INLINE static float
-hydro_get_drifted_comoving_entropy(const struct part *restrict p) {
+hydro_get_drifted_comoving_entropy(const struct part* restrict p) {
   if (p->primitives.rho > 0.) {
     return gas_entropy_from_pressure(p->primitives.rho, p->primitives.P);
   } else {

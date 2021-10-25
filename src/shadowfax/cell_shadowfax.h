@@ -307,13 +307,13 @@ cell_shadowfax_do_pair1_gradient(const struct engine *e,
       if (pair->right_cell != cj) {
         continue;
       }
-      if (part_left->force.active == 1 && part_right->force.active == 1) {
+      if (part_is_active(part_left, e) && part_is_active(part_right, e)) {
         hydro_shadowfax_gradients_collect(part_left, part_right, pair->midpoint,
                                           pair->surface_area, shift, 1);
-      } else if (part_left->force.active) {
+      } else if (part_is_active(part_left, e)) {
         hydro_shadowfax_gradients_collect(part_left, part_right, pair->midpoint,
                                           pair->surface_area, shift, 0);
-      } else if (part_right->force.active) {
+      } else if (part_is_active(part_right, e)) {
         double midpoint[3] = {pair->midpoint[0] + inverse_shift[0],
                               pair->midpoint[1] + inverse_shift[1],
                               pair->midpoint[2] + inverse_shift[2]};
@@ -333,7 +333,7 @@ cell_shadowfax_do_pair1_gradient(const struct engine *e,
       if (pair->right_cell != cj) {
         continue;
       }
-      if (part_left->force.active) {
+      if (part_is_active(part_left, e)) {
         hydro_shadowfax_gradients_collect(part_left, part_right, pair->midpoint,
                                           pair->surface_area, shift, 0);
       }
@@ -352,7 +352,7 @@ cell_shadowfax_do_pair1_gradient(const struct engine *e,
       if (pair->right_cell != ci) {
         continue;
       }
-      if (part_left->force.active) {
+      if (part_is_active(part_left, e)) {
         hydro_shadowfax_gradients_collect(part_left, part_right, pair->midpoint,
                                           pair->surface_area, inverse_shift, 0);
       }
@@ -402,13 +402,13 @@ __attribute__((always_inline)) INLINE static void cell_shadowfax_do_pair2_force(
       if (pair->right_cell != cj) {
         continue;
       }
-      if (part_left->force.active == 1 && part_right->force.active == 1) {
+      if (part_is_active(part_left, e) && part_is_active(part_right, e)) {
         hydro_shadowfax_flux_exchange(part_left, part_right, pair->midpoint,
                                       pair->surface_area, shift, 1);
-      } else if (part_left->force.active) {
+      } else if (part_is_active(part_left, e)) {
         hydro_shadowfax_flux_exchange(part_left, part_right, pair->midpoint,
                                       pair->surface_area, shift, 0);
-      } else if (part_right->force.active) {
+      } else if (part_is_active(part_right, e)) {
         double midpoint[3] = {pair->midpoint[0] + inverse_shift[0],
                               pair->midpoint[1] + inverse_shift[1],
                               pair->midpoint[2] + inverse_shift[2]};
@@ -428,7 +428,7 @@ __attribute__((always_inline)) INLINE static void cell_shadowfax_do_pair2_force(
       if (pair->right_cell != cj) {
         continue;
       }
-      if (part_left->force.active) {
+      if (part_is_active(part_left, e)) {
         hydro_shadowfax_flux_exchange(part_left, part_right, pair->midpoint,
                                       pair->surface_area, shift, 0);
       }
@@ -447,7 +447,7 @@ __attribute__((always_inline)) INLINE static void cell_shadowfax_do_pair2_force(
       if (pair->right_cell != ci) {
         continue;
       }
-      if (part_left->force.active) {
+      if (part_is_active(part_left, e)) {
         hydro_shadowfax_flux_exchange(part_left, part_right, pair->midpoint,
                                       pair->surface_area, inverse_shift, 0);
       }
@@ -631,13 +631,13 @@ cell_shadowfax_do_self1_gradient(const struct engine *e,
     struct voronoi_pair *pair = &vortess->pairs[13][i];
     struct part *part_left = pair->left;
     struct part *part_right = pair->right;
-    if (part_left->force.active == 1 && part_right->force.active == 1) {
+    if (part_is_active(part_left, e) && part_is_active(part_right, e)) {
       hydro_shadowfax_gradients_collect(part_left, part_right, pair->midpoint,
                                         pair->surface_area, shift, 1);
-    } else if (part_left->force.active) {
+    } else if (part_is_active(part_left, e)) {
       hydro_shadowfax_gradients_collect(part_left, part_right, pair->midpoint,
                                         pair->surface_area, shift, 0);
-    } else if (part_right->force.active) {
+    } else if (part_is_active(part_right, e)) {
       /* Shift is always {0, 0, 0} for self interactions */
       hydro_shadowfax_gradients_collect(part_right, part_left, pair->midpoint,
                                         pair->surface_area, shift, 0);
@@ -670,13 +670,13 @@ __attribute__((always_inline)) INLINE static void cell_shadowfax_do_self2_force(
     struct part *part_left = pair->left;
     struct part *part_right = pair->right;
 
-    if (part_left->force.active == 1 && part_right->force.active == 1) {
+    if (part_is_active(part_left, e) && part_is_active(part_right, e)) {
       hydro_shadowfax_flux_exchange(part_left, part_right, pair->midpoint,
                                     pair->surface_area, shift, 1);
-    } else if (part_left->force.active) {
+    } else if (part_is_active(part_left, e)) {
       hydro_shadowfax_flux_exchange(part_left, part_right, pair->midpoint,
                                     pair->surface_area, shift, 0);
-    } else if (part_right->force.active) {
+    } else if (part_is_active(part_right, e)) {
       double inverse_shift[3];
       for (int k = 0; k < 3; k++) {
         inverse_shift[k] = -shift[k];

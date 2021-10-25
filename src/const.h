@@ -95,7 +95,7 @@
 //#define SHADOWFAX_FIX_CELLS
 /* This option enables cell steering, i.e. trying to keep the cells regular by
    adding a correction to the cell velocities. See Springel 2010. */
-#define SHADOWFAX_STEER_CELL_MOTION
+//#define SHADOWFAX_STEER_CELL_MOTION
 /* This option enables the use of the hilbert ordering during the self density
  * tasks. Inserting particles into the delaunay tesselation according to their
  * hilbert ordering increases the efficiency of building the delaunay

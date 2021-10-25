@@ -165,6 +165,9 @@ struct part {
       /* Energy flux. */
       float energy;
 
+      /* Particle time step. Used to compute time-integrated fluxes. */
+      float dt;
+
     } flux;
 
   } conserved;
@@ -196,9 +199,6 @@ struct part {
 
     /* Physical time step of the particle. */
     float dt;
-
-    /* Active flag. */
-    char active;
 
     /* Actual velocity of the particle. */
     float v_full[3];

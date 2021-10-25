@@ -3,7 +3,7 @@
 
 /* Local headers. */
 #include "equation_of_state.h"
-#include "riemann.h"
+#include "hydro/Shadowfax/hydro_flux.h"
 
 /**
  * @brief Convert conserved variables into primitive variables.
@@ -127,65 +127,77 @@ __attribute__((always_inline)) INLINE static void hydro_shadowfax_flux_exchange(
   Wj[2] -= vij[1];
   Wj[3] -= vij[2];
 
+  /* get the time step for the flux exchange. This is always the smallest time
+     step among the two particles */
+  const float min_dt = (pj->conserved.flux.dt > 0.0f)
+                           ? fminf(pi->conserved.flux.dt, pj->conserved.flux.dt)
+                           : pi->conserved.flux.dt;
+  double dWi_time[5], dWj_time[5];
+  hydro_gradients_extrapolate_in_time(pi, Wi, min_dt, dWi_time);
+  hydro_gradients_extrapolate_in_time(pj, Wj, min_dt, dWj_time);
+
   float xij_i[3];
   for (int k = 0; k < 3; k++) {
     xij_i[k] = (float)(centroid[k] - pi->x[k]);
   }
   hydro_gradients_predict(pi, pj, pi->h, pj->h, dx, r, xij_i, Wi, Wj);
 
+  for (int i = 0; i < 5; i++) {
+    Wi[i] += (float)dWi_time[i];
+    Wj[i] += (float)dWj_time[i];
+  }
+
   /* compute the normal vector of the interface */
   float n_unit[3];
   for (int k = 0; k < 3; ++k) {
     n_unit[k] = -dx[k] / r;
   }
-  /* we don't need to rotate, we can use the unit vector in the Riemann problem
-   * itself (see GIZMO) */
+
+#ifdef SWIFT_DEBUG_CHECKS
+  assert(pi->conserved.flux.dt >= 0);
+  assert(min_dt >= 0);
+#endif
+
   float totflux[5];
-  riemann_solve_for_flux(Wi, Wj, n_unit, vij, totflux);
+  hydro_compute_flux(Wi, Wj, n_unit, vij, (float)surface_area, min_dt, totflux);
 
   /* Update conserved variables */
   /* eqn. (16) */
-  pi->conserved.flux.mass -= (float)surface_area * totflux[0];
-  pi->conserved.flux.momentum[0] -= (float)surface_area * totflux[1];
-  pi->conserved.flux.momentum[1] -= (float)surface_area * totflux[2];
-  pi->conserved.flux.momentum[2] -= (float)surface_area * totflux[3];
-  pi->conserved.flux.energy -= (float)surface_area * totflux[4];
+  pi->conserved.flux.mass -= totflux[0];
+  pi->conserved.flux.momentum[0] -= totflux[1];
+  pi->conserved.flux.momentum[1] -= totflux[2];
+  pi->conserved.flux.momentum[2] -= totflux[3];
+  pi->conserved.flux.energy -= totflux[4];
 
 #ifndef SHADOWFAX_TOTAL_ENERGY
   float ekin = 0.5f * (pi->primitives.v[0] * pi->primitives.v[0] +
                        pi->primitives.v[1] * pi->primitives.v[1] +
                        pi->primitives.v[2] * pi->primitives.v[2]);
-  pi->conserved.flux.energy +=
-      (float)surface_area * totflux[1] * pi->primitives.v[0];
-  pi->conserved.flux.energy +=
-      (float)surface_area * totflux[2] * pi->primitives.v[1];
-  pi->conserved.flux.energy +=
-      (float)surface_area * totflux[3] * pi->primitives.v[2];
-  pi->conserved.flux.energy -= (float)surface_area * totflux[0] * ekin;
+  pi->conserved.flux.energy += totflux[1] * pi->primitives.v[0];
+  pi->conserved.flux.energy += totflux[2] * pi->primitives.v[1];
+  pi->conserved.flux.energy += totflux[3] * pi->primitives.v[2];
+  pi->conserved.flux.energy -= totflux[0] * ekin;
 #endif
 
 #ifdef SWIFT_DEBUG_CHECKS
   ++pi->voronoi.nfluxes;
 #endif
 
-  if (symmetric) {
-    pj->conserved.flux.mass += (float)surface_area * totflux[0];
-    pj->conserved.flux.momentum[0] += (float)surface_area * totflux[1];
-    pj->conserved.flux.momentum[1] += (float)surface_area * totflux[2];
-    pj->conserved.flux.momentum[2] += (float)surface_area * totflux[3];
-    pj->conserved.flux.energy += (float)surface_area * totflux[4];
+  if (symmetric || (pj->conserved.flux.dt < 0.0f)) {
+    pj->conserved.flux.mass += totflux[0];
+    pj->conserved.flux.momentum[0] += totflux[1];
+    pj->conserved.flux.momentum[1] += totflux[2];
+    pj->conserved.flux.momentum[2] += totflux[3];
+    pj->conserved.flux.energy += totflux[4];
 
 #ifndef SHADOWFAX_TOTAL_ENERGY
     ekin = 0.5f * (pj->primitives.v[0] * pj->primitives.v[0] +
                    pj->primitives.v[1] * pj->primitives.v[1] +
                    pj->primitives.v[2] * pj->primitives.v[2]);
-    pj->conserved.flux.energy -=
-        (float)surface_area * totflux[1] * pj->primitives.v[0];
-    pj->conserved.flux.energy -=
-        (float)surface_area * totflux[2] * pj->primitives.v[1];
-    pj->conserved.flux.energy -=
-        (float)surface_area * totflux[3] * pj->primitives.v[2];
-    pj->conserved.flux.energy += (float)surface_area * totflux[0] * ekin;
+    pj->conserved.flux.energy -= totflux[1] * pj->primitives.v[0];
+    pj->conserved.flux.energy -= totflux[2] * pj->primitives.v[1];
+    pj->conserved.flux.energy -= totflux[3] * pj->primitives.v[2];
+    pj->conserved.flux.energy += totflux[0] * ekin;
 #endif
 
 #ifdef SWIFT_DEBUG_CHECKS
@@ -248,7 +260,7 @@ hydro_shadowfax_gradients_collect(struct part *pi, struct part *pj,
   double r_ij = sqrt(f_ij[0] * f_ij[0] + f_ij[1] * f_ij[1] + f_ij[2] * f_ij[2]);
   hydro_slope_limit_cell_collect(pi, pj, r_ij);
 
-  if (symmetric) {
+  if (symmetric || (pj->conserved.flux.dt < 0.0f)) {
     double mindx[3];
     mindx[0] = -dx[0];
     mindx[1] = -dx[1];
@@ -270,8 +282,8 @@ hydro_shadowfax_gradients_collect(struct part *pi, struct part *pj,
                                     pj->primitives.gradients.P);
 
     double f_ji[3] = {midpoint[0] - pj->x[0] - shift[0],
-                     midpoint[1] - pj->x[1] - shift[1],
-                     midpoint[2] - pj->x[2] - shift[2]};
+                      midpoint[1] - pj->x[1] - shift[1],
+                      midpoint[2] - pj->x[2] - shift[2]};
     double r_ji =
         sqrt(f_ji[0] * f_ji[0] + f_ji[1] * f_ji[1] + f_ji[2] * f_ji[2]);
     hydro_slope_limit_cell_collect(pj, pi, r_ji);

@@ -7,19 +7,16 @@
 
 /*! @brief Store the edges of faces (so that the actual Voronoi grid can be
  *  reconstructed). */
-//#define VORONOI_STORE_CONNECTIONS
-
-/*! @brief Store information about the number of faces per cell. */
-#define VORONOI_STORE_CELL_STATS
+#define VORONOI_STORE_CONNECTIONS
 
 /*! @brief Store cell generators. */
 #define VORONOI_STORE_GENERATORS
 
 /*! @brief Activate runtime assertions. */
-//#define VORONOI_DO_ASSERTIONS
+#define VORONOI_DO_ASSERTIONS
 
 /*! @brief Activate extra checks */
-//#define VORONOI_CHECKS
+#define VORONOI_CHECKS
 
 /**
  *@brief Evaluate the given condition and abort if it evaluates to true.
@@ -63,12 +60,15 @@ struct voronoi_cell_new {
 
 #ifdef VORONOI_STORE_GENERATORS
   /*! Position of the cell generator. */
-  double generator[3];
+  struct part *generator;
 #endif
 
-#ifdef VORONOI_STORE_CELL_STATS
   /*! Number of faces of this cell. */
   int nface;
+
+#ifdef VORONOI_STORE_CONNECTIONS
+  /*! cell_pair_connections offset */
+  int pair_connections_offset;
 #endif
 };
 

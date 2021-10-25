@@ -1041,6 +1041,26 @@ void runner_do_extra_ghost(struct runner *r, struct cell *c, int timer) {
         hydro_reset_acceleration(p);
       }
     }
+
+#if defined(SWIFT_DEBUG_CHECKS) && defined(SHADOWFAX_NEW_SPH)
+    /* Check that the pairs accross cell boundaries match */
+    for (int sid = 0; sid < 27; sid++) {
+      if (sid == 13) continue;
+      for (int i = 0; i < c->hydro.vortess.pair_index[sid]; i++) {
+        struct voronoi_pair *pair = &c->hydro.vortess.pairs[sid][i];
+        assert(pair->right_cell != NULL);
+        struct cell *c2 = pair->right_cell;
+        if (!cell_is_active_hydro(c2, e)) continue;
+        int found_corresponding_pair = 0;
+        for (int j = 0; j < c2->hydro.vortess.pair_index[26-sid] && !found_corresponding_pair; j++) {
+          struct voronoi_pair *pair2 = &c2->hydro.vortess.pairs[26-sid][j];
+          if (pair2->right_cell != c) continue;
+          found_corresponding_pair = pair->left == pair2->right && pair->right == pair2->left;
+        }
+//        assert(found_corresponding_pair || pair->surface_area < c2->hydro.vortess.min_surface_area);
+      }
+    }
+#endif
   }
 
   if (timer) TIMER_TOC(timer_do_extra_ghost);
@@ -1090,7 +1110,9 @@ void runner_do_ghost(struct runner *r, struct cell *c, int timer) {
 
   /* Anything to do here? */
   if (c->hydro.count == 0) return;
+#ifndef SHADOWFAX_NEW_SPH
   if (!cell_is_active_hydro(c, e)) return;
+#endif
 
   /* Recurse? */
   if (c->split) {

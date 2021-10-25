@@ -66,8 +66,8 @@ __attribute__((always_inline)) INLINE static void hydro_gradients_init(
  * @param grad Current value of the gradient for the quantity (is updated).
  */
 __attribute__((always_inline)) INLINE void hydro_gradients_single_quantity(
-    double qL, double qR, const double *cLR, const double *xLR, double rLR, double A,
-    double *grad) {
+    double qL, double qR, const double *cLR, const double *xLR, double rLR,
+    double A, double *grad) {
 
   grad[0] += A * ((qR - qL) * cLR[0] / rLR - 0.5f * (qL + qR) * xLR[0] / rLR);
   grad[1] += A * ((qR - qL) * cLR[1] / rLR - 0.5f * (qL + qR) * xLR[1] / rLR);
@@ -151,4 +151,40 @@ __attribute__((always_inline)) INLINE static void hydro_gradients_finalize(
 #endif
 
   hydro_slope_limit_cell(p);
+}
+
+__attribute__((always_inline)) INLINE static void
+hydro_gradients_extrapolate_in_time(struct part *p, const float *W, double dt,
+                                    double *dW) {
+  const double div_v = p->primitives.gradients.v[0][0] +
+                       p->primitives.gradients.v[1][1] +
+                       p->primitives.gradients.v[2][2];
+
+  dW[0] = -0.5 * dt *
+          (W[0] * div_v + W[1] * p->primitives.gradients.rho[0] +
+           W[2] * p->primitives.gradients.rho[1] +
+           W[3] * p->primitives.gradients.rho[2]);
+
+  if (W[0] != 0.0f) {
+    const double rho_inv = 1. / W[0];
+    dW[1] = -0.5 * dt * (W[1] * div_v + rho_inv * p->primitives.gradients.P[0]);
+    dW[2] = -0.5 * dt * (W[2] * div_v + rho_inv * p->primitives.gradients.P[1]);
+    dW[3] = -0.5 * dt * (W[3] * div_v + rho_inv * p->primitives.gradients.P[2]);
+  } else {
+    dW[1] = 0.0f;
+    dW[2] = 0.0f;
+    dW[3] = 0.0f;
+  }
+  dW[4] = -0.5 * dt *
+          (hydro_gamma * W[4] * div_v + W[1] * p->primitives.gradients.P[0] +
+           W[2] * p->primitives.gradients.P[1] +
+           W[3] * p->primitives.gradients.P[2]);
+
+  /* Sanity check */
+  if (W[0] + dW[0] < 0) {
+    dW[0] = 0.;
+  }
+  if (W[4] + dW[4] < 0) {
+    dW[4] = 0.;
+  }
 }
