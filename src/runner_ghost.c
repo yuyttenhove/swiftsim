@@ -1169,7 +1169,7 @@ void runner_do_ghost(struct runner *r, struct cell *c, int timer) {
         if (hnew >= p->h) {
           /* Use h_0 array for previous search radii */
           h_0[redo] = p->h;
-          p->h *= 1.1f;
+          p->h *= 1.25f;
           /* Check if h_max is increased */
           h_max = max(h_max, p->h);
           h_max_active = max(h_max_active, p->h);

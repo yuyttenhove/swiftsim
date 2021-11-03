@@ -6,11 +6,10 @@
 #define SWIFTSIM_VORONOI_FUNCTIONS_3D_H
 
 /* Forward declarations */
-inline static void voronoi_new_face(struct voronoi *v, int sid,
-                                    struct cell *restrict c,
-                                    struct part *left_part_pointer,
-                                    struct part *right_part_pointer,
-                                    double *vertices, int n_vertices);
+inline static void voronoi_new_face(struct voronoi *v, struct delaunay *d,
+                                    int left_part_idx_in_d,
+                                    int right_part_idx_in_d, double *vertices,
+                                    int n_vertices);
 inline static void voronoi_check_grid(struct voronoi *restrict v);
 inline static void voronoi_destroy(struct voronoi *restrict v);
 
@@ -30,10 +29,14 @@ inline static void voronoi_pair_init(struct voronoi_pair *pair,
                                      struct cell *restrict c,
                                      struct part *restrict left_part_pointer,
                                      struct part *restrict right_part_pointer,
-                                     double *vertices, int n_vertices) {
+                                     int left_part_idx_in_d,
+                                     int right_part_idx_in_d, double *vertices,
+                                     int n_vertices) {
   pair->right_cell = c;
   pair->left = left_part_pointer;
+  pair->left_idx = left_part_idx_in_d;
   pair->right = right_part_pointer;
+  pair->right_idx = right_part_idx_in_d;
 
   pair->surface_area =
       geometry3d_compute_centroid_area(vertices, n_vertices, pair->midpoint);
@@ -219,18 +222,22 @@ inline static void voronoi_build(struct voronoi *restrict v,
     const double cy = voronoi_vertices[3 * i + 1];
     const double cz = voronoi_vertices[3 * i + 2];
 
-    const double r0 = sqrt((cx - d->vertices[3 * v0]) * (cx - d->vertices[3 * v0]) +
-                           (cy - d->vertices[3 * v0 + 1]) * (cy - d->vertices[3 * v0 + 1]) +
-                           (cz - d->vertices[3 * v0 + 2]) * (cz - d->vertices[3 * v0 + 2]));
-    const double r1 = sqrt((cx - d->vertices[3 * v1]) * (cx - d->vertices[3 * v1]) +
-                           (cy - d->vertices[3 * v1 + 1]) * (cy - d->vertices[3 * v1 + 1]) +
-                           (cz - d->vertices[3 * v1 + 2]) * (cz - d->vertices[3 * v1 + 2]));
-    const double r2 = sqrt((cx - d->vertices[3 * v2]) * (cx - d->vertices[3 * v2]) +
-                           (cy - d->vertices[3 * v2 + 1]) * (cy - d->vertices[3 * v2 + 1]) +
-                           (cz - d->vertices[3 * v2 + 2]) * (cz - d->vertices[3 * v2 + 2]));
-    const double r3 = sqrt((cx - d->vertices[3 * v3]) * (cx - d->vertices[3 * v3]) +
-                           (cy - d->vertices[3 * v3 + 1]) * (cy - d->vertices[3 * v3 + 1]) +
-                           (cz - d->vertices[3 * v3 + 2]) * (cz - d->vertices[3 * v3 + 2]));
+    const double r0 =
+        sqrt((cx - d->vertices[3 * v0]) * (cx - d->vertices[3 * v0]) +
+             (cy - d->vertices[3 * v0 + 1]) * (cy - d->vertices[3 * v0 + 1]) +
+             (cz - d->vertices[3 * v0 + 2]) * (cz - d->vertices[3 * v0 + 2]));
+    const double r1 =
+        sqrt((cx - d->vertices[3 * v1]) * (cx - d->vertices[3 * v1]) +
+             (cy - d->vertices[3 * v1 + 1]) * (cy - d->vertices[3 * v1 + 1]) +
+             (cz - d->vertices[3 * v1 + 2]) * (cz - d->vertices[3 * v1 + 2]));
+    const double r2 =
+        sqrt((cx - d->vertices[3 * v2]) * (cx - d->vertices[3 * v2]) +
+             (cy - d->vertices[3 * v2 + 1]) * (cy - d->vertices[3 * v2 + 1]) +
+             (cz - d->vertices[3 * v2 + 2]) * (cz - d->vertices[3 * v2 + 2]));
+    const double r3 =
+        sqrt((cx - d->vertices[3 * v3]) * (cx - d->vertices[3 * v3]) +
+             (cy - d->vertices[3 * v3 + 1]) * (cy - d->vertices[3 * v3 + 1]) +
+             (cz - d->vertices[3 * v3 + 2]) * (cz - d->vertices[3 * v3 + 2]));
     voronoi_assert(double_cmp(r0, r1, 1e5) && double_cmp(r0, r2, 1e5) &&
                    double_cmp(r0, r3, 1e5));
 #endif
@@ -283,9 +290,7 @@ inline static void voronoi_build(struct voronoi *restrict v,
     double az = d->vertices[3 * gen_idx_in_d + 2];
 
 #ifdef VORONOI_STORE_GENERATORS
-    this_cell->generator[0] = ax;
-    this_cell->generator[1] = ay;
-    this_cell->generator[2] = az;
+    this_cell->generator = d->part_pointers[gen_idx_in_d];
 #endif
 
     /* Get a tetrahedron containing the central generator */
@@ -425,20 +430,8 @@ inline static void voronoi_build(struct voronoi *restrict v,
           neighbour_flags[next_non_axis_idx_in_d] |= 1;
         }
       }
-      if (axis_idx_in_d < d->vertex_end) {
-        /* Store faces only once */
-        if (gen_idx_in_d < axis_idx_in_d) {
-          voronoi_new_face(v, 13, NULL, d->part_pointers[gen_idx_in_d],
-                           d->part_pointers[axis_idx_in_d], face_vertices,
-                           face_vertices_index);
-        }
-      } else { /* axis_idx_in_d >= d->ngb_offset */
-        int sid = d->ngb_cell_sids[axis_idx_in_d - d->ngb_offset];
-        struct cell *c = d->ngb_cell_ptrs[axis_idx_in_d - d->ngb_offset];
-        voronoi_new_face(v, sid, c, d->part_pointers[gen_idx_in_d],
-                         d->part_pointers[axis_idx_in_d], face_vertices,
-                         face_vertices_index);
-      }
+      voronoi_new_face(v, d, gen_idx_in_d, axis_idx_in_d,
+                       face_vertices, face_vertices_index);
     }
     voronoi_assert(this_cell->volume > 0.);
     this_cell->centroid[0] /= this_cell->volume;
@@ -511,11 +504,32 @@ inline static void voronoi_destroy(struct voronoi *restrict v) {
  * @param vertices Vertices of the interface.
  * @param n_vertices Number of vertices in the vertices array.
  */
-inline static void voronoi_new_face(struct voronoi *v, int sid,
-                                    struct cell *restrict c,
-                                    struct part *left_part_pointer,
-                                    struct part *right_part_pointer,
-                                    double *vertices, int n_vertices) {
+inline static void voronoi_new_face(struct voronoi *v, struct delaunay *d,
+                                    int left_part_idx_in_d,
+                                    int right_part_idx_in_d, double *vertices,
+                                    int n_vertices) {
+  int sid;
+  struct cell *c;
+  if (right_part_idx_in_d < d->ngb_offset) {
+    if (right_part_idx_in_d < left_part_idx_in_d) {
+      /* Pair was already added. Find it and add it to the cell_pair_connections
+       * if necessary. If no pair is found, the face must have been degenerate.
+       * Return early. */
+      // TODO find pair if necessary.
+      return;
+    }
+    sid = 13;
+    c = NULL;
+  } else {
+    sid = d->ngb_cell_sids[right_part_idx_in_d - d->ngb_offset];
+    c = d->ngb_cell_ptrs[right_part_idx_in_d - d->ngb_offset];
+  }
+
+#ifdef SWIFT_DEBUG_CHECKS
+  /* Sanity check */
+  assert(c == NULL || !c->split);
+#endif
+
   if (v->pair_index[sid] == v->pair_size[sid]) {
     v->pair_size[sid] <<= 1;
     v->pairs[sid] = (struct voronoi_pair *)swift_realloc(
@@ -525,8 +539,9 @@ inline static void voronoi_new_face(struct voronoi *v, int sid,
 
   /* Initialize pair */
   struct voronoi_pair *this_pair = &v->pairs[sid][v->pair_index[sid]];
-  voronoi_pair_init(this_pair, c, left_part_pointer, right_part_pointer,
-                    vertices, n_vertices);
+  voronoi_pair_init(this_pair, c, d->part_pointers[left_part_idx_in_d],
+                    d->part_pointers[right_part_idx_in_d], left_part_idx_in_d,
+                    right_part_idx_in_d, vertices, n_vertices);
 
   /* increase index if surface area is large enough */
   if (this_pair->surface_area >= v->min_surface_area) {
@@ -554,23 +569,26 @@ inline static void voronoi_check_grid(struct voronoi *restrict v) {
   for (int i = 0; i < v->number_of_cells; i++) {
     total_volume += v->cells[i].volume;
   }
-  fprintf(stderr, "Total volume: %g\n", total_volume);
+//  fprintf(stderr, "Total volume: %g\n", total_volume);
 
-  /* For each cell check that the total surface area is not bigger than the surface area of a sphere with the same
-   * volume */
+  /* For each cell check that the total surface area is not bigger than the
+   * surface area of a sphere with the same volume */
   double *surface_areas = malloc(v->number_of_cells * sizeof(double));
-  for (int i = 0; i < v->number_of_cells; i++) { surface_areas[i] = 0; }
-  for (int sid = 0; sid < 2; sid++) {
+  for (int i = 0; i < v->number_of_cells; i++) {
+    surface_areas[i] = 0;
+  }
+  for (int sid = 0; sid < 27; sid++) {
     for (int i = 0; i < v->pair_index[sid]; i++) {
       struct voronoi_pair *pair = &v->pairs[sid][i];
-      surface_areas[pair->left] += pair->surface_area;
-      if (sid == 0) {
-        surface_areas[pair->right] += pair->surface_area;
+      surface_areas[pair->left_idx] += pair->surface_area;
+      if (sid == 13) {
+        surface_areas[pair->right_idx] += pair->surface_area;
       }
     }
   }
   for (int i = 0; i < v->number_of_cells; i++) {
-    double sphere_surface_area = 4. * M_PI * pow(3. * v->cells[i].volume / (4. * M_PI), 2. / 3.);
+    double sphere_surface_area =
+        4. * M_PI * pow(3. * v->cells[i].volume / (4. * M_PI), 2. / 3.);
     voronoi_assert(sphere_surface_area < surface_areas[i]);
   }
   free(surface_areas);
@@ -597,8 +615,8 @@ inline static void voronoi_write_grid(const struct voronoi *restrict v,
   for (int i = 0; i < v->number_of_cells; ++i) {
     struct voronoi_cell_new *this_cell = &v->cells[i];
 #ifdef VORONOI_STORE_GENERATORS
-    fprintf(file, "G\t%g\t%g\t%g\n", this_cell->generator[0],
-            this_cell->generator[1], this_cell->generator[2]);
+    fprintf(file, "G\t%g\t%g\t%g\n", this_cell->generator->x[0],
+            this_cell->generator->x[1], this_cell->generator->x[2]);
 #endif
     fprintf(file, "C\t%g\t%g\t%g\t%g", this_cell->centroid[0],
             this_cell->centroid[1], this_cell->centroid[2], this_cell->volume);

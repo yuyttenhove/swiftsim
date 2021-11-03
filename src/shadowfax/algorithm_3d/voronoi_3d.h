@@ -25,10 +25,17 @@ struct voronoi_pair {
    * interface (always a particle within the local cell). */
   struct part *left;
 
+  /*! idx of cell on the left in this voronoi tesselation. */
+  int left_idx;
+
   /*! Pointer to particle corresponding to the generator on the right of the
    * interface (can be a local particle, but also a particle in a
    * neighbouring cell). */
   struct part *right;
+
+  /*! idx of cell on the right in this voronoi tesselation If it is not a ghost
+   * particle, else -1. */
+  int right_idx;
 
   struct cell *right_cell;
 

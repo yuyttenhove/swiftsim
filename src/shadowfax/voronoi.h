@@ -13,10 +13,10 @@
 #define VORONOI_STORE_GENERATORS
 
 /*! @brief Activate runtime assertions. */
-#define VORONOI_DO_ASSERTIONS
+//#define VORONOI_DO_ASSERTIONS
 
 /*! @brief Activate extra checks */
-#define VORONOI_CHECKS
+//#define VORONOI_CHECKS
 
 /**
  *@brief Evaluate the given condition and abort if it evaluates to true.
