@@ -154,7 +154,7 @@ __attribute__((always_inline)) INLINE static void hydro_gradients_finalize(
 }
 
 __attribute__((always_inline)) INLINE static void
-hydro_gradients_extrapolate_in_time(struct part *p, const float *W, double dt,
+hydro_gradients_extrapolate_in_time(const struct part *p, const double *W, double dt,
                                     double *dW) {
   const double div_v = p->primitives.gradients.v[0][0] +
                        p->primitives.gradients.v[1][1] +

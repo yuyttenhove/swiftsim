@@ -5,7 +5,7 @@
 #ifndef SWIFTSIM_HYDRO_GETTERS_H
 #define SWIFTSIM_HYDRO_GETTERS_H
 
-__attribute__((always_inline)) INLINE static void hydro_get_primitives(struct part *p, float *W) {
+__attribute__((always_inline)) INLINE static void hydro_get_primitives(struct part *p, double *W) {
   W[0] = p->primitives.rho;
   W[1] = p->primitives.v[0];
   W[2] = p->primitives.v[1];

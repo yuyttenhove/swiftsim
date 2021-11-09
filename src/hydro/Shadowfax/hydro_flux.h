@@ -36,12 +36,17 @@ __attribute__((always_inline)) INLINE static void hydro_part_reset_hydro_fluxes(
  * @param fluxes Array to store the result in (of size 5 or more).
  */
 __attribute__((always_inline)) INLINE static void hydro_compute_flux(
-    const float* WL, const float* WR, const float* n_unit, const float* vLR,
+    const double* WL, const double* WR, const float* n_unit, const double* vLR,
     const float surface_area, const float dt, float* fluxes) {
 
   /* we don't need to rotate, we can use the unit vector in the Riemann problem
    * itself (see GIZMO) */
-  riemann_solve_for_flux(WL, WR, n_unit, vLR, fluxes);
+  float WLf[5] = {(float)WL[0], (float)WL[1], (float)WL[2], (float)WL[3],
+                  (float)WL[4]};
+  float WRf[5] = {(float)WR[0], (float)WR[1], (float)WR[2], (float)WR[3],
+                  (float)WR[4]};
+  float vLRf[3] = {(float)vLR[0], (float)vLR[1], (float)vLR[2]};
+  riemann_solve_for_flux(WLf, WRf, n_unit, vLRf, fluxes);
 
   const float Adt = surface_area * dt;
   fluxes[0] *= Adt;

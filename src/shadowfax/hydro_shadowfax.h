@@ -77,10 +77,9 @@ __attribute__((always_inline)) INLINE static void hydro_shadowfax_flux_exchange(
   }
 
   /* Primitive quantities */
-  float Wi[5] = {pi->primitives.rho, pi->primitives.v[0], pi->primitives.v[1],
-                 pi->primitives.v[2], pi->primitives.P};
-  float Wj[5] = {pj->primitives.rho, pj->primitives.v[0], pj->primitives.v[1],
-                 pj->primitives.v[2], pj->primitives.P};
+  double Wi[5], Wj[5];
+  hydro_get_primitives(pi, Wi);
+  hydro_get_primitives(pj, Wj);
 
   /* particle velocities */
   float vi[3], vj[3];
@@ -90,27 +89,27 @@ __attribute__((always_inline)) INLINE static void hydro_shadowfax_flux_exchange(
   }
 
   /* calculate the maximal signal velocity */
-  float vmax = 0.0f;
+  double vmax = 0.0f;
   if (Wi[0] > 0.) {
-    vmax += gas_soundspeed_from_pressure(Wi[0], Wi[4]);
+    vmax += gas_soundspeed_from_pressure(pi->primitives.rho, pi->primitives.P);
   }
   if (Wj[0] > 0.) {
-    vmax += gas_soundspeed_from_pressure(Wj[0], Wj[4]);
+    vmax += gas_soundspeed_from_pressure(pj->primitives.rho, pj->primitives.P);
   }
-  float dvdotdx = (Wi[1] - Wj[1]) * dx[0] + (Wi[2] - Wj[2]) * dx[1] +
-                  (Wi[3] - Wj[3]) * dx[2];
+  double dvdotdx = (Wi[1] - Wj[1]) * dx[0] + (Wi[2] - Wj[2]) * dx[1] +
+                   (Wi[3] - Wj[3]) * dx[2];
   if (dvdotdx > 0.) {
     vmax -= dvdotdx / r;
   }
-  pi->timestepvars.vmax = fmaxf(pi->timestepvars.vmax, vmax);
-  pj->timestepvars.vmax = fmaxf(pj->timestepvars.vmax, vmax);
+  pi->timestepvars.vmax = (float)fmax(pi->timestepvars.vmax, vmax);
+  pj->timestepvars.vmax = (float)fmax(pj->timestepvars.vmax, vmax);
 
   /* Compute interface velocity, see Springel 2010 (33) */
-  float vij[3];
-  float fac = (float)((vj[0] - vi[0]) * (centroid[0] - midpoint[0]) +
-                      (vj[1] - vi[1]) * (centroid[1] - midpoint[1]) +
-                      (vj[2] - vi[2]) * (centroid[2] - midpoint[2])) /
-              r2;
+  double vij[3];
+  double fac = ((vj[0] - vi[0]) * (centroid[0] - midpoint[0]) +
+                (vj[1] - vi[1]) * (centroid[1] - midpoint[1]) +
+                (vj[2] - vi[2]) * (centroid[2] - midpoint[2])) /
+               r2;
   vij[0] = 0.5f * (vi[0] + vj[0]) + fac * dx[0];
   vij[1] = 0.5f * (vi[1] + vj[1]) + fac * dx[1];
   vij[2] = 0.5f * (vi[2] + vj[2]) + fac * dx[2];
@@ -132,20 +131,12 @@ __attribute__((always_inline)) INLINE static void hydro_shadowfax_flux_exchange(
   const float min_dt = (pj->conserved.flux.dt > 0.0f)
                            ? fminf(pi->conserved.flux.dt, pj->conserved.flux.dt)
                            : pi->conserved.flux.dt;
-  double dWi_time[5], dWj_time[5];
-  hydro_gradients_extrapolate_in_time(pi, Wi, min_dt, dWi_time);
-  hydro_gradients_extrapolate_in_time(pj, Wj, min_dt, dWj_time);
 
   float xij_i[3];
   for (int k = 0; k < 3; k++) {
     xij_i[k] = (float)(centroid[k] - pi->x[k]);
   }
-  hydro_gradients_predict(pi, pj, pi->h, pj->h, dx, r, xij_i, Wi, Wj);
-
-  for (int i = 0; i < 5; i++) {
-    Wi[i] += (float)dWi_time[i];
-    Wj[i] += (float)dWj_time[i];
-  }
+  hydro_gradients_predict(pi, pj, pi->h, pj->h, dx, r, xij_i, min_dt, Wi, Wj);
 
   /* compute the normal vector of the interface */
   float n_unit[3];

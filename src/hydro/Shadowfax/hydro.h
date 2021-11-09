@@ -374,7 +374,7 @@ __attribute__((always_inline)) INLINE static void hydro_predict_extra(
   return;
   // TODO Is this needed?
   double Wprime[5];
-  float W[5];
+  double W[5];
   hydro_get_primitives(p, W);
   hydro_gradients_extrapolate_in_time(p, W, dt_therm, Wprime);
 
