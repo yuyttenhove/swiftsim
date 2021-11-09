@@ -73,14 +73,14 @@ __attribute__((always_inline)) INLINE static void hydro_gradients_finalize(
  * @param grad Current value of the gradient for the quantity (is updated).
  */
 __attribute__((always_inline)) INLINE void hydro_gradients_single_quantity(
-    float qL, float qR, double *cLR, const double *xLR, double rLR, double A,
-    double *grad) {}
+    float qL, float qR, double* cLR, const double* xLR, double rLR, double A,
+    double* grad) {}
 
 /** @brief No time extrapolation when gradients are disabled.
  */
 __attribute__((always_inline)) INLINE static void
-hydro_gradients_extrapolate_in_time(const struct part *p, const double *W, double dt,
-                                    double *dW) {
+hydro_gradients_extrapolate_in_time(const struct part* p, const double* W,
+                                    double dt, double* dW) {
   dW[0] = 0.;
   dW[1] = 0.;
   dW[2] = 0.;
@@ -95,8 +95,8 @@ hydro_gradients_extrapolate_in_time(const struct part *p, const double *W, doubl
  * gradients_none does nothing, since all gradients are zero -- are they?).
  */
 __attribute__((always_inline)) INLINE static void hydro_gradients_predict(
-    const struct part* pi, const struct part* pj, float hi, float hj, const float* dx,
-    float r, float* xij_i, float dt, double* Wi, double* Wj) {
+    const struct part* pi, const struct part* pj, float hi, float hj,
+    const float* dx, float r, float* xij_i, float dt, double* Wi, double* Wj) {
 
   float xij_j[3];
   double dWi[5], dWj[5], dWi_time[5], dWj_time[5];
@@ -111,37 +111,27 @@ __attribute__((always_inline)) INLINE static void hydro_gradients_predict(
   hydro_gradients_extrapolate_in_time(pi, Wi, dt, dWi_time);
   hydro_gradients_extrapolate_in_time(pj, Wj, dt, dWj_time);
 
-  dWi[0] = pi->primitives.gradients.rho[0] * xij_i[0] +
-           pi->primitives.gradients.rho[1] * xij_i[1] +
-           pi->primitives.gradients.rho[2] * xij_i[2] + dWi_time[0];
-  dWi[1] = pi->primitives.gradients.v[0][0] * xij_i[0] +
-           pi->primitives.gradients.v[0][1] * xij_i[1] +
-           pi->primitives.gradients.v[0][2] * xij_i[2] + dWi_time[1];
-  dWi[2] = pi->primitives.gradients.v[1][0] * xij_i[0] +
-           pi->primitives.gradients.v[1][1] * xij_i[1] +
-           pi->primitives.gradients.v[1][2] * xij_i[2] + dWi_time[2];
-  dWi[3] = pi->primitives.gradients.v[2][0] * xij_i[0] +
-           pi->primitives.gradients.v[2][1] * xij_i[1] +
-           pi->primitives.gradients.v[2][2] * xij_i[2] + dWi_time[3];
-  dWi[4] = pi->primitives.gradients.P[0] * xij_i[0] +
-           pi->primitives.gradients.P[1] * xij_i[1] +
-           pi->primitives.gradients.P[2] * xij_i[2] + dWi_time[4];
+  dWi[0] = pi->gradients.rho[0] * xij_i[0] + pi->gradients.rho[1] * xij_i[1] +
+           pi->gradients.rho[2] * xij_i[2] + dWi_time[0];
+  dWi[1] = pi->gradients.v[0][0] * xij_i[0] + pi->gradients.v[0][1] * xij_i[1] +
+           pi->gradients.v[0][2] * xij_i[2] + dWi_time[1];
+  dWi[2] = pi->gradients.v[1][0] * xij_i[0] + pi->gradients.v[1][1] * xij_i[1] +
+           pi->gradients.v[1][2] * xij_i[2] + dWi_time[2];
+  dWi[3] = pi->gradients.v[2][0] * xij_i[0] + pi->gradients.v[2][1] * xij_i[1] +
+           pi->gradients.v[2][2] * xij_i[2] + dWi_time[3];
+  dWi[4] = pi->gradients.P[0] * xij_i[0] + pi->gradients.P[1] * xij_i[1] +
+           pi->gradients.P[2] * xij_i[2] + dWi_time[4];
 
-  dWj[0] = pj->primitives.gradients.rho[0] * xij_j[0] +
-           pj->primitives.gradients.rho[1] * xij_j[1] +
-           pj->primitives.gradients.rho[2] * xij_j[2] + dWj_time[0];
-  dWj[1] = pj->primitives.gradients.v[0][0] * xij_j[0] +
-           pj->primitives.gradients.v[0][1] * xij_j[1] +
-           pj->primitives.gradients.v[0][2] * xij_j[2] + dWj_time[1];
-  dWj[2] = pj->primitives.gradients.v[1][0] * xij_j[0] +
-           pj->primitives.gradients.v[1][1] * xij_j[1] +
-           pj->primitives.gradients.v[1][2] * xij_j[2] + dWj_time[2];
-  dWj[3] = pj->primitives.gradients.v[2][0] * xij_j[0] +
-           pj->primitives.gradients.v[2][1] * xij_j[1] +
-           pj->primitives.gradients.v[2][2] * xij_j[2] + dWj_time[3];
-  dWj[4] = pj->primitives.gradients.P[0] * xij_j[0] +
-           pj->primitives.gradients.P[1] * xij_j[1] +
-           pj->primitives.gradients.P[2] * xij_j[2] + dWj_time[4];
+  dWj[0] = pj->gradients.rho[0] * xij_j[0] + pj->gradients.rho[1] * xij_j[1] +
+           pj->gradients.rho[2] * xij_j[2] + dWj_time[0];
+  dWj[1] = pj->gradients.v[0][0] * xij_j[0] + pj->gradients.v[0][1] * xij_j[1] +
+           pj->gradients.v[0][2] * xij_j[2] + dWj_time[1];
+  dWj[2] = pj->gradients.v[1][0] * xij_j[0] + pj->gradients.v[1][1] * xij_j[1] +
+           pj->gradients.v[1][2] * xij_j[2] + dWj_time[2];
+  dWj[3] = pj->gradients.v[2][0] * xij_j[0] + pj->gradients.v[2][1] * xij_j[1] +
+           pj->gradients.v[2][2] * xij_j[2] + dWj_time[3];
+  dWj[4] = pj->gradients.P[0] * xij_j[0] + pj->gradients.P[1] * xij_j[1] +
+           pj->gradients.P[2] * xij_j[2] + dWj_time[4];
 
   hydro_slope_limit_face(Wi, Wj, dWi, dWj, xij_i, xij_j, r);
 

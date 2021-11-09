@@ -53,7 +53,7 @@ INLINE static void hydro_read_particles(struct part* parts,
   list[6] = io_make_input_field("Accelerations", FLOAT, 3, OPTIONAL,
                                 UNIT_CONV_ACCELERATION, parts, a_hydro);
   list[7] = io_make_input_field("Density", FLOAT, 1, OPTIONAL,
-                                UNIT_CONV_DENSITY, parts, primitives.rho);
+                                UNIT_CONV_DENSITY, parts, rho);
 }
 
 /**
@@ -90,7 +90,7 @@ INLINE static void convert_A(const struct engine* e, const struct part* p,
 INLINE static void convert_Etot(const struct engine* e, const struct part* p,
                                 const struct xpart* xp, float* ret) {
 #ifdef SHADOWFAX_TOTAL_ENERGY
-  return p->conserved.energy;
+  ret[0] = p->conserved.energy;
 #else
   if (p->conserved.mass > 0.) {
     float momentum2;
@@ -176,7 +176,7 @@ INLINE static void hydro_write_particles(const struct part* parts,
       convert_part_pos, "Co-moving positions of the particles");
 
   list[1] = io_make_output_field(
-      "Velocities", FLOAT, 3, UNIT_CONV_SPEED, 0.f, parts, primitives.v,
+      "Velocities", FLOAT, 3, UNIT_CONV_SPEED, 0.f, parts, fluid_v,
       "Peculiar velocities of the stars. This is (a * dx/dt) where x is the "
       "co-moving positions of the particles");
 
@@ -202,11 +202,11 @@ INLINE static void hydro_write_particles(const struct part* parts,
                                  "work in non-cosmological runs).");
 
   list[7] = io_make_output_field("Densities", FLOAT, 1, UNIT_CONV_DENSITY, -3.f,
-                                 parts, primitives.rho,
+                                 parts, rho,
                                  "Co-moving mass densities of the particles");
 
   list[8] = io_make_output_field("GradDensities", FLOAT, 3, UNIT_CONV_DENSITY,
-                                 1.f, parts, primitives.gradients.rho,
+                                 1.f, parts, gradients.rho,
                                  "Gradient densities of the particles");
 
   list[9] = io_make_output_field_convert_part(
@@ -214,7 +214,7 @@ INLINE static void hydro_write_particles(const struct part* parts,
       "Co-moving entropies of the particles");
 
   list[10] = io_make_output_field("Pressures", FLOAT, 1, UNIT_CONV_PRESSURE,
-                                  -3.f * hydro_gamma, parts, primitives.P,
+                                  -3.f * hydro_gamma, parts, P,
                                   "Co-moving pressures of the particles");
 
   list[11] = io_make_output_field_convert_part(

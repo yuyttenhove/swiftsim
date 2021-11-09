@@ -27,25 +27,25 @@
 __attribute__((always_inline)) INLINE static void hydro_gradients_init(
     struct part *p) {
 
-  p->primitives.gradients.rho[0] = 0.0f;
-  p->primitives.gradients.rho[1] = 0.0f;
-  p->primitives.gradients.rho[2] = 0.0f;
+  p->gradients.rho[0] = 0.0f;
+  p->gradients.rho[1] = 0.0f;
+  p->gradients.rho[2] = 0.0f;
 
-  p->primitives.gradients.v[0][0] = 0.0f;
-  p->primitives.gradients.v[0][1] = 0.0f;
-  p->primitives.gradients.v[0][2] = 0.0f;
+  p->gradients.v[0][0] = 0.0f;
+  p->gradients.v[0][1] = 0.0f;
+  p->gradients.v[0][2] = 0.0f;
 
-  p->primitives.gradients.v[1][0] = 0.0f;
-  p->primitives.gradients.v[1][1] = 0.0f;
-  p->primitives.gradients.v[1][2] = 0.0f;
+  p->gradients.v[1][0] = 0.0f;
+  p->gradients.v[1][1] = 0.0f;
+  p->gradients.v[1][2] = 0.0f;
 
-  p->primitives.gradients.v[2][0] = 0.0f;
-  p->primitives.gradients.v[2][1] = 0.0f;
-  p->primitives.gradients.v[2][2] = 0.0f;
+  p->gradients.v[2][0] = 0.0f;
+  p->gradients.v[2][1] = 0.0f;
+  p->gradients.v[2][2] = 0.0f;
 
-  p->primitives.gradients.P[0] = 0.0f;
-  p->primitives.gradients.P[1] = 0.0f;
-  p->primitives.gradients.P[2] = 0.0f;
+  p->gradients.P[0] = 0.0f;
+  p->gradients.P[1] = 0.0f;
+  p->gradients.P[2] = 0.0f;
 
   hydro_slope_limit_cell_init(p);
 }
@@ -116,72 +116,68 @@ __attribute__((always_inline)) INLINE static void hydro_gradients_finalize(
 
   float volume = (float)p->voronoi.cell->volume;
 
-  p->primitives.gradients.rho[0] /= volume;
-  p->primitives.gradients.rho[1] /= volume;
-  p->primitives.gradients.rho[2] /= volume;
+  p->gradients.rho[0] /= volume;
+  p->gradients.rho[1] /= volume;
+  p->gradients.rho[2] /= volume;
 
-  p->primitives.gradients.v[0][0] /= volume;
-  p->primitives.gradients.v[0][1] /= volume;
-  p->primitives.gradients.v[0][2] /= volume;
-  p->primitives.gradients.v[1][0] /= volume;
-  p->primitives.gradients.v[1][1] /= volume;
-  p->primitives.gradients.v[1][2] /= volume;
-  p->primitives.gradients.v[2][0] /= volume;
-  p->primitives.gradients.v[2][1] /= volume;
-  p->primitives.gradients.v[2][2] /= volume;
+  p->gradients.v[0][0] /= volume;
+  p->gradients.v[0][1] /= volume;
+  p->gradients.v[0][2] /= volume;
+  p->gradients.v[1][0] /= volume;
+  p->gradients.v[1][1] /= volume;
+  p->gradients.v[1][2] /= volume;
+  p->gradients.v[2][0] /= volume;
+  p->gradients.v[2][1] /= volume;
+  p->gradients.v[2][2] /= volume;
 
-  p->primitives.gradients.P[0] /= volume;
-  p->primitives.gradients.P[1] /= volume;
-  p->primitives.gradients.P[2] /= volume;
+  p->gradients.P[0] /= volume;
+  p->gradients.P[1] /= volume;
+  p->gradients.P[2] /= volume;
 
 #ifdef SHADOWFAX_SLOPE_LIMITER_CELL_WIDE_EXACT
   /* Uncorrected gradients were used for the extrapolation... */
-  p->primitives.limiter.extrapolations.rho[0] /= volume;
-  p->primitives.limiter.extrapolations.rho[1] /= volume;
+  p->limiter.extrapolations.rho[0] /= volume;
+  p->limiter.extrapolations.rho[1] /= volume;
 
-  p->primitives.limiter.extrapolations.v[0][0] /= volume;
-  p->primitives.limiter.extrapolations.v[0][1] /= volume;
-  p->primitives.limiter.extrapolations.v[1][0] /= volume;
-  p->primitives.limiter.extrapolations.v[1][1] /= volume;
-  p->primitives.limiter.extrapolations.v[2][0] /= volume;
-  p->primitives.limiter.extrapolations.v[2][1] /= volume;
+  p->limiter.extrapolations.v[0][0] /= volume;
+  p->limiter.extrapolations.v[0][1] /= volume;
+  p->limiter.extrapolations.v[1][0] /= volume;
+  p->limiter.extrapolations.v[1][1] /= volume;
+  p->limiter.extrapolations.v[2][0] /= volume;
+  p->limiter.extrapolations.v[2][1] /= volume;
 
-  p->primitives.limiter.extrapolations.P[0] /= volume;
-  p->primitives.limiter.extrapolations.P[1] /= volume;
+  p->limiter.extrapolations.P[0] /= volume;
+  p->limiter.extrapolations.P[1] /= volume;
 #endif
 
   hydro_slope_limit_cell(p);
 }
 
-
 /** @brief Gradients time extrapolation (makes scheme second order in time).
  */
 __attribute__((always_inline)) INLINE static void
-hydro_gradients_extrapolate_in_time(const struct part *p, const double *W, double dt,
-                                    double *dW) {
-  const double div_v = p->primitives.gradients.v[0][0] +
-                       p->primitives.gradients.v[1][1] +
-                       p->primitives.gradients.v[2][2];
+hydro_gradients_extrapolate_in_time(const struct part *p, const double *W,
+                                    double dt, double *dW) {
+  const double div_v =
+      p->gradients.v[0][0] + p->gradients.v[1][1] + p->gradients.v[2][2];
 
   dW[0] = -0.5 * dt *
-          (W[0] * div_v + W[1] * p->primitives.gradients.rho[0] +
-           W[2] * p->primitives.gradients.rho[1] +
-           W[3] * p->primitives.gradients.rho[2]);
+          (W[0] * div_v + W[1] * p->gradients.rho[0] +
+           W[2] * p->gradients.rho[1] + W[3] * p->gradients.rho[2]);
 
   if (W[0] != 0.0f) {
     const double rho_inv = 1. / W[0];
-    dW[1] = -0.5 * dt * (W[1] * div_v + rho_inv * p->primitives.gradients.P[0]);
-    dW[2] = -0.5 * dt * (W[2] * div_v + rho_inv * p->primitives.gradients.P[1]);
-    dW[3] = -0.5 * dt * (W[3] * div_v + rho_inv * p->primitives.gradients.P[2]);
+    dW[1] = -0.5 * dt * (W[1] * div_v + rho_inv * p->gradients.P[0]);
+    dW[2] = -0.5 * dt * (W[2] * div_v + rho_inv * p->gradients.P[1]);
+    dW[3] = -0.5 * dt * (W[3] * div_v + rho_inv * p->gradients.P[2]);
   } else {
     dW[1] = 0.0f;
     dW[2] = 0.0f;
     dW[3] = 0.0f;
   }
   dW[4] = -0.5 * dt *
-          (hydro_gamma * W[4] * div_v + W[1] * p->primitives.gradients.P[0] +
-           W[2] * p->primitives.gradients.P[1] +
-           W[3] * p->primitives.gradients.P[2]);
+          (hydro_gamma * W[4] * div_v + W[1] * p->gradients.P[0] +
+           W[2] * p->gradients.P[1] + W[3] * p->gradients.P[2]);
 
   /* Sanity check */
   if (W[0] + dW[0] < 0) {

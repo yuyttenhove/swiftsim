@@ -23,12 +23,12 @@
 
 #include "black_holes_struct.h"
 #include "chemistry_struct.h"
+#include "const.h"
 #include "cooling_struct.h"
 #include "feedback_struct.h"
 #include "particle_splitting_struct.h"
 #include "timestep_limiter_struct.h"
 #include "tracers_struct.h"
-#include "const.h"
 
 /* Extra particle data not needed during the computation. */
 struct xpart {
@@ -80,66 +80,62 @@ struct part {
   /* Particle cutoff radius. */
   float h;
 
-  /* The primitive hydrodynamical variables. */
+  /* Fluid velocity */
+  float fluid_v[3];
+
+  /* Density. */
+  float rho;
+
+  /* Pressure. */
+  float P;
+
+  /* Gradients of the primitive variables. */
   struct {
 
-    /* Fluid velocity. */
-    float v[3];
+    /* Density gradients. */
+    double rho[3];
 
-    /* Density. */
-    float rho;
+    /* Fluid velocity gradients. */
+    double v[3][3];
 
-    /* Pressure. */
-    float P;
+    /* Pressure gradients. */
+    double P[3];
 
-    /* Gradients of the primitive variables. */
-    struct {
+  } gradients;
 
-      /* Density gradients. */
-      double rho[3];
+#if defined(SHADOWFAX_SLOPE_LIMITER_CELL_WIDE) || \
+    defined(SHADOWFAX_SLOPE_LIMITER_CELL_WIDE_EXACT)
+  /* Quantities needed by the slope limiter. */
+  struct {
 
-      /* Fluid velocity gradients. */
-      double v[3][3];
+    /* Extreme values of the density among the neighbours. */
+    float rho[2];
 
-      /* Pressure gradients. */
-      double P[3];
+    /* Extreme values of the fluid velocity among the neighbours. */
+    float v[3][2];
 
-    } gradients;
-
-#if defined(SHADOWFAX_SLOPE_LIMITER_CELL_WIDE) || defined(SHADOWFAX_SLOPE_LIMITER_CELL_WIDE_EXACT)
-    /* Quantities needed by the slope limiter. */
-    struct {
-
-      /* Extreme values of the density among the neighbours. */
-      float rho[2];
-
-      /* Extreme values of the fluid velocity among the neighbours. */
-      float v[3][2];
-
-      /* Extreme values of the pressure among the neighbours. */
-      float P[2];
+    /* Extreme values of the pressure among the neighbours. */
+    float P[2];
 
 #if defined(SHADOWFAX_SLOPE_LIMITER_CELL_WIDE)
-      /* Maximal distance to all neighbouring faces. */
-      double maxr;
+    /* Maximal distance to all neighbouring faces. */
+    double maxr;
 
 #elif defined(SHADOWFAX_SLOPE_LIMITER_CELL_WIDE_EXACT)
-      struct {
-        /* Extreme values of extrapolated density among the neighbours */
-        double rho[2];
+    struct {
+      /* Extreme values of extrapolated density among the neighbours */
+      double rho[2];
 
-        /* Extreme values of extrapolated fluid velocity among the neighbours.*/
-        double v[3][2];
+      /* Extreme values of extrapolated fluid velocity among the neighbours.*/
+      double v[3][2];
 
-        /* Extreme values of extrapolated pressure among the neighbours. */
-        double P[2];
-      } extrapolations;
+      /* Extreme values of extrapolated pressure among the neighbours. */
+      double P[2];
+    } extrapolations;
 #endif
 
-    } limiter;
+  } limiter;
 #endif
-
-  } primitives;
 
   /* The conserved hydrodynamical variables. */
   struct {
@@ -199,9 +195,6 @@ struct part {
 
     /* Physical time step of the particle. */
     float dt;
-
-    /* Actual velocity of the particle. */
-    float v_full[3];
 
   } force;
 

@@ -51,12 +51,12 @@ __attribute__((always_inline)) INLINE static float hydro_compute_timestep(
   const float CFL_condition = hydro_properties->CFL_condition;
 
   float vrel[3];
-  vrel[0] = p->primitives.v[0] - xp->v_full[0];
-  vrel[1] = p->primitives.v[1] - xp->v_full[1];
-  vrel[2] = p->primitives.v[2] - xp->v_full[2];
+  vrel[0] = p->fluid_v[0] - xp->v_full[0];
+  vrel[1] = p->fluid_v[1] - xp->v_full[1];
+  vrel[2] = p->fluid_v[2] - xp->v_full[2];
   float vmax =
       sqrtf(vrel[0] * vrel[0] + vrel[1] * vrel[1] + vrel[2] * vrel[2]) +
-      sqrtf(hydro_gamma * p->primitives.P / p->primitives.rho);
+      sqrtf(hydro_gamma * p->P / p->rho);
   vmax = max(vmax, p->timestepvars.vmax);
 
   if (p->voronoi.cell->volume == 0.) {
@@ -116,13 +116,13 @@ __attribute__((always_inline)) INLINE static void hydro_first_init_part(
 
   p->time_bin = 0;
 
-  p->primitives.v[0] = p->v[0];
-  p->primitives.v[1] = p->v[1];
-  p->primitives.v[2] = p->v[2];
+  p->fluid_v[0] = p->v[0];
+  p->fluid_v[1] = p->v[1];
+  p->fluid_v[2] = p->v[2];
 
-  p->conserved.momentum[0] = mass * p->primitives.v[0];
-  p->conserved.momentum[1] = mass * p->primitives.v[1];
-  p->conserved.momentum[2] = mass * p->primitives.v[2];
+  p->conserved.momentum[0] = mass * p->fluid_v[0];
+  p->conserved.momentum[1] = mass * p->fluid_v[1];
+  p->conserved.momentum[2] = mass * p->fluid_v[2];
 
 #ifdef EOS_ISOTHERMAL_GAS
   p->conserved.energy = mass * gas_internal_energy_from_entropy(0.f, 0.f);
@@ -131,9 +131,9 @@ __attribute__((always_inline)) INLINE static void hydro_first_init_part(
 #endif
 
 #ifdef SHADOWFAX_TOTAL_ENERGY
-  p->conserved.energy += 0.5f * (p->conserved.momentum[0] * p->primitives.v[0] +
-                                 p->conserved.momentum[1] * p->primitives.v[1] +
-                                 p->conserved.momentum[2] * p->primitives.v[2]);
+  p->conserved.energy += 0.5f * (p->conserved.momentum[0] * p->fluid_v[0] +
+                                 p->conserved.momentum[1] * p->fluid_v[1] +
+                                 p->conserved.momentum[2] * p->fluid_v[2]);
 #endif
 
 #if defined(SHADOWFAX_FIX_CELLS)
@@ -141,9 +141,9 @@ __attribute__((always_inline)) INLINE static void hydro_first_init_part(
   p->v[1] = 0.;
   p->v[2] = 0.;
 #else
-  p->v[0] = p->primitives.v[0];
-  p->v[1] = p->primitives.v[1];
-  p->v[2] = p->primitives.v[2];
+  p->v[0] = p->fluid_v[0];
+  p->v[1] = p->fluid_v[1];
+  p->v[2] = p->fluid_v[2];
 #endif
 
   /* set the initial velocity of the cells */
@@ -239,11 +239,6 @@ __attribute__((always_inline)) INLINE static void hydro_prepare_force(
 
   /* Initialize time step criterion variables */
   p->timestepvars.vmax = 0.0f;
-
-  /* Set the actual velocity of the particle */
-  p->force.v_full[0] = xp->v_full[0];
-  p->force.v_full[1] = xp->v_full[1];
-  p->force.v_full[2] = xp->v_full[2];
 
   /* Set the time step of the particle */
   p->conserved.flux.dt = dt_therm;
@@ -378,11 +373,11 @@ __attribute__((always_inline)) INLINE static void hydro_predict_extra(
   hydro_get_primitives(p, W);
   hydro_gradients_extrapolate_in_time(p, W, dt_therm, Wprime);
 
-  p->primitives.rho = (float)Wprime[0];
-  p->primitives.v[0] = (float)Wprime[1];
-  p->primitives.v[1] = (float)Wprime[2];
-  p->primitives.v[2] = (float)Wprime[3];
-  p->primitives.P = (float)Wprime[4];
+  p->rho = (float)Wprime[0];
+  p->fluid_v[0] = (float)Wprime[1];
+  p->fluid_v[1] = (float)Wprime[2];
+  p->fluid_v[2] = (float)Wprime[3];
+  p->P = (float)Wprime[4];
 }
 
 /**
@@ -460,7 +455,7 @@ __attribute__((always_inline)) INLINE static void hydro_kick_extra(
   p->v[1] = 0.0f;
   p->v[2] = 0.0f;
 #else
-  if (p->conserved.mass > 0.0f && p->primitives.rho > 0.0f) {
+  if (p->conserved.mass > 0.0f && p->rho > 0.0f) {
 
     const float inverse_mass = 1.f / p->conserved.mass;
 
@@ -520,9 +515,9 @@ __attribute__((always_inline)) INLINE static void hydro_kick_extra(
 __attribute__((always_inline)) INLINE static float hydro_get_internal_energy(
     const struct part* restrict p) {
 
-  if (p->primitives.rho > 0.) {
-    return gas_internal_energy_from_pressure(p->primitives.rho,
-                                             p->primitives.P);
+  if (p->rho > 0.) {
+    return gas_internal_energy_from_pressure(p->rho,
+                                             p->P);
   } else {
     return 0.;
   }
@@ -537,8 +532,8 @@ __attribute__((always_inline)) INLINE static float hydro_get_internal_energy(
 __attribute__((always_inline)) INLINE static float hydro_get_entropy(
     const struct part* restrict p) {
 
-  if (p->primitives.rho > 0.) {
-    return gas_entropy_from_pressure(p->primitives.rho, p->primitives.P);
+  if (p->rho > 0.) {
+    return gas_entropy_from_pressure(p->rho, p->P);
   } else {
     return 0.;
   }
@@ -553,8 +548,8 @@ __attribute__((always_inline)) INLINE static float hydro_get_entropy(
 __attribute__((always_inline)) INLINE static float hydro_get_soundspeed(
     const struct part* restrict p) {
 
-  if (p->primitives.rho > 0.) {
-    return gas_soundspeed_from_pressure(p->primitives.rho, p->primitives.P);
+  if (p->rho > 0.) {
+    return gas_soundspeed_from_pressure(p->rho, p->P);
   } else {
     return 0.;
   }
@@ -569,7 +564,7 @@ __attribute__((always_inline)) INLINE static float hydro_get_soundspeed(
 __attribute__((always_inline)) INLINE static float hydro_get_pressure(
     const struct part* restrict p) {
 
-  return p->primitives.P;
+  return p->P;
 }
 
 /**
@@ -608,7 +603,7 @@ __attribute__((always_inline)) INLINE static void hydro_get_drifted_velocities(
 __attribute__((always_inline)) INLINE static float hydro_get_density(
     const struct part* restrict p) {
 
-  return p->primitives.rho;
+  return p->rho;
 }
 
 /**
@@ -624,17 +619,17 @@ __attribute__((always_inline)) INLINE static float hydro_get_density(
 __attribute__((always_inline)) INLINE static void hydro_set_internal_energy(
     struct part* restrict p, float u) {
 
-  if (p->primitives.rho > 0.) {
+  if (p->rho > 0.) {
     p->conserved.energy = u * p->conserved.mass;
 
 #ifdef SHADOWFAX_TOTAL_ENERGY
     p->conserved.energy +=
-        0.5f * (p->conserved.momentum[0] * p->primitives.v[0] +
-                p->conserved.momentum[1] * p->primitives.v[1] +
-                p->conserved.momentum[2] * p->primitives.v[2]);
+        0.5f * (p->conserved.momentum[0] * p->fluid_v[0] +
+                p->conserved.momentum[1] * p->fluid_v[1] +
+                p->conserved.momentum[2] * p->fluid_v[2]);
 #endif
 
-    p->primitives.P = gas_pressure_from_internal_energy(p->primitives.rho, u);
+    p->P = gas_pressure_from_internal_energy(p->rho, u);
   }
 }
 
@@ -650,19 +645,19 @@ __attribute__((always_inline)) INLINE static void hydro_set_internal_energy(
 __attribute__((always_inline)) INLINE static void hydro_set_entropy(
     struct part* restrict p, float S) {
 
-  if (p->primitives.rho > 0.) {
+  if (p->rho > 0.) {
     p->conserved.energy =
-        gas_internal_energy_from_entropy(p->primitives.rho, S) *
+        gas_internal_energy_from_entropy(p->rho, S) *
         p->conserved.mass;
 
 #ifdef SHADOWFAX_TOTAL_ENERGY
     p->conserved.energy +=
-        0.5f * (p->conserved.momentum[0] * p->primitives.v[0] +
-                p->conserved.momentum[1] * p->primitives.v[1] +
-                p->conserved.momentum[2] * p->primitives.v[2]);
+        0.5f * (p->conserved.momentum[0] * p->fluid_v[0] +
+                p->conserved.momentum[1] * p->fluid_v[1] +
+                p->conserved.momentum[2] * p->fluid_v[2]);
 #endif
 
-    p->primitives.P = gas_pressure_from_entropy(p->primitives.rho, S);
+    p->P = gas_pressure_from_entropy(p->rho, S);
   }
 }
 
@@ -696,11 +691,11 @@ hydro_set_init_internal_energy(struct part* p, float u_init) {
 #ifdef GIZMO_TOTAL_ENERGY
   /* add the kinetic energy */
   p->conserved.energy += 0.5f * p->conserved.mass *
-                         (p->conserved.momentum[0] * p->primitives.v[0] +
-                          p->conserved.momentum[1] * p->primitives.v[1] +
-                          p->conserved.momentum[2] * p->primitives.v[2]);
+                         (p->conserved.momentum[0] * p->fluid_v[0] +
+                          p->conserved.momentum[1] * p->fluid_v[1] +
+                          p->conserved.momentum[2] * p->fluid_v[2]);
 #endif
-  p->primitives.P = hydro_gamma_minus_one * p->primitives.rho * u_init;
+  p->P = hydro_gamma_minus_one * p->rho * u_init;
 }
 
 /**
@@ -711,9 +706,9 @@ hydro_set_init_internal_energy(struct part* p, float u_init) {
 __attribute__((always_inline)) INLINE static float
 hydro_get_comoving_internal_energy(const struct part* restrict p) {
 
-  if (p->primitives.rho > 0.)
-    return gas_internal_energy_from_pressure(p->primitives.rho,
-                                             p->primitives.P);
+  if (p->rho > 0.)
+    return gas_internal_energy_from_pressure(p->rho,
+                                             p->P);
   else
     return 0.f;
 }
@@ -727,9 +722,9 @@ hydro_get_comoving_internal_energy(const struct part* restrict p) {
 __attribute__((always_inline)) INLINE static float
 hydro_get_drifted_comoving_internal_energy(const struct part* restrict p) {
 
-  if (p->primitives.rho > 0.)
-    return gas_internal_energy_from_pressure(p->primitives.rho,
-                                             p->primitives.P);
+  if (p->rho > 0.)
+    return gas_internal_energy_from_pressure(p->rho,
+                                             p->P);
   else
     return 0.f;
 }
@@ -742,8 +737,8 @@ hydro_get_drifted_comoving_internal_energy(const struct part* restrict p) {
 __attribute__((always_inline)) INLINE static float hydro_get_comoving_entropy(
     const struct part* restrict p) {
 
-  if (p->primitives.rho > 0.) {
-    return gas_entropy_from_pressure(p->primitives.rho, p->primitives.P);
+  if (p->rho > 0.) {
+    return gas_entropy_from_pressure(p->rho, p->P);
   } else {
     return 0.f;
   }
@@ -757,8 +752,8 @@ __attribute__((always_inline)) INLINE static float hydro_get_comoving_entropy(
  */
 __attribute__((always_inline)) INLINE static float
 hydro_get_drifted_comoving_entropy(const struct part* restrict p) {
-  if (p->primitives.rho > 0.) {
-    return gas_entropy_from_pressure(p->primitives.rho, p->primitives.P);
+  if (p->rho > 0.) {
+    return gas_entropy_from_pressure(p->rho, p->P);
   } else {
     return 0.f;
   }
@@ -772,8 +767,8 @@ hydro_get_drifted_comoving_entropy(const struct part* restrict p) {
 __attribute__((always_inline)) INLINE static float
 hydro_get_comoving_soundspeed(const struct part* restrict p) {
 
-  if (p->primitives.rho > 0.)
-    return gas_soundspeed_from_pressure(p->primitives.rho, p->primitives.P);
+  if (p->rho > 0.)
+    return gas_soundspeed_from_pressure(p->rho, p->P);
   else
     return 0.f;
 }
@@ -786,7 +781,7 @@ hydro_get_comoving_soundspeed(const struct part* restrict p) {
 __attribute__((always_inline)) INLINE static float hydro_get_comoving_pressure(
     const struct part* restrict p) {
 
-  return p->primitives.P;
+  return p->P;
 }
 
 /**
@@ -797,7 +792,7 @@ __attribute__((always_inline)) INLINE static float hydro_get_comoving_pressure(
 __attribute__((always_inline)) INLINE static float hydro_get_comoving_density(
     const struct part* restrict p) {
 
-  return p->primitives.rho;
+  return p->rho;
 }
 
 /**
@@ -949,7 +944,7 @@ hydro_diffusive_feedback_reset(struct part* restrict p) {
 __attribute__((always_inline)) INLINE static float hydro_get_physical_pressure(
     const struct part* restrict p, const struct cosmology* cosmo) {
 
-  return cosmo->a_factor_pressure * p->primitives.P;
+  return cosmo->a_factor_pressure * p->P;
 }
 
 /**
@@ -961,7 +956,7 @@ __attribute__((always_inline)) INLINE static float hydro_get_physical_pressure(
 __attribute__((always_inline)) INLINE static float hydro_get_physical_density(
     const struct part* restrict p, const struct cosmology* cosmo) {
 
-  return cosmo->a3_inv * p->primitives.rho;
+  return cosmo->a3_inv * p->rho;
 }
 
 /**

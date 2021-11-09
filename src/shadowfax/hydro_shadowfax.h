@@ -21,37 +21,36 @@ hydro_shadowfax_convert_conserved_to_primitive(struct part *restrict p) {
     momentum[0] = p->conserved.momentum[0];
     momentum[1] = p->conserved.momentum[1];
     momentum[2] = p->conserved.momentum[2];
-    p->primitives.rho = (float)(m / p->voronoi.cell->volume);
-    p->primitives.v[0] = momentum[0] / m;
-    p->primitives.v[1] = momentum[1] / m;
-    p->primitives.v[2] = momentum[2] / m;
+    p->rho = (float)(m / p->voronoi.cell->volume);
+    p->fluid_v[0] = momentum[0] / m;
+    p->fluid_v[1] = momentum[1] / m;
+    p->fluid_v[2] = momentum[2] / m;
 
     energy = p->conserved.energy;
 
 #ifdef SHADOWFAX_TOTAL_ENERGY
-    energy -= 0.5f * (momentum[0] * p->primitives.v[0] +
-                      momentum[1] * p->primitives.v[1] +
-                      momentum[2] * p->primitives.v[2]);
+    energy -=
+        0.5f * (momentum[0] * p->fluid_v[0] + momentum[1] * p->fluid_v[1] +
+                momentum[2] * p->fluid_v[2]);
 #endif
 
     energy /= m;
 
-    p->primitives.P =
-        gas_pressure_from_internal_energy(p->primitives.rho, energy);
+    p->P = gas_pressure_from_internal_energy(p->rho, energy);
   } else {
-    p->primitives.rho = 0.f;
-    p->primitives.v[0] = 0.f;
-    p->primitives.v[1] = 0.f;
-    p->primitives.v[2] = 0.f;
-    p->primitives.P = 0.f;
+    p->rho = 0.f;
+    p->fluid_v[0] = 0.f;
+    p->fluid_v[1] = 0.f;
+    p->fluid_v[2] = 0.f;
+    p->P = 0.f;
   }
 
 #ifdef SWIFT_DEBUG_CHECKS
-  if (p->primitives.rho < 0.) {
+  if (p->rho < 0.) {
     error("Negative density!");
   }
 
-  if (p->primitives.P < 0.) {
+  if (p->P < 0.) {
     error("Negative pressure!");
   }
 #endif
@@ -60,6 +59,10 @@ hydro_shadowfax_convert_conserved_to_primitive(struct part *restrict p) {
 __attribute__((always_inline)) INLINE static void hydro_shadowfax_flux_exchange(
     struct part *pi, struct part *pj, double const *centroid,
     double surface_area, const double *shift, const int symmetric) {
+
+  if (pi->x[0] > 0.8) {
+    pi->x[0] = pi->x[0];
+  }
 
   /* Initialize local variables */
   /* Vector from pj to pi */
@@ -84,17 +87,17 @@ __attribute__((always_inline)) INLINE static void hydro_shadowfax_flux_exchange(
   /* particle velocities */
   float vi[3], vj[3];
   for (int k = 0; k < 3; k++) {
-    vi[k] = pi->force.v_full[k];
-    vj[k] = pj->force.v_full[k];
+    vi[k] = pi->v[k];
+    vj[k] = pj->v[k];
   }
 
   /* calculate the maximal signal velocity */
   double vmax = 0.0f;
   if (Wi[0] > 0.) {
-    vmax += gas_soundspeed_from_pressure(pi->primitives.rho, pi->primitives.P);
+    vmax += gas_soundspeed_from_pressure(pi->rho, pi->P);
   }
   if (Wj[0] > 0.) {
-    vmax += gas_soundspeed_from_pressure(pj->primitives.rho, pj->primitives.P);
+    vmax += gas_soundspeed_from_pressure(pj->rho, pj->P);
   }
   double dvdotdx = (Wi[1] - Wj[1]) * dx[0] + (Wi[2] - Wj[2]) * dx[1] +
                    (Wi[3] - Wj[3]) * dx[2];
@@ -161,12 +164,12 @@ __attribute__((always_inline)) INLINE static void hydro_shadowfax_flux_exchange(
   pi->conserved.flux.energy -= totflux[4];
 
 #ifndef SHADOWFAX_TOTAL_ENERGY
-  float ekin = 0.5f * (pi->primitives.v[0] * pi->primitives.v[0] +
-                       pi->primitives.v[1] * pi->primitives.v[1] +
-                       pi->primitives.v[2] * pi->primitives.v[2]);
-  pi->conserved.flux.energy += totflux[1] * pi->primitives.v[0];
-  pi->conserved.flux.energy += totflux[2] * pi->primitives.v[1];
-  pi->conserved.flux.energy += totflux[3] * pi->primitives.v[2];
+  float ekin = 0.5f * (pi->fluid_v[0] * pi->fluid_v[0] +
+                       pi->fluid_v[1] * pi->fluid_v[1] +
+                       pi->fluid_v[2] * pi->fluid_v[2]);
+  pi->conserved.flux.energy += totflux[1] * pi->fluid_v[0];
+  pi->conserved.flux.energy += totflux[2] * pi->fluid_v[1];
+  pi->conserved.flux.energy += totflux[3] * pi->fluid_v[2];
   pi->conserved.flux.energy -= totflux[0] * ekin;
 #endif
 
@@ -182,12 +185,12 @@ __attribute__((always_inline)) INLINE static void hydro_shadowfax_flux_exchange(
     pj->conserved.flux.energy += totflux[4];
 
 #ifndef SHADOWFAX_TOTAL_ENERGY
-    ekin = 0.5f * (pj->primitives.v[0] * pj->primitives.v[0] +
-                   pj->primitives.v[1] * pj->primitives.v[1] +
-                   pj->primitives.v[2] * pj->primitives.v[2]);
-    pj->conserved.flux.energy -= totflux[1] * pj->primitives.v[0];
-    pj->conserved.flux.energy -= totflux[2] * pj->primitives.v[1];
-    pj->conserved.flux.energy -= totflux[3] * pj->primitives.v[2];
+    ekin = 0.5f *
+           (pj->fluid_v[0] * pj->fluid_v[0] + pj->fluid_v[1] * pj->fluid_v[1] +
+            pj->fluid_v[2] * pj->fluid_v[2]);
+    pj->conserved.flux.energy -= totflux[1] * pj->fluid_v[0];
+    pj->conserved.flux.energy -= totflux[2] * pj->fluid_v[1];
+    pj->conserved.flux.energy -= totflux[3] * pj->fluid_v[2];
     pj->conserved.flux.energy += totflux[0] * ekin;
 #endif
 
@@ -231,20 +234,16 @@ hydro_shadowfax_gradients_collect(struct part *pi, struct part *pj,
                  midpoint[2] - 0.5 * (pi->x[2] + pj->x[2] + shift[2])};
 
   double r = sqrt(r2);
-  hydro_gradients_single_quantity(pi->primitives.rho, pj->primitives.rho, c, dx,
-                                  r, surface_area,
-                                  pi->primitives.gradients.rho);
-  hydro_gradients_single_quantity(pi->primitives.v[0], pj->primitives.v[0], c,
-                                  dx, r, surface_area,
-                                  pi->primitives.gradients.v[0]);
-  hydro_gradients_single_quantity(pi->primitives.v[1], pj->primitives.v[1], c,
-                                  dx, r, surface_area,
-                                  pi->primitives.gradients.v[1]);
-  hydro_gradients_single_quantity(pi->primitives.v[2], pj->primitives.v[2], c,
-                                  dx, r, surface_area,
-                                  pi->primitives.gradients.v[2]);
-  hydro_gradients_single_quantity(pi->primitives.P, pj->primitives.P, c, dx, r,
-                                  surface_area, pi->primitives.gradients.P);
+  hydro_gradients_single_quantity(pi->rho, pj->rho, c, dx, r, surface_area,
+                                  pi->gradients.rho);
+  hydro_gradients_single_quantity(pi->fluid_v[0], pj->fluid_v[0], c, dx, r,
+                                  surface_area, pi->gradients.v[0]);
+  hydro_gradients_single_quantity(pi->fluid_v[1], pj->fluid_v[1], c, dx, r,
+                                  surface_area, pi->gradients.v[1]);
+  hydro_gradients_single_quantity(pi->fluid_v[2], pj->fluid_v[2], c, dx, r,
+                                  surface_area, pi->gradients.v[2]);
+  hydro_gradients_single_quantity(pi->P, pj->P, c, dx, r, surface_area,
+                                  pi->gradients.P);
 
   double f_ij[3] = {midpoint[0] - pi->x[0], midpoint[1] - pi->x[1],
                     midpoint[2] - pi->x[2]};
@@ -256,21 +255,16 @@ hydro_shadowfax_gradients_collect(struct part *pi, struct part *pj,
     mindx[0] = -dx[0];
     mindx[1] = -dx[1];
     mindx[2] = -dx[2];
-    hydro_gradients_single_quantity(pj->primitives.rho, pi->primitives.rho, c,
-                                    mindx, r, surface_area,
-                                    pj->primitives.gradients.rho);
-    hydro_gradients_single_quantity(pj->primitives.v[0], pi->primitives.v[0], c,
-                                    mindx, r, surface_area,
-                                    pj->primitives.gradients.v[0]);
-    hydro_gradients_single_quantity(pj->primitives.v[1], pi->primitives.v[1], c,
-                                    mindx, r, surface_area,
-                                    pj->primitives.gradients.v[1]);
-    hydro_gradients_single_quantity(pj->primitives.v[2], pi->primitives.v[2], c,
-                                    mindx, r, surface_area,
-                                    pj->primitives.gradients.v[2]);
-    hydro_gradients_single_quantity(pj->primitives.P, pi->primitives.P, c,
-                                    mindx, r, surface_area,
-                                    pj->primitives.gradients.P);
+    hydro_gradients_single_quantity(pj->rho, pi->rho, c, mindx, r, surface_area,
+                                    pj->gradients.rho);
+    hydro_gradients_single_quantity(pj->fluid_v[0], pi->fluid_v[0], c, mindx, r,
+                                    surface_area, pj->gradients.v[0]);
+    hydro_gradients_single_quantity(pj->fluid_v[1], pi->fluid_v[1], c, mindx, r,
+                                    surface_area, pj->gradients.v[1]);
+    hydro_gradients_single_quantity(pj->fluid_v[2], pi->fluid_v[2], c, mindx, r,
+                                    surface_area, pj->gradients.v[2]);
+    hydro_gradients_single_quantity(pj->P, pi->P, c, mindx, r, surface_area,
+                                    pj->gradients.P);
 
     double f_ji[3] = {midpoint[0] - pj->x[0] - shift[0],
                       midpoint[1] - pj->x[1] - shift[1],
