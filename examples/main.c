@@ -1485,8 +1485,7 @@ int main(int argc, char *argv[]) {
     /* Initialise the particles */
     engine_init_particles(&e, flag_entropy_ICs, clean_smoothing_length_values);
 
-#ifdef SHADOWFAX_NEW_SPH
-#ifdef VORONOI_CHECKS
+#if defined(SHADOWFAX_NEW_SPH) && defined(VORONOI_CHECKS)
     double voronoi_volume = 0.;
     for (int i = 0; i < s.nr_cells; i++) {
       voronoi_volume += cell_shadowfax_voronoi_volume(&s.cells_top[i]);
@@ -1497,16 +1496,6 @@ int main(int argc, char *argv[]) {
 #endif
     printf("Voronoi volume: %g\nSpace volume: %g\n", voronoi_volume, space_volume);
     assert(fabs(voronoi_volume - space_volume) / space_volume < 1e-5);
-#endif
-    FILE *file = fopen("delaunay.txt", "w");
-    FILE *vfile = fopen("voronoi.txt", "w");
-    size_t offset = 0;
-    for (int i = 0; i < s.nr_cells; ++i) {
-      cell_shadowfax_write_tesselations(&s.cells_top[i], file, vfile, &offset);
-    }
-    fclose(file);
-    fclose(vfile);
-    voronoi_print_grid(&s.cells_top[0].hydro.vortess, "voronoi_connections.txt");
 #endif
 
     /* Check that the matter content matches the cosmology given in the
@@ -1606,8 +1595,7 @@ int main(int argc, char *argv[]) {
     /* Take a step. */
     engine_step(&e);
 
-#ifdef SHADOWFAX_NEW_SPH
-#ifdef VORONOI_CHECKS
+#if defined(SHADOWFAX_NEW_SPH) && defined(VORONOI_CHECKS)
     double voronoi_volume = 0.;
     for (int i = 0; i < s.nr_cells; i++) {
       voronoi_volume += cell_shadowfax_voronoi_volume(&s.cells_top[i]);
@@ -1618,20 +1606,6 @@ int main(int argc, char *argv[]) {
 #endif
     printf("Voronoi volume: %g\nSpace volume: %g\n", voronoi_volume, space_volume);
 //    assert(fabs(voronoi_volume - space_volume) / space_volume < 1e-5);
-#endif
-    if ((j % 50) == 0) {
-      char fname[50];
-      sprintf(fname, "voronoi%d.txt", j);
-      FILE *vfile = fopen(fname, "w");
-//      sprintf(fname, "delaunay%d.txt", j);
-//      FILE *file = fopen(fname, "w");
-      FILE *file = NULL;
-      size_t offset = 0;
-      for (int i = 0; i < s.nr_cells; ++i) {
-        cell_shadowfax_write_tesselations(&s.cells_top[i], file, vfile, &offset);
-      }
-      fclose(vfile);
-    }
 #endif
 
     /* Print the timers. */

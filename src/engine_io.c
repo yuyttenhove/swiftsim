@@ -38,6 +38,9 @@
 #include "parallel_io.h"
 #include "serial_io.h"
 #include "single_io.h"
+#ifdef SHADOWFAX_NEW_SPH
+#include "shadowfax/cell_shadowfax.h"
+#endif
 
 #include <stdio.h>
 
@@ -174,6 +177,19 @@ void engine_dump_snapshot(struct engine *e) {
 #else
   write_output_single(e, e->internal_units, e->snapshot_units);
 #endif
+#endif
+
+#ifdef SHADOWFAX_NEW_SPH
+  char fname[50];
+  sprintf(fname, "voronoi%04d.txt", e->snapshot_output_count - 1);
+  FILE *vfile = fopen(fname, "w");
+  FILE *file = NULL;
+  size_t offset = 0;
+  struct space* s = e->s;
+  for (int i = 0; i < s->nr_cells; ++i) {
+    cell_shadowfax_write_tesselations(&s->cells_top[i], file, vfile, &offset);
+  }
+  fclose(vfile);
 #endif
 
   /* Flag that we dumped a snapshot */
