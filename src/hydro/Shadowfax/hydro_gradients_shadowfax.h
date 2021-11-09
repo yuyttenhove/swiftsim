@@ -153,6 +153,9 @@ __attribute__((always_inline)) INLINE static void hydro_gradients_finalize(
   hydro_slope_limit_cell(p);
 }
 
+
+/** @brief Gradients time extrapolation (makes scheme second order in time).
+ */
 __attribute__((always_inline)) INLINE static void
 hydro_gradients_extrapolate_in_time(const struct part *p, const double *W, double dt,
                                     double *dW) {

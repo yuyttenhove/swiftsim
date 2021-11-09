@@ -76,6 +76,18 @@ __attribute__((always_inline)) INLINE void hydro_gradients_single_quantity(
     float qL, float qR, double *cLR, const double *xLR, double rLR, double A,
     double *grad) {}
 
+/** @brief No time extrapolation when gradients are disabled.
+ */
+__attribute__((always_inline)) INLINE static void
+hydro_gradients_extrapolate_in_time(const struct part *p, const double *W, double dt,
+                                    double *dW) {
+  dW[0] = 0.;
+  dW[1] = 0.;
+  dW[2] = 0.;
+  dW[3] = 0.;
+  dW[4] = 0.;
+}
+
 #endif
 
 /**
