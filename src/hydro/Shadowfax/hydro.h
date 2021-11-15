@@ -59,12 +59,12 @@ __attribute__((always_inline)) INLINE static float hydro_compute_timestep(
       sqrtf(hydro_gamma * p->P / p->rho);
   vmax = max(vmax, p->timestepvars.vmax);
 
-  if (p->voronoi.cell->volume == 0.) {
+  if (p->voronoi.volume == 0.) {
     error("Voronoi cell with volume 0!");
   }
   const float psize =
-      cosmo->a * powf(p->voronoi.cell->volume / hydro_dimension_unit_sphere,
-                      hydro_dimension_inv);
+      cosmo->a *
+      pow(p->voronoi.volume / hydro_dimension_unit_sphere, hydro_dimension_inv);
   float dt = FLT_MAX;
   if (vmax > 0.) {
     dt = psize / vmax;
@@ -466,13 +466,12 @@ __attribute__((always_inline)) INLINE static void hydro_kick_extra(
 
 #ifdef SHADOWFAX_STEER_CELL_MOTION
     double d[3], vfac;
-    double* centroid = p->voronoi.cell->centroid;
-    d[0] = centroid[0] - p->x[0];
-    d[1] = centroid[1] - p->x[1];
-    d[2] = centroid[2] - p->x[2];
+    d[0] = p->voronoi.centroid[0] - p->x[0];
+    d[1] = p->voronoi.centroid[1] - p->x[1];
+    d[2] = p->voronoi.centroid[2] - p->x[2];
 
-    double d_norm = sqrtf(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
-    double R = get_radius_dimension_sphere(p->voronoi.cell->volume);
+    double d_norm = sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+    double R = get_radius_dimension_sphere(p->voronoi.volume);
     double fac = 4.0f * d_norm / R;
     if (fac > 0.9f) {
       float sound_speed = hydro_get_soundspeed(p);
@@ -519,10 +518,9 @@ __attribute__((always_inline)) INLINE static float hydro_get_internal_energy(
     const struct part* restrict p) {
 
   if (p->rho > 0.) {
-    return gas_internal_energy_from_pressure(p->rho,
-                                             p->P);
+    return gas_internal_energy_from_pressure(p->rho, p->P);
   } else {
-    return 0.;
+    return 0.f;
   }
 }
 
@@ -626,10 +624,9 @@ __attribute__((always_inline)) INLINE static void hydro_set_internal_energy(
     p->conserved.energy = u * p->conserved.mass;
 
 #ifdef SHADOWFAX_TOTAL_ENERGY
-    p->conserved.energy +=
-        0.5f * (p->conserved.momentum[0] * p->fluid_v[0] +
-                p->conserved.momentum[1] * p->fluid_v[1] +
-                p->conserved.momentum[2] * p->fluid_v[2]);
+    p->conserved.energy += 0.5f * (p->conserved.momentum[0] * p->fluid_v[0] +
+                                   p->conserved.momentum[1] * p->fluid_v[1] +
+                                   p->conserved.momentum[2] * p->fluid_v[2]);
 #endif
 
     p->P = gas_pressure_from_internal_energy(p->rho, u);
@@ -650,14 +647,12 @@ __attribute__((always_inline)) INLINE static void hydro_set_entropy(
 
   if (p->rho > 0.) {
     p->conserved.energy =
-        gas_internal_energy_from_entropy(p->rho, S) *
-        p->conserved.mass;
+        gas_internal_energy_from_entropy(p->rho, S) * p->conserved.mass;
 
 #ifdef SHADOWFAX_TOTAL_ENERGY
-    p->conserved.energy +=
-        0.5f * (p->conserved.momentum[0] * p->fluid_v[0] +
-                p->conserved.momentum[1] * p->fluid_v[1] +
-                p->conserved.momentum[2] * p->fluid_v[2]);
+    p->conserved.energy += 0.5f * (p->conserved.momentum[0] * p->fluid_v[0] +
+                                   p->conserved.momentum[1] * p->fluid_v[1] +
+                                   p->conserved.momentum[2] * p->fluid_v[2]);
 #endif
 
     p->P = gas_pressure_from_entropy(p->rho, S);
@@ -710,8 +705,7 @@ __attribute__((always_inline)) INLINE static float
 hydro_get_comoving_internal_energy(const struct part* restrict p) {
 
   if (p->rho > 0.)
-    return gas_internal_energy_from_pressure(p->rho,
-                                             p->P);
+    return gas_internal_energy_from_pressure(p->rho, p->P);
   else
     return 0.f;
 }
@@ -726,8 +720,7 @@ __attribute__((always_inline)) INLINE static float
 hydro_get_drifted_comoving_internal_energy(const struct part* restrict p) {
 
   if (p->rho > 0.)
-    return gas_internal_energy_from_pressure(p->rho,
-                                             p->P);
+    return gas_internal_energy_from_pressure(p->rho, p->P);
   else
     return 0.f;
 }

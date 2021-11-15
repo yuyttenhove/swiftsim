@@ -225,10 +225,11 @@ struct part {
 
   /* New Voronoi cell. */
   struct {
-    /*! Pointer to voronoi cell corresponding to particle */
-    struct voronoi_cell_new *cell;
+    /*! Volume of the voronoi cell */
+    double volume;
 
-    float volume;
+    /*! Centroid of the voronoi cell */
+    double centroid[3];
 
     /* Flag that keeps track of where this particle was added to the Delaunay
        tessellation. */

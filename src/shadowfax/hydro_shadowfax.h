@@ -19,7 +19,7 @@ hydro_shadowfax_convert_conserved_to_primitive(struct part *restrict p) {
   const float inv_m = 1.f / m;
   float energy;
   if (m > 0.) {
-    p->rho = (float)(m / p->voronoi.cell->volume);
+    p->rho = (float)(m / p->voronoi.volume);
     p->fluid_v[0] = p->conserved.momentum[0] * inv_m;
     p->fluid_v[1] = p->conserved.momentum[1] * inv_m;
     p->fluid_v[2] = p->conserved.momentum[2] * inv_m;
@@ -87,7 +87,8 @@ __attribute__((always_inline)) INLINE static void hydro_shadowfax_flux_exchange(
   for (int k = 0; k < 3; k++) {
     vi[k] = pi->v[k];
     vj[k] = pj->v[k];
-#if defined(SWIFT_DEBUG_CHECKS) && !defined(SHADOWFAX_STEER_CELL_MOTION) && !defined(SHADOWFAX_FIX_CELLS)
+#if defined(SWIFT_DEBUG_CHECKS) && !defined(SHADOWFAX_STEER_CELL_MOTION) && \
+    !defined(SHADOWFAX_FIX_CELLS)
     assert(pi->fluid_v[k] == pi->v[k]);
     assert(pj->fluid_v[k] == pj->v[k]);
 #endif
