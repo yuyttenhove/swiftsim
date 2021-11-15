@@ -94,7 +94,7 @@ __attribute__((always_inline)) INLINE static void hydro_shadowfax_flux_exchange(
   pj->timestepvars.vmax = (float)fmax(pj->timestepvars.vmax, vmax);
 
   /* particle velocities */
-  float vi[3], vj[3];
+  double vi[3], vj[3];
   for (int k = 0; k < 3; k++) {
     vi[k] = pi->v[k];
     vj[k] = pj->v[k];
@@ -129,10 +129,19 @@ __attribute__((always_inline)) INLINE static void hydro_shadowfax_flux_exchange(
 
   /* get the time step for the flux exchange. This is always the smallest time
      step among the two particles */
-  const float min_dt = (pj->conserved.flux.dt > 0.0f)
+  const float min_dt = (pj->conserved.flux.dt > 0.f)
                            ? fminf(pi->conserved.flux.dt, pj->conserved.flux.dt)
                            : pi->conserved.flux.dt;
 
+#ifdef SWIFT_DEBUG_CHECKS
+  assert(pi->conserved.flux.dt >= 0);
+  assert(min_dt >= 0);
+#endif
+  if (pj->rho == 0 && pi->rho != 0 && min_dt > 0) {
+    pi->fluid_v[0] = pi->fluid_v[0];
+  }
+
+  float totflux[5];
   double xij_i[3];
   for (int k = 0; k < 3; k++) {
     xij_i[k] = centroid[k] - pi->x[k];
@@ -145,13 +154,7 @@ __attribute__((always_inline)) INLINE static void hydro_shadowfax_flux_exchange(
     n_unit[k] = (float)(-dx[k] / r);
   }
 
-#ifdef SWIFT_DEBUG_CHECKS
-  assert(pi->conserved.flux.dt >= 0);
-  assert(min_dt >= 0);
-#endif
-
-  float totflux[5];
-  hydro_compute_flux(Wi, Wj, n_unit, vij, (float)surface_area, min_dt, totflux);
+  hydro_compute_flux(Wi, Wj, n_unit, vij, surface_area, min_dt, totflux);
 
   /* Update conserved variables */
   /* eqn. (16) */
