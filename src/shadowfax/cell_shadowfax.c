@@ -29,6 +29,8 @@ void cell_shadowfax_do_pair1_density_recursive(const struct engine *e,
                                                struct cell *restrict ci,
                                                struct cell *restrict cj,
                                                int sid, const double *shift) {
+  if (!cell_is_active_hydro(ci, e) && !cell_is_active_hydro(cj, e)) return;
+
   int k;
   /* recurse? */
   if (ci->split) {
@@ -54,6 +56,8 @@ void cell_shadowfax_do_pair1_gradient_recursive(const struct engine *e,
                                                 struct cell *restrict ci,
                                                 struct cell *restrict cj,
                                                 int sid, const double *shift) {
+  if (!cell_is_active_hydro(ci, e) && !cell_is_active_hydro(cj, e)) return;
+
   int k;
   /* recurse? */
   if (ci->split) {
@@ -79,6 +83,8 @@ void cell_shadowfax_do_pair2_force_recursive(const struct engine *e,
                                              struct cell *restrict ci,
                                              struct cell *restrict cj, int sid,
                                              const double *shift) {
+  if (!cell_is_active_hydro(ci, e) && !cell_is_active_hydro(cj, e)) return;
+
   int k;
   /* recurse? */
   if (ci->split) {
@@ -105,6 +111,8 @@ void cell_shadowfax_do_pair_subset_density_recursive(
     struct part *restrict parts_i, const int *restrict ind, int count,
     struct cell *restrict cj, const int sid, const int flipped,
     const double *shift) {
+  if (!cell_is_active_hydro(ci, e)) return;
+
   int k;
   /* recurse? */
   if (ci->split) {
@@ -154,6 +162,8 @@ void cell_shadowfax_do_pair_subset_density_recursive(
 
 void cell_shadowfax_do_self1_density_recursive(const struct engine *e,
                                                struct cell *restrict c) {
+  if (!cell_is_active_hydro(c, e)) return;
+
   double shift[3] = {0., 0., 0.};
   int sid;
   /* Recurse? */
@@ -179,6 +189,8 @@ void cell_shadowfax_do_self1_density_recursive(const struct engine *e,
 
 void cell_shadowfax_do_self1_gradient_recursive(const struct engine *e,
                                                 struct cell *restrict c) {
+  if (!cell_is_active_hydro(c, e)) return;
+
   double shift[3] = {0., 0., 0.};
   int sid;
   /* recurse? */
@@ -204,6 +216,8 @@ void cell_shadowfax_do_self1_gradient_recursive(const struct engine *e,
 
 void cell_shadowfax_do_self2_force_recursive(const struct engine *e,
                                              struct cell *restrict c) {
+  if (!cell_is_active_hydro(c, e)) return;
+
   double shift[3] = {0., 0., 0.};
   int sid;
   /* recurse? */
@@ -230,6 +244,8 @@ void cell_shadowfax_do_self2_force_recursive(const struct engine *e,
 void cell_shadowfax_do_self_subset_density_recursive(
     const struct engine *e, struct cell *restrict c,
     struct part *restrict parts, const int *restrict ind, int count) {
+  if (!cell_is_active_hydro(c, e)) return;
+
   int k, l, sid, flipped;
   double shift[3] = {0., 0., 0.};
   /* recurse? */

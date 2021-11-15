@@ -84,6 +84,9 @@ void cell_malloc_delaunay_tessellation_recursive(
 
 __attribute__((always_inline)) INLINE static void cell_destroy_tessellations(
     struct cell *c) {
+#ifdef SWIFT_DEBUG_CHECKS
+  assert(c->hydro.shadowfax_enabled);
+#endif
   c->hydro.shadowfax_enabled = 0;
   delaunay_destroy(&c->hydro.deltess);
   voronoi_destroy(&c->hydro.vortess);
@@ -126,6 +129,9 @@ static inline void cell_update_hilbert_keys(struct cell *c) {
 __attribute__((always_inline)) INLINE static void
 cell_shadowfax_do_pair1_density(const struct engine *e, struct cell *ci,
                                 struct cell *cj, int sid, const double *shift) {
+#ifdef SWIFT_DEBUG_CHECKS
+  assert(ci->hydro.shadowfax_enabled || cj->hydro.shadowfax_enabled);
+#endif
 
   if (ci == cj) error("Interacting cell with itself!");
 
@@ -467,6 +473,9 @@ cell_shadowfax_do_pair_subset_density(const struct engine *e,
                                       const int *restrict ind, int count,
                                       struct cell *restrict cj, const int sid,
                                       const int flipped, const double *shift) {
+#ifdef SWIFT_DEBUG_CHECKS
+  assert(ci->hydro.shadowfax_enabled);
+#endif
 
   if (ci == cj) error("Interacting cell with itself!");
 
@@ -584,6 +593,9 @@ void cell_shadowfax_do_pair_subset_density_recursive(
 __attribute__((always_inline)) INLINE static void
 cell_shadowfax_do_self1_density(const struct engine *e,
                                 struct cell *restrict c) {
+#ifdef SWIFT_DEBUG_CHECKS
+  assert(c->hydro.shadowfax_enabled);
+#endif
 
   const int count = c->hydro.count;
   struct part *restrict parts = c->hydro.parts;
@@ -624,6 +636,10 @@ cell_shadowfax_do_self2_density(const struct engine *e,
 __attribute__((always_inline)) INLINE static void
 cell_shadowfax_do_self1_gradient(const struct engine *e,
                                  struct cell *restrict c) {
+#ifdef SWIFT_DEBUG_CHECKS
+  assert(c->hydro.shadowfax_enabled);
+#endif
+
   double shift[3] = {0., 0., 0.};
 
   struct voronoi *vortess = &c->hydro.vortess;
@@ -661,6 +677,10 @@ __attribute__((always_inline)) INLINE static void cell_shadowfax_do_self1_force(
 
 __attribute__((always_inline)) INLINE static void cell_shadowfax_do_self2_force(
     const struct engine *e, struct cell *restrict c) {
+
+#ifdef SWIFT_DEBUG_CHECKS
+  assert(c->hydro.shadowfax_enabled);
+#endif
 
   double shift[3] = {0., 0., 0.};
 
