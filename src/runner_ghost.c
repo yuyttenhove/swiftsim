@@ -1110,9 +1110,7 @@ void runner_do_ghost(struct runner *r, struct cell *c, int timer) {
 
   /* Anything to do here? */
   if (c->hydro.count == 0) return;
-#ifndef SHADOWFAX_NEW_SPH
   if (!cell_is_active_hydro(c, e)) return;
-#endif
 
   /* Recurse? */
   if (c->split) {

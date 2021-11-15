@@ -293,6 +293,8 @@ static inline void voronoi_build(struct voronoi *restrict v,
 
   delaunay_assert(d->vertex_end > 0);
 
+  voronoi_assert(d->active);
+
   /* the number of cells equals the number of non-ghost and non-dummy
      vertex_indices in the Delaunay tessellation */
   int number_of_cells = d->vertex_end - d->vertex_start;

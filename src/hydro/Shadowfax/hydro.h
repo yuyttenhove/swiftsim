@@ -455,10 +455,14 @@ __attribute__((always_inline)) INLINE static void hydro_kick_extra(
 
     const float inverse_mass = 1.f / p->conserved.mass;
 
-    /* Normal case: set particle velocity to fluid velocity. */
-    p->v[0] = p->conserved.momentum[0] * inverse_mass;
-    p->v[1] = p->conserved.momentum[1] * inverse_mass;
-    p->v[2] = p->conserved.momentum[2] * inverse_mass;
+    /* Normal case: update fluid velocity and set particle velocity accordingly.
+     */
+    p->fluid_v[0] = p->conserved.momentum[0] * inverse_mass;
+    p->fluid_v[1] = p->conserved.momentum[1] * inverse_mass;
+    p->fluid_v[2] = p->conserved.momentum[2] * inverse_mass;
+    p->v[0] = p->fluid_v[0];
+    p->v[1] = p->fluid_v[1];
+    p->v[2] = p->fluid_v[2];
 
 #ifdef SHADOWFAX_STEER_CELL_MOTION
     double d[3], vfac;
@@ -487,6 +491,9 @@ __attribute__((always_inline)) INLINE static void hydro_kick_extra(
     p->v[0] = 0.f;
     p->v[1] = 0.f;
     p->v[2] = 0.f;
+    p->fluid_v[0] = 0.f;
+    p->fluid_v[1] = 0.f;
+    p->fluid_v[2] = 0.f;
   }
 #endif
 

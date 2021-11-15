@@ -13,6 +13,8 @@
 
 #include "tuples.h"
 
+#define QUEUE_SAFETY_CHECKS
+
 #define QUEUE_TYPE int
 #include "shadowfax/queues/generic_lifo_queue.h"
 #undef QUEUE_TYPE

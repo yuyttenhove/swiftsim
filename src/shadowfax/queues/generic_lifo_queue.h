@@ -65,6 +65,9 @@ inline static int QUEUE_IS_EMPTY(struct QUEUE_NAME *q) {
 }
 
 inline static void QUEUE_PUSH(struct QUEUE_NAME *q, QUEUE_TYPE value) {
+#ifdef QUEUE_SAFETY_CHECKS
+  assert(q->size > 0);
+#endif
   if (q->size == q->index) {
     q->size <<= 1;
     q->values = realloc(q->values, q->size * sizeof(QUEUE_TYPE));
