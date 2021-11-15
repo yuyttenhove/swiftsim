@@ -140,10 +140,6 @@ __attribute__((always_inline)) INLINE static void hydro_first_init_part(
   p->v[0] = 0.;
   p->v[1] = 0.;
   p->v[2] = 0.;
-#else
-  p->v[0] = p->fluid_v[0];
-  p->v[1] = p->fluid_v[1];
-  p->v[2] = p->fluid_v[2];
 #endif
 
   /* set the initial velocity of the cells */
@@ -455,7 +451,7 @@ __attribute__((always_inline)) INLINE static void hydro_kick_extra(
   p->v[1] = 0.0f;
   p->v[2] = 0.0f;
 #else
-  if (p->conserved.mass > 0.0f && p->rho > 0.0f) {
+  if (p->conserved.mass > 0.0f) {
 
     const float inverse_mass = 1.f / p->conserved.mass;
 
