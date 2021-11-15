@@ -72,7 +72,7 @@ struct part {
   double x[3];
 
   /* Particle predicted velocity. */
-  float v[3];
+  double v[3];
 
   /* Particle acceleration. */
   float a_hydro[3];
@@ -81,13 +81,13 @@ struct part {
   float h;
 
   /* Fluid velocity */
-  float fluid_v[3];
+  double fluid_v[3];
 
   /* Density. */
-  float rho;
+  double rho;
 
   /* Pressure. */
-  float P;
+  double P;
 
   /* Gradients of the primitive variables. */
   struct {
@@ -141,25 +141,25 @@ struct part {
   struct {
 
     /* Fluid momentum. */
-    float momentum[3];
+    double momentum[3];
 
     /* Fluid mass (this field already exists outside of this struct as well). */
-    float mass;
+    double mass;
 
     /* Fluid thermal energy (not per unit mass!). */
-    float energy;
+    double energy;
 
     /* Fluxes. */
     struct {
 
       /* Mass flux. */
-      float mass;
+      double mass;
 
       /* Momentum flux. */
-      float momentum[3];
+      double momentum[3];
 
       /* Energy flux. */
-      float energy;
+      double energy;
 
       /* Particle time step. Used to compute time-integrated fluxes. */
       float dt;

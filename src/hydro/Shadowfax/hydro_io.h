@@ -39,20 +39,20 @@ INLINE static void hydro_read_particles(struct part* parts,
   /* List what we want to read */
   list[0] = io_make_input_field("Coordinates", DOUBLE, 3, COMPULSORY,
                                 UNIT_CONV_LENGTH, parts, x);
-  list[1] = io_make_input_field("Velocities", FLOAT, 3, COMPULSORY,
+  list[1] = io_make_input_field("Velocities", DOUBLE, 3, COMPULSORY,
                                 UNIT_CONV_SPEED, parts, v);
-  list[2] = io_make_input_field("Masses", FLOAT, 1, COMPULSORY, UNIT_CONV_MASS,
+  list[2] = io_make_input_field("Masses", DOUBLE, 1, COMPULSORY, UNIT_CONV_MASS,
                                 parts, conserved.mass);
   list[3] = io_make_input_field("SmoothingLength", FLOAT, 1, COMPULSORY,
                                 UNIT_CONV_LENGTH, parts, h);
-  list[4] = io_make_input_field("InternalEnergy", FLOAT, 1, COMPULSORY,
+  list[4] = io_make_input_field("InternalEnergy", DOUBLE, 1, COMPULSORY,
                                 UNIT_CONV_ENERGY_PER_UNIT_MASS, parts,
                                 conserved.energy);
   list[5] = io_make_input_field("ParticleIDs", ULONGLONG, 1, COMPULSORY,
                                 UNIT_CONV_NO_UNITS, parts, id);
   list[6] = io_make_input_field("Accelerations", FLOAT, 3, OPTIONAL,
                                 UNIT_CONV_ACCELERATION, parts, a_hydro);
-  list[7] = io_make_input_field("Density", FLOAT, 1, OPTIONAL,
+  list[7] = io_make_input_field("Density", DOUBLE, 1, OPTIONAL,
                                 UNIT_CONV_DENSITY, parts, rho);
 }
 
@@ -101,7 +101,7 @@ INLINE static void convert_Etot(const struct engine* e, const struct part* p,
 
     ret[0] = p->conserved.energy + 0.5f * momentum2 / p->conserved.mass;
   } else {
-    ret[0] = 0.;
+    ret[0] = 0.f;
   }
 #endif
 }
@@ -176,11 +176,11 @@ INLINE static void hydro_write_particles(const struct part* parts,
       convert_part_pos, "Co-moving positions of the particles");
 
   list[1] = io_make_output_field(
-      "Velocities", FLOAT, 3, UNIT_CONV_SPEED, 0.f, parts, fluid_v,
+      "Velocities", DOUBLE, 3, UNIT_CONV_SPEED, 0.f, parts, fluid_v,
       "Peculiar velocities of the stars. This is (a * dx/dt) where x is the "
       "co-moving positions of the particles");
 
-  list[2] = io_make_output_field("Masses", FLOAT, 1, UNIT_CONV_MASS, 0.f, parts,
+  list[2] = io_make_output_field("Masses", DOUBLE, 1, UNIT_CONV_MASS, 0.f, parts,
                                  conserved.mass, "Masses of the particles");
 
   list[3] = io_make_output_field(
@@ -201,11 +201,11 @@ INLINE static void hydro_write_particles(const struct part* parts,
                                  "Accelerations of the particles(does not "
                                  "work in non-cosmological runs).");
 
-  list[7] = io_make_output_field("Densities", FLOAT, 1, UNIT_CONV_DENSITY, -3.f,
+  list[7] = io_make_output_field("Densities", DOUBLE, 1, UNIT_CONV_DENSITY, -3.f,
                                  parts, rho,
                                  "Co-moving mass densities of the particles");
 
-  list[8] = io_make_output_field("GradDensities", FLOAT, 3, UNIT_CONV_DENSITY,
+  list[8] = io_make_output_field("GradDensities", DOUBLE, 3, UNIT_CONV_DENSITY,
                                  1.f, parts, gradients.rho,
                                  "Gradient densities of the particles");
 
@@ -213,7 +213,7 @@ INLINE static void hydro_write_particles(const struct part* parts,
       "Entropies", FLOAT, 1, UNIT_CONV_ENTROPY, 1.f, parts, xparts, convert_A,
       "Co-moving entropies of the particles");
 
-  list[10] = io_make_output_field("Pressures", FLOAT, 1, UNIT_CONV_PRESSURE,
+  list[10] = io_make_output_field("Pressures", DOUBLE, 1, UNIT_CONV_PRESSURE,
                                   -3.f * hydro_gamma, parts, P,
                                   "Co-moving pressures of the particles");
 

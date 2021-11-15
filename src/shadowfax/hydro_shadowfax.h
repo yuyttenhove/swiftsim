@@ -33,7 +33,6 @@ hydro_shadowfax_convert_conserved_to_primitive(struct part *restrict p) {
 #endif
 
     energy /= m;
-
     p->P = gas_pressure_from_internal_energy(p->rho, energy);
   } else {
     p->rho = 0.f;
@@ -58,10 +57,6 @@ __attribute__((always_inline)) INLINE static void hydro_shadowfax_flux_exchange(
     struct part *pi, struct part *pj, double const *centroid,
     double surface_area, const double *shift, const int symmetric) {
 
-  if (pi->x[0] > 0.8) {
-    pi->x[0] = pi->x[0];
-  }
-
   /* Initialize local variables */
   /* Vector from pj to pi */
   float dx[3];
@@ -82,18 +77,6 @@ __attribute__((always_inline)) INLINE static void hydro_shadowfax_flux_exchange(
   hydro_get_primitives(pi, Wi);
   hydro_get_primitives(pj, Wj);
 
-  /* particle velocities */
-  float vi[3], vj[3];
-  for (int k = 0; k < 3; k++) {
-    vi[k] = pi->v[k];
-    vj[k] = pj->v[k];
-#if defined(SWIFT_DEBUG_CHECKS) && !defined(SHADOWFAX_STEER_CELL_MOTION) && \
-    !defined(SHADOWFAX_FIX_CELLS)
-    assert(pi->fluid_v[k] == pi->v[k]);
-    assert(pj->fluid_v[k] == pj->v[k]);
-#endif
-  }
-
   /* calculate the maximal signal velocity */
   double vmax = 0.0f;
   if (Wi[0] > 0.) {
@@ -109,6 +92,18 @@ __attribute__((always_inline)) INLINE static void hydro_shadowfax_flux_exchange(
   }
   pi->timestepvars.vmax = (float)fmax(pi->timestepvars.vmax, vmax);
   pj->timestepvars.vmax = (float)fmax(pj->timestepvars.vmax, vmax);
+
+  /* particle velocities */
+  float vi[3], vj[3];
+  for (int k = 0; k < 3; k++) {
+    vi[k] = pi->v[k];
+    vj[k] = pj->v[k];
+#if defined(SWIFT_DEBUG_CHECKS) && !defined(SHADOWFAX_STEER_CELL_MOTION) && \
+    !defined(SHADOWFAX_FIX_CELLS)
+    assert(pi->fluid_v[k] == pi->v[k]);
+    assert(pj->fluid_v[k] == pj->v[k]);
+#endif
+  }
 
   /* Compute interface velocity, see Springel 2010 (33) */
   double vij[3];
