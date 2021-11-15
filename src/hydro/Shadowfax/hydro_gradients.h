@@ -96,10 +96,9 @@ hydro_gradients_extrapolate_in_time(const struct part* p, const double* W,
  */
 __attribute__((always_inline)) INLINE static void hydro_gradients_predict(
     const struct part* pi, const struct part* pj, float hi, float hj,
-    const float* dx, float r, float* xij_i, float dt, double* Wi, double* Wj) {
+    const double* dx, double r, double* xij_i, double dt, double* Wi, double* Wj) {
 
-  float xij_j[3];
-  double dWi[5], dWj[5], dWi_time[5], dWj_time[5];
+  double xij_j[3], dWi[5], dWj[5], dWi_time[5], dWj_time[5];
 
   /* xij_j = real_centroid - pj->x
            = xij_i + pi->x - pj->x

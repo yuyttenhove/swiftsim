@@ -185,9 +185,9 @@ cell_shadowfax_do_pair1_density(const struct engine *e, struct cell *ci,
       /* Get some additional information about pi */
       //      const float hig2 = hi * hi * kernel_gamma2;
       const float hig2 = hi * hi;
-      const float pix = pi->x[0] - (cj->loc[0] + shift[0]);
-      const float piy = pi->x[1] - (cj->loc[1] + shift[1]);
-      const float piz = pi->x[2] - (cj->loc[2] + shift[2]);
+      const double pix = pi->x[0] - (cj->loc[0] + shift[0]);
+      const double piy = pi->x[1] - (cj->loc[1] + shift[1]);
+      const double piz = pi->x[2] - (cj->loc[2] + shift[2]);
 
       /* Loop over the parts in cj. */
       for (int pjd = 0; pjd < count_j && sort_j[pjd].d < di; pjd++) {
@@ -198,13 +198,13 @@ cell_shadowfax_do_pair1_density(const struct engine *e, struct cell *ci,
         /* Skip inhibited particles. */
         if (part_is_inhibited(pj, e)) continue;
 
-        const float pjx = pj->x[0] - cj->loc[0];
-        const float pjy = pj->x[1] - cj->loc[1];
-        const float pjz = pj->x[2] - cj->loc[2];
+        const double pjx = pj->x[0] - cj->loc[0];
+        const double pjy = pj->x[1] - cj->loc[1];
+        const double pjz = pj->x[2] - cj->loc[2];
 
         /* Compute the pairwise distance. */
-        float dx[3] = {pix - pjx, piy - pjy, piz - pjz};
-        const float r2 = dx[0] * dx[0] + dx[1] * dx[1] + dx[2] * dx[2];
+        double dx[3] = {pix - pjx, piy - pjy, piz - pjz};
+        const double r2 = dx[0] * dx[0] + dx[1] * dx[1] + dx[2] * dx[2];
 
         /* Hit or miss? */
         if (r2 < hig2) {
@@ -242,9 +242,9 @@ cell_shadowfax_do_pair1_density(const struct engine *e, struct cell *ci,
       /* Get some additional information about pj */
       //      const float hjg2 = hj * hj * kernel_gamma2;
       const float hjg2 = hj * hj;
-      const float pjx = pj->x[0] - cj->loc[0];
-      const float pjy = pj->x[1] - cj->loc[1];
-      const float pjz = pj->x[2] - cj->loc[2];
+      const double pjx = pj->x[0] - cj->loc[0];
+      const double pjy = pj->x[1] - cj->loc[1];
+      const double pjz = pj->x[2] - cj->loc[2];
 
       /* Loop over the parts in ci. */
       for (int pid = count_i - 1; pid >= 0 && sort_i[pid].d > dj; pid--) {
@@ -255,13 +255,13 @@ cell_shadowfax_do_pair1_density(const struct engine *e, struct cell *ci,
         /* Skip inhibited particles. */
         if (part_is_inhibited(pi, e)) continue;
 
-        const float pix = pi->x[0] - (cj->loc[0] + shift[0]);
-        const float piy = pi->x[1] - (cj->loc[1] + shift[1]);
-        const float piz = pi->x[2] - (cj->loc[2] + shift[2]);
+        const double pix = pi->x[0] - (cj->loc[0] + shift[0]);
+        const double piy = pi->x[1] - (cj->loc[1] + shift[1]);
+        const double piz = pi->x[2] - (cj->loc[2] + shift[2]);
 
         /* Compute the pairwise distance. */
-        float dx[3] = {pjx - pix, pjy - piy, pjz - piz};
-        const float r2 = dx[0] * dx[0] + dx[1] * dx[1] + dx[2] * dx[2];
+        double dx[3] = {pjx - pix, pjy - piy, pjz - piz};
+        const double r2 = dx[0] * dx[0] + dx[1] * dx[1] + dx[2] * dx[2];
 
         /* Hit or miss? */
         if (r2 < hjg2) {

@@ -50,26 +50,26 @@ __attribute__((always_inline)) INLINE static float hydro_compute_timestep(
 
   const float CFL_condition = hydro_properties->CFL_condition;
 
-  float vrel[3];
+  double vrel[3];
   vrel[0] = p->fluid_v[0] - xp->v_full[0];
   vrel[1] = p->fluid_v[1] - xp->v_full[1];
   vrel[2] = p->fluid_v[2] - xp->v_full[2];
-  float vmax =
-      sqrtf(vrel[0] * vrel[0] + vrel[1] * vrel[1] + vrel[2] * vrel[2]) +
-      sqrtf(hydro_gamma * p->P / p->rho);
+  double vmax =
+      sqrt(vrel[0] * vrel[0] + vrel[1] * vrel[1] + vrel[2] * vrel[2]) +
+      sqrt(hydro_gamma * p->P / p->rho);
   vmax = max(vmax, p->timestepvars.vmax);
 
   if (p->voronoi.volume == 0.) {
     error("Voronoi cell with volume 0!");
   }
-  const float psize =
+  const double psize =
       cosmo->a *
       pow(p->voronoi.volume / hydro_dimension_unit_sphere, hydro_dimension_inv);
-  float dt = FLT_MAX;
+  double dt = DBL_MAX;
   if (vmax > 0.) {
     dt = psize / vmax;
   }
-  return CFL_condition * dt;
+  return (float)(CFL_condition * dt);
 }
 
 /**
@@ -112,7 +112,7 @@ __attribute__((always_inline)) INLINE static void hydro_timestep_extra(
 __attribute__((always_inline)) INLINE static void hydro_first_init_part(
     struct part* p, struct xpart* xp) {
 
-  const float mass = p->conserved.mass;
+  const double mass = p->conserved.mass;
 
   p->time_bin = 0;
 
@@ -143,9 +143,9 @@ __attribute__((always_inline)) INLINE static void hydro_first_init_part(
 #endif
 
   /* set the initial velocity of the cells */
-  xp->v_full[0] = p->v[0];
-  xp->v_full[1] = p->v[1];
-  xp->v_full[2] = p->v[2];
+  xp->v_full[0] = (float)p->v[0];
+  xp->v_full[1] = (float)p->v[1];
+  xp->v_full[2] = (float)p->v[2];
 
   /* ignore accelerations present in the initial condition */
   p->a_hydro[0] = 0.0f;
@@ -260,7 +260,7 @@ __attribute__((always_inline)) INLINE static void hydro_prepare_gradient(
     const struct cosmology* cosmo, const struct hydro_props* hydro_props) {
 
   /* Initialize time step criterion variables */
-  p->timestepvars.vmax = 0.;
+  p->timestepvars.vmax = 0.f;
 
   hydro_gradients_init(p);
 }
@@ -342,7 +342,7 @@ __attribute__((always_inline)) INLINE static void hydro_reset_predicted_values(
 __attribute__((always_inline)) INLINE static void hydro_convert_quantities(
     struct part* p, struct xpart* xp, const struct cosmology* cosmo,
     const struct hydro_props* hydro_props) {
-  float mass = p->conserved.mass;
+  const double mass = p->conserved.mass;
   p->conserved.momentum[0] = mass * p->v[0];
   p->conserved.momentum[1] = mass * p->v[1];
   p->conserved.momentum[2] = mass * p->v[2];
@@ -451,9 +451,9 @@ __attribute__((always_inline)) INLINE static void hydro_kick_extra(
   p->v[1] = 0.0f;
   p->v[2] = 0.0f;
 #else
-  if (p->conserved.mass > 0.0f) {
+  if (p->conserved.mass > 0.) {
 
-    const float inverse_mass = 1.f / p->conserved.mass;
+    const double inverse_mass = 1.f / p->conserved.mass;
 
     /* Normal case: update fluid velocity and set particle velocity accordingly.
      */
@@ -487,24 +487,24 @@ __attribute__((always_inline)) INLINE static void hydro_kick_extra(
 #endif
 
   } else {
-    p->v[0] = 0.f;
-    p->v[1] = 0.f;
-    p->v[2] = 0.f;
-    p->fluid_v[0] = 0.f;
-    p->fluid_v[1] = 0.f;
-    p->fluid_v[2] = 0.f;
+    p->v[0] = 0.;
+    p->v[1] = 0.;
+    p->v[2] = 0.;
+    p->fluid_v[0] = 0.;
+    p->fluid_v[1] = 0.;
+    p->fluid_v[2] = 0.;
   }
 #endif
 
   /* Now make sure all velocity variables are up to date. */
-  xp->v_full[0] = p->v[0];
-  xp->v_full[1] = p->v[1];
-  xp->v_full[2] = p->v[2];
+  xp->v_full[0] = (float)p->v[0];
+  xp->v_full[1] = (float)p->v[1];
+  xp->v_full[2] = (float)p->v[2];
 
   if (p->gpart) {
-    p->gpart->v_full[0] = p->v[0];
-    p->gpart->v_full[1] = p->v[1];
-    p->gpart->v_full[2] = p->v[2];
+    p->gpart->v_full[0] = (float)p->v[0];
+    p->gpart->v_full[1] = (float)p->v[1];
+    p->gpart->v_full[2] = (float)p->v[2];
   }
 }
 

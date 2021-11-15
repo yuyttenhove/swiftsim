@@ -31,7 +31,7 @@
  */
 __attribute__((always_inline)) INLINE static double
 hydro_slope_limit_face_quantity(double phi_i, double phi_j, double phi_mid0,
-                                float xij_norm, float r) {
+                                double xij_norm, double r) {
 
   double phi_mid, delta1, delta2, phimin, phimax, phibar, phiplus, phiminus;
   const double psi1 = 0.5;
@@ -64,9 +64,9 @@ hydro_slope_limit_face_quantity(double phi_i, double phi_j, double phi_mid0,
   }
 
   if (phi_i < phi_j) {
-    phi_mid = fmax(phiminus, fmin(phibar + delta2, (float)phi_mid0));
+    phi_mid = fmax(phiminus, fmin(phibar + delta2, phi_mid0));
   } else {
-    phi_mid = fmin(phiplus, fmax(phibar - delta2, (float)phi_mid0));
+    phi_mid = fmin(phiplus, fmax(phibar - delta2, phi_mid0));
   }
 
   return phi_mid - phi_i;
@@ -86,16 +86,16 @@ hydro_slope_limit_face_quantity(double phi_i, double phi_j, double phi_mid0,
  * @param r Distance between particle i and particle j.
  */
 __attribute__((always_inline)) INLINE static void hydro_slope_limit_face(
-    double *Wi, double *Wj, double *dWi, double *dWj, const float *xij_i, const float *xij_j,
-    float r) {
+    double *Wi, double *Wj, double *dWi, double *dWj, const double *xij_i, const double *xij_j,
+    double r) {
 
-  float xij_i_norm, xij_j_norm;
+  double xij_i_norm, xij_j_norm;
 
   xij_i_norm =
-      sqrtf(xij_i[0] * xij_i[0] + xij_i[1] * xij_i[1] + xij_i[2] * xij_i[2]);
+      sqrt(xij_i[0] * xij_i[0] + xij_i[1] * xij_i[1] + xij_i[2] * xij_i[2]);
 
   xij_j_norm =
-      sqrtf(xij_j[0] * xij_j[0] + xij_j[1] * xij_j[1] + xij_j[2] * xij_j[2]);
+      sqrt(xij_j[0] * xij_j[0] + xij_j[1] * xij_j[1] + xij_j[2] * xij_j[2]);
 
   dWi[0] = hydro_slope_limit_face_quantity(Wi[0], Wj[0], Wi[0] + dWi[0],
                                            xij_i_norm, r);

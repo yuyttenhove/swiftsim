@@ -27,16 +27,16 @@
 __attribute__((always_inline)) INLINE static void hydro_slope_limit_cell_init(
     struct part* p) {
 
-  p->limiter.rho[0] = FLT_MAX;
-  p->limiter.rho[1] = -FLT_MAX;
-  p->limiter.v[0][0] = FLT_MAX;
-  p->limiter.v[0][1] = -FLT_MAX;
-  p->limiter.v[1][0] = FLT_MAX;
-  p->limiter.v[1][1] = -FLT_MAX;
-  p->limiter.v[2][0] = FLT_MAX;
-  p->limiter.v[2][1] = -FLT_MAX;
-  p->limiter.P[0] = FLT_MAX;
-  p->limiter.P[1] = -FLT_MAX;
+  p->limiter.rho[0] = DBL_MAX;
+  p->limiter.rho[1] = -DBL_MAX;
+  p->limiter.v[0][0] = DBL_MAX;
+  p->limiter.v[0][1] = -DBL_MAX;
+  p->limiter.v[1][0] = DBL_MAX;
+  p->limiter.v[1][1] = -DBL_MAX;
+  p->limiter.v[2][0] = DBL_MAX;
+  p->limiter.v[2][1] = -DBL_MAX;
+  p->limiter.P[0] = DBL_MAX;
+  p->limiter.P[1] = -DBL_MAX;
 
 #if defined(SHADOWFAX_SLOPE_LIMITER_CELL_WIDE)
   p->limiter.maxr = -DBL_MAX;
@@ -68,18 +68,18 @@ hydro_slope_limit_cell_collect(struct part* pi, const struct part* pj,
 
   /* basic slope limiter: collect the maximal and the minimal value for the
    * primitive variables among the ngbs */
-  pi->limiter.rho[0] = fminf(pj->rho, pi->limiter.rho[0]);
-  pi->limiter.rho[1] = fmaxf(pj->rho, pi->limiter.rho[1]);
+  pi->limiter.rho[0] = fmin(pj->rho, pi->limiter.rho[0]);
+  pi->limiter.rho[1] = fmax(pj->rho, pi->limiter.rho[1]);
 
-  pi->limiter.v[0][0] = fminf(pj->fluid_v[0], pi->limiter.v[0][0]);
-  pi->limiter.v[0][1] = fmaxf(pj->fluid_v[0], pi->limiter.v[0][1]);
-  pi->limiter.v[1][0] = fminf(pj->fluid_v[1], pi->limiter.v[1][0]);
-  pi->limiter.v[1][1] = fmaxf(pj->fluid_v[1], pi->limiter.v[1][1]);
-  pi->limiter.v[2][0] = fminf(pj->fluid_v[2], pi->limiter.v[2][0]);
-  pi->limiter.v[2][1] = fmaxf(pj->fluid_v[2], pi->limiter.v[2][1]);
+  pi->limiter.v[0][0] = fmin(pj->fluid_v[0], pi->limiter.v[0][0]);
+  pi->limiter.v[0][1] = fmax(pj->fluid_v[0], pi->limiter.v[0][1]);
+  pi->limiter.v[1][0] = fmin(pj->fluid_v[1], pi->limiter.v[1][0]);
+  pi->limiter.v[1][1] = fmax(pj->fluid_v[1], pi->limiter.v[1][1]);
+  pi->limiter.v[2][0] = fmin(pj->fluid_v[2], pi->limiter.v[2][0]);
+  pi->limiter.v[2][1] = fmax(pj->fluid_v[2], pi->limiter.v[2][1]);
 
-  pi->limiter.P[0] = fminf(pj->P, pi->limiter.P[0]);
-  pi->limiter.P[1] = fmaxf(pj->P, pi->limiter.P[1]);
+  pi->limiter.P[0] = fmin(pj->P, pi->limiter.P[0]);
+  pi->limiter.P[1] = fmax(pj->P, pi->limiter.P[1]);
 
 #if defined(SHADOWFAX_SLOPE_LIMITER_CELL_WIDE)
   pi->limiter.maxr = fmax(r, pi->limiter.maxr);
@@ -99,11 +99,10 @@ hydro_slope_limit_cell_collect(struct part* pi, const struct part* pj,
  * @param maxr Maximal distance between the generator and all of its neighbours
  */
 __attribute__((always_inline)) INLINE static void
-hydro_slope_limit_cell_quantity(double* grad, float qval, float qmin,
-                                float qmax, double maxr) {
+hydro_slope_limit_cell_quantity(double* grad, double qval, double qmin,
+                                double qmax, double maxr) {
 
-  float gradmax, gradmin;
-  double alpha, gradtrue;
+  double gradmax, gradmin, alpha, gradtrue;
 
   gradtrue = sqrt(grad[0] * grad[0] + grad[1] * grad[1] + grad[2] * grad[2]);
   if (gradtrue) {
@@ -210,8 +209,8 @@ hydro_slope_limit_cell_collect_extrapolations(struct part* p,
  *             neighbours
  */
 __attribute__((always_inline)) INLINE static void
-hydro_slope_limit_cell_quantity(double* grad, float qval, float qmin,
-                                float qmax, double emin, double emax) {
+hydro_slope_limit_cell_quantity(double* grad, double qval, double qmin,
+                                double qmax, double emin, double emax) {
   double delta_max = qmax - qval;
   double delta_min = qmin - qval;
   double alpha = 1.;
