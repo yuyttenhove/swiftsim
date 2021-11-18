@@ -130,7 +130,8 @@ __attribute__((always_inline)) INLINE static float riemann_gb(float p,
 
   const float A = hydro_two_over_gamma_plus_one / W[0];
   const float B = hydro_gamma_minus_one_over_gamma_plus_one * W[4];
-  return sqrtf(A / (p + B));
+  const float result = sqrtf(A / (p + B));
+  return isinff(result) ? sqrtf(A) / sqrtf(p + B) : result;
 }
 
 /**
