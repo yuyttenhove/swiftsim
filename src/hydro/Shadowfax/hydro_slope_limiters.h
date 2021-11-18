@@ -32,8 +32,8 @@
  * @param r Distance between particle i and particle j.
  */
 __attribute__((always_inline)) INLINE static void hydro_slope_limit_face(
-    double *Wi, double *Wj, double *dWi, double *dWj, const float *xij_i, const float *xij_j,
-    float r) {}
+    double *Wi, double *Wj, double *dWi, double *dWj, const double *xij_i, const double *xij_j,
+    double r) {}
 
 #endif
 
