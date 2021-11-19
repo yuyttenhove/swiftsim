@@ -318,7 +318,7 @@ void cell_shadowfax_write_tesselations(const struct cell *c, FILE *dfile,
       }
     }
   } else if (c->hydro.shadowfax_enabled){
-    //    delaunay_write_tessellation(&c->hydro.deltess, dfile, offset);
+        delaunay_write_tessellation(&c->hydro.deltess, dfile, offset);
 #ifdef SWIFT_DEBUG_CHECKS
     assert(c->hydro.vortess.active == c->hydro.deltess.active);
     assert(c->hydro.vortess.active);

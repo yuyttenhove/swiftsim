@@ -183,7 +183,8 @@ void engine_dump_snapshot(struct engine *e) {
   char fname[50];
   sprintf(fname, "voronoi%04d.txt", e->snapshot_output_count - 1);
   FILE *vfile = fopen(fname, "w");
-  FILE *file = NULL;
+  sprintf(fname, "delaunay%04d.txt", e->snapshot_output_count - 1);
+  FILE *file = fopen(fname, "w");
   size_t offset = 0;
   struct space* s = e->s;
   for (int i = 0; i < s->nr_cells; ++i) {

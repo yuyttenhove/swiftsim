@@ -1234,6 +1234,8 @@ inline static void delaunay_add_new_vertex(struct delaunay* d, double x,
 inline static void delaunay_write_tessellation(
     const struct delaunay* restrict d, FILE* file, size_t* offset) {
 
+  fprintf(file, "#VertexEnd\t%lu\tNeighbourOffset\t%lu\tnTriangles\t%d\n", *offset + d->vertex_end, *offset + d->ngb_offset, d->triangle_index - 3);
+
   for (int i = 0; i < d->vertex_index; ++i) {
     fprintf(file, "V\t%lu\t%g\t%g\n", *offset + i, d->vertices[2 * i],
             d->vertices[2 * i + 1]);
