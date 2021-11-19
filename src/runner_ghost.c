@@ -1124,6 +1124,11 @@ void runner_do_ghost(struct runner *r, struct cell *c, int timer) {
       }
     }
   } else {
+#ifdef SHADOWFAX_NEW_SPH
+    int force_all_active = 1;
+#else
+    int force_all_active = 0;
+#endif
     /* Init the list of active particles that have to be updated and their
      * current smoothing lengths. */
     int *pid = NULL;
@@ -1139,7 +1144,7 @@ void runner_do_ghost(struct runner *r, struct cell *c, int timer) {
     if ((right = (float *)malloc(sizeof(float) * c->hydro.count)) == NULL)
       error("Can't allocate memory for right.");
     for (int k = 0; k < c->hydro.count; k++)
-      if (part_is_active(&parts[k], e)) {
+      if (force_all_active || part_is_active(&parts[k], e)) {
         pid[count] = k;
         h_0[count] = parts[k].h;
         left[count] = 0.f;
