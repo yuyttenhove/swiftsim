@@ -184,12 +184,35 @@ __attribute__((always_inline)) INLINE static void hydro_init_part(
 /**
  * @brief Finishes the volume calculation.
  *
- * Moved to cell_shadowfax_end_density.
+ * Update particle density and pressure based on last volume calculation.
  *
  * @param p The particle to act upon.
  */
 __attribute__((always_inline)) INLINE static void hydro_end_density(
-    struct part* restrict p, const struct cosmology* cosmo) {}
+    struct part* restrict p, const struct cosmology* cosmo) {
+  double m = p->conserved.mass;
+  if (m > 0.) {
+    p->rho = m / p->voronoi.volume;
+    double energy = p->conserved.energy;
+#ifdef SHADOWFAX_TOTAL_ENERGY
+    energy -= 0.5f * (p->conserved.momentum[0] * p->fluid_v[0] +
+                      p->conserved.momentum[1] * p->fluid_v[1] +
+                      p->conserved.momentum[2] * p->fluid_v[2]);
+#endif
+    energy /= m;
+    p->P = gas_pressure_from_internal_energy((float)p->rho, (float)energy);
+
+#ifdef SWIFT_DEBUG_CHECKS
+    if (p->rho < 0.) {
+      error("Negative density!");
+    }
+
+    if (p->P < 0.) {
+      error("Negative pressure!");
+    }
+#endif
+  }
+}
 
 /**
  * @brief Sets all particle fields to sensible values when the #part has 0 ngbs.
@@ -349,6 +372,54 @@ __attribute__((always_inline)) INLINE static void hydro_convert_quantities(
 }
 
 /**
+ * @brief Convert conserved variables into primitive variables.
+ *
+ * This method also initializes the gradient variables (if gradients are used).
+ *
+ * @param p The particle to act upon.
+ * @param volume The volume of the particle's associated voronoi cell
+ */
+__attribute__((always_inline)) INLINE static void
+hydro_convert_conserved_to_primitive(struct part* restrict p) {
+  double m = p->conserved.mass;
+  const double inv_m = 1. / m;
+  double energy;
+  if (m > 0.) {
+    p->rho = m / p->voronoi.volume;
+    p->fluid_v[0] = p->conserved.momentum[0] * inv_m;
+    p->fluid_v[1] = p->conserved.momentum[1] * inv_m;
+    p->fluid_v[2] = p->conserved.momentum[2] * inv_m;
+
+    energy = p->conserved.energy;
+
+#ifdef SHADOWFAX_TOTAL_ENERGY
+    energy -= 0.5f * (p->conserved.momentum[0] * p->fluid_v[0] +
+                      p->conserved.momentum[1] * p->fluid_v[1] +
+                      p->conserved.momentum[2] * p->fluid_v[2]);
+#endif
+
+    energy /= m;
+    p->P = gas_pressure_from_internal_energy((float)p->rho, (float)energy);
+  } else {
+    p->rho = 0.f;
+    p->fluid_v[0] = 0.f;
+    p->fluid_v[1] = 0.f;
+    p->fluid_v[2] = 0.f;
+    p->P = 0.f;
+  }
+
+#ifdef SWIFT_DEBUG_CHECKS
+  if (p->rho < 0.) {
+    error("Negative density!");
+  }
+
+  if (p->P < 0.) {
+    error("Negative pressure!");
+  }
+#endif
+}
+
+/**
  * @brief Extra operations to be done during the drift
  *
  * Not used for Shadowswift.
@@ -411,29 +482,21 @@ __attribute__((always_inline)) INLINE static void hydro_kick_extra(
     struct part* p, struct xpart* xp, float dt_therm, float dt_grav,
     float dt_hydro, float dt_kick_corr, const struct cosmology* cosmo,
     const struct hydro_props* hydro_props,
-    const struct entropy_floor_properties* floor_props) {
+    const struct entropy_floor_properties* floor_props) {}
 
-  if (p->conserved.flux.dt > 0.0f) {
-    /* Update the conserved variables. We do this here and not in the kick,
-       since we need the updated variables below. */
-    p->conserved.mass += p->conserved.flux.mass;
-    p->conserved.momentum[0] += p->conserved.flux.momentum[0];
-    p->conserved.momentum[1] += p->conserved.flux.momentum[1];
-    p->conserved.momentum[2] += p->conserved.flux.momentum[2];
 
-#ifdef EOS_ISOTHERMAL_GAS
-    /* reset the thermal energy */
-    p->conserved.energy =
-        p->conserved.mass * gas_internal_energy_from_entropy(0.f, 0.f);
-#else
-    p->conserved.energy += p->conserved.flux.energy;
+__attribute__((always_inline)) INLINE static void hydro_drift_extra(
+    struct part* p, struct xpart* xp) {
+#ifdef SHADOWFAX_STEER_CELL_MOTION
+  int part_is_active = p->conserved.flux.dt != -1.0f;
 #endif
+  if (p->conserved.flux.dt != 0.0f) {
+    /* Update the conserved variables. We do this here and
+       not in the kick, since we need the updated variables below. */
+    hydro_flux_apply(p);
 
-    /* reset the fluxes, so that they do not get used again in kick1 */
-    hydro_part_reset_hydro_fluxes(p);
-    /* invalidate the particle time step. It is considered to be inactive until
-       dt is set again in hydro_prepare_force() */
-    p->conserved.flux.dt = -1.0f;
+    /* Update primitive quantities */
+    hydro_convert_conserved_to_primitive(p);
   } else if (p->conserved.flux.dt == 0.0f) {
     /* something tricky happens at the beginning of the simulation: the flux
        exchange is done for all particles, but using a time step of 0. This
@@ -453,36 +516,33 @@ __attribute__((always_inline)) INLINE static void hydro_kick_extra(
 #else
   if (p->conserved.mass > 0.) {
 
-    const double inverse_mass = 1.f / p->conserved.mass;
-
-    /* Normal case: update fluid velocity and set particle velocity accordingly.
-     */
-    p->fluid_v[0] = p->conserved.momentum[0] * inverse_mass;
-    p->fluid_v[1] = p->conserved.momentum[1] * inverse_mass;
-    p->fluid_v[2] = p->conserved.momentum[2] * inverse_mass;
+    /* Normal case: update particle velocity according to fluid velocity. */
     p->v[0] = p->fluid_v[0];
     p->v[1] = p->fluid_v[1];
     p->v[2] = p->fluid_v[2];
 
 #ifdef SHADOWFAX_STEER_CELL_MOTION
-    double d[3], vfac;
-    d[0] = p->voronoi.centroid[0] - p->x[0];
-    d[1] = p->voronoi.centroid[1] - p->x[1];
-    d[2] = p->voronoi.centroid[2] - p->x[2];
+    /* Only do this for parts with an up to date voronoi cell. */
+    if (part_is_active) {
+      double d[3], vfac;
+      d[0] = p->voronoi.centroid[0] - p->x[0];
+      d[1] = p->voronoi.centroid[1] - p->x[1];
+      d[2] = p->voronoi.centroid[2] - p->x[2];
 
-    double d_norm = sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
-    double R = get_radius_dimension_sphere(p->voronoi.volume);
-    double fac = 4.0f * d_norm / R;
-    if (fac > 0.9f) {
-      float sound_speed = hydro_get_soundspeed(p);
-      if (fac < 1.1f) {
-        vfac = sound_speed * (d_norm - 0.225f * R) / d_norm / (0.05f * R);
-      } else {
-        vfac = sound_speed / d_norm;
+      double d_norm = sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+      double R = get_radius_dimension_sphere(p->voronoi.volume);
+      double fac = 4.0f * d_norm / R;
+      if (fac > 0.9f) {
+        float sound_speed = hydro_get_soundspeed(p);
+        if (fac < 1.1f) {
+          vfac = sound_speed * (d_norm - 0.225f * R) / d_norm / (0.05f * R);
+        } else {
+          vfac = sound_speed / d_norm;
+        }
+        p->v[0] += vfac * d[0];
+        p->v[1] += vfac * d[1];
+        p->v[2] += vfac * d[2];
       }
-      p->v[0] += vfac * d[0];
-      p->v[1] += vfac * d[1];
-      p->v[2] += vfac * d[2];
     }
 #endif
 
@@ -490,9 +550,6 @@ __attribute__((always_inline)) INLINE static void hydro_kick_extra(
     p->v[0] = 0.;
     p->v[1] = 0.;
     p->v[2] = 0.;
-    p->fluid_v[0] = 0.;
-    p->fluid_v[1] = 0.;
-    p->fluid_v[2] = 0.;
   }
 #endif
 

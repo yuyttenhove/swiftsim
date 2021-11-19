@@ -5,54 +5,6 @@
 #include "equation_of_state.h"
 #include "hydro/Shadowfax/hydro_flux.h"
 
-/**
- * @brief Convert conserved variables into primitive variables.
- *
- * This method also initializes the gradient variables (if gradients are used).
- *
- * @param p The particle to act upon.
- * @param volume The volume of the particle's associated voronoi cell
- */
-__attribute__((always_inline)) INLINE static void
-hydro_shadowfax_convert_conserved_to_primitive(struct part *restrict p) {
-  double m = p->conserved.mass;
-  const double inv_m = 1. / m;
-  double energy;
-  if (m > 0.) {
-    p->rho = m / p->voronoi.volume;
-    p->fluid_v[0] = p->conserved.momentum[0] * inv_m;
-    p->fluid_v[1] = p->conserved.momentum[1] * inv_m;
-    p->fluid_v[2] = p->conserved.momentum[2] * inv_m;
-
-    energy = p->conserved.energy;
-
-#ifdef SHADOWFAX_TOTAL_ENERGY
-    energy -=
-        0.5f * (momentum[0] * p->fluid_v[0] + momentum[1] * p->fluid_v[1] +
-                momentum[2] * p->fluid_v[2]);
-#endif
-
-    energy /= m;
-    p->P = gas_pressure_from_internal_energy(p->rho, energy);
-  } else {
-    p->rho = 0.f;
-    p->fluid_v[0] = 0.f;
-    p->fluid_v[1] = 0.f;
-    p->fluid_v[2] = 0.f;
-    p->P = 0.f;
-  }
-
-#ifdef SWIFT_DEBUG_CHECKS
-  if (p->rho < 0.) {
-    error("Negative density!");
-  }
-
-  if (p->P < 0.) {
-    error("Negative pressure!");
-  }
-#endif
-}
-
 __attribute__((always_inline)) INLINE static void hydro_shadowfax_flux_exchange(
     struct part *pi, struct part *pj, double const *centroid,
     double surface_area, const double *shift, const int symmetric) {
@@ -154,7 +106,7 @@ __attribute__((always_inline)) INLINE static void hydro_shadowfax_flux_exchange(
     n_unit[k] = (float)(-dx[k] / r);
   }
 
-  hydro_compute_flux(Wi, Wj, n_unit, vij, surface_area, min_dt, totflux);
+  hydro_flux_compute(Wi, Wj, n_unit, vij, surface_area, min_dt, totflux);
 
   /* Update conserved variables */
   /* eqn. (16) */

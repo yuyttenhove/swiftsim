@@ -299,13 +299,14 @@ void cell_shadowfax_do_self_subset_density_recursive(
   }
 }
 
-void cell_shadowfax_end_density_recursive(struct cell *restrict c) {
+void cell_shadowfax_end_density_recursive(struct cell *c,
+                                          const struct engine *e) {
   if (c->split) {
     for (int k = 0; k < 8; k++)
       if (c->progeny[k] != NULL)
-        cell_shadowfax_end_density_recursive(c->progeny[k]);
+        cell_shadowfax_end_density_recursive(c->progeny[k], e);
   } else {
-    cell_shadowfax_end_density(c);
+    cell_shadowfax_end_density(c, e);
   }
 }
 

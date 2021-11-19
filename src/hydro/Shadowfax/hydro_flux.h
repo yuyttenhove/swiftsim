@@ -7,19 +7,24 @@
 
 #include "riemann.h"
 
+/* Forward declaration */
+__attribute__((always_inline)) static void hydro_convert_conserved_to_primitive(
+    struct part* restrict p);
+
 /**
  * @brief Reset the hydrodynamical fluxes for the given particle.
  *
  * @param p Particle.
  */
-__attribute__((always_inline)) INLINE static void hydro_part_reset_hydro_fluxes(
+__attribute__((always_inline)) INLINE static void hydro_flux_reset(
     struct part* restrict p) {
 
-  p->conserved.flux.mass = 0.0f;
-  p->conserved.flux.momentum[0] = 0.0f;
-  p->conserved.flux.momentum[1] = 0.0f;
-  p->conserved.flux.momentum[2] = 0.0f;
-  p->conserved.flux.energy = 0.0f;
+  p->conserved.flux.mass = 0.0;
+  p->conserved.flux.momentum[0] = 0.0;
+  p->conserved.flux.momentum[1] = 0.0;
+  p->conserved.flux.momentum[2] = 0.0;
+  p->conserved.flux.energy = 0.0;
+  p->conserved.flux.dt = -1.0f;
 }
 
 /**
@@ -35,7 +40,7 @@ __attribute__((always_inline)) INLINE static void hydro_part_reset_hydro_fluxes(
  * @param dt Time step
  * @param fluxes Array to store the result in (of size 5 or more).
  */
-__attribute__((always_inline)) INLINE static void hydro_compute_flux(
+__attribute__((always_inline)) INLINE static void hydro_flux_compute(
     const double* WL, const double* WR, const float* n_unit, const double* vLR,
     const double surface_area, const float dt, float* fluxes) {
 
@@ -54,6 +59,34 @@ __attribute__((always_inline)) INLINE static void hydro_compute_flux(
   fluxes[2] *= Adt;
   fluxes[3] *= Adt;
   fluxes[4] *= Adt;
+}
+
+__attribute__((always_inline)) INLINE static void hydro_flux_apply(
+    struct part* p) {
+  /* Update conserved quantities */
+  p->conserved.mass += p->conserved.flux.mass;
+  p->conserved.momentum[0] += p->conserved.flux.momentum[0];
+  p->conserved.momentum[1] += p->conserved.flux.momentum[1];
+  p->conserved.momentum[2] += p->conserved.flux.momentum[2];
+#ifdef EOS_ISOTHERMAL_GAS
+  /* reset the thermal energy */
+  p->conserved.energy =
+      p->conserved.mass * gas_internal_energy_from_entropy(0.f, 0.f);
+#else
+  p->conserved.energy += p->conserved.flux.energy;
+#endif
+
+#ifdef SWIFT_DEBUG_CHECKS
+  if (p->conserved.mass < 0.0) {
+    error("Negative mass!");
+  }
+  if (p->conserved.energy < 0.0) {
+    error("Negative energy!");
+  }
+#endif
+
+  /* reset fluxes */
+  hydro_flux_reset(p);
 }
 
 #endif  // SWIFTSIM_HYDRO_FLUX_H
