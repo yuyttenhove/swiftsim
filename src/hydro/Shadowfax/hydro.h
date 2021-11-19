@@ -434,17 +434,6 @@ __attribute__((always_inline)) INLINE static void hydro_predict_extra(
     const struct entropy_floor_properties* floor_props) {
 
   return;
-  // TODO Is this needed?
-  double Wprime[5];
-  double W[5];
-  hydro_get_primitives(p, W);
-  hydro_gradients_extrapolate_in_time(p, W, dt_therm, Wprime);
-
-  p->rho = (float)Wprime[0];
-  p->fluid_v[0] = (float)Wprime[1];
-  p->fluid_v[1] = (float)Wprime[2];
-  p->fluid_v[2] = (float)Wprime[3];
-  p->P = (float)Wprime[4];
 }
 
 /**
