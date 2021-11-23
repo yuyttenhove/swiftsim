@@ -96,13 +96,13 @@ struct voronoi {
    *  pairs[1] corresponds to pairs crossing the boundary between this cell and
    *  the cell with coordinates that are lower in all coordinate directions (the
    *  cell to the left, front, bottom, sid=0), and so on. */
-  struct voronoi_pair *pairs[27];
+  struct voronoi_pair *pairs[28];
 
   /*! @brief Current number of pairs per cell index. */
-  int pair_index[27];
+  int pair_index[28];
 
   /*! @brief Allocated number of pairs per cell index. */
-  int pair_size[27];
+  int pair_size[28];
 
 #ifdef VORONOI_STORE_CONNECTIONS
   /*! @brief cell pair connection. Queue of 2-tuples containing the index of

@@ -240,6 +240,14 @@ void runner_do_hydro_sort(struct runner *r, struct cell *c, int flags,
   if (c->hydro.sorted == 0) c->hydro.ti_sort = r->e->ti_current;
 #endif
 
+#ifdef SHADOWFAX_NEW_SPH
+  if (!r->e->s->periodic) {
+    /* Force cardinal directions to sort (for reflective boundary conditions)
+     * 0b1010000010000 = 0x1410, so this corresponds to sID 12, 10 and 4. */
+    flags |= 0x1410;
+  }
+#endif
+
   /* Allocate memory for sorting. */
   cell_malloc_hydro_sorts(c, flags);
 

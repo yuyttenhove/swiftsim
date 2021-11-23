@@ -161,6 +161,9 @@ cell_shadowfax_do_pair1_density(const struct engine *e, struct cell *ci,
 
   if (cell_is_active_hydro(ci, e)) {
 
+    /* Mark cell face as inside of simulation volume */
+    ci->hydro.deltess.sid_is_inside_face[26 - sid] |= 1;
+
     /* Loop over the parts in ci. */
     for (int pid = count_i - 1;
          pid >= 0 && sort_i[pid].d + hi_max + dx_max > dj_min; pid--) {
@@ -217,6 +220,9 @@ cell_shadowfax_do_pair1_density(const struct engine *e, struct cell *ci,
   }     /* Cell ci is active */
 
   if (cell_is_active_hydro(cj, e)) {
+
+    /* Mark cell face as inside of simulation volume */
+    cj->hydro.deltess.sid_is_inside_face[sid] |= 1;
 
     /* Loop over the parts in cj. */
     for (int pjd = 0; pjd < count_j && sort_j[pjd].d - hj_max - dx_max < di_max;
@@ -722,6 +728,120 @@ void cell_shadowfax_do_self_subset_density_recursive(const struct engine *e,
                                                      struct cell *c,
                                                      struct part *parts,
                                                      const int *ind, int count);
+
+static const int sortlist_shift_vector[27][3] = {
+    {-1, -1, -1}, {-1, -1, 0}, {-1, -1, 1}, {-1, 0, -1}, {-1, 0, 0}, {-1, 0, 1},
+    {-1, 1, -1},  {-1, 1, 0},  {-1, 1, 1},  {0, -1, -1}, {0, -1, 0}, {0, -1, 1},
+    {0, 0, -1},   {0, 0, 0},   {0, 0, 1},   {0, 1, -1},  {0, 1, 0},  {0, 1, 1},
+    {1, -1, -1},  {1, -1, 0},  {1, -1, 1},  {1, 0, -1},  {1, 0, 0},  {1, 0, 1},
+    {1, 1, -1},   {1, 1, 0},   {1, 1, 1}};
+
+__attribute__((always_inline)) INLINE static void
+cell_shadowfax_reflect_coordinates(const struct cell *c, const double *x_in,
+                                   int sid, double *x_out) {
+  double x_rel[3];
+  const double cell_loc[3] = {c->loc[0], c->loc[1], c->loc[2]};
+  const double cell_width[3] = {c->width[0], c->width[1], c->width[2]};
+
+  x_rel[0] = x_in[0] - cell_loc[0];
+  x_rel[1] = x_in[1] - cell_loc[1];
+  x_rel[2] = x_in[2] - cell_loc[2];
+
+  for (int i = 0; i < 3; i++) {
+    if (sortlist_shift_vector[sid][i] < 0) {
+      x_out[i] = cell_loc[i] - x_rel[i];
+    } else if (sortlist_shift_vector[sid][i] == 0) {
+      x_out[i] = x_in[i];
+    } else {
+      x_out[i] = cell_loc[i] + 2 * cell_width[i] - x_rel[i];
+    }
+  }
+}
+
+__attribute__((always_inline)) INLINE static void
+cell_shadowfax_get_cell_corner_to_compare(const struct cell *c, int sid,
+                                          double *x_out) {
+  const double cell_loc[3] = {c->loc[0], c->loc[1], c->loc[2]};
+  const double cell_width[3] = {c->width[0], c->width[1], c->width[2]};
+
+  for (int i = 0; i < 3; i++) {
+    if (sortlist_shift_vector[sid][i] > 0) {
+      x_out[i] = cell_loc[i] + cell_width[i];
+    } else {
+      x_out[i] = cell_loc[i];
+    }
+  }
+}
+
+__attribute__((always_inline)) INLINE static void
+cell_shadowfax_add_rbc_particles(struct cell *restrict c,
+                                 const struct engine *restrict e, float h_max) {
+#ifdef SWIFT_DEBUG_CHECKS
+  assert(c->hydro.shadowfax_enabled);
+  assert(c->hydro.deltess.active);
+  assert(!c->split);
+#endif
+  int count = c->hydro.count;
+  struct part *parts = c->hydro.parts;
+  for (int sid = 0; sid < 27; sid++) {
+    /* Do we need to add periodic boundary particles for this cell? */
+    if (!c->hydro.deltess.sid_is_inside_face[sid]) {
+
+      /* Pick the correct corner of the cell to compare the sorted positions
+       * along the axis corresponding to the sid with. */
+      double cell_corner[3];
+      cell_shadowfax_get_cell_corner_to_compare(c, sid, cell_corner);
+      /* Calculate the position of the cell_corner along the sid axis */
+      int sortlist_id = sortlistID[sid];
+      double cell_corner_d = runner_shift[sortlist_id][0] * cell_corner[0] +
+                             runner_shift[sortlist_id][1] * cell_corner[1] +
+                             runner_shift[sortlist_id][2] * cell_corner[2];
+
+      /* Get the sort entries of the particles for the sid axis */
+      const struct sort_entry *restrict sort =
+          cell_get_hydro_sorts(c, sortlist_id);
+
+      /* Declare variables */
+      struct part *p;
+      double reflected_x[3];
+
+      /* Do we need to flip the sorting direction? */
+      if (runner_flip[sid]) {
+        for (int pid = 0; pid < count && sort[pid].d < cell_corner_d + h_max;
+             pid++) {
+          p = &parts[sort[pid].i];
+
+          /* Skip inhibited particles. */
+          if (part_is_inhibited(p, e)) continue;
+
+          /* Calculate reflected coordinates */
+          cell_shadowfax_reflect_coordinates(c, p->x, sid, reflected_x);
+
+          /* Add vertex to deltess with sid 27 signaling that it is a boundary
+           * particle. */
+          delaunay_add_new_vertex(&c->hydro.deltess, reflected_x[0],
+                                  reflected_x[1], reflected_x[2], 27, c, p);
+        }
+      } else {
+        for (int pid = count - 1;
+             pid >= 0 && sort[pid].d > cell_corner_d - h_max; pid--) {
+          p = &parts[sort[pid].i];
+
+          /* Skip inhibited particles. */
+          if (part_is_inhibited(p, e)) continue;
+
+          /* Calculate reflected coordinates */
+          cell_shadowfax_reflect_coordinates(c, p->x, sid, reflected_x);
+
+          /* Add vertex to deltess with sid 27 signaling that it is a boundary
+           * particle. */
+          delaunay_add_new_vertex(&c->hydro.deltess, reflected_x[0],
+                                  reflected_x[1], reflected_x[2], 27, c, p);
+        }
+      }
+    }
+  }
+}
 
 __attribute__((always_inline)) INLINE static void cell_shadowfax_end_density(
     struct cell *restrict c) {

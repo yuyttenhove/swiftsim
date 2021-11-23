@@ -1156,6 +1156,14 @@ void runner_do_ghost(struct runner *r, struct cell *c, int timer) {
     for (int num_reruns = 0; count > 0 && num_reruns < max_smoothing_iter;
          num_reruns++) {
 
+#ifdef SHADOWFAX_NEW_SPH
+      /* Add reflective boundary particles if necessary. This should happen
+       * before we update the search radii if necessary. */
+      if (!e->s->periodic) {
+        cell_shadowfax_add_rbc_particles(c, e, h_max);
+      }
+#endif
+
       /* Reset the redo-count. */
       redo = 0;
 
@@ -1175,7 +1183,9 @@ void runner_do_ghost(struct runner *r, struct cell *c, int timer) {
           p->h *= 1.25f;
           /* Check if h_max is increased */
           h_max = max(h_max, p->h);
-          h_max_active = max(h_max_active, p->h);
+          if (part_is_active(p, e)) {
+            h_max_active = max(h_max_active, p->h);
+          }
           pid[redo] = pid[i];
 //          h_0[redo] = h_0[i];
           left[redo] = left[i];

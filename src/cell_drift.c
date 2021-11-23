@@ -195,11 +195,16 @@ void cell_drift_part(struct cell *c, const struct engine *e, int force) {
             }
 #endif
 
+#ifdef SHADOWFAX_NEW_SPH
+            /* Apply reflective boundary conditions */
+            hydro_reflect_part(p, xp, e->s->dim);
+#else
             /* One last action before death? */
             hydro_remove_part(p, xp, e->time);
 
             /* Remove the particle entirely */
             cell_remove_part(e, c, p, xp);
+#endif
           }
 
           if (lock_unlock(&e->s->lock) != 0)

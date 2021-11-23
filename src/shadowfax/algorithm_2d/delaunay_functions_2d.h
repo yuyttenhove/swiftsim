@@ -92,24 +92,23 @@ inline static int delaunay_new_vertex(struct delaunay* restrict d, double x,
     d->vertex_size <<= 1;
     d->vertices = (double*)swift_realloc("c.h.d.vertices", d->vertices,
                                          d->vertex_size * 2 * sizeof(double));
-    d->rescaled_vertices = (double*)swift_realloc(
-        "c.h.d.rescaled_vertices", d->rescaled_vertices,
-        d->vertex_size * 2 * sizeof(double));
+    d->rescaled_vertices =
+        (double*)swift_realloc("c.h.d.rescaled_vertices", d->rescaled_vertices,
+                               d->vertex_size * 2 * sizeof(double));
     d->integer_vertices = (unsigned long int*)swift_realloc(
         "c.h.d.integer_vertices", d->integer_vertices,
         d->vertex_size * 2 * sizeof(unsigned long int));
     d->vertex_triangles =
-        (int*)swift_realloc("c.h.d.vertex_triangles",
-                            d->vertex_triangles, d->vertex_size * sizeof(int));
+        (int*)swift_realloc("c.h.d.vertex_triangles", d->vertex_triangles,
+                            d->vertex_size * sizeof(int));
     d->vertex_triangle_index = (int*)swift_realloc(
         "c.h.d.vertex_triangle_index", d->vertex_triangle_index,
         d->vertex_size * sizeof(int));
-    d->search_radii =
-        (double*)swift_realloc("c.h.d.search_radii", d->search_radii,
-                               d->vertex_size * sizeof(double));
-    d->part_pointers = (struct part**)swift_realloc(
-        "c.h.d.part_pointers", d->part_pointers,
-        d->vertex_size * sizeof(struct part*));
+    d->search_radii = (double*)swift_realloc(
+        "c.h.d.search_radii", d->search_radii, d->vertex_size * sizeof(double));
+    d->part_pointers =
+        (struct part**)swift_realloc("c.h.d.part_pointers", d->part_pointers,
+                                     d->vertex_size * sizeof(struct part*));
   }
 
   delaunay_init_vertex(d, d->vertex_index, x, y, part_pointer);
@@ -397,6 +396,16 @@ inline static void delaunay_reset(struct delaunay* restrict d,
 
   d->ngb_offset = d->vertex_index;
 
+  /* Initialize the sid mask so that the sid's with a z-component are already 1
+   * (are all threated as internal), since this is the 2D version.
+   * Also sid=13 does not correspond to a face and is always set to 1 as well.
+   * We only set the sid's corresponding to the cardinal directions to 0
+   * (only faces perpendicular to one of the axes can be boundary faces). */
+  const int default_sid_mask[27] = {1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1,
+                                    1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1};
+  memcpy(d->sid_is_inside_face, default_sid_mask,
+         sizeof(d->sid_is_inside_face));
+
   /* Perform potential log output and sanity checks */
   delaunay_log("Post init or reset check");
   delaunay_check_tessellation(d);
@@ -430,18 +439,18 @@ inline static void delaunay_init(struct delaunay* restrict d,
   d->active = 1;
 
   /* allocate memory for the vertex arrays */
-  d->vertices = (double*)swift_malloc("c.h.d.vertices",
-                                      vertex_size * 2 * sizeof(double));
+  d->vertices =
+      (double*)swift_malloc("c.h.d.vertices", vertex_size * 2 * sizeof(double));
   d->rescaled_vertices = (double*)swift_malloc(
       "c.h.d.rescaled_vertices", vertex_size * 2 * sizeof(double));
   d->integer_vertices = (unsigned long int*)swift_malloc(
       "c.h.d.integer_vertices", vertex_size * 2 * sizeof(unsigned long int));
-  d->vertex_triangles = (int*)swift_malloc("c.h.d.vertex_triangles",
-                                           vertex_size * sizeof(int));
-  d->vertex_triangle_index = (int*)swift_malloc(
-      "c.h.d.vertex_triangle_index", vertex_size * sizeof(int));
-  d->search_radii = (double*)swift_malloc("c.h.d.search_radii",
-                                          vertex_size * sizeof(double));
+  d->vertex_triangles =
+      (int*)swift_malloc("c.h.d.vertex_triangles", vertex_size * sizeof(int));
+  d->vertex_triangle_index = (int*)swift_malloc("c.h.d.vertex_triangle_index",
+                                                vertex_size * sizeof(int));
+  d->search_radii =
+      (double*)swift_malloc("c.h.d.search_radii", vertex_size * sizeof(double));
   d->part_pointers = (struct part**)swift_malloc(
       "c.h.d.part_pointers", vertex_size * sizeof(struct part*));
   d->vertex_size = vertex_size;
@@ -481,8 +490,7 @@ inline static void delaunay_destroy(struct delaunay* restrict d) {
     swift_free("c.h.d.rescaled_vertices", d->rescaled_vertices);
     swift_free("c.h.d.integer_vertices", d->integer_vertices);
     swift_free("c.h.d.vertex_triangles", d->vertex_triangles);
-    swift_free("c.h.d.vertex_triangle_index",
-               d->vertex_triangle_index);
+    swift_free("c.h.d.vertex_triangle_index", d->vertex_triangle_index);
     swift_free("c.h.d.search_radii", d->search_radii);
     swift_free("c.h.d.part_pointers", d->part_pointers);
     swift_free("c.h.d.triangles", d->triangles);
@@ -585,7 +593,7 @@ inline static int delaunay_update_search_radii(struct delaunay* restrict d,
 }
 
 inline static double delaunay_get_search_radius(struct delaunay* restrict d,
-                                               int vi) {
+                                                int vi) {
   int t0 = d->vertex_triangles[vi];
   int vi0 = d->vertex_triangle_index[vi];
   int vi0p1 = (vi0 + 1) % 3;
@@ -1220,9 +1228,9 @@ inline static void delaunay_add_new_vertex(struct delaunay* d, double x,
       d->ngb_size <<= 1;
       d->ngb_cell_sids = (int*)swift_realloc(
           "c.h.d.ngb_cell_sids", d->ngb_cell_sids, d->ngb_size * sizeof(int));
-      d->ngb_cell_ptrs = (struct cell**)swift_realloc(
-          "c.h.d.ngb_cell_ptrs", d->ngb_cell_ptrs,
-          d->ngb_size * sizeof(struct cell*));
+      d->ngb_cell_ptrs =
+          (struct cell**)swift_realloc("c.h.d.ngb_cell_ptrs", d->ngb_cell_ptrs,
+                                       d->ngb_size * sizeof(struct cell*));
     }
     delaunay_assert(d->ngb_index == v - d->ngb_offset);
     d->ngb_cell_sids[d->ngb_index] = cell_sid;
@@ -1234,7 +1242,9 @@ inline static void delaunay_add_new_vertex(struct delaunay* d, double x,
 inline static void delaunay_write_tessellation(
     const struct delaunay* restrict d, FILE* file, size_t* offset) {
 
-  fprintf(file, "#VertexEnd\t%lu\tNeighbourOffset\t%lu\tnTriangles\t%d\n", *offset + d->vertex_end, *offset + d->ngb_offset, d->triangle_index - 3);
+  fprintf(file, "#VertexEnd\t%lu\tNeighbourOffset\t%lu\tnTriangles\t%d\n",
+          *offset + d->vertex_end, *offset + d->ngb_offset,
+          d->triangle_index - 3);
 
   for (int i = 0; i < d->vertex_index; ++i) {
     fprintf(file, "V\t%lu\t%g\t%g\n", *offset + i, d->vertices[2 * i],

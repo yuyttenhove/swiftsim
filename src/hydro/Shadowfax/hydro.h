@@ -966,4 +966,28 @@ __attribute__((always_inline)) INLINE static float hydro_get_physical_density(
 __attribute__((always_inline)) INLINE static void hydro_remove_part(
     const struct part* p, const struct xpart* xp, const double time) {}
 
+/**
+ * @brief If a particle exits the simulation volume, apply reflective boundary
+ * conditions.
+ *
+ * @param p The particle.
+ * @param xp The extended particle data.
+ * @param space_dim The dimensions of the simulation volume.
+ */
+__attribute__((always_inline)) INLINE static void hydro_reflect_part(
+    struct part* p, struct xpart* xp, const double* space_dim) {
+  for (int k = 0; k < 3; k++) {
+    if (p->x[k] < 0. || p->x[k] >= space_dim[k]) {
+      p->x[k] = -p->x[k];
+      if (p->x[k] >= space_dim[k]) {
+        p->x[k] += space_dim[k];
+      }
+      p->fluid_v[k] = -p->fluid_v[k];
+      p->v[k] = -p->v[k];
+      xp->v_full[k] = -xp->v_full[k];
+    }
+  }
+}
+
+
 #endif /* SWIFT_SHADOWSWIFT_HYDRO_H */
