@@ -142,6 +142,15 @@ inline static void delaunay_reset(struct delaunay* restrict d,
   int_lifo_queue_reset(&d->tetrahedra_containing_vertex);
   int3_fifo_queue_reset(&d->get_radius_neighbour_info_queue);
 
+  /* Reset the sid mask.
+   * Sid=13 does not correspond to a face and is always set to 1.
+   * We only set the sid's corresponding to the cardinal directions to 0
+   * (only faces perpendicular to one of the axes can be boundary faces). */
+  const int default_sid_mask[27] = {1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1,
+                                    0, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1};
+  memcpy(d->sid_is_inside_face, default_sid_mask,
+         sizeof(d->sid_is_inside_face));
+
   /* determine the size of a box large enough to accommodate the entire
    * simulation volume and all possible ghost vertex_indices required to deal
    * with boundaries. Note that we convert the generally rectangular box to a

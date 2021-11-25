@@ -62,7 +62,7 @@ inline static void voronoi_init(struct voronoi *restrict v, int number_of_cells,
   v->cells_size = v->number_of_cells;
 
   /* Allocate memory for the voronoi pairs (faces). */
-  for (int i = 0; i < 27; ++i) {
+  for (int i = 0; i < 28; ++i) {
     v->pairs[i] = (struct voronoi_pair *)swift_malloc(
         "c.h.v.pairs", 10 * sizeof(struct voronoi_pair));
     v->pair_index[i] = 0;
@@ -89,7 +89,7 @@ inline static void voronoi_reset(struct voronoi *restrict v,
   }
 
   /* reset indices for the voronoi pairs (faces). */
-  for (int i = 0; i < 27; ++i) {
+  for (int i = 0; i < 28; ++i) {
     /* Free any allocations made for the old pairs */
 #ifdef VORONOI_STORE_CONNECTIONS
     for (int j = 0; j < v->pair_index[i]; j++) {
@@ -466,7 +466,7 @@ inline static void voronoi_build(struct voronoi *restrict v,
  */
 inline static void voronoi_destroy(struct voronoi *restrict v) {
   swift_free("c.h.v.cells", v->cells);
-  for (int i = 0; i < 27; ++i) {
+  for (int i = 0; i < 28; ++i) {
 #ifdef VORONOI_STORE_CONNECTIONS
     for (int j = 0; j < v->pair_index[i]; j++) {
       free(v->pairs[i][j].vertices);
@@ -577,7 +577,7 @@ inline static void voronoi_check_grid(struct voronoi *restrict v) {
   for (int i = 0; i < v->number_of_cells; i++) {
     surface_areas[i] = 0;
   }
-  for (int sid = 0; sid < 27; sid++) {
+  for (int sid = 0; sid < 28; sid++) {
     for (int i = 0; i < v->pair_index[sid]; i++) {
       struct voronoi_pair *pair = &v->pairs[sid][i];
       surface_areas[pair->left_idx] += pair->surface_area;
@@ -627,7 +627,7 @@ inline static void voronoi_write_grid(const struct voronoi *restrict v,
   }
 
   /* now write the faces */
-  for (int ngb = 0; ngb < 27; ++ngb) {
+  for (int ngb = 0; ngb < 28; ++ngb) {
     for (int i = 0; i < v->pair_index[ngb]; ++i) {
       struct voronoi_pair *pair = &v->pairs[ngb][i];
       fprintf(file, "F\t%i\t%g\t%g\t%g\t%g", ngb, pair->surface_area,

@@ -156,6 +156,12 @@ struct delaunay {
    *  that neighbouring information for vertex v is stored in
    *  ngb_cell_sids[v-ngb_offset]). */
   int ngb_offset;
+
+  /*! @brief Array of booleans indicating whether or not neighbouring particles
+   * have been tried to be added for a given sid. If this is 0 for a given sid,
+   * this means that this cell should get the reflective boundary condition
+   * applied for that sid. */
+  int sid_is_inside_face[27];
 };
 
 #endif  // SWIFTSIM_DELAUNAY3D_H
