@@ -1953,22 +1953,30 @@ inline static void delaunay_consolidate(struct delaunay* restrict d) {
 #endif
 }
 
-inline static void delaunay_print_tessellation(
-    const struct delaunay* restrict d, const char* file_name) {
-  FILE* file = fopen(file_name, "w");
+inline static void delaunay_write_tessellation(
+    const struct delaunay* restrict d, FILE* file, const size_t* offset) {
 
   for (int i = 0; i < d->vertex_index; ++i) {
-    fprintf(file, "V\t%i\t%g\t%g\t%g\n", i, d->vertices[3 * i],
+    fprintf(file, "V\t%lu\t%g\t%g\t%g\n", *offset + i, d->vertices[3 * i],
             d->vertices[3 * i + 1], d->vertices[3 * i + 2]);
   }
   for (int i = 4; i < d->tetrahedron_index; ++i) {
     if (!d->tetrahedra[i].active) {
       continue;
     }
-    fprintf(file, "T\t%i\t%i\t%i\t%i\n", d->tetrahedra[i].vertices[0],
-            d->tetrahedra[i].vertices[1], d->tetrahedra[i].vertices[2],
-            d->tetrahedra[i].vertices[3]);
+    fprintf(file, "T\t%lu\t%lu\t%lu\t%lu\n",
+            *offset + d->tetrahedra[i].vertices[0],
+            *offset + d->tetrahedra[i].vertices[1],
+            *offset + d->tetrahedra[i].vertices[2],
+            *offset + d->tetrahedra[i].vertices[3]);
   }
+}
+
+inline static void delaunay_print_tessellation(
+    const struct delaunay* restrict d, const char* file_name) {
+  FILE* file = fopen(file_name, "w");
+
+  delaunay_write_tessellation(d, file, 0);
 
   fclose(file);
 }
