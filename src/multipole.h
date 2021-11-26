@@ -1007,6 +1007,10 @@ __attribute__((nonnull)) INLINE static void gravity_P2M(
 
     epsilon_max = max(epsilon_max, epsilon);
     min_old_a_grav_norm = min(min_old_a_grav_norm, gparts[k].old_a_grav_norm);
+#ifdef SHADOWFAX_NEW_SPH
+    /* Skip particles with zero mass (can only occur in the shadowfax scheme. */
+    if (m == 0.) continue;
+#endif
     mass += m;
     com[0] += gparts[k].x[0] * m;
     com[1] += gparts[k].x[1] * m;
@@ -1017,6 +1021,28 @@ __attribute__((nonnull)) INLINE static void gravity_P2M(
   }
 
   /* Final operation on CoM */
+#ifdef SHADOWFAX_NEW_SPH
+  if (mass > 0.) {
+    const double imass = 1.0 / mass;
+    com[0] *= imass;
+    com[1] *= imass;
+    com[2] *= imass;
+    vel[0] *= imass;
+    vel[1] *= imass;
+    vel[2] *= imass;
+  } else {
+    /* Compute CoM without degeneracies */
+    /* This special case can only occur in the shadowfax scheme... */
+    for (int k = 0; k < gcount; k++) {
+      com[0] += gparts[k].x[0] / gcount;
+      com[1] += gparts[k].x[1] / gcount;
+      com[2] += gparts[k].x[2] / gcount;
+      vel[0] += gparts[k].v_full[0] / gcount;
+      vel[1] += gparts[k].v_full[1] / gcount;
+      vel[2] += gparts[k].v_full[2] / gcount;
+    }
+  }
+#else
   const double imass = 1.0 / mass;
   com[0] *= imass;
   com[1] *= imass;
@@ -1024,6 +1050,7 @@ __attribute__((nonnull)) INLINE static void gravity_P2M(
   vel[0] *= imass;
   vel[1] *= imass;
   vel[2] *= imass;
+#endif
 
   /* Prepare some local counters */
   double r_max2 = 0.;
@@ -1084,6 +1111,10 @@ __attribute__((nonnull)) INLINE static void gravity_P2M(
 
 #if SELF_GRAVITY_MULTIPOLE_ORDER > 0
     const double m = gparts[k].mass;
+#ifdef SHADOWFAX_NEW_SPH
+    /* If mass is zero, skip multipole calculations */
+    if (m == 0.) continue;
+#endif
 
     /* 1st order terms */
     M_100 += -m * X_100(dx);
