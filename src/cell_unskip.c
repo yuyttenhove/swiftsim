@@ -737,6 +737,26 @@ void cell_activate_subcell_hydro_tasks(struct cell *ci, struct cell *cj,
       /* We have reached the bottom of the tree: activate drift */
       cell_activate_drift_part(ci, s);
       if (with_timestep_limiter) cell_activate_limiter(ci, s);
+#ifdef SHADOWFAX_NEW_SPH
+      /* If cell is split further, we must activate the sorts */
+      if (ci->split) {
+        double shift[3] = {0., 0., 0.};
+        int sid;
+        for (int k = 0; k < 8; k++) {
+          if (ci->progeny[k] != NULL) {
+            for (int l = k + 1; l < 8; l++) {
+              if (ci->progeny[l] != NULL) {
+                /* Activate sort for this direction */
+                sid = space_getsid(e->s, &ci->progeny[k], &ci->progeny[l], shift);
+                atomic_or(&ci->hydro.requires_sorts, 1 << sid);
+                ci->hydro.dx_max_sort_old = ci->hydro.dx_max_sort;
+                cell_activate_hydro_sorts(ci, sid, s);
+              }
+            }
+          }
+        }
+      }
+#endif
     }
   }
 
