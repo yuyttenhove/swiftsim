@@ -2478,8 +2478,10 @@ void runner_do_grav_long_range(struct runner *r, struct cell *ci,
     /* Avoid self contributions */
     if (top == cj) continue;
 
+#ifndef SHADOWFAX_NEW_SPH
     /* Skip empty cells */
     if (multi_j->m_pole.M_000 == 0.f) continue;
+#endif
 
     /* Can we escape early in the periodic BC case? */
     if (periodic) {
