@@ -1650,7 +1650,7 @@ void engine_make_self_gravity_tasks_mapper(void *map_data, int num_elements,
 
   /* Special case where every cell is in range of every other one */
   if (delta >= cdim[0] / 2) {
-    if (cdim[0] % 2 == 0) {
+    if (periodic && cdim[0] % 2 == 0) {
       delta_m = cdim[0] / 2;
       delta_p = cdim[0] / 2 - 1;
     } else {
