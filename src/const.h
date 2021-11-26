@@ -92,7 +92,7 @@
 
 /* Options to control SHADOWFAX_SPH */
 /* This option disables cell movement */
-#define SHADOWFAX_FIX_CELLS
+//#define SHADOWFAX_FIX_CELLS
 /* This option enables cell steering, i.e. trying to keep the cells regular by
    adding a correction to the cell velocities. See Springel 2010. */
 //#define SHADOWFAX_STEER_CELL_MOTION

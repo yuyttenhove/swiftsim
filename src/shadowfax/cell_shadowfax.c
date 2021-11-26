@@ -164,10 +164,10 @@ void cell_shadowfax_do_self1_density_recursive(const struct engine *e,
                                                struct cell *restrict c) {
   if (!cell_is_active_hydro(c, e)) return;
 
-  double shift[3] = {0., 0., 0.};
-  int sid;
   /* Recurse? */
   if (c->split) {
+    double shift[3] = {0., 0., 0.};
+    int sid;
     for (int k = 0; k < 8; k++) {
       if (c->progeny[k] != NULL) {
         cell_shadowfax_do_self1_density_recursive(e, c->progeny[k]);
