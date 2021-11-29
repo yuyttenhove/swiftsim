@@ -40,7 +40,7 @@ struct xpart {
   float x_diff_sort[3];
 
   /* Velocity at the last full step. */
-  float v_full[3];
+  double v_full[3];
 
   /*! Gravitational acceleration at the end of the last step */
   float a_grav[3];
@@ -197,6 +197,14 @@ struct part {
     float dt;
 
   } force;
+
+  /* Specific stuff for the gravity-hydro coupling. */
+  struct {
+
+    /* Current value of the mass flux vector. */
+    double mflux[3];
+
+  } gravity;
 
   /*! Chemistry information */
   struct chemistry_part_data chemistry_data;

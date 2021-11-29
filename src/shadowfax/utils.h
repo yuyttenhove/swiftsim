@@ -5,6 +5,8 @@
 #ifndef SWIFTSIM_UTILS_H
 #define SWIFTSIM_UTILS_H
 
+#include "float.h"
+
 static inline int sgn(double x) {
   if (x > 0) return 1;
   if (x < 0) return -1;
@@ -31,6 +33,21 @@ inline static int double_cmp(double double1, double double2,
   else
     long2 = (long)(double2 * precision - .5);
   return (long1 == long2);
+}
+
+inline static int approx_equals(double a, double b, double epsilon) {
+  if (a == b) return 1;
+
+  double abs_a = fabs(a);
+  double abs_b = fabs(b);
+  double diff = fabs(a - b);
+
+  if (a == 0. || b == 0. || abs_a + abs_b < DBL_EPSILON) {
+    return diff < epsilon * DBL_EPSILON;
+  } else {
+    return diff / fmin(abs_a + abs_b, DBL_MAX) < epsilon;
+  }
+
 }
 
 #endif  // SWIFTSIM_UTILS_H

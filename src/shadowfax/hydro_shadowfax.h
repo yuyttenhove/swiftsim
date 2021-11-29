@@ -14,7 +14,8 @@
  * @param volume The volume of the particle's associated voronoi cell
  */
 __attribute__((always_inline)) INLINE static void
-hydro_shadowfax_convert_conserved_to_primitive(struct part *restrict p) {
+hydro_shadowfax_convert_conserved_to_primitive(struct part *restrict p,
+                                               struct xpart *restrict xp) {
   double m = p->conserved.mass;
   const double inv_m = 1. / m;
   double energy;
@@ -42,7 +43,24 @@ hydro_shadowfax_convert_conserved_to_primitive(struct part *restrict p) {
     p->P = 0.f;
   }
 
+  hydro_gravity_velocity_drift(p->fluid_v, p->v, xp->v_full);
+
 #ifdef SWIFT_DEBUG_CHECKS
+
+#if !defined(SHADOWFAX_STEER_CELL_MOTION) && !defined(SHADOWFAX_FIX_CELLS)
+  double epsilon = 1e-7;
+  if (!approx_equals(p->v[0], p->fluid_v[0], epsilon) ||
+      !approx_equals(p->v[1], p->fluid_v[1], epsilon) ||
+      !approx_equals(p->v[2], p->fluid_v[2], epsilon)) {
+    error("fluid_v != v without STEER_CELL_MOTION or FIX_CELLS!");
+  }
+#endif
+
+  if (m == 0. &&
+      (p->fluid_v[0] != 0. || p->fluid_v[1] != 0. || p->fluid_v[2] != 0.)) {
+    error("Nonzero fluid_v for particle with zero mass!");
+  }
+
   if (p->rho < 0.) {
     error("Negative density!");
   }
@@ -98,11 +116,6 @@ __attribute__((always_inline)) INLINE static void hydro_shadowfax_flux_exchange(
   for (int k = 0; k < 3; k++) {
     vi[k] = pi->v[k];
     vj[k] = pj->v[k];
-#if defined(SWIFT_DEBUG_CHECKS) && !defined(SHADOWFAX_STEER_CELL_MOTION) && \
-    !defined(SHADOWFAX_FIX_CELLS)
-    assert(pi->fluid_v[k] == pi->v[k]);
-    assert(pj->fluid_v[k] == pj->v[k]);
-#endif
   }
 
   /* Compute interface velocity, see Springel 2010 (33) */
@@ -156,48 +169,10 @@ __attribute__((always_inline)) INLINE static void hydro_shadowfax_flux_exchange(
 
   hydro_compute_flux(Wi, Wj, n_unit, vij, surface_area, min_dt, totflux);
 
-  /* Update conserved variables */
-  /* eqn. (16) */
-  pi->conserved.flux.mass -= totflux[0];
-  pi->conserved.flux.momentum[0] -= totflux[1];
-  pi->conserved.flux.momentum[1] -= totflux[2];
-  pi->conserved.flux.momentum[2] -= totflux[3];
-  pi->conserved.flux.energy -= totflux[4];
-
-#ifndef SHADOWFAX_TOTAL_ENERGY
-  double ekin =
-      0.5 * (pi->fluid_v[0] * pi->fluid_v[0] + pi->fluid_v[1] * pi->fluid_v[1] +
-             pi->fluid_v[2] * pi->fluid_v[2]);
-  pi->conserved.flux.energy += totflux[1] * pi->fluid_v[0];
-  pi->conserved.flux.energy += totflux[2] * pi->fluid_v[1];
-  pi->conserved.flux.energy += totflux[3] * pi->fluid_v[2];
-  pi->conserved.flux.energy -= totflux[0] * ekin;
-#endif
-
-#ifdef SWIFT_DEBUG_CHECKS
-  ++pi->voronoi.nfluxes;
-#endif
+  hydro_flux_update_fluxes_left(pi, totflux, dx);
 
   if (symmetric || (pj->conserved.flux.dt < 0.0f)) {
-    pj->conserved.flux.mass += totflux[0];
-    pj->conserved.flux.momentum[0] += totflux[1];
-    pj->conserved.flux.momentum[1] += totflux[2];
-    pj->conserved.flux.momentum[2] += totflux[3];
-    pj->conserved.flux.energy += totflux[4];
-
-#ifndef SHADOWFAX_TOTAL_ENERGY
-    ekin = 0.5 *
-           (pj->fluid_v[0] * pj->fluid_v[0] + pj->fluid_v[1] * pj->fluid_v[1] +
-            pj->fluid_v[2] * pj->fluid_v[2]);
-    pj->conserved.flux.energy -= totflux[1] * pj->fluid_v[0];
-    pj->conserved.flux.energy -= totflux[2] * pj->fluid_v[1];
-    pj->conserved.flux.energy -= totflux[3] * pj->fluid_v[2];
-    pj->conserved.flux.energy += totflux[0] * ekin;
-#endif
-
-#ifdef SWIFT_DEBUG_CHECKS
-    ++pj->voronoi.nfluxes;
-#endif
+    hydro_part_update_fluxes_right(pj, totflux, dx);
   }
 }
 

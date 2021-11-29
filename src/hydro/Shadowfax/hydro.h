@@ -27,8 +27,10 @@
 #include "hydro_flux.h"
 #include "hydro_getters.h"
 #include "hydro_gradients.h"
+#include "hydro_gravity.h"
 #include "hydro_properties.h"
 #include "hydro_space.h"
+#include "hydro_velocities.h"
 #include "shadowfax/voronoi.h"
 
 #include <float.h>
@@ -136,16 +138,7 @@ __attribute__((always_inline)) INLINE static void hydro_first_init_part(
                                  p->conserved.momentum[2] * p->fluid_v[2]);
 #endif
 
-#if defined(SHADOWFAX_FIX_CELLS)
-  p->v[0] = 0.;
-  p->v[1] = 0.;
-  p->v[2] = 0.;
-#endif
-
-  /* set the initial velocity of the cells */
-  xp->v_full[0] = (float)p->v[0];
-  xp->v_full[1] = (float)p->v[1];
-  xp->v_full[2] = (float)p->v[2];
+  hydro_velocities_init(p, xp);
 
   /* ignore accelerations present in the initial condition */
   p->a_hydro[0] = 0.0f;
@@ -238,6 +231,9 @@ __attribute__((always_inline)) INLINE static void hydro_prepare_force(
 
   /* Set the time step of the particle */
   p->conserved.flux.dt = dt_therm;
+
+  /* Reset mass flux vector */
+  hydro_part_reset_gravity_fluxes(p);
 }
 
 /**
@@ -362,18 +358,9 @@ __attribute__((always_inline)) INLINE static void hydro_predict_extra(
     const struct cosmology* cosmo, const struct hydro_props* hydro_props,
     const struct entropy_floor_properties* floor_props) {
 
-  return;
-  // TODO Is this needed?
-  double Wprime[5];
-  double W[5];
-  hydro_get_primitives(p, W);
-  hydro_gradients_extrapolate_in_time(p, W, dt_therm, Wprime);
-
-  p->rho = (float)Wprime[0];
-  p->fluid_v[0] = (float)Wprime[1];
-  p->fluid_v[1] = (float)Wprime[2];
-  p->fluid_v[2] = (float)Wprime[3];
-  p->P = (float)Wprime[4];
+  /* add the gravitational contribution to the fluid velocity drift */
+  /* TODO: Isn't this overwritten later on? */
+  hydro_gravity_velocity_drift(p->fluid_v, p->v, xp->v_full);
 }
 
 /**
@@ -413,6 +400,29 @@ __attribute__((always_inline)) INLINE static void hydro_kick_extra(
     const struct hydro_props* hydro_props,
     const struct entropy_floor_properties* floor_props) {
 
+  /* Add gravity. We only do this if we have gravity activated. */
+  if (p->gpart) {
+    /* Retrieve the current value of the gravitational acceleration from the
+       gpart. We are only allowed to do this because this is the kick. We still
+       need to check whether gpart exists though.*/
+    float a_grav[3];
+
+    /* TODO is this the whole acceleration? Shouldn´t we add the a_grav_mesh? */
+    a_grav[0] = p->gpart->a_grav[0];
+    a_grav[1] = p->gpart->a_grav[1];
+    a_grav[2] = p->gpart->a_grav[2];
+
+    p->conserved.energy += hydro_gravity_energy_update_term(
+        dt_kick_corr, dt_grav, p, p->conserved.momentum, a_grav);
+
+    /* Kick the momentum for half a time step */
+    /* Note that this also affects the particle movement, as the velocity for
+       the particles is set after this. */
+    p->conserved.momentum[0] += p->conserved.mass * a_grav[0] * dt_grav;
+    p->conserved.momentum[1] += p->conserved.mass * a_grav[1] * dt_grav;
+    p->conserved.momentum[2] += p->conserved.mass * a_grav[2] * dt_grav;
+  }
+
   if (p->conserved.flux.dt > 0.0f) {
     /* Update the conserved variables. We do this here and not in the kick,
        since we need the updated variables below. */
@@ -446,66 +456,37 @@ __attribute__((always_inline)) INLINE static void hydro_kick_extra(
     p->conserved.flux.dt = -1.0f;
   }
 
-#if defined(SHADOWFAX_FIX_CELLS)
-  p->v[0] = 0.0f;
-  p->v[1] = 0.0f;
-  p->v[2] = 0.0f;
-#else
-  if (p->conserved.mass > 0.) {
+  /* Apply the minimal energy limit */
+  const double min_energy =
+      hydro_props->minimal_internal_energy / cosmo->a_factor_internal_energy;
+  if (p->conserved.energy < min_energy * p->conserved.mass) {
+    p->conserved.energy = min_energy * p->conserved.mass;
+    p->conserved.flux.energy = 0.0f;
+  }
 
-    const double inverse_mass = 1.f / p->conserved.mass;
+  // MATTHIEU: Apply the entropy floor here.
 
-    /* Normal case: update fluid velocity and set particle velocity accordingly.
-     */
-    p->fluid_v[0] = p->conserved.momentum[0] * inverse_mass;
-    p->fluid_v[1] = p->conserved.momentum[1] * inverse_mass;
-    p->fluid_v[2] = p->conserved.momentum[2] * inverse_mass;
-    p->v[0] = p->fluid_v[0];
-    p->v[1] = p->fluid_v[1];
-    p->v[2] = p->fluid_v[2];
-
-#ifdef SHADOWFAX_STEER_CELL_MOTION
-    double d[3], vfac;
-    d[0] = p->voronoi.centroid[0] - p->x[0];
-    d[1] = p->voronoi.centroid[1] - p->x[1];
-    d[2] = p->voronoi.centroid[2] - p->x[2];
-
-    double d_norm = sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
-    double R = get_radius_dimension_sphere(p->voronoi.volume);
-    double fac = 4.0f * d_norm / R;
-    if (fac > 0.9f) {
-      float sound_speed = hydro_get_soundspeed(p);
-      if (fac < 1.1f) {
-        vfac = sound_speed * (d_norm - 0.225f * R) / d_norm / (0.05f * R);
-      } else {
-        vfac = sound_speed / d_norm;
-      }
-      p->v[0] += vfac * d[0];
-      p->v[1] += vfac * d[1];
-      p->v[2] += vfac * d[2];
-    }
-#endif
-
-  } else {
-    p->v[0] = 0.;
-    p->v[1] = 0.;
-    p->v[2] = 0.;
-    p->fluid_v[0] = 0.;
-    p->fluid_v[1] = 0.;
-    p->fluid_v[2] = 0.;
+#ifdef SWIFT_DEBUG_CHECKS
+  /* Note that this check will only have effect if no GIZMO_UNPHYSICAL option
+     was selected. */
+#ifdef GIZMO_MFV_SPH
+  if (p->conserved.mass < 0.) {
+    error(
+        "Negative mass after conserved variables update (mass: %g, dmass: %g)!",
+        p->conserved.mass, p->flux.mass);
   }
 #endif
 
-  /* Now make sure all velocity variables are up to date. */
-  xp->v_full[0] = (float)p->v[0];
-  xp->v_full[1] = (float)p->v[1];
-  xp->v_full[2] = (float)p->v[2];
-
-  if (p->gpart) {
-    p->gpart->v_full[0] = (float)p->v[0];
-    p->gpart->v_full[1] = (float)p->v[1];
-    p->gpart->v_full[2] = (float)p->v[2];
+  if (p->conserved.energy < 0.) {
+    error(
+        "Negative energy after conserved variables update (energy: %g, "
+        "denergy: %g)!",
+        p->conserved.energy, p->conserved.flux.energy);
   }
+#endif
+
+  hydro_gravity_update_gpart_mass(p);
+  hydro_velocities_set(p, xp);
 }
 
 /**

@@ -1555,7 +1555,7 @@ void runner_do_ghost(struct runner *r, struct cell *c, int timer) {
 
 #ifdef SHADOWFAX_NEW_SPH
     /* Construct voronoi grid */
-    cell_shadowfax_end_density_recursive(c);
+    cell_shadowfax_end_density_recursive(c, r->e);
 #endif
   }
 
