@@ -44,11 +44,20 @@ inline static void voronoi_pair_init(struct voronoi_pair *pair,
 #ifdef VORONOI_STORE_CONNECTIONS
   pair->vertices = (double *)malloc(3 * n_vertices * sizeof(double));
   pair->n_vertices = n_vertices;
+#ifdef SWIFT_DEBUG_CHECKS
+  assert(pair->n_vertices > 0);
+#endif
   for (int i = 0; i < n_vertices; i++) {
     pair->vertices[3 * i] = vertices[3 * i];
     pair->vertices[3 * i + 1] = vertices[3 * i + 1];
     pair->vertices[3 * i + 2] = vertices[3 * i + 2];
   }
+#endif
+}
+
+inline static void voronoi_pair_destroy(struct voronoi_pair* pair) {
+#ifdef VORONOI_STORE_CONNECTIONS
+  free(pair->vertices);
 #endif
 }
 
@@ -93,7 +102,7 @@ inline static void voronoi_reset(struct voronoi *restrict v,
     /* Free any allocations made for the old pairs */
 #ifdef VORONOI_STORE_CONNECTIONS
     for (int j = 0; j < v->pair_index[i]; j++) {
-      free(v->pairs[i][j].vertices);
+      voronoi_pair_destroy(&v->pairs[i][j]);
     }
 #endif
     v->pair_index[i] = 0;
@@ -465,11 +474,15 @@ inline static void voronoi_build(struct voronoi *restrict v,
  * @param v Voronoi grid.
  */
 inline static void voronoi_destroy(struct voronoi *restrict v) {
+  /* Anything allocated? */
+  if (!v->active) {
+    return;
+  }
   swift_free("c.h.v.cells", v->cells);
   for (int i = 0; i < 28; ++i) {
 #ifdef VORONOI_STORE_CONNECTIONS
     for (int j = 0; j < v->pair_index[i]; j++) {
-      free(v->pairs[i][j].vertices);
+      voronoi_pair_destroy(&v->pairs[i][j]);
     }
 #endif
     swift_free("c.h.v.pairs", v->pairs[i]);
