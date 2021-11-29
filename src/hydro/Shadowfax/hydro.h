@@ -978,13 +978,38 @@ __attribute__((always_inline)) INLINE static void hydro_reflect_part(
     struct part* p, struct xpart* xp, const double* space_dim) {
   for (int k = 0; k < 3; k++) {
     if (p->x[k] < 0. || p->x[k] >= space_dim[k]) {
+
+      /* Update position */
+      double x_old = p->x[k];
       p->x[k] = -p->x[k];
-      if (p->x[k] >= space_dim[k]) {
-        p->x[k] += space_dim[k];
+      if (x_old >= space_dim[k]) {
+        p->x[k] += 2 * space_dim[k];
       }
+
+      /* Update drifts */
+      float drift = (float)(p->x[k] - x_old);
+      xp->x_diff[k] -= drift;
+      xp->x_diff_sort[k] -= drift;
+
+      /* Update velocities */
       p->fluid_v[k] = -p->fluid_v[k];
       p->v[k] = -p->v[k];
+      p->conserved.momentum[k] = -p->conserved.momentum[k];
       xp->v_full[k] = -xp->v_full[k];
+    }
+  }
+}
+
+__attribute__((always_inline)) INLINE static void hydro_reflect_gpart(
+    struct gpart* gp, const double* space_dim) {
+  for (int k = 0; k < 3; k++) {
+    if (gp->x[k] < 0. || gp->x[k] >= space_dim[k]) {
+      /* Update position */
+      double x_old = gp->x[k];
+      gp->x[k] = -gp->x[k];
+      if (x_old >= space_dim[k]) {
+        gp->x[k] += 2 * space_dim[k];
+      }
     }
   }
 }

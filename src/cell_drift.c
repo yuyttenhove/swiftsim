@@ -181,6 +181,10 @@ void cell_drift_part(struct cell *c, const struct engine *e, int force) {
             (p->x[1] > dim[1]) || (p->x[1] < 0.) ||  // y
             (p->x[2] > dim[2]) || (p->x[2] < 0.)) {  // z
 
+#ifdef SHADOWFAX_NEW_SPH
+          /* Apply reflective boundary conditions */
+          hydro_reflect_part(p, xp, e->s->dim);
+#else
           lock_lock(&e->s->lock);
 
           /* Re-check that the particle has not been removed
@@ -194,23 +198,18 @@ void cell_drift_part(struct cell *c, const struct engine *e, int force) {
                             csds_flag_delete, /* data */ 0);
             }
 #endif
-
-#ifdef SHADOWFAX_NEW_SPH
-            /* Apply reflective boundary conditions */
-            hydro_reflect_part(p, xp, e->s->dim);
-#else
             /* One last action before death? */
             hydro_remove_part(p, xp, e->time);
 
             /* Remove the particle entirely */
             cell_remove_part(e, c, p, xp);
-#endif
           }
 
           if (lock_unlock(&e->s->lock) != 0)
             error("Failed to unlock the space!");
 
           continue;
+#endif
         }
       }
 
@@ -383,6 +382,9 @@ void cell_drift_gpart(struct cell *c, const struct engine *e, int force) {
             (gp->x[1] > dim[1]) || (gp->x[1] < 0.) ||  // y
             (gp->x[2] > dim[2]) || (gp->x[2] < 0.)) {  // z
 
+#ifdef SHADOWFAX_NEW_SPH
+          hydro_reflect_gpart(gp, e->s->dim);
+#else
           lock_lock(&e->s->lock);
 
           /* Re-check that the particle has not been removed
@@ -409,6 +411,7 @@ void cell_drift_gpart(struct cell *c, const struct engine *e, int force) {
             error("Failed to unlock the space!");
 
           continue;
+#endif
         }
       }
 
