@@ -844,23 +844,26 @@ cell_shadowfax_add_rbc_particles(struct cell *restrict c,
 }
 
 __attribute__((always_inline)) INLINE static void cell_shadowfax_end_density(
-    struct cell *restrict c) {
+    struct cell *c, const struct engine *e) {
   voronoi_build(&c->hydro.vortess, &c->hydro.deltess, c->width, c);
 
   struct part *p;
   for (int i = 0; i < c->hydro.vortess.number_of_cells; i++) {
     p = &c->hydro.parts[i];
     p->density.wcount = 1.0f;
-    p->voronoi.volume = c->hydro.vortess.cells[i].volume;
-    p->voronoi.centroid[0] = c->hydro.vortess.cells[i].centroid[0];
-    p->voronoi.centroid[1] = c->hydro.vortess.cells[i].centroid[1];
-    p->voronoi.centroid[2] = c->hydro.vortess.cells[i].centroid[2];
     hydro_gradients_init(p);
-    hydro_shadowfax_convert_conserved_to_primitive(p);
+    if (part_is_active(p, e)) {
+      p->voronoi.volume = c->hydro.vortess.cells[i].volume;
+      p->voronoi.centroid[0] = c->hydro.vortess.cells[i].centroid[0];
+      p->voronoi.centroid[1] = c->hydro.vortess.cells[i].centroid[1];
+      p->voronoi.centroid[2] = c->hydro.vortess.cells[i].centroid[2];
+      hydro_shadowfax_convert_conserved_to_primitive(p, &c->hydro.xparts[i]);
+    }
   }
 }
 
-void cell_shadowfax_end_density_recursive(struct cell *restrict c);
+void cell_shadowfax_end_density_recursive(struct cell *c,
+                                          const struct engine *e);
 
 /* Naive functions */
 __attribute__((always_inline)) INLINE static void cell_shadowfax_do_pair_naive(

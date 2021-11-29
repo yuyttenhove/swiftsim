@@ -2,7 +2,8 @@
 
 #include "../space_getsid.h"
 
-void cell_malloc_delaunay_tessellation_recursive(struct cell *restrict c, const struct engine *restrict e) {
+void cell_malloc_delaunay_tessellation_recursive(
+    struct cell *restrict c, const struct engine *restrict e) {
   /* anything to do here? */
   if (c->hydro.count == 0) return;
   if (!cell_is_active_hydro(c, e)) return;
@@ -299,13 +300,14 @@ void cell_shadowfax_do_self_subset_density_recursive(
   }
 }
 
-void cell_shadowfax_end_density_recursive(struct cell *restrict c) {
+void cell_shadowfax_end_density_recursive(struct cell *c,
+                                          const struct engine *e) {
   if (c->split) {
     for (int k = 0; k < 8; k++)
       if (c->progeny[k] != NULL)
-        cell_shadowfax_end_density_recursive(c->progeny[k]);
+        cell_shadowfax_end_density_recursive(c->progeny[k], e);
   } else {
-    cell_shadowfax_end_density(c);
+    cell_shadowfax_end_density(c, e);
   }
 }
 
@@ -317,8 +319,8 @@ void cell_shadowfax_write_tesselations(const struct cell *c, FILE *dfile,
         cell_shadowfax_write_tesselations(c->progeny[k], dfile, vfile, offset);
       }
     }
-  } else if (c->hydro.shadowfax_enabled){
-        delaunay_write_tessellation(&c->hydro.deltess, dfile, offset);
+  } else if (c->hydro.shadowfax_enabled) {
+    delaunay_write_tessellation(&c->hydro.deltess, dfile, offset);
 #ifdef SWIFT_DEBUG_CHECKS
     assert(c->hydro.vortess.active == c->hydro.deltess.active);
     assert(c->hydro.vortess.active);
@@ -339,4 +341,4 @@ double cell_shadowfax_voronoi_volume(const struct cell *c) {
     total_volume = voronoi_compute_volume(&c->hydro.vortess);
   }
   return total_volume;
- }
+}
