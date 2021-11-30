@@ -208,6 +208,10 @@ static inline double voronoi_compute_centroid_volume_triangle(
  * @param v Voronoi grid.
  */
 static inline void voronoi_destroy(struct voronoi *restrict v) {
+#ifdef SWIFT_DEBUG_CHECKS
+  assert(v->active);
+  assert(v->cells != NULL);
+#endif
   swift_free("c.h.v.cells", v->cells);
   for (int i = 0; i < 28; ++i) {
     swift_free("c.h.v.pairs", v->pairs[i]);
@@ -215,12 +219,26 @@ static inline void voronoi_destroy(struct voronoi *restrict v) {
 #ifdef VORONOI_STORE_CONNECTIONS
   int2_lifo_queue_destroy(&v->cell_pair_connections);
 #endif
+
+  v->cells = NULL;
+  for (int i = 0; i < 28; i++) {
+    v->pairs[i] = NULL;
+  }
+
   v->active = 0;
+  v->number_of_cells = 0;
+  v->cells_size = 0;
+  for (int i = 0; i < 28; i++) {
+    v->pair_index[i] = -1;
+    v->pair_size[i] = 0;
+  }
+  v->min_surface_area = -1;
+  v->swift_cell = NULL;
 }
 
-inline static void voronoi_init(struct voronoi *restrict v, int number_of_cells,
-                                double min_surface_area,
-                                struct cell *restrict swift_cell) {
+inline static void voronoi_malloc(struct voronoi *restrict v,
+                                  int number_of_cells, double dmin,
+                                  struct cell *restrict swift_cell) {
   v->number_of_cells = number_of_cells;
   /* allocate memory for the voronoi cells */
   v->cells = (struct voronoi_cell_new *)swift_malloc(
@@ -240,13 +258,13 @@ inline static void voronoi_init(struct voronoi *restrict v, int number_of_cells,
   int2_lifo_queue_init(&v->cell_pair_connections, 6 * number_of_cells);
 #endif
 
-  v->min_surface_area = min_surface_area;
+  v->min_surface_area = min_rel_voronoi_face_size * dmin;
   v->active = 1;
   v->swift_cell = swift_cell;
 }
 
-inline static void voronoi_reset(struct voronoi *restrict v,
-                                 int number_of_cells, double min_surface_area) {
+inline static void voronoi_init(struct voronoi *restrict v, int number_of_cells,
+                                double dmin) {
   voronoi_assert(v->active);
 
   v->number_of_cells = number_of_cells;
@@ -267,7 +285,7 @@ inline static void voronoi_reset(struct voronoi *restrict v,
   int2_lifo_queue_reset(&v->cell_pair_connections);
 #endif
 
-  v->min_surface_area = min_surface_area;
+  v->min_surface_area = min_rel_voronoi_face_size * dmin;
 }
 
 /**
@@ -287,26 +305,15 @@ inline static void voronoi_reset(struct voronoi *restrict v,
  * @param d Delaunay tessellation (read-only).
  * @param parts Local cell generators (read-only).
  */
-static inline void voronoi_build(struct voronoi *restrict v,
-                                 const struct delaunay *restrict d, double *dim,
-                                 struct cell *restrict swift_cell) {
+static inline void voronoi_build(struct voronoi *v, const struct delaunay *d) {
 
-  delaunay_assert(d->vertex_end > 0);
-
+  voronoi_assert(d->vertex_end > 0);
   voronoi_assert(d->active);
+  voronoi_assert(v->active);
 
   /* the number of cells equals the number of non-ghost and non-dummy
      vertex_indices in the Delaunay tessellation */
-  int number_of_cells = d->vertex_end - d->vertex_start;
-  /* Set minimal face surface area */
-  double min_size_1d =
-      min_rel_voronoi_face_size * fmin(dim[0], fmin(dim[1], dim[2]));
-
-  if (v->active) {
-    voronoi_reset(v, number_of_cells, min_size_1d);
-  } else {
-    voronoi_init(v, number_of_cells, min_size_1d, swift_cell);
-  }
+  voronoi_assert(v->number_of_cells == d->vertex_end - d->vertex_start);
 
   /* loop over the triangles in the Delaunay tessellation and compute the
      midpoints of their circumcircles. These happen to be the vertices of the

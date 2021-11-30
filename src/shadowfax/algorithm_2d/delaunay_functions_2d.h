@@ -302,9 +302,9 @@ inline static void delaunay_check_tessellation(struct delaunay* restrict d) {
  *
  * @param d Delaunay tessellation.
  */
-inline static void delaunay_reset(struct delaunay* restrict d,
-                                  const double* cell_loc,
-                                  const double* cell_width, int vertex_size) {
+inline static void delaunay_init(struct delaunay* restrict d,
+                                 const double* cell_loc,
+                                 const double* cell_width, int vertex_size) {
 
   if (vertex_size == 0) {
     /* Don't bother for empty cells */
@@ -425,10 +425,10 @@ inline static void delaunay_reset(struct delaunay* restrict d,
  * @param vertex_size Initial size of the vertex array.
  * @param triangle_size Initial size of the triangle array.
  */
-inline static void delaunay_init(struct delaunay* restrict d,
-                                 const double* cell_loc,
-                                 const double* cell_width, int vertex_size,
-                                 int triangle_size) {
+inline static void delaunay_malloc(struct delaunay* restrict d,
+                                   const double* cell_loc,
+                                   const double* cell_width, int vertex_size,
+                                   int triangle_size) {
 
   if (d->active != 0) {
     error("Delaunay tessellation corruption!");
@@ -478,7 +478,7 @@ inline static void delaunay_init(struct delaunay* restrict d,
   /* initialise the structure used to perform exact geometrical tests */
   geometry_init(&d->geometry);
 
-  delaunay_reset(d, cell_loc, cell_width, vertex_size);
+  delaunay_init(d, cell_loc, cell_width, vertex_size);
 }
 
 /**
@@ -487,21 +487,52 @@ inline static void delaunay_init(struct delaunay* restrict d,
  * @param d Delaunay tessellation.
  */
 inline static void delaunay_destroy(struct delaunay* restrict d) {
+#ifdef SWIFT_DEBUG_CHECKS
+  assert(d->active);
+  assert(d->vertices != NULL);
+#endif
+  swift_free("c.h.d.vertices", d->vertices);
+  swift_free("c.h.d.rescaled_vertices", d->rescaled_vertices);
+  swift_free("c.h.d.integer_vertices", d->integer_vertices);
+  swift_free("c.h.d.vertex_triangles", d->vertex_triangles);
+  swift_free("c.h.d.vertex_triangle_index", d->vertex_triangle_index);
+  swift_free("c.h.d.search_radii", d->search_radii);
+  swift_free("c.h.d.part_pointers", d->part_pointers);
+  swift_free("c.h.d.triangles", d->triangles);
+  swift_free("c.h.d.queue", d->queue);
+  swift_free("c.h.d.ngb_cell_sids", d->ngb_cell_sids);
+  swift_free("c.h.d.ngb_cell_ptrs", d->ngb_cell_ptrs);
+  geometry_destroy(&d->geometry);
+
+  d->vertices = NULL;
+  d->rescaled_vertices = NULL;
+  d->integer_vertices = NULL;
+  d->vertex_triangles = NULL;
+  d->search_radii = NULL;
+  d->part_pointers = NULL;
+  d->triangles = NULL;
+  d->queue = NULL;
+  d->ngb_cell_sids = NULL;
+  d->ngb_cell_ptrs = NULL;
+
   d->active = 0;
-  if (d->vertices != NULL) {
-    swift_free("c.h.d.vertices", d->vertices);
-    swift_free("c.h.d.rescaled_vertices", d->rescaled_vertices);
-    swift_free("c.h.d.integer_vertices", d->integer_vertices);
-    swift_free("c.h.d.vertex_triangles", d->vertex_triangles);
-    swift_free("c.h.d.vertex_triangle_index", d->vertex_triangle_index);
-    swift_free("c.h.d.search_radii", d->search_radii);
-    swift_free("c.h.d.part_pointers", d->part_pointers);
-    swift_free("c.h.d.triangles", d->triangles);
-    swift_free("c.h.d.queue", d->queue);
-    swift_free("c.h.d.ngb_cell_sids", d->ngb_cell_sids);
-    swift_free("c.h.d.ngb_cell_ptrs", d->ngb_cell_ptrs);
-    geometry_destroy(&d->geometry);
-  }
+  d->anchor[0] = 0;
+  d->anchor[1] = 0;
+  d->side = 0;
+  d->inverse_side = 0;
+  d->vertex_index = -1;
+  d->vertex_size = 0;
+  d->vertex_start = -1;
+  d->vertex_end = -1;
+  d->triangle_index = -1;
+  d->triangle_size = 0;
+  d->queue_index = -1;
+  d->queue_size = 0;
+  d->last_triangle = -1;
+  d->ngb_index = -1;
+  d->ngb_size = 0;
+  d->ngb_offset = -1;
+  bzero(d->sid_is_inside_face, 27 * sizeof(int));
 }
 
 /**

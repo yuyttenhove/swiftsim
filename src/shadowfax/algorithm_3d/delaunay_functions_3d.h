@@ -8,9 +8,9 @@
 #include "delaunay_ray.h"
 
 /* forward declarations */
-inline static void delaunay_reset(struct delaunay* restrict d,
-                                  const double* cell_loc,
-                                  const double* cell_width, int vertex_size);
+inline static void delaunay_init(struct delaunay* restrict d,
+                                 const double* cell_loc,
+                                 const double* cell_width, int vertex_size);
 inline static void delaunay_check_tessellation(struct delaunay* d);
 inline static int delaunay_new_vertex(struct delaunay* restrict d, double x,
                                       double y, double z, struct part* p);
@@ -48,12 +48,12 @@ inline static int delaunay_test_orientation(struct delaunay* restrict d, int v0,
  * @param d Delaunay tessellation.
  * @param hs Spatial extents of the simulation box.
  * @param vertex_size Initial size of the vertex array.
- * @param tetrahedron_size Initial size of the tetrahedra array.
+ * @param triangle_size Initial size of the tetrahedra array.
  */
-inline static void delaunay_init(struct delaunay* restrict d,
-                                 const double* cell_loc,
-                                 const double* cell_width, int vertex_size,
-                                 int tetrahedron_size) {
+inline static void delaunay_malloc(struct delaunay* restrict d,
+                                   const double* cell_loc,
+                                   const double* cell_width, int vertex_size,
+                                   int triangle_size) {
   if (d->active != 0) {
     error("Delaunay tessellation corruption!");
   }
@@ -82,8 +82,8 @@ inline static void delaunay_init(struct delaunay* restrict d,
   d->part_pointers = (struct part**)swift_malloc(
       "c.h.d.part_pointers", vertex_size * sizeof(struct part*));
   d->tetrahedra = (struct tetrahedron*)swift_malloc(
-      "c.h.d.tetrahedra", tetrahedron_size * sizeof(struct tetrahedron));
-  d->tetrahedron_size = tetrahedron_size;
+      "c.h.d.tetrahedra", triangle_size * sizeof(struct tetrahedron));
+  d->triangle_size = triangle_size;
   int_lifo_queue_init(&d->tetrahedra_containing_vertex, 10);
   int_lifo_queue_init(&d->tetrahedra_to_check, 10);
   int_lifo_queue_init(&d->free_tetrahedron_indices, 10);
@@ -116,9 +116,9 @@ inline static void delaunay_init(struct delaunay* restrict d,
  *
  * @param d Delaunay tessellation.
  */
-inline static void delaunay_reset(struct delaunay* restrict d,
-                                  const double* cell_loc,
-                                  const double* cell_width, int vertex_size) {
+inline static void delaunay_init(struct delaunay* restrict d,
+                                 const double* cell_loc,
+                                 const double* cell_width, int vertex_size) {
   if (vertex_size == 0) {
     /* Don't bother for empty cells */
     return;
@@ -650,7 +650,7 @@ inline static int delaunay_find_tetrahedra_containing_vertex(
     if (next_tetrahedron_idx >= 0) {
       tetrahedron_idx = next_tetrahedron_idx;
       /* Should not be possible? */
-//      error("Impossible scenario!");
+      //      error("Impossible scenario!");
       continue;
     }
 

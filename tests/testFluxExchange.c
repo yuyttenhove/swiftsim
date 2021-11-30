@@ -96,7 +96,7 @@ struct cell *make_cell(double *offset, double h,
   cell->hydro.sort = NULL;
   cell->hydro.super = cell;
 
-  cell_malloc_delaunay_tessellation(cell);
+  cell_malloc_tesselations(cell);
 
   return cell;
 }

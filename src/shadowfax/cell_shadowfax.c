@@ -2,7 +2,7 @@
 
 #include "../space_getsid.h"
 
-void cell_malloc_delaunay_tessellation_recursive(
+void cell_malloc_tessellations_recursive(
     struct cell *restrict c, const struct engine *restrict e) {
   /* anything to do here? */
   if (c->hydro.count == 0) return;
@@ -17,12 +17,12 @@ void cell_malloc_delaunay_tessellation_recursive(
     }
     for (int k = 0; k < 8; k++) {
       if (c->progeny[k] != NULL) {
-        cell_malloc_delaunay_tessellation_recursive(c->progeny[k], e);
+        cell_malloc_tessellations_recursive(c->progeny[k], e);
       }
     }
   } else {
     /* Base case */
-    cell_malloc_delaunay_tessellation(c);
+    cell_malloc_tesselations(c);
   }
 }
 

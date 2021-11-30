@@ -209,7 +209,7 @@ struct cell *make_cell(size_t n, double *offset, double size, double h,
 
 #ifdef SHADOWFAX_NEW_SPH
   cell->hydro.super = cell;
-  cell_malloc_delaunay_tessellation(cell);
+  cell_malloc_tesselations(cell);
 #endif
 
   return cell;

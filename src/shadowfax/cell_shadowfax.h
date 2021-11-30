@@ -40,8 +40,7 @@ __attribute__((always_inline)) INLINE static void get_shift(
   }
 }
 
-__attribute__((always_inline)) INLINE static void
-cell_malloc_delaunay_tessellation(struct cell *c) {
+__attribute__((always_inline)) INLINE static void cell_malloc_tesselations(struct cell *c) {
 
   if (c->hydro.super == NULL) {
     error(
@@ -53,9 +52,12 @@ cell_malloc_delaunay_tessellation(struct cell *c) {
   double *loc = c->hydro.super->loc;
   double *width = c->hydro.super->width;
 
-  if (c->hydro.shadowfax_enabled == 1) {
-    delaunay_reset(&c->hydro.deltess, loc, width, count);
+  if (c->hydro.shadowfax_enabled) {
+    /* Reset deltess */
+    delaunay_init(&c->hydro.deltess, loc, width, count);
+
 #ifdef SHADOWFAX_HILBERT_ORDERING
+    /* Do we need to realloc here? */
     if (c->hydro.hilbert_keys_size < count) {
       c->hydro.hilbert_keys = (unsigned long *)swift_realloc(
           "c.h.hilbert_keys", c->hydro.hilbert_keys,
@@ -65,8 +67,14 @@ cell_malloc_delaunay_tessellation(struct cell *c) {
       c->hydro.hilbert_keys_size = count;
     }
 #endif
+
+    /* reset vortess */
+    voronoi_init(&c->hydro.vortess, c->hydro.count, c->dmin);
+
   } else {
-    delaunay_init(&c->hydro.deltess, loc, width, count, 10 * count);
+    /* malloc delaunay */
+    delaunay_malloc(&c->hydro.deltess, loc, width, count, 10 * count);
+
 #ifdef SHADOWFAX_HILBERT_ORDERING
     /* Malloc hilbert keys */
     c->hydro.hilbert_keys = (unsigned long *)swift_malloc(
@@ -75,25 +83,33 @@ cell_malloc_delaunay_tessellation(struct cell *c) {
         (int *)swift_malloc("c.h.hilbert_r_sort", count * sizeof(int));
     c->hydro.hilbert_keys_size = count;
 #endif
+
+    /* malloc vortess */
+    voronoi_malloc(&c->hydro.vortess, c->hydro.count, c->dmin, c);
+
+    /* Update flag */
     c->hydro.shadowfax_enabled = 1;
   }
 }
 
-void cell_malloc_delaunay_tessellation_recursive(
+void cell_malloc_tessellations_recursive(
     struct cell *c, const struct engine *restrict e);
 
 __attribute__((always_inline)) INLINE static void cell_destroy_tessellations(
     struct cell *c) {
 #ifdef SWIFT_DEBUG_CHECKS
   assert(c->hydro.shadowfax_enabled);
+  assert(c->hydro.deltess.active && c->hydro.vortess.active);
 #endif
-  c->hydro.shadowfax_enabled = 0;
   delaunay_destroy(&c->hydro.deltess);
   voronoi_destroy(&c->hydro.vortess);
 #ifdef SHADOWFAX_HILBERT_ORDERING
   swift_free("c.h.hilbert_keys", c->hydro.hilbert_keys);
   swift_free("c.h.hilbert_r_sort", c->hydro.hilbert_r_sort);
+  c->hydro.hilbert_keys = NULL;
+  c->hydro.hilbert_r_sort = NULL;
 #endif
+  c->hydro.shadowfax_enabled = 0;
 }
 
 #ifdef SHADOWFAX_HILBERT_ORDERING
@@ -845,7 +861,7 @@ cell_shadowfax_add_rbc_particles(struct cell *restrict c,
 
 __attribute__((always_inline)) INLINE static void cell_shadowfax_end_density(
     struct cell *c, const struct engine *e) {
-  voronoi_build(&c->hydro.vortess, &c->hydro.deltess, c->width, c);
+  voronoi_build(&c->hydro.vortess, &c->hydro.deltess);
 
   struct part *p;
   for (int i = 0; i < c->hydro.vortess.number_of_cells; i++) {

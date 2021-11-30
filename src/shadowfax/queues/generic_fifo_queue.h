@@ -56,7 +56,13 @@ inline static void QUEUE_INIT(struct QUEUE_NAME *q, int size) {
 }
 
 inline static void QUEUE_DESTROY(struct QUEUE_NAME *q) {
+#ifdef SWIFT_DEBUG_CHECKS
+  assert(q->values != NULL);
+#endif
   free(q->values);
+  q->values = NULL;
+  q->start = -1;
+  q->end = -1;
 }
 
 inline static void QUEUE_RESET(struct QUEUE_NAME *q) {
