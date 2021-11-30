@@ -328,9 +328,12 @@ inline static void delaunay_reset(struct delaunay* restrict d,
      work for even the very degenerate case of a single vertex that could be
      anywhere in the box. Also note that we convert the generally rectangular
      box to a square. */
-  double box_anchor[2] = {cell_loc[0] - cell_width[0],
-                          cell_loc[1] - cell_width[1]};
-  double box_side = 6. * fmax(cell_width[0], cell_width[1]);
+  /* We add an extra layer of padding of 1 times cell_width around our box to
+   * compensate for particle movements (up to 1 cell side before a rebuild is
+   * triggered). */
+  double box_anchor[2] = {cell_loc[0] - 2 * cell_width[0],
+                          cell_loc[1] - 2 * cell_width[1]};
+  double box_side = 8. * fmax(cell_width[0], cell_width[1]);
 
   /* store the anchor and inverse side_length for the conversion from box
   coordinates to rescaled (integer) coordinates */

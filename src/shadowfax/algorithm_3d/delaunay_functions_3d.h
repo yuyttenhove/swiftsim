@@ -155,16 +155,19 @@ inline static void delaunay_reset(struct delaunay* restrict d,
    * simulation volume and all possible ghost vertex_indices required to deal
    * with boundaries. Note that we convert the generally rectangular box to a
    * square. */
-  double box_anchor[3] = {cell_loc[0] - cell_width[0],
-                          cell_loc[1] - cell_width[1],
-                          cell_loc[2] - cell_width[2]};
+  /* We add an extra layer of padding of 1 times cell_width around our box to
+   * compensate for particle movements (up to 1 cell side before a rebuild is
+   * triggered). */
+  double box_anchor[3] = {cell_loc[0] - 2 * cell_width[0],
+                          cell_loc[1] - 2 * cell_width[1],
+                          cell_loc[2] - 2 * cell_width[2]};
   /* Notice we have to take box_side rather large, because we want to fit the
    * cell and all neighbouring cells inside the first tetrahedron. This comes at
    * a loss of precision in the integer arithmetic, though... A better solution
    * would possibly be to start from 5 tetrahedra forming a cube (box_side would
    * have to be 3 in that case). */
   double box_side = fmax(cell_width[0], cell_width[1]);
-  box_side = 9. * fmax(box_side, cell_width[2]);
+  box_side = 11. * fmax(box_side, cell_width[2]);
   /* the 1.e-13 makes sure converted values are in the range [1, 2[ instead of
    * [1,2] (unlike Springel, 2010) */
   d->inverse_side = (1. - 1.e-13) / box_side;
