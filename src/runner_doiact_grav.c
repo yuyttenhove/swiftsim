@@ -2473,14 +2473,13 @@ void runner_do_grav_long_range(struct runner *r, struct cell *ci,
 
     /* Handle on the top-level cell and it's gravity business*/
     struct cell *cj = &cells[cells_with_particles[n]];
-    struct gravity_tensors *const multi_j = cj->grav.multipole;
 
     /* Avoid self contributions */
     if (top == cj) continue;
 
 #ifndef SHADOWFAX_NEW_SPH
     /* Skip empty cells */
-    if (multi_j->m_pole.M_000 == 0.f) continue;
+    if (cj->grav.multipole->m_pole.M_000 == 0.f) continue;
 #endif
 
     /* Can we escape early in the periodic BC case? */
@@ -2496,13 +2495,13 @@ void runner_do_grav_long_range(struct runner *r, struct cell *ci,
 #ifdef SWIFT_DEBUG_CHECKS
         /* Need to account for the interactions we missed */
         accumulate_add_ll(&multi_i->pot.num_interacted,
-                          multi_j->m_pole.num_gpart);
+                          cj->grav.multipole->m_pole.num_gpart);
 #endif
 
 #ifdef SWIFT_GRAVITY_FORCE_CHECKS
         /* Need to account for the interactions we missed */
         accumulate_add_ll(&multi_i->pot.num_interacted_pm,
-                          multi_j->m_pole.num_gpart);
+                          cj->grav.multipole->m_pole.num_gpart);
 #endif
 
         /* Record that this multipole received a contribution */

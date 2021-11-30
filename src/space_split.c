@@ -345,6 +345,10 @@ void space_split_recursive(struct space *s, struct cell *c,
         if (c->progeny[k] != NULL) {
           const struct gravity_tensors *m = c->progeny[k]->grav.multipole;
 
+#ifdef SHADOWFAX_NEW_SPH
+          if (m->m_pole.M_000 == 0.) continue;
+#endif
+
           mass += m->m_pole.M_000;
 
           CoM[0] += m->CoM[0] * m->m_pole.M_000;
@@ -366,6 +370,29 @@ void space_split_recursive(struct space *s, struct cell *c,
       }
 
       /* Final operation on the CoM and bulk velocity */
+#ifdef SHADOWFAX_NEW_SPH
+      if (mass == 0.) {
+        /* Compute CoM without degeneracies */
+        /* This special case can only occur in the shadowfax scheme... */
+        for (int k = 0; k < 8; ++k) {
+          if (c->progeny[k] != NULL) {
+            const double cell_mass = c->progeny[k]->grav.count;
+            mass += cell_mass;
+            const struct gravity_tensors *m = c->progeny[k]->grav.multipole;
+
+            CoM[0] += m->CoM[0] * cell_mass;
+            CoM[1] += m->CoM[1] * cell_mass;
+            CoM[2] += m->CoM[2] * cell_mass;
+
+#ifdef SWIFT_DEBUG_CHECKS
+            /* Velocities should be 0 */
+            assert(m->m_pole.vel[0] == 0. && m->m_pole.vel[1] == 0. &&
+                   m->m_pole.vel[2] == 0.);
+#endif
+          }
+        }
+      }
+#endif
       const double inv_mass = 1. / mass;
       c->grav.multipole->CoM[0] = CoM[0] * inv_mass;
       c->grav.multipole->CoM[1] = CoM[1] * inv_mass;

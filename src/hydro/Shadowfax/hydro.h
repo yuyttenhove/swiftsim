@@ -985,12 +985,16 @@ __attribute__((always_inline)) INLINE static void hydro_reflect_gpart(
     struct gpart* gp, const double* space_dim) {
   for (int k = 0; k < 3; k++) {
     if (gp->x[k] < 0. || gp->x[k] >= space_dim[k]) {
+
       /* Update position */
       double x_old = gp->x[k];
       gp->x[k] = -gp->x[k];
       if (x_old >= space_dim[k]) {
         gp->x[k] += 2 * space_dim[k];
       }
+
+      /* Update velocity */
+      gp->v_full[k] = -gp->v_full[k];
     }
   }
 }

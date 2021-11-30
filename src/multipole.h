@@ -1020,37 +1020,33 @@ __attribute__((nonnull)) INLINE static void gravity_P2M(
     vel[2] += gparts[k].v_full[2] * m;
   }
 
-  /* Final operation on CoM */
+  double imass = 1.0 / mass;
 #ifdef SHADOWFAX_NEW_SPH
-  if (mass > 0.) {
-    const double imass = 1.0 / mass;
-    com[0] *= imass;
-    com[1] *= imass;
-    com[2] *= imass;
-    vel[0] *= imass;
-    vel[1] *= imass;
-    vel[2] *= imass;
-  } else {
-    /* Compute CoM without degeneracies */
-    /* This special case can only occur in the shadowfax scheme... */
+  if (mass == 0.) {
+    /* No mass in cell, this special case can only occur with the Shadowfax
+     * Scheme. */
+    double total = 0.;
     for (int k = 0; k < gcount; k++) {
-      com[0] += gparts[k].x[0] / gcount;
-      com[1] += gparts[k].x[1] / gcount;
-      com[2] += gparts[k].x[2] / gcount;
-      vel[0] += gparts[k].v_full[0] / gcount;
-      vel[1] += gparts[k].v_full[1] / gcount;
-      vel[2] += gparts[k].v_full[2] / gcount;
+      total++;
+      com[0] += gparts[k].x[0];
+      com[1] += gparts[k].x[1];
+      com[2] += gparts[k].x[2];
+#ifdef SWIFT_DEBUG_CHECKS
+      assert(gparts[k].v_full[0] == 0. && gparts[k].v_full[1] == 0. &&
+             gparts[k].v_full[2] == 0.);
+#endif
     }
+    imass = 1. / total;
   }
-#else
-  const double imass = 1.0 / mass;
+#endif
+
+  /* Final operation on CoM */
   com[0] *= imass;
   com[1] *= imass;
   com[2] *= imass;
   vel[0] *= imass;
   vel[1] *= imass;
   vel[2] *= imass;
-#endif
 
   /* Prepare some local counters */
   double r_max2 = 0.;
