@@ -181,7 +181,7 @@ void cell_drift_part(struct cell *c, const struct engine *e, int force) {
             (p->x[1] > dim[1]) || (p->x[1] < 0.) ||  // y
             (p->x[2] > dim[2]) || (p->x[2] < 0.)) {  // z
 
-#ifdef SHADOWFAX_NEW_SPH
+#if defined(SHADOWFAX_NEW_SPH) && defined(SHADOWFAX_REFLECTIVE_BOUNDARY_CONDITIONS)
           /* Apply reflective boundary conditions */
           hydro_reflect_part(p, xp, e->s->dim);
 #else
@@ -382,7 +382,7 @@ void cell_drift_gpart(struct cell *c, const struct engine *e, int force) {
             (gp->x[1] > dim[1]) || (gp->x[1] < 0.) ||  // y
             (gp->x[2] > dim[2]) || (gp->x[2] < 0.)) {  // z
 
-#ifdef SHADOWFAX_NEW_SPH
+#if defined(SHADOWFAX_NEW_SPH) && defined(SHADOWFAX_REFLECTIVE_BOUNDARY_CONDITIONS)
           hydro_reflect_gpart(gp, e->s->dim);
 #else
           lock_lock(&e->s->lock);

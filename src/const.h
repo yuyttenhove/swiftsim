@@ -107,6 +107,13 @@
  * added to a cells delaunay triangulation (works only when not recursing) */
 //#define SHADOWFAX_CHECK_DELAUNAY_FLAG
 
+/* This option enables reflective boundary conditions */
+//#define SHADOWFAX_REFLECTIVE_BOUNDARY_CONDITIONS
+/* This option enables vacuum boundary conditions */
+//#define SHADOWFAX_VACUUM_BOUNDARY_CONDITIONS
+/* This option enables open boundary conditions */
+#define SHADOWFAX_OPEN_BOUNDARY_CONDITIONS
+
 /* Source terms */
 #define SOURCETERMS_NONE
 //#define SOURCETERMS_SN_FEEDBACK

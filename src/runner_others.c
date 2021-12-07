@@ -633,6 +633,50 @@ void runner_do_end_hydro_force(struct runner *r, struct cell *c, int timer) {
     const int count = c->hydro.count;
     struct part *restrict parts = c->hydro.parts;
 
+#ifdef SHADOWFAX_NEW_SPH
+#ifdef SHADOWFAX_VACUUM_BOUNDARY_CONDITIONS
+    if (!e->s->periodic) {
+      for (int i = 0; i < c->hydro.vortess.pair_index[27]; i++) {
+        struct voronoi_pair *pair = &c->hydro.vortess.pairs[27][i];
+        struct part *left = pair->left;
+        if (part_is_active(left, e)) {
+          struct part right_vacuum;
+          bzero(&right_vacuum, sizeof(struct part));
+          double *right_coordinates =
+              &c->hydro.deltess.vertices[3 * (c->hydro.deltess.vertex_start +
+                                              pair->right_idx)];
+          right_vacuum.x[0] = right_coordinates[0];
+          right_vacuum.x[1] = right_coordinates[1];
+          right_vacuum.x[2] = right_coordinates[2];
+          double shift[3] = {0., 0., 0.};
+          hydro_shadowfax_flux_exchange(left, &right_vacuum, pair->midpoint,
+                                        pair->surface_area, shift, 0);
+        }
+      }
+    }
+#elifdef SHADOWFAX_OPEN_BOUNDARY_CONDITIONS
+    if (!e->s->periodic) {
+      for (int i = 0; i < c->hydro.vortess.pair_index[27]; i++) {
+        struct voronoi_pair *pair = &c->hydro.vortess.pairs[27][i];
+        struct part *left = pair->left;
+        if (part_is_active(left, e)) {
+          /* Copy the right particle */
+          struct part right_open = *pair->right;
+          double *right_coordinates =
+              &c->hydro.deltess.vertices[3 * (c->hydro.deltess.vertex_start +
+                                              pair->right_idx)];
+          right_open.x[0] = right_coordinates[0];
+          right_open.x[1] = right_coordinates[1];
+          right_open.x[2] = right_coordinates[2];
+          double shift[3] = {0., 0., 0.};
+          hydro_shadowfax_flux_exchange(left, &right_open, pair->midpoint,
+                                        pair->surface_area, shift, 0);
+        }
+      }
+    }
+#endif
+#endif
+
     /* Loop over the gas particles in this cell. */
     for (int k = 0; k < count; k++) {
 
