@@ -17,13 +17,11 @@ __attribute__((always_inline)) INLINE static void
 hydro_shadowfax_convert_conserved_to_primitive(struct part *restrict p,
                                                struct xpart *restrict xp) {
   double m = p->conserved.mass;
-  const double inv_m = 1. / m;
   double energy;
   if (m > 0.) {
     p->rho = m / p->voronoi.volume;
-    p->fluid_v[0] = p->conserved.momentum[0] * inv_m;
-    p->fluid_v[1] = p->conserved.momentum[1] * inv_m;
-    p->fluid_v[2] = p->conserved.momentum[2] * inv_m;
+
+    hydro_velocities_from_momentum(p, p->fluid_v);
 
     energy = p->conserved.energy;
 
@@ -44,17 +42,6 @@ hydro_shadowfax_convert_conserved_to_primitive(struct part *restrict p,
   }
 
   hydro_gravity_velocity_drift(p->fluid_v, p->v, xp->v_full);
-
-#ifdef SWIFT_DEBUG_CHECKS
-
-#if !defined(SHADOWFAX_STEER_CELL_MOTION) && !defined(SHADOWFAX_FIX_CELLS)
-  double epsilon = 1e-7;
-  if (!approx_equals(p->v[0], p->fluid_v[0], epsilon) ||
-      !approx_equals(p->v[1], p->fluid_v[1], epsilon) ||
-      !approx_equals(p->v[2], p->fluid_v[2], epsilon)) {
-    error("fluid_v != v without STEER_CELL_MOTION or FIX_CELLS!");
-  }
-#endif
 
   if (m == 0. &&
       (p->fluid_v[0] != 0. || p->fluid_v[1] != 0. || p->fluid_v[2] != 0.)) {

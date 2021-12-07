@@ -401,7 +401,7 @@ __attribute__((always_inline)) INLINE static void hydro_kick_extra(
     const struct entropy_floor_properties* floor_props) {
 
   /* Add gravity. We only do this if we have gravity activated. */
-  if (p->gpart) {
+  if (p->gpart && p->conserved.mass > 0.) {
     /* Retrieve the current value of the gravitational acceleration from the
        gpart. We are only allowed to do this because this is the kick. We still
        need to check whether gpart exists though.*/
