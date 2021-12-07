@@ -999,5 +999,110 @@ __attribute__((always_inline)) INLINE static void hydro_reflect_gpart(
   }
 }
 
+__attribute__((always_inline)) INLINE static void hydro_shadowfax_flux_exchange(
+    struct part *pi, struct part *pj, double const *centroid,
+    double surface_area, const double *shift, const int symmetric) {
+
+  /* Initialize local variables */
+  /* Vector from pj to pi */
+  double dx[3];
+  for (int k = 0; k < 3; k++) {
+    dx[k] = pi->x[k] - pj->x[k] - shift[k];
+  }
+  const double r2 = dx[0] * dx[0] + dx[1] * dx[1] + dx[2] * dx[2];
+  const double r = sqrt(r2);
+
+  /* Midpoint between pj and pi */
+  double midpoint[3];
+  for (int k = 0; k < 3; k++) {
+    midpoint[k] = 0.5 * (pi->x[k] + pj->x[k] + shift[k]);
+  }
+
+  /* Primitive quantities */
+  double Wi[5], Wj[5];
+  hydro_get_primitives(pi, Wi);
+  hydro_get_primitives(pj, Wj);
+
+  /* calculate the maximal signal velocity */
+  double vmax = 0.0f;
+  if (Wi[0] > 0.) {
+    vmax += gas_soundspeed_from_pressure(pi->rho, pi->P);
+  }
+  if (Wj[0] > 0.) {
+    vmax += gas_soundspeed_from_pressure(pj->rho, pj->P);
+  }
+  double dvdotdx = (Wi[1] - Wj[1]) * dx[0] + (Wi[2] - Wj[2]) * dx[1] +
+                   (Wi[3] - Wj[3]) * dx[2];
+  if (dvdotdx > 0.) {
+    vmax -= dvdotdx / r;
+  }
+  pi->timestepvars.vmax = (float)fmax(pi->timestepvars.vmax, vmax);
+  pj->timestepvars.vmax = (float)fmax(pj->timestepvars.vmax, vmax);
+
+  /* particle velocities */
+  double vi[3], vj[3];
+  for (int k = 0; k < 3; k++) {
+    vi[k] = pi->v[k];
+    vj[k] = pj->v[k];
+  }
+
+  /* Compute interface velocity, see Springel 2010 (33) */
+  double vij[3];
+  double fac = ((vj[0] - vi[0]) * (centroid[0] - midpoint[0]) +
+                (vj[1] - vi[1]) * (centroid[1] - midpoint[1]) +
+                (vj[2] - vi[2]) * (centroid[2] - midpoint[2])) /
+               r2;
+  vij[0] = 0.5f * (vi[0] + vj[0]) + fac * dx[0];
+  vij[1] = 0.5f * (vi[1] + vj[1]) + fac * dx[1];
+  vij[2] = 0.5f * (vi[2] + vj[2]) + fac * dx[2];
+#if defined(SWIFT_DEBUG_CHECKS) && defined(SHADOWFAX_FIX_CELLS)
+  assert(vij[0] == 0.f && vij[1] == 0.f && vij[2] == 0.);
+#endif
+
+  /* Boost the primitive variables to the frame of reference of the interface */
+  /* Note that velocities are indices 1-3 in W */
+  Wi[1] -= vij[0];
+  Wi[2] -= vij[1];
+  Wi[3] -= vij[2];
+  Wj[1] -= vij[0];
+  Wj[2] -= vij[1];
+  Wj[3] -= vij[2];
+
+  /* get the time step for the flux exchange. This is always the smallest time
+     step among the two particles */
+  const float min_dt = (pj->conserved.flux.dt > 0.f)
+                           ? fminf(pi->conserved.flux.dt, pj->conserved.flux.dt)
+                           : pi->conserved.flux.dt;
+
+#ifdef SWIFT_DEBUG_CHECKS
+  assert(pi->conserved.flux.dt >= 0);
+  assert(min_dt >= 0);
+#endif
+  if (pj->rho == 0 && pi->rho != 0 && min_dt > 0) {
+    pi->fluid_v[0] = pi->fluid_v[0];
+  }
+
+  float totflux[5];
+  double xij_i[3];
+  for (int k = 0; k < 3; k++) {
+    xij_i[k] = centroid[k] - pi->x[k];
+  }
+  hydro_gradients_predict(pi, pj, pi->h, pj->h, dx, r, xij_i, min_dt, Wi, Wj);
+
+  /* compute the normal vector of the interface */
+  float n_unit[3];
+  for (int k = 0; k < 3; ++k) {
+    n_unit[k] = (float)(-dx[k] / r);
+  }
+
+  hydro_compute_flux(Wi, Wj, n_unit, vij, surface_area, min_dt, totflux);
+
+  hydro_flux_update_fluxes_left(pi, totflux, dx);
+
+  if (symmetric || (pj->conserved.flux.dt < 0.0f)) {
+    hydro_part_update_fluxes_right(pj, totflux, dx);
+  }
+}
+
 
 #endif /* SWIFT_SHADOWSWIFT_HYDRO_H */

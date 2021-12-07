@@ -254,7 +254,7 @@ void cell_drift_part(struct cell *c, const struct engine *e, int force) {
     }
 
 #ifdef SHADOWFAX_NEW_SPH
-    cell_malloc_delaunay_tessellation_recursive(c, e);
+    cell_malloc_tessellations_recursive(c, e);
 #endif
 
     /* Now, get the maximal particle motion from its square */
