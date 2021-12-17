@@ -1011,7 +1011,11 @@ void cell_check_multipole(struct cell *c,
 
 #ifdef SWIFT_DEBUG_CHECKS
   struct gravity_tensors ma;
+#ifdef SHADOWFAX_NEW_SPH
+  const double tolerance = 1e-1; /* Relative */
+#else
   const double tolerance = 1e-3; /* Relative */
+#endif
 
   /* First recurse */
   if (c->split)
