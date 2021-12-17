@@ -95,9 +95,9 @@ struct delaunay {
   int tetrahedra_index;
 
   /*! @brief Current size of the tetrahedron array in memory. If
-   * tetrahedron_size matches tetrahedron_index, the memory buffer is full and
+   * tetrahedra_size matches tetrahedra_index, the memory buffer is full and
    * needs to be expanded. */
-  int tetrahedron_size;
+  int tetrahedra_size;
 
   /*! @brief Index of the last tetrahedron that was created or modified. Used as
    * initial guess for the tetrahedron that contains the next vertex that will
