@@ -6,7 +6,7 @@
 #define SWIFTSIM_VORONOI_FUNCTIONS_3D_H
 
 /* Forward declarations */
-inline static void voronoi_new_face(struct voronoi *v, struct delaunay *d,
+inline static void voronoi_new_face(struct voronoi *v, const struct delaunay *d,
                                     int left_part_idx_in_d,
                                     int right_part_idx_in_d, double *vertices,
                                     int n_vertices);
@@ -55,15 +55,16 @@ inline static void voronoi_pair_init(struct voronoi_pair *pair,
 #endif
 }
 
-inline static void voronoi_pair_destroy(struct voronoi_pair* pair) {
+inline static void voronoi_pair_destroy(struct voronoi_pair *pair) {
 #ifdef VORONOI_STORE_CONNECTIONS
   free(pair->vertices);
+  pair->vertices = NULL;
 #endif
 }
 
-inline static void voronoi_init(struct voronoi *restrict v, int number_of_cells,
-                                double min_surface_area,
-                                struct cell *restrict swift_cell) {
+inline static void voronoi_malloc(struct voronoi *restrict v,
+                                  int number_of_cells, double dmin,
+                                  struct cell *restrict swift_cell) {
   v->number_of_cells = number_of_cells;
   /* allocate memory for the voronoi cells */
   v->cells = (struct voronoi_cell_new *)swift_malloc(
@@ -80,12 +81,12 @@ inline static void voronoi_init(struct voronoi *restrict v, int number_of_cells,
 
   v->swift_cell = swift_cell;
 
-  v->min_surface_area = min_surface_area;
+  v->min_surface_area = min_rel_voronoi_face_size * dmin;
   v->active = 1;
 }
 
-inline static void voronoi_reset(struct voronoi *restrict v,
-                                 int number_of_cells, double min_surface_area) {
+inline static void voronoi_init(struct voronoi *restrict v, int number_of_cells,
+                                double dmin) {
   voronoi_assert(v->active);
 
   v->number_of_cells = number_of_cells;
@@ -108,7 +109,7 @@ inline static void voronoi_reset(struct voronoi *restrict v,
     v->pair_index[i] = 0;
   }
 
-  v->min_surface_area = min_surface_area;
+  v->min_surface_area = min_rel_voronoi_face_size * dmin;
 }
 
 /**
@@ -131,36 +132,24 @@ inline static void voronoi_reset(struct voronoi *restrict v,
  * @param v Voronoi grid.
  * @param d Delaunay tessellation (read-only).
  */
-inline static void voronoi_build(struct voronoi *restrict v,
-                                 struct delaunay *restrict d, double *dim,
-                                 struct cell *restrict swift_cell) {
-  delaunay_assert(d->vertex_end > 0);
+inline static void voronoi_build(struct voronoi *v, struct delaunay *d) {
 
   /* the number of cells equals the number of non-ghost and non-dummy
      vertex_indices in the Delaunay tessellation */
-  int number_of_cells = d->vertex_end - d->vertex_start;
-  /* Set minimal face surface area */
-  double min_size_1d =
-      min_rel_voronoi_face_size * fmin(dim[0], fmin(dim[1], dim[2]));
-  double min_surface_area = min_size_1d * min_size_1d;
-
-  if (v->active) {
-    voronoi_reset(v, number_of_cells, min_surface_area);
-  } else {
-    voronoi_init(v, number_of_cells, min_surface_area, swift_cell);
-  }
+  voronoi_assert(d->vertex_end > 0);
+  voronoi_assert(v->number_of_cells == d->vertex_end - d->vertex_start);
 
   /* Allocate memory to store voronoi vertices (will be freed at end of this
    * function!) */
   double *voronoi_vertices =
-      (double *)malloc(3 * (d->tetrahedron_index - 4) * sizeof(double));
+      (double *)malloc(3 * (d->tetrahedra_index - 4) * sizeof(double));
 
   /* loop over the tetrahedra in the Delaunay tessellation and compute the
      midpoints of their circumspheres. These happen to be the vertices of
      the Voronoi grid (because they are the points of equal distance to 3
      generators, while the Voronoi edges are the lines of equal distance to 2
      generators) */
-  for (int i = 0; i < d->tetrahedron_index - 4; i++) {
+  for (int i = 0; i < d->tetrahedra_index - 4; i++) {
     struct tetrahedron *t = &d->tetrahedra[i + 4];
     /* Get the indices of the vertices of the tetrahedron */
     int v0 = t->vertices[0];
@@ -439,8 +428,8 @@ inline static void voronoi_build(struct voronoi *restrict v,
           neighbour_flags[next_non_axis_idx_in_d] |= 1;
         }
       }
-      voronoi_new_face(v, d, gen_idx_in_d, axis_idx_in_d,
-                       face_vertices, face_vertices_index);
+      voronoi_new_face(v, d, gen_idx_in_d, axis_idx_in_d, face_vertices,
+                       face_vertices_index);
     }
     voronoi_assert(this_cell->volume > 0.);
     this_cell->centroid[0] /= this_cell->volume;
@@ -478,15 +467,24 @@ inline static void voronoi_destroy(struct voronoi *restrict v) {
   if (!v->active) {
     return;
   }
+
   swift_free("c.h.v.cells", v->cells);
+  v->cells = NULL;
+  v->number_of_cells = 0;
+  v->cells_size = 0;
+
   for (int i = 0; i < 28; ++i) {
 #ifdef VORONOI_STORE_CONNECTIONS
     for (int j = 0; j < v->pair_index[i]; j++) {
       voronoi_pair_destroy(&v->pairs[i][j]);
+      v->pair_index[i] = -1;
+      v->pair_size[i] = 0;
     }
 #endif
     swift_free("c.h.v.pairs", v->pairs[i]);
+    v->pairs[i] = NULL;
   }
+  v->swift_cell = NULL;
   v->active = 0;
 }
 
@@ -517,7 +515,7 @@ inline static void voronoi_destroy(struct voronoi *restrict v) {
  * @param vertices Vertices of the interface.
  * @param n_vertices Number of vertices in the vertices array.
  */
-inline static void voronoi_new_face(struct voronoi *v, struct delaunay *d,
+inline static void voronoi_new_face(struct voronoi *v, const struct delaunay *d,
                                     int left_part_idx_in_d,
                                     int right_part_idx_in_d, double *vertices,
                                     int n_vertices) {
@@ -582,7 +580,7 @@ inline static void voronoi_check_grid(struct voronoi *restrict v) {
   for (int i = 0; i < v->number_of_cells; i++) {
     total_volume += v->cells[i].volume;
   }
-//  fprintf(stderr, "Total volume: %g\n", total_volume);
+  //  fprintf(stderr, "Total volume: %g\n", total_volume);
 
   /* For each cell check that the total surface area is not bigger than the
    * surface area of a sphere with the same volume */

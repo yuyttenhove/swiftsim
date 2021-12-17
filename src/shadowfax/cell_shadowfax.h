@@ -53,8 +53,9 @@ __attribute__((always_inline)) INLINE static void cell_malloc_tesselations(struc
   double *width = c->hydro.super->width;
 
   if (c->hydro.shadowfax_enabled) {
-    /* Reset deltess */
+    /* Initialize tessellations */
     delaunay_init(&c->hydro.deltess, loc, width, count);
+    voronoi_init(&c->hydro.vortess, c->hydro.count, c->dmin);
 
 #ifdef SHADOWFAX_HILBERT_ORDERING
     /* Do we need to realloc here? */
@@ -68,12 +69,10 @@ __attribute__((always_inline)) INLINE static void cell_malloc_tesselations(struc
     }
 #endif
 
-    /* reset vortess */
-    voronoi_init(&c->hydro.vortess, c->hydro.count, c->dmin);
-
   } else {
-    /* malloc delaunay */
+    /* malloc tessellations */
     delaunay_malloc(&c->hydro.deltess, loc, width, count, 10 * count);
+    voronoi_malloc(&c->hydro.vortess, c->hydro.count, c->dmin, c);
 
 #ifdef SHADOWFAX_HILBERT_ORDERING
     /* Malloc hilbert keys */
@@ -83,9 +82,6 @@ __attribute__((always_inline)) INLINE static void cell_malloc_tesselations(struc
         (int *)swift_malloc("c.h.hilbert_r_sort", count * sizeof(int));
     c->hydro.hilbert_keys_size = count;
 #endif
-
-    /* malloc vortess */
-    voronoi_malloc(&c->hydro.vortess, c->hydro.count, c->dmin, c);
 
     /* Update flag */
     c->hydro.shadowfax_enabled = 1;

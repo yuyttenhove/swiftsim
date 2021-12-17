@@ -92,7 +92,7 @@ struct delaunay {
 
   /*! @brief Next available index within the tetrahedron array. Corresponds to
    * the actual size of the tetrahedron array. */
-  int tetrahedron_index;
+  int tetrahedra_index;
 
   /*! @brief Current size of the tetrahedron array in memory. If
    * tetrahedron_size matches tetrahedron_index, the memory buffer is full and

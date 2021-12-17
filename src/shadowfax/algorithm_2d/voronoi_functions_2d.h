@@ -305,7 +305,7 @@ inline static void voronoi_init(struct voronoi *restrict v, int number_of_cells,
  * @param d Delaunay tessellation (read-only).
  * @param parts Local cell generators (read-only).
  */
-static inline void voronoi_build(struct voronoi *v, const struct delaunay *d) {
+static inline void voronoi_build(struct voronoi *v, struct delaunay *d) {
 
   voronoi_assert(d->vertex_end > 0);
   voronoi_assert(d->active);

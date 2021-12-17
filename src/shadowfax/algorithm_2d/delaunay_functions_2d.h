@@ -333,7 +333,7 @@ inline static void delaunay_init(struct delaunay* restrict d,
    * triggered). */
   double box_anchor[2] = {cell_loc[0] - 2 * cell_width[0],
                           cell_loc[1] - 2 * cell_width[1]};
-  double box_side = 8. * fmax(cell_width[0], cell_width[1]);
+  double box_side = 10. * fmax(cell_width[0], cell_width[1]);
 
   /* store the anchor and inverse side_length for the conversion from box
   coordinates to rescaled (integer) coordinates */

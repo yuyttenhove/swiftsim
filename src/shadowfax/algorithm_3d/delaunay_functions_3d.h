@@ -32,6 +32,7 @@ inline static int positive_permutation(int a, int b, int c, int d);
 inline static double delaunay_get_radius(struct delaunay* restrict d, int t);
 inline static int delaunay_test_orientation(struct delaunay* restrict d, int v0,
                                             int v1, int v2, int v3);
+inline static int delaunay_vertex_is_valid(struct delaunay* restrict d, int v);
 
 /**
  * @brief Initialize the Delaunay tessellation.
@@ -48,12 +49,12 @@ inline static int delaunay_test_orientation(struct delaunay* restrict d, int v0,
  * @param d Delaunay tessellation.
  * @param hs Spatial extents of the simulation box.
  * @param vertex_size Initial size of the vertex array.
- * @param triangle_size Initial size of the tetrahedra array.
+ * @param tetrahedra_size Initial size of the tetrahedra array.
  */
 inline static void delaunay_malloc(struct delaunay* restrict d,
                                    const double* cell_loc,
                                    const double* cell_width, int vertex_size,
-                                   int triangle_size) {
+                                   int tetrahedra_size) {
   if (d->active != 0) {
     error("Delaunay tessellation corruption!");
   }
@@ -82,8 +83,8 @@ inline static void delaunay_malloc(struct delaunay* restrict d,
   d->part_pointers = (struct part**)swift_malloc(
       "c.h.d.part_pointers", vertex_size * sizeof(struct part*));
   d->tetrahedra = (struct tetrahedron*)swift_malloc(
-      "c.h.d.tetrahedra", triangle_size * sizeof(struct tetrahedron));
-  d->triangle_size = triangle_size;
+      "c.h.d.tetrahedra", tetrahedra_size * sizeof(struct tetrahedron));
+  d->tetrahedra_size = tetrahedra_size;
   int_lifo_queue_init(&d->tetrahedra_containing_vertex, 10);
   int_lifo_queue_init(&d->tetrahedra_to_check, 10);
   int_lifo_queue_init(&d->free_tetrahedron_indices, 10);
@@ -102,7 +103,7 @@ inline static void delaunay_malloc(struct delaunay* restrict d,
       "c.h.d.ngb_cell_ptrs", vertex_size * sizeof(struct cell*));
   d->ngb_size = vertex_size;
 
-  delaunay_reset(d, cell_loc, cell_width, vertex_size);
+  delaunay_init(d, cell_loc, cell_width, vertex_size);
 }
 
 /**
@@ -130,7 +131,7 @@ inline static void delaunay_init(struct delaunay* restrict d,
 
   /* reset the vertex and tetrahedra array indices. */
   d->vertex_index = vertex_size;
-  d->tetrahedron_index = 0;
+  d->tetrahedra_index = 0;
 
   /* Initialise the indices indicating where the local vertices start and end.*/
   d->vertex_start = 0;
@@ -165,9 +166,9 @@ inline static void delaunay_init(struct delaunay* restrict d,
    * cell and all neighbouring cells inside the first tetrahedron. This comes at
    * a loss of precision in the integer arithmetic, though... A better solution
    * would possibly be to start from 5 tetrahedra forming a cube (box_side would
-   * have to be 3 in that case). */
+   * have to be 5 in that case). */
   double box_side = fmax(cell_width[0], cell_width[1]);
-  box_side = 11. * fmax(box_side, cell_width[2]);
+  box_side = 15. * fmax(box_side, cell_width[2]);
   /* the 1.e-13 makes sure converted values are in the range [1, 2[ instead of
    * [1,2] (unlike Springel, 2010) */
   d->inverse_side = (1. - 1.e-13) / box_side;
@@ -252,6 +253,33 @@ inline static void delaunay_destroy(struct delaunay* restrict d) {
   geometry3d_destroy(&d->geometry);
   swift_free("c.h.d.ngb_cell_sids", d->ngb_cell_sids);
   swift_free("c.h.d.ngb_cell_ptrs", d->ngb_cell_ptrs);
+
+  d->vertices = NULL;
+  d->rescaled_vertices = NULL;
+  d->integer_vertices = NULL;
+  d->vertex_tetrahedron_links = NULL;
+  d->vertex_tetrahedron_index = NULL;
+  d->search_radii = NULL;
+  d->part_pointers = NULL;
+  d->tetrahedra = NULL;
+  d->get_radius_neighbour_flags = NULL;
+  d->ngb_cell_ptrs = NULL;
+  d->ngb_cell_sids = NULL;
+
+  bzero(d->anchor, 3 * sizeof(double));
+  d->side = 0.;
+  d->inverse_side = 0.;
+  d->vertex_size = 0;
+  d->vertex_index = -1;
+  d->vertex_start = -1;
+  d->vertex_end = -1;
+  d->tetrahedra_size = 0;
+  d->tetrahedra_index = -1;
+  d->last_tetrahedron = -1;
+  d->ngb_size = 0;
+  d->ngb_index = -1;
+  d->ngb_offset = 0;
+  bzero(d->sid_is_inside_face, 27 * sizeof(int));
 }
 
 inline static int delaunay_new_tetrahedron(struct delaunay* restrict d) {
@@ -260,14 +288,14 @@ inline static int delaunay_new_tetrahedron(struct delaunay* restrict d) {
     return int_lifo_queue_pop(&d->free_tetrahedron_indices);
   }
   /* Else: check that we still have space for tetrahedrons available */
-  if (d->tetrahedron_index == d->tetrahedron_size) {
-    d->tetrahedron_size <<= 1;
+  if (d->tetrahedra_index == d->tetrahedra_size) {
+    d->tetrahedra_size <<= 1;
     d->tetrahedra = (struct tetrahedron*)swift_realloc(
         "c.h.d.tetrahedra", d->tetrahedra,
-        d->tetrahedron_size * sizeof(struct tetrahedron));
+        d->tetrahedra_size * sizeof(struct tetrahedron));
   }
   /* return and then increase */
-  return d->tetrahedron_index++;
+  return d->tetrahedra_index++;
 }
 
 /**
@@ -536,10 +564,37 @@ inline static int delaunay_find_tetrahedra_containing_vertex(
    * containing the current vertex */
   int_lifo_queue_reset(&d->tetrahedra_containing_vertex);
 
+  /* Get integer and rescaled vertex coordinates */
+  const unsigned long* el = &d->integer_vertices[3 * v];
+  const double* ed = &d->rescaled_vertices[3 * v];
+
+#ifdef DELAUNAY_DO_ASSERTIONS
+  /* Check that the new vertex falls in the bounding box */
+  const unsigned long* d0l = &d->integer_vertices[3 * d->vertex_end + 0];
+  const unsigned long* d1l = &d->integer_vertices[3 * d->vertex_end + 3];
+  const unsigned long* d2l = &d->integer_vertices[3 * d->vertex_end + 6];
+  const unsigned long* d3l = &d->integer_vertices[3 * d->vertex_end + 9];
+
+  const double* d0d = &d->rescaled_vertices[3 * d->vertex_end + 0];
+  const double* d1d = &d->rescaled_vertices[3 * d->vertex_end + 3];
+  const double* d2d = &d->rescaled_vertices[3 * d->vertex_end + 6];
+  const double* d3d = &d->rescaled_vertices[3 * d->vertex_end + 9];
+
+  delaunay_assert(geometry3d_orient_adaptive(&d->geometry, d0l, d1l, d2l, el,
+                                             d0d, d1d, d2d, ed) &&
+                  geometry3d_orient_adaptive(&d->geometry, d0l, d2l, d3l, el,
+                                             d0d, d2d, d3d, ed) &&
+                  geometry3d_orient_adaptive(&d->geometry, d0l, d3l, d1l, el,
+                                             d0d, d3d, d1d, ed) &&
+                  geometry3d_orient_adaptive(&d->geometry, d1l, d3l, d2l, el,
+                                             d1d, d3d, d2d, ed));
+#endif
+
   /* Get the last tetrahedron index */
   int tetrahedron_idx = d->last_tetrahedron;
 
   while (int_lifo_queue_is_empty(&d->tetrahedra_containing_vertex)) {
+    delaunay_assert(tetrahedron_idx > 3); /* No dummy tetrahedron? */
     const struct tetrahedron* tetrahedron = &d->tetrahedra[tetrahedron_idx];
     const int v0 = tetrahedron->vertices[0];
     const int v1 = tetrahedron->vertices[1];
@@ -551,13 +606,11 @@ inline static int delaunay_find_tetrahedra_containing_vertex(
     const unsigned long* bl = &d->integer_vertices[3 * v1];
     const unsigned long* cl = &d->integer_vertices[3 * v2];
     const unsigned long* dl = &d->integer_vertices[3 * v3];
-    const unsigned long* el = &d->integer_vertices[3 * v];
 
     const double* ad = &d->rescaled_vertices[3 * v0];
     const double* bd = &d->rescaled_vertices[3 * v1];
     const double* cd = &d->rescaled_vertices[3 * v2];
     const double* dd = &d->rescaled_vertices[3 * v3];
-    const double* ed = &d->rescaled_vertices[3 * v];
 
 #ifdef DELAUNAY_CHECKS
     /* made sure the tetrahedron is correctly oriented */
@@ -593,6 +646,7 @@ inline static int delaunay_find_tetrahedra_containing_vertex(
       if (geometry3d_ray_triangle_intersect(&d->geometry, &r, ad, bd, cd, al,
                                             bl, cl, &dist)) {
         tetrahedron_idx = tetrahedron->neighbours[3];
+        delaunay_assert(tetrahedron_idx > 3); /* No dummy tetrahedron? */
         continue;
       }
       if (isnan(min_dist) || dist < min_dist) {
@@ -608,6 +662,7 @@ inline static int delaunay_find_tetrahedra_containing_vertex(
       if (geometry3d_ray_triangle_intersect(&d->geometry, &r, ad, cd, dd, al,
                                             cl, dl, &dist)) {
         tetrahedron_idx = tetrahedron->neighbours[1];
+        delaunay_assert(tetrahedron_idx > 3); /* No dummy tetrahedron? */
         continue;
       }
       if (isnan(min_dist) || dist < min_dist) {
@@ -623,6 +678,7 @@ inline static int delaunay_find_tetrahedra_containing_vertex(
       if (geometry3d_ray_triangle_intersect(&d->geometry, &r, ad, dd, bd, al,
                                             dl, bl, &dist)) {
         tetrahedron_idx = tetrahedron->neighbours[2];
+        delaunay_assert(tetrahedron_idx > 3); /* No dummy tetrahedron? */
         continue;
       }
       if (isnan(min_dist) || dist < min_dist) {
@@ -638,6 +694,7 @@ inline static int delaunay_find_tetrahedra_containing_vertex(
       if (geometry3d_ray_triangle_intersect(&d->geometry, &r, bd, dd, cd, bl,
                                             dl, cl, &dist)) {
         tetrahedron_idx = tetrahedron->neighbours[0];
+        delaunay_assert(tetrahedron_idx > 3); /* No dummy tetrahedron? */
         continue;
       }
       if (isnan(min_dist) || dist < min_dist) {
@@ -648,9 +705,12 @@ inline static int delaunay_find_tetrahedra_containing_vertex(
     }
 
     if (next_tetrahedron_idx >= 0) {
+      if (next_tetrahedron_idx == -1) {
+        /* Should not be possible? */
+        error("Impossible scenario!");
+      }
       tetrahedron_idx = next_tetrahedron_idx;
-      /* Should not be possible? */
-      //      error("Impossible scenario!");
+      delaunay_assert(tetrahedron_idx > 3); /* No dummy tetrahedron? */
       continue;
     }
 
@@ -1963,7 +2023,7 @@ inline static void delaunay_write_tessellation(
     fprintf(file, "V\t%lu\t%g\t%g\t%g\n", *offset + i, d->vertices[3 * i],
             d->vertices[3 * i + 1], d->vertices[3 * i + 2]);
   }
-  for (int i = 4; i < d->tetrahedron_index; ++i) {
+  for (int i = 4; i < d->tetrahedra_index; ++i) {
     if (!d->tetrahedra[i].active) {
       continue;
     }
@@ -1991,6 +2051,11 @@ inline static int delaunay_test_orientation(struct delaunay* restrict d, int v0,
       &d->integer_vertices[3 * v2], &d->integer_vertices[3 * v3],
       &d->rescaled_vertices[3 * v0], &d->rescaled_vertices[3 * v1],
       &d->rescaled_vertices[3 * v2], &d->rescaled_vertices[3 * v3]);
+}
+
+inline static int delaunay_vertex_is_valid(struct delaunay* restrict d, int v) {
+  return (v >= d->vertex_start && v < d->vertex_end) ||
+         (v >= d->ngb_offset && v < d->ngb_index + d->ngb_offset);
 }
 
 /**
@@ -2027,7 +2092,7 @@ inline static void delaunay_check_tessellation(struct delaunay* restrict d) {
 #endif
 
   /* loop over all non-dummy tetrahedra */
-  for (int t0 = 4; t0 < d->tetrahedron_index; t0++) {
+  for (int t0 = 4; t0 < d->tetrahedra_index; t0++) {
     /* Skip temporary deleted tetrahedra */
     if (!d->tetrahedra[t0].active) {
       continue;

@@ -55,7 +55,6 @@ hydro_shadowfax_convert_conserved_to_primitive(struct part *restrict p,
   if (p->P < 0.) {
     error("Negative pressure!");
   }
-#endif
 }
 
 /**
