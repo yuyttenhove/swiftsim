@@ -23,6 +23,9 @@
  *  never be activated for production runs! */
 //#define DELAUNAY_CHECKS
 
+/*! @brief whether to use the arbitrary precision ray triangle intersection tests */
+//#define DELAUNAY_3D_TRIANGLE_INTERSECTIONS
+
 /**
  * @brief Print the given message to the standard output.
  *

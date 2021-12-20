@@ -18,8 +18,6 @@
 /*! @brief Activate extra checks */
 //#define VORONOI_CHECKS
 
-/*! @brief whether to use the arbitrary precision ray triangle intersection tests */
-//#define VORONOI3D_TRIANGLE_INTERSECTIONS
 
 /**
  *@brief Evaluate the given condition and abort if it evaluates to true.

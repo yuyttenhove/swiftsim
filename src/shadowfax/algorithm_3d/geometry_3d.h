@@ -890,9 +890,12 @@ inline static double geometry3d_dot(const double* v1, const double* v2) {
   return v1[0] * v2[0] + v1[1] * v2[1] + v1[2] * v2[2];
 }
 
-inline static int geometry3d_ray_plane_intersect(
-    const double* ray_origin, const double* ray_direction, const double* p1,
-    const double* p2, const double* p3, double* out_distance) {
+/*! @returns the signed distance from the ray origin along the ray
+ * direction to the intersection with the plane given by p1, p2, p3. */
+inline static double geometry3d_ray_plane_intersect(const struct delaunay_ray* r,
+                                                 const double* p1,
+                                                 const double* p2,
+                                                 const double* p3) {
 
   /* Setup useful variables */
   /* Vectors determining plane */
@@ -903,18 +906,20 @@ inline static int geometry3d_ray_plane_intersect(
   geometry3d_cross(v1, v2, n);
 
   /* Compute result (see Camps 2013) */
-  double denominator = geometry3d_dot(n, ray_direction);
-  if (denominator == 0.) {
-    *out_distance = DBL_MAX;
-    return 0;
+  double numerator = n[0] * (p3[0] - r->origin[0]) +
+                     n[1] * (p3[1] - r->origin[1]) +
+                     n[2] * (p3[2] - r->origin[2]);
+  if (numerator == 0.) {
+    /* Point lies on the plane... */
+    return 0.;
   }
-  double numerator = n[0] * (p3[0] - ray_origin[0]) +
-                     n[1] * (p3[1] - ray_origin[1]) +
-                     n[2] * (p3[2] - ray_origin[2]);
-  *out_distance = numerator / denominator;
-  return 0;
-}
 
+  double denominator = geometry3d_dot(n, r->direction);
+  if (denominator == 0.) {
+    return DBL_MAX;
+  }
+  return numerator / denominator;
+}
 
 /*! @brief
  * returns -1 when exact test is needed */
@@ -945,7 +950,6 @@ inline static int geometry3d_ray_triangle_intersect_non_exact(
   errbound *= errbound_factor;
   if (-errbound < a && a < errbound) {
     /* Ray approximately parallel to triangle, try exact method */
-    *out_distance = INFINITY;
     return -1;
   }
 
