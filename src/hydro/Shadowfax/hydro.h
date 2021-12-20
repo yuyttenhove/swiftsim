@@ -945,7 +945,9 @@ __attribute__((always_inline)) INLINE static float hydro_get_physical_density(
  * @param time The simulation time.
  */
 __attribute__((always_inline)) INLINE static void hydro_remove_part(
-    const struct part* p, const struct xpart* xp, const double time) {}
+    const struct part* p, const struct xpart* xp, const double time) {
+  /* TODO distribute part conserved quantities over neighbours somehow */
+}
 
 /**
  * @brief If a particle exits the simulation volume, apply reflective boundary
