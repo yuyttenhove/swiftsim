@@ -89,7 +89,6 @@ static inline int voronoi_add_pair(struct voronoi *v, const struct delaunay *d,
       /* Pair was already added. Find it and add it to the cell_pair_connections
        * if necessary. If no pair is found, the face must have been degenerate.
        * Return early. */
-#ifdef VORONOI_STORE_CONNECTIONS
       struct voronoi_cell_new *ngb_cell =
           &v->cells[ngb_del_vert_idx - d->vertex_start];
       struct part *left_part = d->part_pointers[del_vert_idx];
@@ -102,11 +101,6 @@ static inline int voronoi_add_pair(struct voronoi *v, const struct delaunay *d,
         }
       }
       return 0;
-#else
-      /* Can be wrong if the face is degenerate (surface area 0), but there is
-       * no easy way to check if we don't store the connections... */
-      return 1;
-#endif
     }
     sid = 13;
     c = NULL;
@@ -143,16 +137,16 @@ static inline int voronoi_add_pair(struct voronoi *v, const struct delaunay *d,
   this_pair->left_idx = del_vert_idx - d->vertex_start;
   this_pair->right = d->part_pointers[ngb_del_vert_idx];
   this_pair->right_idx = sid == 13 ? ngb_del_vert_idx - d->vertex_start : -1;
-#ifdef VORONOI_STORE_CONNECTIONS
+#ifdef VORONOI_STORE_FACES
   this_pair->a[0] = ax;
   this_pair->a[1] = ay;
   this_pair->b[0] = bx;
   this_pair->b[1] = by;
+#endif
 
   /* Add cell_pair_connection */
   int2 connection = {._0 = v->pair_index[sid], ._1 = sid};
   int2_lifo_queue_push(&v->cell_pair_connections, connection);
-#endif
   ++v->pair_index[sid];
   return 1;
 }
@@ -216,9 +210,7 @@ static inline void voronoi_destroy(struct voronoi *restrict v) {
   for (int i = 0; i < 28; ++i) {
     swift_free("c.h.v.pairs", v->pairs[i]);
   }
-#ifdef VORONOI_STORE_CONNECTIONS
   int2_lifo_queue_destroy(&v->cell_pair_connections);
-#endif
 
   v->cells = NULL;
   for (int i = 0; i < 28; i++) {
@@ -253,10 +245,8 @@ inline static void voronoi_malloc(struct voronoi *restrict v,
     v->pair_size[i] = 10;
   }
 
-#ifdef VORONOI_STORE_CONNECTIONS
   /* Allocate memory for the cell_pair connections */
   int2_lifo_queue_init(&v->cell_pair_connections, 6 * number_of_cells);
-#endif
 
   v->min_surface_area = min_rel_voronoi_face_size * dmin;
   v->active = 1;
@@ -280,10 +270,9 @@ inline static void voronoi_init(struct voronoi *restrict v, int number_of_cells,
   for (int i = 0; i < 28; ++i) {
     v->pair_index[i] = 0;
   }
-#ifdef VORONOI_STORE_CONNECTIONS
+
   /* Reset the cell_pair connections */
   int2_lifo_queue_reset(&v->cell_pair_connections);
-#endif
 
   v->min_surface_area = min_rel_voronoi_face_size * dmin;
 }
@@ -478,9 +467,7 @@ static inline void voronoi_build(struct voronoi *v, struct delaunay *d) {
     this_cell->centroid[1] = cell_centroid[1];
     this_cell->centroid[2] = 0.;
     this_cell->nface = nface;
-#ifdef VORONOI_STORE_CONNECTIONS
     this_cell->pair_connections_offset = pair_connections_offset;
-#endif
   } /* loop over all cell generators */
 
   voronoi_check_grid(v);
@@ -581,12 +568,13 @@ static inline void voronoi_write_grid(const struct voronoi *restrict v,
     fprintf(file, "\t%i", this_cell->nface);
     fprintf(file, "\n");
   }
+
   /* now write the pairs */
   for (int ngb = 0; ngb < 28; ++ngb) {
     for (int i = 0; i < v->pair_index[ngb]; ++i) {
       struct voronoi_pair *pair = &v->pairs[ngb][i];
       fprintf(file, "F\t");
-#ifdef VORONOI_STORE_CONNECTIONS
+#ifdef VORONOI_STORE_FACES
       fprintf(file, "%g\t%g\t%g\t%g\t", pair->a[0], pair->a[1], pair->b[0],
               pair->b[1]);
 #endif

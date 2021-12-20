@@ -7,7 +7,7 @@
 
 /*! @brief Store the edges of faces (so that the actual Voronoi grid can be
  *  reconstructed). */
-#define VORONOI_STORE_CONNECTIONS
+#define VORONOI_STORE_FACES
 
 /*! @brief Store cell generators. */
 #define VORONOI_STORE_GENERATORS
@@ -17,6 +17,9 @@
 
 /*! @brief Activate extra checks */
 //#define VORONOI_CHECKS
+
+/*! @brief whether to use the arbitrary precision ray triangle intersection tests */
+//#define VORONOI3D_TRIANGLE_INTERSECTIONS
 
 /**
  *@brief Evaluate the given condition and abort if it evaluates to true.
@@ -66,10 +69,8 @@ struct voronoi_cell_new {
   /*! Number of faces of this cell. */
   int nface;
 
-#ifdef VORONOI_STORE_CONNECTIONS
   /*! cell_pair_connections offset */
   int pair_connections_offset;
-#endif
 };
 
 #if defined(HYDRO_DIMENSION_3D)

@@ -63,7 +63,7 @@ struct voronoi_pair {
   /*! Midpoint of the interface. */
   double midpoint[3];
 
-#ifdef VORONOI_STORE_CONNECTIONS
+#ifdef VORONOI_STORE_FACES
   /*! First vertex of the interface. */
   double a[2];
 
@@ -104,15 +104,12 @@ struct voronoi {
   /*! @brief Allocated number of pairs per cell index. */
   int pair_size[28];
 
-#ifdef VORONOI_STORE_CONNECTIONS
   /*! @brief cell pair connection. Queue of 2-tuples containing the index of
    * the pair and the sid of the pair */
    struct int2_lifo_queue cell_pair_connections;
-#endif
 
   /*! @brief Flag indicating whether this voronoi struct is active (has memory
-   * allocated)
-   */
+   * allocated) */
   int active;
 
   /*! @brief The absolute minimal surface area of faces in this voronoi

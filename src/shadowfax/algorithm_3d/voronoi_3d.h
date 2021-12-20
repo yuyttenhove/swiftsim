@@ -11,7 +11,8 @@
 #ifndef SWIFTSIM_VORONOI_3D_H
 #define SWIFTSIM_VORONOI_3D_H
 
-#include <part.h>
+#include "part.h"
+#include "shadowfax/queues.h"
 
 /**
  * @brief Voronoi interface.
@@ -45,7 +46,7 @@ struct voronoi_pair {
   /*! Midpoint of the interface. */
   double midpoint[3];
 
-#ifdef VORONOI_STORE_CONNECTIONS
+#ifdef VORONOI_STORE_FACES
   /*! Vertices of the interface. */
   double *vertices;
 
@@ -77,9 +78,12 @@ struct voronoi {
   /*! @brief Allocated number of pairs per cell index. */
   int pair_size[28];
 
+  /*! @brief cell pair connection. Queue of 2-tuples containing the index of
+   * the pair and the sid of the pair */
+  struct int2_lifo_queue cell_pair_connections;
+
   /*! @brief Flag indicating whether this voronoi struct is active (has memory
-   * allocated)
-   */
+   * allocated) */
   int active;
 
   /*! @brief The absolute minimal surface area of faces in this voronoi
