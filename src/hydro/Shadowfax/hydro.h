@@ -58,7 +58,7 @@ __attribute__((always_inline)) INLINE static float hydro_compute_timestep(
   vrel[2] = p->fluid_v[2] - xp->v_full[2];
   double vmax =
       sqrt(vrel[0] * vrel[0] + vrel[1] * vrel[1] + vrel[2] * vrel[2]) +
-      sqrt(hydro_gamma * p->P / p->rho);
+      gas_soundspeed_from_pressure((float)p->rho, (float)p->P);
   vmax = max(vmax, p->timestepvars.vmax);
 
   if (p->voronoi.volume == 0.) {
@@ -531,9 +531,9 @@ __attribute__((always_inline)) INLINE static float hydro_get_soundspeed(
     const struct part* restrict p) {
 
   if (p->rho > 0.) {
-    return gas_soundspeed_from_pressure(p->rho, p->P);
+    return gas_soundspeed_from_pressure((float)p->rho, (float)p->P);
   } else {
-    return 0.;
+    return 0.f;
   }
 }
 
@@ -674,7 +674,7 @@ hydro_set_init_internal_energy(struct part* p, float u_init) {
                           p->conserved.momentum[1] * p->fluid_v[1] +
                           p->conserved.momentum[2] * p->fluid_v[2]);
 #endif
-  p->P = hydro_gamma_minus_one * p->rho * u_init;
+  p->P = gas_pressure_from_internal_energy((float)p->rho, u_init);
 }
 
 /**
