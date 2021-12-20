@@ -57,8 +57,8 @@ hydro_gravity_energy_update_term(const float dt_kick_corr, const float dt_grav,
       -0.5f * dt_kick_corr *
       (p->gravity.mflux[0] * a_grav[0] + p->gravity.mflux[1] * a_grav[1] +
        p->gravity.mflux[2] * a_grav[2]);
-  // TODO: subtract this always?
-#if defined(SHADOWFAX_TOTAL_ENERGY)
+  // TODO: subtract this always (see Springel 2010)?
+#ifdef SHADOWFAX_TOTAL_ENERGY
   dE += dt_grav * (momentum[0] * a_grav[0] + momentum[1] * a_grav[1] +
                    momentum[2] * a_grav[2]);
 #endif
