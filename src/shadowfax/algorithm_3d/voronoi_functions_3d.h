@@ -13,48 +13,6 @@ inline static int voronoi_new_face(struct voronoi *v, const struct delaunay *d,
 inline static void voronoi_check_grid(struct voronoi *restrict v);
 inline static void voronoi_destroy(struct voronoi *restrict v);
 
-/**
- * @brief Initializes a voronoi pair (i.e. a face). The vertices of the face are
- * only stored if VORONOI_STORE_FACES is defined.
- *
- * @param pair Voronoi pair to initialize
- * @param c Pointer to the SWIFT cell in which the right particle lives
- * (NULL if this is the same cell as the left particle)
- * @param left_part_pointer Pointer to the left particle of this pair
- * @param right_part_pointer Pointer to the right particle of this pair
- * @param vertices Vertices making up the face
- * @param n_vertices Number of vertices in the vertices array.
- */
-inline static void voronoi_pair_init(struct voronoi_pair *pair,
-                                     struct cell *restrict c,
-                                     struct part *restrict left_part_pointer,
-                                     struct part *restrict right_part_pointer,
-                                     int left_part_idx_in_d,
-                                     int right_part_idx_in_d, double *vertices,
-                                     int n_vertices) {
-  pair->right_cell = c;
-  pair->left = left_part_pointer;
-  pair->left_idx = left_part_idx_in_d;
-  pair->right = right_part_pointer;
-  pair->right_idx = right_part_idx_in_d;
-
-  pair->surface_area =
-      geometry3d_compute_centroid_area(vertices, n_vertices, pair->midpoint);
-
-#ifdef VORONOI_STORE_FACES
-  pair->vertices = (double *)malloc(3 * n_vertices * sizeof(double));
-  pair->n_vertices = n_vertices;
-#ifdef SWIFT_DEBUG_CHECKS
-  assert(pair->n_vertices > 0);
-#endif
-  for (int i = 0; i < n_vertices; i++) {
-    pair->vertices[3 * i] = vertices[3 * i];
-    pair->vertices[3 * i + 1] = vertices[3 * i + 1];
-    pair->vertices[3 * i + 2] = vertices[3 * i + 2];
-  }
-#endif
-}
-
 inline static void voronoi_pair_destroy(struct voronoi_pair *pair) {
 #ifdef VORONOI_STORE_FACES
   free(pair->vertices);
@@ -561,22 +519,46 @@ inline static int voronoi_new_face(struct voronoi *v, const struct delaunay *d,
         v->pair_size[sid] * sizeof(struct voronoi_pair));
   }
 
-  /* Initialize pair */
+  /* Grab the next free pair */
   struct voronoi_pair *this_pair = &v->pairs[sid][v->pair_index[sid]];
-  voronoi_pair_init(this_pair, c, d->part_pointers[left_part_idx_in_d],
-                    d->part_pointers[right_part_idx_in_d], left_part_idx_in_d,
-                    right_part_idx_in_d, vertices, n_vertices);
-
+  /* Compute surface area */
+  this_pair->surface_area =
+      geometry3d_compute_centroid_area(vertices, n_vertices, this_pair->midpoint);
   /* is the face degenerate? */
   if (this_pair->surface_area < v->min_surface_area) {
     return 0;
   }
-  /* increase index (i.e. add the face) */
-  v->pair_index[sid]++;
+
+  /* Initialize pair */
+  this_pair->right_cell = c;
+  this_pair->left = d->part_pointers[left_part_idx_in_d];
+  this_pair->left_idx = left_part_idx_in_d - d->vertex_start;
+  this_pair->right = d->part_pointers[right_part_idx_in_d];
+  if (sid == 13 || sid == 27) {
+    this_pair->right_idx = right_part_idx_in_d - d->vertex_start;
+  } else {
+    this_pair->right_idx = -1;
+  }
+
+#ifdef VORONOI_STORE_FACES
+  this_pair->vertices = (double *)malloc(3 * n_vertices * sizeof(double));
+  this_pair->n_vertices = n_vertices;
+#ifdef SWIFT_DEBUG_CHECKS
+  assert(this_pair->n_vertices > 0);
+#endif
+  for (int i = 0; i < n_vertices; i++) {
+    this_pair->vertices[3 * i] = vertices[3 * i];
+    this_pair->vertices[3 * i + 1] = vertices[3 * i + 1];
+    this_pair->vertices[3 * i + 2] = vertices[3 * i + 2];
+  }
+#endif
 
   /* Add cell_pair_connection */
   int2 connection = {._0 = v->pair_index[sid], ._1 = sid};
   int2_lifo_queue_push(&v->cell_pair_connections, connection);
+
+  /* increase index (i.e. add the face) */
+  v->pair_index[sid]++;
 
   return 1;
 }

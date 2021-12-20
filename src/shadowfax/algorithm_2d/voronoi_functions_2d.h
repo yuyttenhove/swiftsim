@@ -136,7 +136,11 @@ static inline int voronoi_add_pair(struct voronoi *v, const struct delaunay *d,
   this_pair->left = d->part_pointers[del_vert_idx];
   this_pair->left_idx = del_vert_idx - d->vertex_start;
   this_pair->right = d->part_pointers[ngb_del_vert_idx];
-  this_pair->right_idx = sid == 13 ? ngb_del_vert_idx - d->vertex_start : -1;
+  if (sid == 13 || sid == 27) {
+    this_pair->right_idx = ngb_del_vert_idx - d->vertex_start;
+  } else {
+    this_pair->right_idx = -1;
+  }
 #ifdef VORONOI_STORE_FACES
   this_pair->a[0] = ax;
   this_pair->a[1] = ay;

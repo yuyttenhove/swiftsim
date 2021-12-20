@@ -2106,6 +2106,13 @@ inline static int delaunay_vertex_is_valid(struct delaunay* restrict d, int v) {
          (v >= d->ngb_offset && v < d->ngb_index + d->ngb_offset);
 }
 
+/*! @brief stores the coordinates of the vertex at given idx in out */
+inline static void delaunay_get_vertex_at(const struct delaunay* d, int idx, double* out /*ret*/) {
+  out[0] = d->vertices[3 * idx];
+  out[1] = d->vertices[3 * idx + 1];
+  out[2] = d->vertices[3 * idx + 2];
+}
+
 /**
  * @brief Perform an (expensive) check on the tessellation to see that it is
  * still valid.

@@ -59,6 +59,9 @@
 #include "timers.h"
 #include "timestep_limiter.h"
 #include "tracers.h"
+#ifdef SHADOWFAX_NEW_SPH
+#include "shadowfax/delaunay_functions.h"
+#endif
 
 /**
  * @brief Calculate gravity acceleration from external potential
@@ -642,19 +645,14 @@ void runner_do_end_hydro_force(struct runner *r, struct cell *c, int timer) {
         if (part_is_active(left, e)) {
           struct part right_vacuum;
           bzero(&right_vacuum, sizeof(struct part));
-          double *right_coordinates =
-              &c->hydro.deltess.vertices[3 * (c->hydro.deltess.vertex_start +
-                                              pair->right_idx)];
-          right_vacuum.x[0] = right_coordinates[0];
-          right_vacuum.x[1] = right_coordinates[1];
-          right_vacuum.x[2] = right_coordinates[2];
+          delaunay_get_vertex_at(&c->hydro.deltess, pair->right_idx, right_vacuum.x);
           double shift[3] = {0., 0., 0.};
           hydro_shadowfax_flux_exchange(left, &right_vacuum, pair->midpoint,
                                         pair->surface_area, shift, 0);
         }
       }
     }
-#elifdef SHADOWFAX_OPEN_BOUNDARY_CONDITIONS
+#elif defined(SHADOWFAX_OPEN_BOUNDARY_CONDITIONS)
     if (!e->s->periodic) {
       for (int i = 0; i < c->hydro.vortess.pair_index[27]; i++) {
         struct voronoi_pair *pair = &c->hydro.vortess.pairs[27][i];
@@ -662,12 +660,7 @@ void runner_do_end_hydro_force(struct runner *r, struct cell *c, int timer) {
         if (part_is_active(left, e)) {
           /* Copy the right particle */
           struct part right_open = *pair->right;
-          double *right_coordinates =
-              &c->hydro.deltess.vertices[3 * (c->hydro.deltess.vertex_start +
-                                              pair->right_idx)];
-          right_open.x[0] = right_coordinates[0];
-          right_open.x[1] = right_coordinates[1];
-          right_open.x[2] = right_coordinates[2];
+          delaunay_get_vertex_at(&c->hydro.deltess, pair->right_idx, right_open.x);
           double shift[3] = {0., 0., 0.};
           hydro_shadowfax_flux_exchange(left, &right_open, pair->midpoint,
                                         pair->surface_area, shift, 0);
