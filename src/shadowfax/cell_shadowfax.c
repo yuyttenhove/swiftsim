@@ -57,7 +57,16 @@ void cell_shadowfax_do_pair1_gradient_recursive(const struct engine *e,
                                                 struct cell *restrict ci,
                                                 struct cell *restrict cj,
                                                 int sid, const double *shift) {
-  if (!cell_is_active_hydro(ci, e) && !cell_is_active_hydro(cj, e)) return;
+  /* Any cell active and local? */
+  if ((!cell_is_active_hydro(ci, e) && !cell_is_active_hydro(cj, e))
+      || (ci->nodeID != e->nodeID && cj->nodeID != e->nodeID)) return;
+
+  /* Do we need to flip ci and cj? */
+  if (ci->nodeID != e->nodeID) {
+    const double new_shift[3] = {-shift[0], -shift[1], -shift[2]};
+    cell_shadowfax_do_pair1_gradient_recursive(e, cj, ci, 26 - sid, new_shift);
+    return;
+  }
 
   int k;
   /* recurse? */
@@ -84,7 +93,16 @@ void cell_shadowfax_do_pair2_force_recursive(const struct engine *e,
                                              struct cell *restrict ci,
                                              struct cell *restrict cj, int sid,
                                              const double *shift) {
-  if (!cell_is_active_hydro(ci, e) && !cell_is_active_hydro(cj, e)) return;
+  /* Any cell active and local? */
+  if ((!cell_is_active_hydro(ci, e) && !cell_is_active_hydro(cj, e))
+      || (ci->nodeID != e->nodeID && cj->nodeID != e->nodeID)) return;
+
+  /* Do we need to flip ci and cj? */
+  if (ci->nodeID != e->nodeID) {
+    const double new_shift[3] = {-shift[0], -shift[1], -shift[2]};
+    cell_shadowfax_do_pair2_force_recursive(e, cj, ci, 26 - sid, new_shift);
+    return;
+  }
 
   int k;
   /* recurse? */

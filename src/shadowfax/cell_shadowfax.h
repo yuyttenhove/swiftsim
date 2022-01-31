@@ -171,7 +171,8 @@ cell_shadowfax_do_pair1_density(const struct engine *e, struct cell *ci,
   const double dj_min = sort_j[0].d;
   const float dx_max = (ci->hydro.dx_max_sort + cj->hydro.dx_max_sort);
 
-  if (cell_is_active_hydro(ci, e)) {
+  /* Is the cell active and local? */
+  if (cell_is_active_hydro(ci, e) && ci->nodeID == e->nodeID) {
 
     /* Mark cell face as inside of simulation volume */
     ci->hydro.deltess.sid_is_inside_face[26 - sid] |= 1;
@@ -231,7 +232,8 @@ cell_shadowfax_do_pair1_density(const struct engine *e, struct cell *ci,
     }   /* loop over the parts in ci. */
   }     /* Cell ci is active */
 
-  if (cell_is_active_hydro(cj, e)) {
+  /* Is cj active and local? */
+  if (cell_is_active_hydro(cj, e) && cj->nodeID == e->nodeID) {
 
     /* Mark cell face as inside of simulation volume */
     cj->hydro.deltess.sid_is_inside_face[sid] |= 1;

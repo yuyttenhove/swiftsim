@@ -179,7 +179,7 @@ void engine_dump_snapshot(struct engine *e) {
 #endif
 #endif
 
-#ifdef SHADOWFAX_NEW_SPH
+#if defined(SHADOWFAX_NEW_SPH) && !defined(WITH_MPI)
   char fname[50];
   sprintf(fname, "voronoi%04d.txt", e->snapshot_output_count - 1);
   FILE *vfile = fopen(fname, "w");
