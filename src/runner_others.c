@@ -656,10 +656,11 @@ void runner_do_end_hydro_force(struct runner *r, struct cell *c, int timer) {
     if (!e->s->periodic) {
       for (int i = 0; i < c->hydro.vortess.pair_index[27]; i++) {
         struct voronoi_pair *pair = &c->hydro.vortess.pairs[27][i];
-        struct part *left = pair->left;
+        struct part *left = &c->hydro.parts[pair->left_idx];
         if (part_is_active(left, e)) {
-          /* Copy the right particle */
-          struct part right_open = *pair->right;
+          /* Copy the left particle */
+          struct part right_open = *left;
+          /* Update its position. */
           delaunay_get_vertex_at(&c->hydro.deltess, pair->right_idx, right_open.x);
           double shift[3] = {0., 0., 0.};
           hydro_shadowfax_flux_exchange(left, &right_open, pair->midpoint,

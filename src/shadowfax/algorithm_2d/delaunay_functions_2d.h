@@ -29,8 +29,7 @@
 #define SWIFTSIM_DELAUNAY_FUNCTIONS_2D_H
 
 inline static void delaunay_init_vertex(struct delaunay* restrict d, int v,
-                                        double x, double y,
-                                        struct part* part_pointer) {
+                                        double x, double y) {
 
   /* store a copy of the vertex coordinates (we should get rid of this for
      SWIFT) */
@@ -64,9 +63,6 @@ inline static void delaunay_init_vertex(struct delaunay* restrict d, int v,
 
   /* initialise the search radii to the largest possible value */
   d->search_radii[v] = DBL_MAX;
-
-  /* set the particle pointer */
-  d->part_pointers[v] = part_pointer;
 }
 
 /**
@@ -84,7 +80,7 @@ inline static void delaunay_init_vertex(struct delaunay* restrict d, int v,
  * @return Index of the new vertex within the vertex array.
  */
 inline static int delaunay_new_vertex(struct delaunay* restrict d, double x,
-                                      double y, struct part* part_pointer) {
+                                      double y, int part_idx) {
 
   /* check the size of the vertex arrays against the allocated memory size */
   if (d->vertex_index == d->vertex_size) {
@@ -106,12 +102,9 @@ inline static int delaunay_new_vertex(struct delaunay* restrict d, double x,
         d->vertex_size * sizeof(int));
     d->search_radii = (double*)swift_realloc(
         "c.h.d.search_radii", d->search_radii, d->vertex_size * sizeof(double));
-    d->part_pointers =
-        (struct part**)swift_realloc("c.h.d.part_pointers", d->part_pointers,
-                                     d->vertex_size * sizeof(struct part*));
   }
 
-  delaunay_init_vertex(d, d->vertex_index, x, y, part_pointer);
+  delaunay_init_vertex(d, d->vertex_index, x, y);
 
   /* return the vertex index and then increase it by 1.
      After this operation, vertex_index will correspond to the size of the
@@ -346,14 +339,14 @@ inline static void delaunay_init(struct delaunay* restrict d,
 
   /* set up the large triangle and the 3 dummies */
   /* mind the orientation: counterclockwise w.r.t. the z-axis. */
-  int v0 = delaunay_new_vertex(d, box_anchor[0], box_anchor[1], NULL);
+  int v0 = delaunay_new_vertex(d, box_anchor[0], box_anchor[1], -1);
   delaunay_log("Creating vertex %i: %g %g", v0, box_anchor[0], box_anchor[1]);
   int v1 =
-      delaunay_new_vertex(d, box_anchor[0] + box_side, box_anchor[1], NULL);
+      delaunay_new_vertex(d, box_anchor[0] + box_side, box_anchor[1], -1);
   delaunay_log("Creating vertex %i: %g %g", v1, box_anchor[0] + box_side,
                box_anchor[1]);
   int v2 =
-      delaunay_new_vertex(d, box_anchor[0], box_anchor[1] + box_side, NULL);
+      delaunay_new_vertex(d, box_anchor[0], box_anchor[1] + box_side, -1);
   delaunay_log("Creating vertex %i: %g %g", v2, box_anchor[0],
                box_anchor[1] + box_side);
 
@@ -454,8 +447,6 @@ inline static void delaunay_malloc(struct delaunay* restrict d,
                                                 vertex_size * sizeof(int));
   d->search_radii =
       (double*)swift_malloc("c.h.d.search_radii", vertex_size * sizeof(double));
-  d->part_pointers = (struct part**)swift_malloc(
-      "c.h.d.part_pointers", vertex_size * sizeof(struct part*));
   d->vertex_size = vertex_size;
 
   /* allocate memory for the triangle array */
@@ -473,6 +464,8 @@ inline static void delaunay_malloc(struct delaunay* restrict d,
       (int*)swift_malloc("c.h.d.ngb_cell_sids", vertex_size * sizeof(int));
   d->ngb_cell_ptrs = (struct cell**)swift_malloc(
       "c.h.d.ngb_cell_ptrs", vertex_size * sizeof(struct cell*));
+  d->ngb_part_idx =
+      (int*)swift_malloc("c.h.d.ngb_part_idx", vertex_size * sizeof(int));
   d->ngb_size = vertex_size;
 
   /* initialise the structure used to perform exact geometrical tests */
@@ -497,11 +490,11 @@ inline static void delaunay_destroy(struct delaunay* restrict d) {
   swift_free("c.h.d.vertex_triangles", d->vertex_triangles);
   swift_free("c.h.d.vertex_triangle_index", d->vertex_triangle_index);
   swift_free("c.h.d.search_radii", d->search_radii);
-  swift_free("c.h.d.part_pointers", d->part_pointers);
   swift_free("c.h.d.triangles", d->triangles);
   swift_free("c.h.d.queue", d->queue);
   swift_free("c.h.d.ngb_cell_sids", d->ngb_cell_sids);
   swift_free("c.h.d.ngb_cell_ptrs", d->ngb_cell_ptrs);
+  swift_free("c.h.d.ngb_part_idx", d->ngb_part_idx);
   geometry_destroy(&d->geometry);
 
   d->vertices = NULL;
@@ -509,11 +502,11 @@ inline static void delaunay_destroy(struct delaunay* restrict d) {
   d->integer_vertices = NULL;
   d->vertex_triangles = NULL;
   d->search_radii = NULL;
-  d->part_pointers = NULL;
   d->triangles = NULL;
   d->queue = NULL;
   d->ngb_cell_sids = NULL;
   d->ngb_cell_ptrs = NULL;
+  d->ngb_part_idx = NULL;
 
   d->active = 0;
   d->anchor[0] = 0;
@@ -1228,9 +1221,8 @@ inline static int delaunay_add_vertex(struct delaunay* restrict d, int v,
 }
 
 inline static void delaunay_add_local_vertex(struct delaunay* restrict d, int v,
-                                             double x, double y, double z,
-                                             struct part* part_pointer) {
-  delaunay_init_vertex(d, v, x, y, part_pointer);
+                                             double x, double y, double z) {
+  delaunay_init_vertex(d, v, x, y);
   if (delaunay_add_vertex(d, v, x, y) != 0) {
     error("Local vertices cannot be added twice!");
   }
@@ -1239,7 +1231,7 @@ inline static void delaunay_add_local_vertex(struct delaunay* restrict d, int v,
 inline static void delaunay_add_new_vertex(struct delaunay* d, double x,
                                            double y, double z, int cell_sid,
                                            struct cell* c,
-                                           struct part* part_pointer) {
+                                           int part_idx) {
   if (d->active != 1) {
     error("Trying to add a vertex to an inactive Delaunay tessellation!");
   }
@@ -1249,7 +1241,7 @@ inline static void delaunay_add_new_vertex(struct delaunay* d, double x,
 #endif
 
   /* create the new vertex */
-  int v = delaunay_new_vertex(d, x, y, part_pointer);
+  int v = delaunay_new_vertex(d, x, y, part_idx);
   delaunay_log("Created new vertex with index %i", v);
 
   int flag = delaunay_add_vertex(d, v, x, y);
@@ -1265,10 +1257,13 @@ inline static void delaunay_add_new_vertex(struct delaunay* d, double x,
       d->ngb_cell_ptrs =
           (struct cell**)swift_realloc("c.h.d.ngb_cell_ptrs", d->ngb_cell_ptrs,
                                        d->ngb_size * sizeof(struct cell*));
+      d->ngb_part_idx = (int*)swift_realloc(
+          "c.h.d.ngb_part_idx", d->ngb_part_idx, d->ngb_size * sizeof(int));
     }
     delaunay_assert(d->ngb_index == v - d->ngb_offset);
     d->ngb_cell_sids[d->ngb_index] = cell_sid;
     d->ngb_cell_ptrs[d->ngb_index] = c;
+    d->ngb_part_idx[d->ngb_index] = part_idx;
     ++d->ngb_index;
   }
 }

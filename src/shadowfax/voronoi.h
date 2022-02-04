@@ -61,7 +61,7 @@ struct voronoi_cell_new {
 
 #ifdef VORONOI_STORE_GENERATORS
   /*! Position of the cell generator. */
-  struct part *generator;
+  double x[3];
 #endif
 
   /*! Number of faces of this cell. */
