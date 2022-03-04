@@ -134,6 +134,10 @@ enum task_subtypes {
   task_subtype_tend_bpart,
   task_subtype_xv,
   task_subtype_rho,
+#ifdef SHADOWFAX_NEW_SPH
+  task_subtype_face_info,
+  task_subtype_faces,
+#endif
   task_subtype_part_swallow,
   task_subtype_bpart_merger,
   task_subtype_gpart,

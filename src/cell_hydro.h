@@ -58,6 +58,10 @@ struct cell_hydro {
     struct delaunay deltess;
     /*! Voronoi tessellation. */
     struct voronoi vortess;
+#ifdef WITH_MPI
+    /*! Total number of voronoi faces stored in this cell */
+    int total_face_count;
+#endif
 #ifdef SHADOWFAX_HILBERT_ORDERING
     /*! Hilbert keys */
     unsigned long* hilbert_keys;

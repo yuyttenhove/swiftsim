@@ -24,6 +24,9 @@
 
 /* This object's header. */
 #include "cell.h"
+#ifdef SHADOWFAX_NEW_SPH
+#include "shadowfax/voronoi.h"
+#endif
 
 /**
  * @brief Pack the data of the given cell and all it's sub-cells.
@@ -65,6 +68,12 @@ int cell_pack(struct cell *restrict c, struct pcell *restrict pc,
   pc->sinks.count = c->sinks.count;
   pc->black_holes.count = c->black_holes.count;
   pc->maxdepth = c->maxdepth;
+#ifdef SHADOWFAX_NEW_SPH
+  for (int i = 0; i < 27; i++) {
+    if (i == 13) continue;
+    pc->hydro.voronoi_face_count[i] = c->hydro.vortess.pair_index[i];
+  }
+#endif
 
   /* Copy the Multipole related information */
   if (with_gravity) {
@@ -222,6 +231,12 @@ int cell_unpack(struct pcell *restrict pc, struct cell *restrict c,
   c->sinks.count = pc->sinks.count;
   c->black_holes.count = pc->black_holes.count;
   c->maxdepth = pc->maxdepth;
+#ifdef SHADOWFAX_NEW_SPH
+  for (int i = 0; i < 27; i++) {
+    if (i == 13) continue;
+    c->hydro.vortess.pair_index[i] = pc->hydro.voronoi_face_count[i];
+  }
+#endif
 
 #ifdef SWIFT_DEBUG_CHECKS
   c->cellID = pc->cellID;
@@ -792,3 +807,172 @@ int cell_unpack_sf_counts(struct cell *restrict c,
   return 0;
 #endif
 }
+
+#ifdef SHADOWFAX_NEW_SPH
+/**
+ * @brief Pack the counts of Voronoi faces of the given cell and all it's
+ * sub-cells.
+ *
+ * @param c The #cell.
+ * @param pcells (output) The Voronoi information we pack into
+ *
+ * @return The number of packed cells.
+ */
+int cell_pack_face_counts(struct cell *restrict c,
+                          struct pcell_voronoi *restrict pcells) {
+
+#ifdef WITH_MPI
+
+  int total = 0;
+  /* Pack this cell's data. */
+  for (int i = 0; i < 27; i++) {
+    if (i == 13) continue;
+    pcells[0].face_count[i] = c->hydro.vortess.pair_index[i];
+    total += c->hydro.vortess.pair_index[i];
+  }
+
+  /* Fill in the progeny, depth-first recursion. */
+  int count = 1;
+  for (int k = 0; k < 8; k++)
+    if (c->progeny[k] != NULL) {
+      count += cell_pack_face_counts(c->progeny[k], &pcells[count]);
+      total += c->progeny[k]->hydro.total_face_count;
+    }
+
+  c->hydro.total_face_count = total;
+  /* Return the number of packed values. */
+  return count;
+
+#else
+  error("SWIFT was not compiled with MPI support.");
+  return 0;
+#endif
+}
+
+/**
+ * @brief Unpack the counts of the Voronoi faces of a given cell and its
+ * sub-cells.
+ *
+ * @param c The #cell
+ * @param pcells The Voronoi information to unpack
+ *
+ * @return The number of cells created.
+ */
+int cell_unpack_face_counts(struct cell *restrict c,
+                            struct pcell_voronoi *restrict pcells) {
+
+#ifdef WITH_MPI
+
+  int total = 0;
+  /* Unpack this cell's data. */
+  for (int i = 0; i < 27; i++) {
+    if (i == 13) continue;
+    int n_faces = pcells[0].face_count[i];
+    c->hydro.vortess.pair_index[i] = n_faces;
+    total += n_faces;
+  }
+
+  /* Fill in the progeny, depth-first recursion. */
+  int count = 1;
+  for (int k = 0; k < 8; k++)
+    if (c->progeny[k] != NULL) {
+      count += cell_unpack_face_counts(c->progeny[k], &pcells[count]);
+      total += c->progeny[k]->hydro.total_face_count;
+    }
+
+  c->hydro.total_face_count = total;
+  /* Return the number of packed values. */
+  return count;
+
+#else
+  error("SWIFT was not compiled with MPI support.");
+  return 0;
+#endif
+}
+
+/**
+ * @brief Pack the counts of Voronoi faces of the given cell and all it's
+ * sub-cells.
+ *
+ * @param c The #cell.
+ * @param faces (output) A single contiguous array we pack the voronoi faces
+ * into
+ *
+ * @return The number of packed cells.
+ */
+int cell_pack_faces(struct cell *restrict c,
+                    struct voronoi_pair *restrict faces) {
+
+#ifdef WITH_MPI
+
+  /* Pack this cell's Voronoi faces. */
+  int count = 0;
+  if (c->split) {
+    for (int k = 0; k < 8; k++)
+      if (c->progeny[k] != NULL) {
+        count += cell_pack_faces(c->progeny[k], &faces[k]);
+      }
+  } else {
+    for (int i = 0; i < 27; i++) {
+      if (i == 13) continue;
+      int n_faces = c->hydro.vortess.pair_index[i];
+      if (n_faces == 0) continue;
+      memcpy(&faces[count], c->hydro.vortess.pairs[i], n_faces * sizeof(struct voronoi_pair));
+      count += n_faces;
+    }
+  }
+
+  return count;
+
+#else
+  error("SWIFT was not compiled with MPI support.");
+  return 0;
+#endif
+}
+
+/**
+ * @brief Unpack the counts of the Voronoi faces of a given cell and its
+ * sub-cells.
+ *
+ * @param c The #cell
+ * @param faces The Voronoi faces to unpack
+ *
+ * @return The number of cells created.
+ */
+int cell_unpack_faces(struct cell *restrict c,
+                      struct voronoi_pair *restrict faces) {
+
+#ifdef WITH_MPI
+
+  /* Unpack this cell's faces. */
+  int count = 0;
+  if (c->split){
+    for (int k = 0; k < 8; k++)
+      if (c->progeny[k] != NULL) {
+        count += cell_unpack_faces(c->progeny[k], &faces[k]);
+      }
+  } else {
+    for (int i = 0; i < 27; i++) {
+      if (i == 13) continue;
+      if (c->hydro.vortess.pairs[i] != NULL) {
+//        free(&c->hydro.vortess.pairs[i]);
+//        c->hydro.vortess.pairs[i] = NULL;
+      }
+
+      int n_faces = c->hydro.vortess.pair_index[i];
+      if (n_faces == 0) continue;
+      c->hydro.vortess.pairs[i] = (struct voronoi_pair *)malloc(n_faces * sizeof(struct voronoi_pair));
+      memcpy(c->hydro.vortess.pairs[i], &faces[count], n_faces * sizeof(struct voronoi_pair));
+      count += n_faces;
+    }
+  }
+
+  /* Return the number of packed values. */
+  return count;
+
+#else
+  error("SWIFT was not compiled with MPI support.");
+  return 0;
+#endif
+}
+#endif

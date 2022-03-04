@@ -120,6 +120,12 @@ struct pcell {
     /*! Integer time of the last drift of the #part in this cell */
     integertime_t ti_old_part;
 
+#ifdef SHADOWFAX_NEW_SPH
+    /*! Total number of Voronoi faces with given SID in this cell or its
+     * sub-cells. */
+    int voronoi_face_count[28];
+#endif
+
   } hydro;
 
   /*! Gravity variables */
@@ -287,6 +293,15 @@ struct pcell_sf {
 
   } grav;
 };
+
+#ifdef SHADOWFAX_NEW_SPH
+/**
+ * @brief Cell information to propagate the new counts Voronoi faces.
+ */
+struct pcell_voronoi {
+  int face_count[28];
+};
+#endif
 
 /**
  * @brief Bitmasks for the cell flags. Beware when adding flags that you don't
@@ -510,6 +525,16 @@ int cell_pack_multipoles(struct cell *c, struct gravity_tensors *m);
 int cell_unpack_multipoles(struct cell *c, struct gravity_tensors *m);
 int cell_pack_sf_counts(struct cell *c, struct pcell_sf *pcell);
 int cell_unpack_sf_counts(struct cell *c, struct pcell_sf *pcell);
+#ifdef SHADOWFAX_NEW_SPH
+int cell_pack_face_counts(struct cell *restrict c,
+                          struct pcell_voronoi *restrict pcells);
+int cell_unpack_face_counts(struct cell *restrict c,
+                            struct pcell_voronoi *pcell);
+int cell_pack_faces(struct cell *restrict c,
+                    struct voronoi_pair *restrict faces);
+int cell_unpack_faces(struct cell *restrict c,
+                      struct voronoi_pair *restrict faces);
+#endif
 int cell_get_tree_size(struct cell *c);
 int cell_link_parts(struct cell *c, struct part *parts);
 int cell_link_gparts(struct cell *c, struct gpart *gparts);

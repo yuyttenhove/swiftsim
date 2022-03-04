@@ -474,6 +474,61 @@ void engine_marktasks_mapper(void *map_data, int num_elements,
                                             with_timestep_limiter);
         }
       }
+#if defined(SHADOWFAX_NEW_SPH) && defined(WITH_MPI)
+      /* Additionally activate the gradient and force pair tasks between
+         * inactive local and active remote cells */
+      if ((ci_nodeID != nodeID && cj_nodeID == nodeID && ci_active_hydro && !cj_active_hydro)
+          || (ci_nodeID == nodeID && cj_nodeID != nodeID && !ci_active_hydro && cj_active_hydro)) {
+
+        if (t_subtype == task_subtype_force) {
+          scheduler_activate(s, t);
+
+//          {
+//#include <unistd.h>
+//            volatile int i = 0;
+//            while (i == 0) {
+//              sleep(1);
+//            }
+//          }
+
+          /* Set the correct sorting flags */
+          if (t_type == task_type_pair) {
+            /* Store some values. */
+            atomic_or(&ci->hydro.requires_sorts, 1 << t->flags);
+            atomic_or(&cj->hydro.requires_sorts, 1 << t->flags);
+            ci->hydro.dx_max_sort_old = ci->hydro.dx_max_sort;
+            cj->hydro.dx_max_sort_old = cj->hydro.dx_max_sort;
+
+            /* Activate the hydro drift tasks. */
+            if (ci_nodeID == nodeID) cell_activate_drift_part(ci, s);
+            if (cj_nodeID == nodeID) cell_activate_drift_part(cj, s);
+
+            /* And the limiter */
+            if (ci_nodeID == nodeID && with_timestep_limiter)
+              cell_activate_limiter(ci, s);
+            if (cj_nodeID == nodeID && with_timestep_limiter)
+              cell_activate_limiter(cj, s);
+
+            /* Check the sorts and activate them if needed. */
+            cell_activate_hydro_sorts(ci, t->flags, s);
+            cell_activate_hydro_sorts(cj, t->flags, s);
+
+          }
+
+          /* Store current values of dx_max and h_max. */
+          else if (t_type == task_type_sub_pair) {
+            cell_activate_subcell_hydro_tasks(t->ci, t->cj, s,
+                                              with_timestep_limiter);
+          }
+        }
+#ifdef EXTRA_HYDRO_LOOP
+        else if (t_subtype == task_subtype_gradient) {
+          scheduler_activate(s, t);
+          /* Drift already activated in force branch */
+        }
+#endif
+      }
+#endif
 
       /* Stars density */
       else if ((t_subtype == task_subtype_stars_density) &&
@@ -938,6 +993,170 @@ void engine_marktasks_mapper(void *map_data, int num_elements,
         if (cell_need_rebuild_for_hydro_pair(ci, cj)) *rebuild_space = 1;
 
 #ifdef WITH_MPI
+#ifdef SHADOWFAX_NEW_SPH
+        /* Activate the send/recv tasks if one of the cells is not local. */
+        if (ci_nodeID != nodeID) { /* cj local, ci remote */
+          /* Check that at least one of the cells is local */
+          assert(cj_nodeID == nodeID);
+
+          /* If at least one of the cells is active, we need to exchange data */
+          if (ci_active_hydro || cj_active_hydro) {
+            /* Main recieve tasks */
+            scheduler_activate_recv(s, ci->mpi.recv, task_subtype_xv);
+            /* If the remote cell is active, we need to recieve more stuff */
+            if (ci_active_hydro) {
+              scheduler_activate_recv(s, ci->mpi.recv, task_subtype_rho);
+#ifdef EXTRA_HYDRO_LOOP
+              scheduler_activate_recv(s, ci->mpi.recv, task_subtype_gradient);
+#endif
+            }
+
+            /* Main send tasks (send cj data to proxy on remote) */
+            struct link *l = scheduler_activate_send(
+                s, cj->mpi.send, task_subtype_xv, ci_nodeID);
+
+            /* Drift the cell which will be sent at the level at which it is
+               sent, i.e. drift the cell specified in the send task (l->t)
+               itself. */
+            cell_activate_drift_part(l->t->ci, s);
+            /* If the local cell is active, more stuff will be needed */
+            if (cj_active_hydro) {
+              scheduler_activate_send(s, cj->mpi.send, task_subtype_rho,
+                                      ci_nodeID);
+#ifdef EXTRA_HYDRO_LOOP
+              scheduler_activate_send(s, cj->mpi.send, task_subtype_gradient,
+                                      ci_nodeID);
+#endif
+            }
+
+            /* Voronoi face info and faces */
+            if (ci_active_hydro) {
+              scheduler_activate_recv(s, ci->mpi.recv, task_subtype_face_info);
+              scheduler_activate_recv(s, ci->mpi.recv, task_subtype_faces);
+            }
+            if (cj_active_hydro) {
+              scheduler_activate_send(s, cj->mpi.send, task_subtype_face_info, ci_nodeID);
+              scheduler_activate_send(s, cj->mpi.send, task_subtype_faces, ci_nodeID);
+            }
+
+            /* Limiter tasks */
+            if (ci_active_hydro && with_timestep_limiter) {
+              scheduler_activate_recv(s, ci->mpi.recv, task_subtype_limiter);
+              scheduler_activate_unpack(s, ci->mpi.unpack, task_subtype_limiter);
+            }
+            if (cj_active_hydro && with_timestep_limiter) {
+              scheduler_activate_send(s, cj->mpi.send, task_subtype_limiter,
+                                      ci_nodeID);
+              scheduler_activate_pack(s, cj->mpi.pack, task_subtype_limiter,
+                                      ci_nodeID);
+            }
+
+            /* ti_end tasks */
+            if (ci_active_hydro) {
+              scheduler_activate_recv(s, ci->mpi.recv, task_subtype_tend_part);
+            }
+            if (cj_active_hydro) {
+              scheduler_activate_send(s, cj->mpi.send, task_subtype_tend_part,
+                                      ci_nodeID);
+            }
+
+            /* Propagating new star counts? */
+            if (with_star_formation_sink) error("TODO");
+            if (with_star_formation && with_feedback) {
+              if (ci_active_hydro && ci->hydro.count > 0) {
+                scheduler_activate_recv(s, ci->mpi.recv, task_subtype_sf_counts);
+                scheduler_activate_recv(s, ci->mpi.recv, task_subtype_tend_spart);
+              }
+              if (cj_active_hydro && cj->hydro.count > 0) {
+                scheduler_activate_send(s, cj->mpi.send, task_subtype_sf_counts,
+                                        ci_nodeID);
+                scheduler_activate_send(s, cj->mpi.send, task_subtype_tend_spart,
+                                        ci_nodeID);
+              }
+            }
+          }
+        } else if (cj_nodeID != nodeID) { /* ci local, cj remote */
+          /* Check that at least one of the cells is local */
+          assert(ci_nodeID == nodeID);
+
+          /* If at least one of the cells is active, we need to exchange data */
+          if (ci_active_hydro || cj_active_hydro) {
+            /* Main recieve tasks */
+            scheduler_activate_recv(s, cj->mpi.recv, task_subtype_xv);
+            /* If the remote cell is active, we need to recieve more stuff */
+            if (cj_active_hydro) {
+              scheduler_activate_recv(s, cj->mpi.recv, task_subtype_rho);
+#ifdef EXTRA_HYDRO_LOOP
+              scheduler_activate_recv(s, cj->mpi.recv, task_subtype_gradient);
+#endif
+            }
+
+            /* Main send tasks (send ci data to proxy on remote) */
+            struct link *l = scheduler_activate_send(
+                s, ci->mpi.send, task_subtype_xv, cj_nodeID);
+
+            /* Drift the cell which will be sent at the level at which it is
+               sent, i.e. drift the cell specified in the send task (l->t)
+               itself. */
+            cell_activate_drift_part(l->t->ci, s);
+            /* If the local cell is active, more stuff will be needed */
+            if (ci_active_hydro) {
+              scheduler_activate_send(s, ci->mpi.send, task_subtype_rho,
+                                      cj_nodeID);
+#ifdef EXTRA_HYDRO_LOOP
+              scheduler_activate_send(s, ci->mpi.send, task_subtype_gradient,
+                                      cj_nodeID);
+#endif
+            }
+
+            /* Voronoi face info and faces */
+            if (cj_active_hydro) {
+              scheduler_activate_recv(s, cj->mpi.recv, task_subtype_face_info);
+              scheduler_activate_recv(s, cj->mpi.recv, task_subtype_faces);
+            }
+            if (ci_active_hydro) {
+              scheduler_activate_send(s, ci->mpi.send, task_subtype_face_info, cj_nodeID);
+              scheduler_activate_send(s, ci->mpi.send, task_subtype_faces, cj_nodeID);
+            }
+
+            /* Limiter tasks */
+            if (cj_active_hydro && with_timestep_limiter) {
+              scheduler_activate_recv(s, cj->mpi.recv, task_subtype_limiter);
+              scheduler_activate_unpack(s, cj->mpi.unpack, task_subtype_limiter);
+            }
+            if (ci_active_hydro && with_timestep_limiter) {
+              scheduler_activate_send(s, ci->mpi.send, task_subtype_limiter,
+                                      cj_nodeID);
+              scheduler_activate_pack(s, ci->mpi.pack, task_subtype_limiter,
+                                      cj_nodeID);
+            }
+
+            /* ti_end tasks */
+            if (cj_active_hydro) {
+              scheduler_activate_recv(s, cj->mpi.recv, task_subtype_tend_part);
+            }
+            if (ci_active_hydro) {
+              scheduler_activate_send(s, ci->mpi.send, task_subtype_tend_part,
+                                      cj_nodeID);
+            }
+
+            /* Propagating new star counts? */
+            if (with_star_formation_sink) error("TODO");
+            if (with_star_formation && with_feedback) {
+              if (cj_active_hydro && cj->hydro.count > 0) {
+                scheduler_activate_recv(s, cj->mpi.recv, task_subtype_sf_counts);
+                scheduler_activate_recv(s, cj->mpi.recv, task_subtype_tend_spart);
+              }
+              if (ci_active_hydro && ci->hydro.count > 0) {
+                scheduler_activate_send(s, ci->mpi.send, task_subtype_sf_counts,
+                                        cj_nodeID);
+                scheduler_activate_send(s, ci->mpi.send, task_subtype_tend_spart,
+                                        cj_nodeID);
+              }
+            }
+          }
+        }
+#else
         /* Activate the send/recv tasks. */
         if (ci_nodeID != nodeID) {
 
@@ -1092,6 +1311,7 @@ void engine_marktasks_mapper(void *map_data, int num_elements,
             }
           }
         }
+#endif
 #endif
       }
 

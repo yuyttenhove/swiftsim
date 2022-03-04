@@ -2086,6 +2086,27 @@ void scheduler_enqueue(struct scheduler *s, struct task *t) {
           type = part_mpi_type;
           buff = t->ci->hydro.parts;
 
+        } else if (t->subtype == task_subtype_face_info) {
+
+          /* First reset face counts */
+          for (int i = 0; i < 27; i++) {
+//            t->ci->hydro.vortess.pairs_index[i] = 0;
+          }
+          count = size = t->ci->mpi.pcell_size * sizeof(struct pcell_voronoi);
+          buff = t->buff = malloc(count);
+
+        } else if (t->subtype == task_subtype_faces) {
+
+          /* First free any previous voronoi faces */
+          for (int i = 0; i < 27; i++) {
+            if (t->ci->hydro.vortess.pairs[i] != NULL) {
+              free(t->ci->hydro.vortess.pairs[i]);
+              t->ci->hydro.vortess.pairs[i] = NULL;
+            }
+          }
+          size = count = t->ci->hydro.total_face_count * sizeof(struct voronoi_pair);
+          buff = t->buff = malloc(count);
+
         } else if (t->subtype == task_subtype_limiter) {
 
           size = count = t->ci->hydro.count * sizeof(timebin_t);
@@ -2212,6 +2233,20 @@ void scheduler_enqueue(struct scheduler *s, struct task *t) {
           size = count * sizeof(struct part);
           type = part_mpi_type;
           buff = t->ci->hydro.parts;
+
+        } else if (t->subtype == task_subtype_face_info) {
+
+          count = size = t->ci->mpi.pcell_size * sizeof(struct pcell_voronoi);
+          buff = t->buff = malloc(count);
+          cell_pack_face_counts(t->ci, (struct pcell_voronoi *)buff);
+
+        } else if (t->subtype == task_subtype_faces) {
+
+          int n_pairs = t->ci->hydro.total_face_count;
+          size = count = n_pairs * sizeof(struct voronoi_pair);
+          buff = t->buff = malloc(count);
+          int n_packed = cell_pack_faces(t->ci, (struct voronoi_pair *)buff);
+          assert(n_packed == n_pairs);
 
         } else if (t->subtype == task_subtype_limiter) {
 

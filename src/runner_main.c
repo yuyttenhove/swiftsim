@@ -523,6 +523,10 @@ void *runner_main(void *data) {
             free(t->buff);
           } else if (t->subtype == task_subtype_bpart_merger) {
             free(t->buff);
+          } else if (t->subtype == task_subtype_face_info) {
+            free(t->buff);
+          } else if (t->subtype == task_subtype_faces) {
+            free(t->buff);
           } else if (t->subtype == task_subtype_limiter) {
             free(t->buff);
           }
@@ -558,6 +562,12 @@ void *runner_main(void *data) {
           } else if (t->subtype == task_subtype_bpart_merger) {
             cell_unpack_bpart_swallow(ci,
                                       (struct black_holes_bpart_data *)t->buff);
+            free(t->buff);
+          } else if (t->subtype == task_subtype_face_info) {
+            cell_unpack_face_counts(ci, (struct pcell_voronoi *)t->buff);
+            free(t->buff);
+          } else if (t->subtype == task_subtype_faces) {
+            cell_unpack_faces(ci, (struct voronoi_pair *)t->buff);
             free(t->buff);
           } else if (t->subtype == task_subtype_limiter) {
             /* Nothing to do here. Unpacking done in a separate task */

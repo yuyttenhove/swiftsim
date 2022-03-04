@@ -145,9 +145,14 @@ void engine_addtasks_send_gravity(struct engine *e, struct cell *ci,
  */
 void engine_addtasks_send_hydro(
     struct engine *e, struct cell *ci, struct cell *cj, struct task *t_xv,
-    struct task *t_rho, struct task *t_gradient, struct task *t_ti,
-    struct task *t_prep1, struct task *t_limiter, struct task *t_pack_limiter,
-    const int with_feedback, const int with_limiter, const int with_sync) {
+    struct task *t_rho,
+#ifdef SHADOWFAX_NEW_SPH
+    struct task *t_face_info, struct task *t_faces,
+#endif
+    struct task *t_gradient,
+    struct task *t_ti, struct task *t_prep1, struct task *t_limiter,
+    struct task *t_pack_limiter, const int with_feedback,
+    const int with_limiter, const int with_sync) {
 
 #ifdef WITH_MPI
   struct link *l = NULL;
@@ -176,6 +181,29 @@ void engine_addtasks_send_hydro(
                                0, ci, cj);
       t_rho = scheduler_addtask(s, task_type_send, task_subtype_rho,
                                 ci->mpi.tag, 0, ci, cj);
+
+#ifdef SHADOWFAX_NEW_SPH
+      t_face_info = scheduler_addtask(s, task_type_send, task_subtype_face_info,
+                                      ci->mpi.tag, 0, ci, cj);
+
+      t_faces = scheduler_addtask(s, task_type_send, task_subtype_faces,
+                                  ci->mpi.tag, 0, ci, cj);
+
+      /* The send_face_info task depends on the cell's ghost task. */
+      scheduler_addunlock(s, ci->hydro.super->hydro.ghost_out, t_face_info);
+
+      /* The send_faces task depends on the send_face_info task */
+      scheduler_addunlock(s, t_face_info, t_faces);
+#ifdef EXTRA_HYDRO_LOOP
+      /* The send_faces task should unlock the super_hydro-cell's extra_ghost
+       * task. */
+      scheduler_addunlock(s, t_faces, ci->hydro.super->hydro.extra_ghost);
+#else
+      /* The send_faces task should unlock the super_hydro-cell's
+       * super_hydro-cell's kick task. */
+      scheduler_addunlock(s, t_faces, ci->hydro.super->hydro.end_force);
+#endif
+#endif
 
 #ifdef EXTRA_HYDRO_LOOP
       t_gradient = scheduler_addtask(s, task_type_send, task_subtype_gradient,
@@ -262,6 +290,10 @@ void engine_addtasks_send_hydro(
 #ifdef EXTRA_STAR_LOOPS
     if (with_feedback) engine_addlink(e, &ci->mpi.send, t_prep1);
 #endif
+#ifdef SHADOWFAX_NEW_SPH
+    engine_addlink(e, &ci->mpi.send, t_face_info);
+    engine_addlink(e, &ci->mpi.send, t_faces);
+#endif
   }
 
   /* Recurse? */
@@ -269,8 +301,12 @@ void engine_addtasks_send_hydro(
     for (int k = 0; k < 8; k++)
       if (ci->progeny[k] != NULL)
         engine_addtasks_send_hydro(
-            e, ci->progeny[k], cj, t_xv, t_rho, t_gradient, t_ti, t_prep1,
-            t_limiter, t_pack_limiter, with_feedback, with_limiter, with_sync);
+            e, ci->progeny[k], cj, t_xv, t_rho,
+#ifdef SHADOWFAX_NEW_SPH
+            t_face_info, t_faces,
+#endif
+            t_gradient, t_ti, t_prep1, t_limiter, t_pack_limiter, with_feedback,
+            with_limiter, with_sync);
 
 #else
   error("SWIFT was not compiled with MPI support.");
@@ -527,14 +563,15 @@ void engine_addtasks_send_black_holes(struct engine *e, struct cell *ci,
  * @param with_limiter Are we running with the time-step limiter?
  * @param with_sync Are we running with time-step synchronization?
  */
-void engine_addtasks_recv_hydro(struct engine *e, struct cell *c,
-                                struct task *t_xv, struct task *t_rho,
-                                struct task *t_gradient, struct task *t_ti,
-                                struct task *t_prep1, struct task *t_limiter,
-                                struct task *t_unpack_limiter,
-                                const int with_feedback,
-                                const int with_black_holes,
-                                const int with_limiter, const int with_sync) {
+void engine_addtasks_recv_hydro(
+    struct engine *e, struct cell *c, struct task *t_xv, struct task *t_rho,
+#ifdef SHADOWFAX_NEW_SPH
+    struct task *t_face_info, struct task *t_faces,
+#endif
+    struct task *t_gradient,
+    struct task *t_ti, struct task *t_prep1, struct task *t_limiter,
+    struct task *t_unpack_limiter, const int with_feedback,
+    const int with_black_holes, const int with_limiter, const int with_sync) {
 
 #ifdef WITH_MPI
   struct scheduler *s = &e->sched;
@@ -557,6 +594,17 @@ void engine_addtasks_recv_hydro(struct engine *e, struct cell *c,
                               0, c, NULL);
 
     scheduler_addunlock(s, t_xv, t_rho);
+
+#ifdef SHADOWFAX_NEW_SPH
+    t_face_info = scheduler_addtask(s, task_type_recv, task_subtype_face_info,
+                                    c->mpi.tag, 0, c, NULL);
+
+    t_faces = scheduler_addtask(s, task_type_recv, task_subtype_faces,
+                                c->mpi.tag, 0, c, NULL);
+
+    /* The recv_faces task depends on the recv_face_info task */
+    scheduler_addunlock(s, t_face_info, t_faces);
+#endif
 
 #ifdef EXTRA_HYDRO_LOOP
     t_gradient = scheduler_addtask(s, task_type_recv, task_subtype_gradient,
@@ -598,6 +646,11 @@ void engine_addtasks_recv_hydro(struct engine *e, struct cell *c,
     if (with_feedback) engine_addlink(e, &c->mpi.recv, t_prep1);
 #endif
 
+#ifdef SHADOWFAX_NEW_SPH
+    engine_addlink(e, &c->mpi.recv, t_face_info);
+    engine_addlink(e, &c->mpi.recv, t_faces);
+#endif
+
     /* Add dependencies. */
     if (c->hydro.sorts != NULL) {
       scheduler_addunlock(s, t_xv, c->hydro.sorts);
@@ -607,10 +660,16 @@ void engine_addtasks_recv_hydro(struct engine *e, struct cell *c,
     for (struct link *l = c->hydro.density; l != NULL; l = l->next) {
       scheduler_addunlock(s, t_xv, l->t);
       scheduler_addunlock(s, l->t, t_rho);
+#ifdef SHADOWFAX_NEW_SPH
+      scheduler_addunlock(s, l->t, t_face_info);
+#endif
     }
 #ifdef EXTRA_HYDRO_LOOP
     for (struct link *l = c->hydro.gradient; l != NULL; l = l->next) {
       scheduler_addunlock(s, t_rho, l->t);
+#ifdef SHADOWFAX_NEW_SPH
+      scheduler_addunlock(s, t_faces, l->t);
+#endif
       scheduler_addunlock(s, l->t, t_gradient);
     }
     for (struct link *l = c->hydro.force; l != NULL; l = l->next) {
@@ -620,6 +679,9 @@ void engine_addtasks_recv_hydro(struct engine *e, struct cell *c,
 #else
     for (struct link *l = c->hydro.force; l != NULL; l = l->next) {
       scheduler_addunlock(s, t_rho, l->t);
+#ifdef SHADOWFAX_NEW_SPH
+      scheduler_addunlock(s, t_faces, l->t);
+#endif
       scheduler_addunlock(s, l->t, t_ti);
     }
 #endif
@@ -665,10 +727,13 @@ void engine_addtasks_recv_hydro(struct engine *e, struct cell *c,
   if (c->split)
     for (int k = 0; k < 8; k++)
       if (c->progeny[k] != NULL)
-        engine_addtasks_recv_hydro(e, c->progeny[k], t_xv, t_rho, t_gradient,
-                                   t_ti, t_prep1, t_limiter, t_unpack_limiter,
-                                   with_feedback, with_black_holes,
-                                   with_limiter, with_sync);
+        engine_addtasks_recv_hydro(
+            e, c->progeny[k], t_xv, t_rho,
+#ifdef SHADOWFAX_NEW_SPH
+            t_face_info, t_faces,
+#endif
+            t_gradient, t_ti, t_prep1, t_limiter, t_unpack_limiter,
+            with_feedback, with_black_holes, with_limiter, with_sync);
 
 #else
   error("SWIFT was not compiled with MPI support.");
@@ -1643,23 +1708,37 @@ void engine_make_self_gravity_tasks_mapper(void *map_data, int num_elements,
   const double max_distance2 = max_distance * max_distance;
 
   /* Compute how many cells away we need to walk */
+  //  const double distance = 2.5 * cells[0].width[0] / theta_crit;
   const double distance = 2.5 * cells[0].width[0] / theta_crit;
   int delta = (int)(distance / cells[0].width[0]) + 1;
   int delta_m = delta;
   int delta_p = delta;
 
   /* Special case where every cell is in range of every other one */
-  if (periodic && delta >= cdim[0] / 2) {
-    if (cdim[0] % 2 == 0) {
-      delta_m = cdim[0] / 2;
-      delta_p = cdim[0] / 2 - 1;
-    } else {
-      delta_m = cdim[0] / 2;
-      delta_p = cdim[0] / 2;
+  //  if (delta >= cdim[0] / 2) {
+  //    if (cdim[0] % 2 == 0) {
+  //      delta_m = cdim[0] / 2;
+  //      delta_p = cdim[0] / 2 - 1;
+  //    } else {
+  //      delta_m = cdim[0] / 2;
+  //      delta_p = cdim[0] / 2;
+  //    }
+  //  }
+  if (periodic) {
+    if (delta >= cdim[0] / 2) {
+      if (cdim[0] % 2 == 0) {
+        delta_m = cdim[0] / 2;
+        delta_p = cdim[0] / 2 - 1;
+      } else {
+        delta_m = cdim[0] / 2;
+        delta_p = cdim[0] / 2;
+      }
     }
-  } else if (delta > cdim[0]) {
-    delta_m = cdim[0];
-    delta_p = cdim[0];
+  } else {
+    if (delta > cdim[0]) {
+      delta_m = cdim[0];
+      delta_p = cdim[0];
+    }
   }
 
   /* Loop through the elements, which are just byte offsets from NULL. */
@@ -3992,7 +4071,11 @@ void engine_addtasks_send_mapper(void *map_data, int num_elements,
      * connection. */
     if ((e->policy & engine_policy_hydro) && (type & proxy_cell_type_hydro))
       engine_addtasks_send_hydro(e, ci, cj, /*t_xv=*/NULL,
-                                 /*t_rho=*/NULL, /*t_gradient=*/NULL,
+                                 /*t_rho=*/NULL,
+#ifdef SHADOWFAX_NEW_SPH
+                                 /*t_face_info*/ NULL, /*t_faces*/ NULL,
+#endif
+                                 /*t_gradient=*/NULL,
                                  /*t_ti=*/NULL, /*t_prep1=*/NULL,
                                  /*t_limiter=*/NULL, /*t_pack_limiter=*/NULL,
                                  with_feedback, with_limiter, with_sync);
@@ -4047,6 +4130,9 @@ void engine_addtasks_recv_mapper(void *map_data, int num_elements,
      * connection. */
     if ((e->policy & engine_policy_hydro) && (type & proxy_cell_type_hydro))
       engine_addtasks_recv_hydro(e, ci, /*t_xv=*/NULL, /*t_rho=*/NULL,
+#ifdef SHADOWFAX_NEW_SPH
+                                 /*t_face_info*/ NULL, /*t_faces*/ NULL,
+#endif
                                  /*t_gradient=*/NULL, /*t_ti=*/NULL,
                                  /*t_prep1=*/NULL,
                                  /*t_limiter=*/NULL, /*t_unpack_limiter=*/NULL,

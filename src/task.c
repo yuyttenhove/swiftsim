@@ -138,6 +138,10 @@ const char *subtaskID_names[task_subtype_count] = {
     "tend_bpart",
     "xv",
     "rho",
+#ifdef SHADOWFAX_NEW_SPH
+    "face_info",
+    "faces",
+#endif
     "part_swallow",
     "bpart_merger",
     "gpart",
