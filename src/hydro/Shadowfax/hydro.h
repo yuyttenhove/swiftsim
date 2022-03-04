@@ -439,8 +439,6 @@ __attribute__((always_inline)) INLINE static void hydro_kick_extra(
     p->conserved.energy += p->conserved.flux.energy;
 #endif
 
-    /* reset the fluxes, so that they do not get used again in kick1 */
-    hydro_part_reset_hydro_fluxes(p);
     /* invalidate the particle time step. It is considered to be inactive until
        dt is set again in hydro_prepare_force() */
     p->conserved.flux.dt = -1.0f;
@@ -466,16 +464,21 @@ __attribute__((always_inline)) INLINE static void hydro_kick_extra(
 
   // MATTHIEU: Apply the entropy floor here.
 
+  if (p->conserved.mass / p->voronoi.volume < 1e-25) {
+    /* Do not update particles with exeedingly small densities */
+    p->conserved.mass = 0.;
+    p->conserved.momentum[0] = 0.;
+    p->conserved.momentum[1] = 0.;
+    p->conserved.momentum[2] = 0.;
+    p->conserved.energy = 0.;
+  }
+
 #ifdef SWIFT_DEBUG_CHECKS
-  /* Note that this check will only have effect if no GIZMO_UNPHYSICAL option
-     was selected. */
-#ifdef GIZMO_MFV_SPH
   if (p->conserved.mass < 0.) {
     error(
         "Negative mass after conserved variables update (mass: %g, dmass: %g)!",
-        p->conserved.mass, p->flux.mass);
+        p->conserved.mass, p->conserved.flux.mass);
   }
-#endif
 
   if (p->conserved.energy < 0.) {
     error(
@@ -485,6 +488,10 @@ __attribute__((always_inline)) INLINE static void hydro_kick_extra(
   }
 #endif
 
+  /* reset the fluxes, so that they do not get used again in kick1 */
+  hydro_part_reset_hydro_fluxes(p);
+
+  /* Update gpart and velocities*/
   hydro_gravity_update_gpart_mass(p);
   hydro_velocities_set(p, xp);
 }
