@@ -474,7 +474,7 @@ void engine_marktasks_mapper(void *map_data, int num_elements,
                                             with_timestep_limiter);
         }
       }
-#if defined(SHADOWFAX_NEW_SPH) && defined(WITH_MPI)
+#if (defined(SHADOWFAX_NEW_SPH) || defined(GIZMO_MFV_SPH)) && defined(WITH_MPI)
       /* Additionally activate the gradient and force pair tasks between
          * inactive local and active remote cells */
       if ((ci_nodeID != nodeID && cj_nodeID == nodeID && ci_active_hydro && !cj_active_hydro)
@@ -993,7 +993,7 @@ void engine_marktasks_mapper(void *map_data, int num_elements,
         if (cell_need_rebuild_for_hydro_pair(ci, cj)) *rebuild_space = 1;
 
 #ifdef WITH_MPI
-#ifdef SHADOWFAX_NEW_SPH
+#if defined(SHADOWFAX_NEW_SPH) || defined(GIZMO_MFV_SPH)
         /* Activate the send/recv tasks if one of the cells is not local. */
         if (ci_nodeID != nodeID) { /* cj local, ci remote */
           /* Check that at least one of the cells is local */
@@ -1028,7 +1028,7 @@ void engine_marktasks_mapper(void *map_data, int num_elements,
                                       ci_nodeID);
 #endif
             }
-
+#ifdef SHADOWFAX_NEW_SPH
             /* Voronoi face info and faces */
             if (ci_active_hydro) {
               scheduler_activate_recv(s, ci->mpi.recv, task_subtype_face_info);
@@ -1038,7 +1038,7 @@ void engine_marktasks_mapper(void *map_data, int num_elements,
               scheduler_activate_send(s, cj->mpi.send, task_subtype_face_info, ci_nodeID);
               scheduler_activate_send(s, cj->mpi.send, task_subtype_faces, ci_nodeID);
             }
-
+#endif
             /* Limiter tasks */
             if (ci_active_hydro && with_timestep_limiter) {
               scheduler_activate_recv(s, ci->mpi.recv, task_subtype_limiter);
@@ -1108,7 +1108,7 @@ void engine_marktasks_mapper(void *map_data, int num_elements,
                                       cj_nodeID);
 #endif
             }
-
+#ifdef SHADOWFAX_NEW_SPH
             /* Voronoi face info and faces */
             if (cj_active_hydro) {
               scheduler_activate_recv(s, cj->mpi.recv, task_subtype_face_info);
@@ -1118,7 +1118,7 @@ void engine_marktasks_mapper(void *map_data, int num_elements,
               scheduler_activate_send(s, ci->mpi.send, task_subtype_face_info, cj_nodeID);
               scheduler_activate_send(s, ci->mpi.send, task_subtype_faces, cj_nodeID);
             }
-
+#endif
             /* Limiter tasks */
             if (cj_active_hydro && with_timestep_limiter) {
               scheduler_activate_recv(s, cj->mpi.recv, task_subtype_limiter);

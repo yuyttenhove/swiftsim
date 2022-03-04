@@ -2085,7 +2085,7 @@ void scheduler_enqueue(struct scheduler *s, struct task *t) {
           size = count * sizeof(struct part);
           type = part_mpi_type;
           buff = t->ci->hydro.parts;
-
+#ifdef SHADOWFAX_NEW_SPH
         } else if (t->subtype == task_subtype_face_info) {
 
           /* First reset face counts */
@@ -2106,7 +2106,7 @@ void scheduler_enqueue(struct scheduler *s, struct task *t) {
           }
           size = count = t->ci->hydro.total_face_count * sizeof(struct voronoi_pair);
           buff = t->buff = malloc(count);
-
+#endif
         } else if (t->subtype == task_subtype_limiter) {
 
           size = count = t->ci->hydro.count * sizeof(timebin_t);
@@ -2233,7 +2233,7 @@ void scheduler_enqueue(struct scheduler *s, struct task *t) {
           size = count * sizeof(struct part);
           type = part_mpi_type;
           buff = t->ci->hydro.parts;
-
+#ifdef SHADOWFAX_NEW_SPH
         } else if (t->subtype == task_subtype_face_info) {
 
           count = size = t->ci->mpi.pcell_size * sizeof(struct pcell_voronoi);
@@ -2247,7 +2247,7 @@ void scheduler_enqueue(struct scheduler *s, struct task *t) {
           buff = t->buff = malloc(count);
           int n_packed = cell_pack_faces(t->ci, (struct voronoi_pair *)buff);
           assert(n_packed == n_pairs);
-
+#endif
         } else if (t->subtype == task_subtype_limiter) {
 
           size = count = t->ci->hydro.count * sizeof(timebin_t);

@@ -1653,7 +1653,7 @@ int cell_unskip_hydro_tasks(struct cell *c, struct scheduler *s) {
       if (cell_need_rebuild_for_hydro_pair(ci, cj)) rebuild = 1;
 
 #if defined(WITH_MPI)
-#ifdef SHADOWFAX_NEW_SPH
+#if defined(SHADOWFAX_NEW_SPH) || defined(GIZMO_MFV_SPH)
       /* Activate the send/recv tasks if one of the cells is not local. */
       if (ci_nodeID != nodeID) { /* cj local, ci remote */
         /* Check that at least one of the cells is local */
@@ -1686,7 +1686,7 @@ int cell_unskip_hydro_tasks(struct cell *c, struct scheduler *s) {
                                     ci_nodeID);
 #endif
           }
-
+#ifdef SHADOWFAX_NEW_SPH
           /* Voronoi face info and faces */
           if (ci_active) {
             scheduler_activate_recv(s, ci->mpi.recv, task_subtype_face_info);
@@ -1698,7 +1698,7 @@ int cell_unskip_hydro_tasks(struct cell *c, struct scheduler *s) {
             scheduler_activate_send(s, cj->mpi.send, task_subtype_faces,
                                     ci_nodeID);
           }
-
+#endif
           /* Limiter tasks */
           if (ci_active && with_timestep_limiter) {
             scheduler_activate_recv(s, ci->mpi.recv, task_subtype_limiter);
@@ -1765,7 +1765,7 @@ int cell_unskip_hydro_tasks(struct cell *c, struct scheduler *s) {
                                     cj_nodeID);
 #endif
           }
-
+#ifdef SHADOWFAX_NEW_SPH
           /* Voronoi face info and faces */
           if (cj_active) {
             scheduler_activate_recv(s, cj->mpi.recv, task_subtype_face_info);
@@ -1777,7 +1777,7 @@ int cell_unskip_hydro_tasks(struct cell *c, struct scheduler *s) {
             scheduler_activate_send(s, ci->mpi.send, task_subtype_faces,
                                     cj_nodeID);
           }
-
+#endif
           /* Limiter tasks */
           if (cj_active && with_timestep_limiter) {
             scheduler_activate_recv(s, cj->mpi.recv, task_subtype_limiter);
@@ -2000,7 +2000,7 @@ int cell_unskip_hydro_tasks(struct cell *c, struct scheduler *s) {
       cell_activate_star_formation_sink_tasks(c->top, s, with_feedback);
     }
   }
-#if defined(SHADOWFAX_NEW_SPH) && defined(WITH_MPI)
+#if (defined(SHADOWFAX_NEW_SPH) || defined(GIZMO_MFV_SPH)) && defined(WITH_MPI)
   /* Also activate gradient and flux exchange tasks between a local inactive
    * cell and non-local active cell */
   for (struct link *l = c->hydro.force; l != NULL; l = l->next) {
