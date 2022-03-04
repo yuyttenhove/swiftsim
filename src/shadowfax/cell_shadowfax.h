@@ -40,7 +40,8 @@ __attribute__((always_inline)) INLINE static void get_shift(
   }
 }
 
-__attribute__((always_inline)) INLINE static void cell_malloc_tesselations(struct cell *c) {
+__attribute__((always_inline)) INLINE static void cell_malloc_tesselations(
+    struct cell *c) {
 
   if (c->hydro.super == NULL) {
     error(
@@ -88,8 +89,8 @@ __attribute__((always_inline)) INLINE static void cell_malloc_tesselations(struc
   }
 }
 
-void cell_malloc_tessellations_recursive(
-    struct cell *c, const struct engine *restrict e);
+void cell_malloc_tessellations_recursive(struct cell *c,
+                                         const struct engine *restrict e);
 
 __attribute__((always_inline)) INLINE static void cell_destroy_tessellations(
     struct cell *c) {
@@ -155,145 +156,81 @@ cell_shadowfax_do_pair1_density(const struct engine *e, struct cell *ci,
   for (int k = 0; k < 3; k++) rshift += shift[k] * runner_shift[sid][k];
 
   /* Pick-out the sorted lists. */
-  const struct sort_entry *restrict sort_i = cell_get_hydro_sorts(ci, sid);
-  const struct sort_entry *restrict sort_j = cell_get_hydro_sorts(cj, sid);
+  int get_sorts_sid = sid > 13 ? 26 - sid : sid;
+  const struct sort_entry *restrict sort_i =
+      cell_get_hydro_sorts(ci, get_sorts_sid);
+  const struct sort_entry *restrict sort_j =
+      cell_get_hydro_sorts(cj, get_sorts_sid);
 
   /* Get some other useful values. */
-  //  const double hi_max = ci->hydro.h_max * kernel_gamma - rshift;
-  //  const double hj_max = cj->hydro.h_max * kernel_gamma;
   const double hi_max = ci->hydro.h_max - rshift;
-  const double hj_max = cj->hydro.h_max;
   const int count_i = ci->hydro.count;
   const int count_j = cj->hydro.count;
   struct part *restrict parts_i = ci->hydro.parts;
   struct part *restrict parts_j = cj->hydro.parts;
-  const double di_max = sort_i[count_i - 1].d - rshift;
   const double dj_min = sort_j[0].d;
   const float dx_max = (ci->hydro.dx_max_sort + cj->hydro.dx_max_sort);
 
   /* Is the cell active and local? */
-  if (cell_is_active_hydro(ci, e) && ci->nodeID == e->nodeID) {
+  assert((cell_is_active_hydro(ci, e) && ci->nodeID == e->nodeID));
 
-    /* Mark cell face as inside of simulation volume */
-    ci->hydro.deltess.sid_is_inside_face[26 - sid] |= 1;
+  /* Mark cell face as inside of simulation volume */
+  ci->hydro.deltess.sid_is_inside_face[26 - sid] |= 1;
 
-    /* Loop over the parts in ci. */
-    for (int pid = count_i - 1;
-         pid >= 0 && sort_i[pid].d + hi_max + dx_max > dj_min; pid--) {
+  /* Loop over the parts in ci. */
+  for (int pid = count_i - 1;
+       pid >= 0 && sort_i[pid].d + hi_max + dx_max > dj_min; pid--) {
 
-      /* Get a hold of the ith part in ci. */
-      struct part *restrict pi = &parts_i[sort_i[pid].i];
-      const float hi = pi->h;
+    /* Get a hold of the ith part in ci. */
+    struct part *restrict pi = &parts_i[sort_i[pid].i];
+    const float hi = pi->h;
 
-      /* Skip inactive particles */
-      if (!part_is_active(pi, e)) {
-        /* TODO what should we do here?
-         * For the moment, also build grid for inactive particles... */
-        // continue;
-      }
+    /* Skip inactive particles */
+    if (!part_is_active(pi, e)) {
+      /* TODO what should we do here?
+       * For the moment, also build grid for inactive particles... */
+      // continue;
+    }
 
-      /* Is there anything we need to interact with ? */
-      //      const double di = sort_i[pid].d + hi * kernel_gamma + dx_max -
-      //      rshift;
-      const double di = sort_i[pid].d + hi + dx_max - rshift;
-      if (di < dj_min) continue;
+    /* Is there anything we need to interact with ? */
+    //      const double di = sort_i[pid].d + hi * kernel_gamma + dx_max -
+    //      rshift;
+    const double di = sort_i[pid].d + hi + dx_max - rshift;
+    if (di < dj_min) continue;
 
-      /* Get some additional information about pi */
-      //      const float hig2 = hi * hi * kernel_gamma2;
-      const float hig2 = hi * hi;
-      const double pix = pi->x[0] - (cj->loc[0] + shift[0]);
-      const double piy = pi->x[1] - (cj->loc[1] + shift[1]);
-      const double piz = pi->x[2] - (cj->loc[2] + shift[2]);
-
-      /* Loop over the parts in cj. */
-      for (int pjd = 0; pjd < count_j && sort_j[pjd].d < di; pjd++) {
-
-        /* Recover pj */
-        int pj_idx = sort_j[pjd].i;
-        struct part *pj = &parts_j[pj_idx];
-
-        /* Skip inhibited particles. */
-        if (part_is_inhibited(pj, e)) continue;
-
-        const double pjx = pj->x[0] - cj->loc[0];
-        const double pjy = pj->x[1] - cj->loc[1];
-        const double pjz = pj->x[2] - cj->loc[2];
-
-        /* Compute the pairwise distance. */
-        double dx[3] = {pix - pjx, piy - pjy, piz - pjz};
-        const double r2 = dx[0] * dx[0] + dx[1] * dx[1] + dx[2] * dx[2];
-
-        /* Hit or miss? */
-        if (r2 < hig2) {
-          delaunay_add_new_vertex(&ci->hydro.deltess, pj->x[0] + shift[0],
-                                  pj->x[1] + shift[1], pj->x[2] + shift[2],
-                                  26 - sid, cj, pj_idx);
-        }
-      } /* loop over the parts in cj. */
-    }   /* loop over the parts in ci. */
-  }     /* Cell ci is active */
-
-  /* Is cj active and local? */
-  if ((cell_is_active_hydro(cj, e) && cj->nodeID == e->nodeID) || ci->nodeID != e->nodeID) {
-
-    /* Mark cell face as inside of simulation volume */
-    cj->hydro.deltess.sid_is_inside_face[sid] |= 1;
+    /* Get some additional information about pi */
+    //      const float hig2 = hi * hi * kernel_gamma2;
+    const float hig2 = hi * hi;
+    const double pix = pi->x[0] - (cj->loc[0] + shift[0]);
+    const double piy = pi->x[1] - (cj->loc[1] + shift[1]);
+    const double piz = pi->x[2] - (cj->loc[2] + shift[2]);
 
     /* Loop over the parts in cj. */
-    for (int pjd = 0; pjd < count_j && sort_j[pjd].d - hj_max - dx_max < di_max;
-         pjd++) {
+    for (int pjd = 0; pjd < count_j && sort_j[pjd].d < di; pjd++) {
 
-      /* Get a hold of the jth part in cj. */
-      struct part *pj = &parts_j[sort_j[pjd].i];
-      const float hj = pj->h;
+      /* Recover pj */
+      int pj_idx = sort_j[pjd].i;
+      struct part *pj = &parts_j[pj_idx];
 
-      /* Skip inactive particles */
-      if (!part_is_active(pj, e)) {
-        /* TODO what should we do here?
-         * For the moment, also build grid for inactive particles... */
-        // continue;
-      }
+      /* Skip inhibited particles. */
+      if (part_is_inhibited(pj, e)) continue;
 
-      /* Is there anything we need to interact with ? */
-      //      const double dj = sort_j[pjd].d - hj * kernel_gamma - dx_max +
-      //      rshift;
-      const double dj = sort_j[pjd].d - hj - dx_max + rshift;
-      if (dj - rshift > di_max) continue;
-
-      /* Get some additional information about pj */
-      //      const float hjg2 = hj * hj * kernel_gamma2;
-      const float hjg2 = hj * hj;
       const double pjx = pj->x[0] - cj->loc[0];
       const double pjy = pj->x[1] - cj->loc[1];
       const double pjz = pj->x[2] - cj->loc[2];
 
-      /* Loop over the parts in ci. */
-      for (int pid = count_i - 1; pid >= 0 && sort_i[pid].d > dj; pid--) {
+      /* Compute the pairwise distance. */
+      double dx[3] = {pix - pjx, piy - pjy, piz - pjz};
+      const double r2 = dx[0] * dx[0] + dx[1] * dx[1] + dx[2] * dx[2];
 
-        /* Recover pi */
-        int pi_idx = sort_i[pid].i;
-        struct part *pi = &parts_i[pi_idx];
-
-        /* Skip inhibited particles. */
-        if (part_is_inhibited(pi, e)) continue;
-
-        const double pix = pi->x[0] - (cj->loc[0] + shift[0]);
-        const double piy = pi->x[1] - (cj->loc[1] + shift[1]);
-        const double piz = pi->x[2] - (cj->loc[2] + shift[2]);
-
-        /* Compute the pairwise distance. */
-        double dx[3] = {pjx - pix, pjy - piy, pjz - piz};
-        const double r2 = dx[0] * dx[0] + dx[1] * dx[1] + dx[2] * dx[2];
-
-        /* Hit or miss? */
-        if (r2 < hjg2) {
-          delaunay_add_new_vertex(&cj->hydro.deltess, pi->x[0] - shift[0],
-                                  pi->x[1] - shift[1], pi->x[2] - shift[2], sid,
-                                  ci, pi_idx);
-        }
-      } /* loop over the parts in ci. */
-    }   /* loop over the parts in cj. */
-  }     /* Cell cj is active */
+      /* Hit or miss? */
+      if (r2 < hig2) {
+        delaunay_add_new_vertex(&ci->hydro.deltess, pj->x[0] + shift[0],
+                                pj->x[1] + shift[1], pj->x[2] + shift[2],
+                                26 - sid, cj, pj_idx, cj->nodeID);
+      }
+    } /* loop over the parts in cj. */
+  }   /* loop over the parts in ci. */
 }
 
 void cell_shadowfax_do_pair1_density_recursive(const struct engine *e,
@@ -316,75 +253,54 @@ cell_shadowfax_do_pair1_gradient(const struct engine *e,
                                  const double *shift) {
   if (ci == cj) error("Interacting cell with itself!");
 
-  /* anything to do here? */
   int ci_active = cell_is_active_hydro(ci, e);
   int cj_active = cell_is_active_hydro(cj, e);
-  if (!(ci_active || cj_active)) return;
+  int ci_nodeID = ci->nodeID;
+  int cj_nodeID = cj->nodeID;
+  int nodeID = e->nodeID;
 
-  if (ci_active && cj_active) {
-    struct voronoi *vortess = &ci->hydro.vortess;
-    double inverse_shift[3] = {-shift[0], -shift[1], -shift[2]};
+  assert(ci_active);
 
-    /* loop over voronoi faces between ci and cj */
-    for (int i = 0; i < vortess->pair_index[26 - sid]; ++i) {
-      struct voronoi_pair *pair = &vortess->pairs[26 - sid][i];
-      struct part *part_left = &ci->hydro.parts[pair->left_idx];
-      /* check if right particle in cj */
-      if (pair->right_cell != cj) {
+  struct voronoi *vortess = &ci->hydro.vortess;
+  double inverse_shift[3] = {-shift[0], -shift[1], -shift[2]};
+
+  /* loop over voronoi faces between ci and cj */
+  for (int i = 0; i < vortess->pair_index[26 - sid]; ++i) {
+    struct voronoi_pair *pair = &vortess->pairs[26 - sid][i];
+    struct part *part_left = &ci->hydro.parts[pair->left_idx];
+    /* check if right particle in cj */
+    if (ci_nodeID != nodeID) {
+      /* If the voronoi faces are from a remote node treat only those faces
+       * between a cell on the current node. This is correct since only the
+       * left cell is recursively refined during the pair interactions, so
+       * there is only one possible right cell for a given sid over different
+       * nodes. */
+      if (pair->right_nodeID != nodeID) {
         continue;
       }
-      struct part *part_right = &cj->hydro.parts[pair->right_idx];
-      if (part_is_active(part_left, e) && part_is_active(part_right, e)) {
-        hydro_shadowfax_gradients_collect(part_left, part_right, pair->midpoint,
-                                          pair->surface_area, shift, 1);
-      } else if (part_is_active(part_left, e)) {
-        hydro_shadowfax_gradients_collect(part_left, part_right, pair->midpoint,
-                                          pair->surface_area, shift, 0);
-      } else if (part_is_active(part_right, e)) {
-        double midpoint[3] = {pair->midpoint[0] + inverse_shift[0],
-                              pair->midpoint[1] + inverse_shift[1],
-                              pair->midpoint[2] + inverse_shift[2]};
-        hydro_shadowfax_gradients_collect(part_right, part_left, midpoint,
-                                          pair->surface_area, inverse_shift, 0);
-      }
-    } /* loop over voronoi faces between ci and cj */
-  } else if (ci_active) {
-    struct voronoi *vortess = &ci->hydro.vortess;
-
-    /* loop over voronoi faces between ci and cj */
-    for (int i = 0; i < vortess->pair_index[26 - sid]; ++i) {
-      struct voronoi_pair *pair = &vortess->pairs[26 - sid][i];
-      struct part *part_left = &ci->hydro.parts[pair->left_idx];
-      /* check if right particle in cj */
-      if (pair->right_cell != cj) {
-        continue;
-      }
-      struct part *part_right = &cj->hydro.parts[pair->right_idx];
-      if (part_is_active(part_left, e)) {
-        hydro_shadowfax_gradients_collect(part_left, part_right, pair->midpoint,
-                                          pair->surface_area, shift, 0);
-      }
+    } else if (pair->right_cell != cj) {
+      /* If ci is local only treat faces with correct right cell. For a local
+       * cell, recursively refining the self interactions gives rise to
+       * multiple possible right cells for a given sid. */
+      continue;
     }
-  } else {
-    assert(cj_active);
-    struct voronoi *vortess = &cj->hydro.vortess;
-    double inverse_shift[3] = {-shift[0], -shift[1], -shift[2]};
-
-    /* loop over voronoi faces between cj and ci */
-    for (int i = 0; i < vortess->pair_index[sid]; ++i) {
-      struct voronoi_pair *pair = &vortess->pairs[sid][i];
-      struct part *part_left = &cj->hydro.parts[pair->left_idx];   /* in cj */
-      /* check if right particle in ci */
-      if (pair->right_cell != ci) {
-        continue;
-      }
-      struct part *part_right = &ci->hydro.parts[pair->right_idx]; /* in ci */
-      if (part_is_active(part_left, e)) {
-        hydro_shadowfax_gradients_collect(part_left, part_right, pair->midpoint,
-                                          pair->surface_area, inverse_shift, 0);
-      }
+    struct part *part_right = &cj->hydro.parts[pair->right_idx];
+    int left_active = part_is_active(part_left, e);
+    int right_active = cj_active && part_is_active(part_right, e);
+    if (left_active && right_active) {
+      hydro_shadowfax_gradients_collect(part_left, part_right, pair->midpoint,
+                                    pair->surface_area, shift, 1);
+    } else if (left_active && ci_nodeID == nodeID) {
+      hydro_shadowfax_gradients_collect(part_left, part_right, pair->midpoint,
+                                    pair->surface_area, shift, 0);
+    } else if (right_active && cj_nodeID == nodeID) {
+      double midpoint[3] = {pair->midpoint[0] + inverse_shift[0],
+                            pair->midpoint[1] + inverse_shift[1],
+                            pair->midpoint[2] + inverse_shift[2]};
+      hydro_shadowfax_gradients_collect(part_right, part_left, midpoint,
+                                    pair->surface_area, inverse_shift, 0);
     }
-  }
+  } /* loop over voronoi faces between ci and cj */
 }
 
 void cell_shadowfax_do_pair1_gradient_recursive(const struct engine *e,
@@ -413,72 +329,61 @@ __attribute__((always_inline)) INLINE static void cell_shadowfax_do_pair2_force(
   /* anything to do here? */
   int ci_active = cell_is_active_hydro(ci, e);
   int cj_active = cell_is_active_hydro(cj, e);
-  if (!(ci_active || cj_active)) return;
+  int ci_nodeID = ci->nodeID;
+  int cj_nodeID = cj->nodeID;
+  int nodeID = e->nodeID;
 
-  if (ci_active && cj_active) {
-    struct voronoi *vortess = &ci->hydro.vortess;
-    double inverse_shift[3] = {-shift[0], -shift[1], -shift[2]};
-
-    /* loop over voronoi faces between ci and cj */
-    for (int i = 0; i < vortess->pair_index[26 - sid]; ++i) {
-      struct voronoi_pair *pair = &vortess->pairs[26 - sid][i];
-      struct part *part_left = &ci->hydro.parts[pair->left_idx];
-      /* check if right particle in cj */
-      if (pair->right_cell != cj) {
-        continue;
-      }
-      struct part *part_right = &cj->hydro.parts[pair->right_idx];
-      if (part_is_active(part_left, e) && part_is_active(part_right, e)) {
-        hydro_shadowfax_flux_exchange(part_left, part_right, pair->midpoint,
-                                      pair->surface_area, shift, 1);
-      } else if (part_is_active(part_left, e)) {
-        hydro_shadowfax_flux_exchange(part_left, part_right, pair->midpoint,
-                                      pair->surface_area, shift, 0);
-      } else if (part_is_active(part_right, e)) {
-        double midpoint[3] = {pair->midpoint[0] + inverse_shift[0],
-                              pair->midpoint[1] + inverse_shift[1],
-                              pair->midpoint[2] + inverse_shift[2]};
-        hydro_shadowfax_flux_exchange(part_right, part_left, midpoint,
-                                      pair->surface_area, inverse_shift, 0);
-      }
-    } /* loop over voronoi faces between ci and cj */
-  } else if (ci_active) {
-    struct voronoi *vortess = &ci->hydro.vortess;
-
-    /* loop over voronoi faces between ci and cj */
-    for (int i = 0; i < vortess->pair_index[26 - sid]; ++i) {
-      struct voronoi_pair *pair = &vortess->pairs[26 - sid][i];
-      struct part *part_left = &ci->hydro.parts[pair->left_idx];
-      /* check if right particle in cj */
-      if (pair->right_cell != cj) {
-        continue;
-      }
-      struct part *part_right = &cj->hydro.parts[pair->right_idx];
-      if (part_is_active(part_left, e)) {
-        hydro_shadowfax_flux_exchange(part_left, part_right, pair->midpoint,
-                                      pair->surface_area, shift, 0);
-      }
-    }
-  } else {
-    assert(cj_active);
-    struct voronoi *vortess = &cj->hydro.vortess;
-    double inverse_shift[3] = {-shift[0], -shift[1], -shift[2]};
-
-    /* loop over voronoi faces between cj and ci */
-    for (int i = 0; i < vortess->pair_index[sid]; ++i) {
-      struct voronoi_pair *pair = &vortess->pairs[sid][i];
-      struct part *part_left = &cj->hydro.parts[pair->left_idx];   /* in cj */
-      /* check if right particle in ci */
-      if (pair->right_cell != ci) {
-        continue;
-      }
-      struct part *part_right = &ci->hydro.parts[pair->right_idx]; /* in ci */
-      if (part_is_active(part_left, e)) {
-        hydro_shadowfax_flux_exchange(part_left, part_right, pair->midpoint,
-                                      pair->surface_area, inverse_shift, 0);
-      }
-    }
+  if ((ci_nodeID != nodeID || cj_nodeID != nodeID)) {
+    //    volatile int i = 0;
+    //#include <unistd.h>
+    //    while (i == 0) {
+    //      sleep(1);
+    //    }
+    ci->nodeID = ci->nodeID;
   }
+
+  assert(ci_active);
+
+  struct voronoi *vortess = &ci->hydro.vortess;
+  double inverse_shift[3] = {-shift[0], -shift[1], -shift[2]};
+
+  /* loop over voronoi faces between ci and cj */
+  for (int i = 0; i < vortess->pair_index[26 - sid]; ++i) {
+    struct voronoi_pair *pair = &vortess->pairs[26 - sid][i];
+    struct part *part_left = &ci->hydro.parts[pair->left_idx];
+    /* check if right particle in cj */
+    if (ci_nodeID != nodeID) {
+      /* If the voronoi faces are from a remote node treat only those faces
+       * between a cell on the current node. This is correct since only the
+       * left cell is recursively refined during the pair interactions, so
+       * there is only one possible right cell for a given sid over different
+       * nodes. */
+      if (pair->right_nodeID != nodeID) {
+        continue;
+      }
+    } else if (pair->right_cell != cj) {
+      /* If ci is local only treat faces with correct right cell. For a local
+       * cell, recursively refining the self interactions gives rise to
+       * multiple possible right cells for a given sid. */
+      continue;
+    }
+    struct part *part_right = &cj->hydro.parts[pair->right_idx];
+    int left_active = part_is_active(part_left, e);
+    int right_active = cj_active && part_is_active(part_right, e);
+    if (left_active && right_active) {
+      hydro_shadowfax_flux_exchange(part_left, part_right, pair->midpoint,
+                                    pair->surface_area, shift, 1);
+    } else if (left_active && ci_nodeID == nodeID) {
+      hydro_shadowfax_flux_exchange(part_left, part_right, pair->midpoint,
+                                    pair->surface_area, shift, 0);
+    } else if (right_active && cj_nodeID == nodeID) {
+      double midpoint[3] = {pair->midpoint[0] + inverse_shift[0],
+                            pair->midpoint[1] + inverse_shift[1],
+                            pair->midpoint[2] + inverse_shift[2]};
+      hydro_shadowfax_flux_exchange(part_right, part_left, midpoint,
+                                    pair->surface_area, inverse_shift, 0);
+    }
+  } /* loop over voronoi faces between ci and cj */
 }
 
 void cell_shadowfax_do_pair2_force_recursive(const struct engine *e,
@@ -505,6 +410,8 @@ cell_shadowfax_do_pair_subset_density(const struct engine *e,
   /* Pick-out the sorted lists. */
   const struct sort_entry *sort_j = cell_get_hydro_sorts(cj, sid);
   const float dxj = cj->hydro.dx_max_sort;
+
+  if (!cell_is_active_hydro(ci, e) && cj->nodeID == e->nodeID) return;
 
   /* Parts are on the left? */
   if (!flipped) {
@@ -550,7 +457,7 @@ cell_shadowfax_do_pair_subset_density(const struct engine *e,
         if (r2 < hig2) {
           delaunay_add_new_vertex(&ci->hydro.deltess, pj->x[0] + shift[0],
                                   pj->x[1] + shift[1], pj->x[2] + shift[2],
-                                  26 - sid, cj, pj_idx);
+                                  26 - sid, cj, pj_idx, cj->nodeID);
         }
       } /* loop over the parts in cj. */
     }   /* loop over the parts in ci. */
@@ -600,7 +507,7 @@ cell_shadowfax_do_pair_subset_density(const struct engine *e,
         if (r2 < hig2) {
           delaunay_add_new_vertex(&ci->hydro.deltess, pj->x[0] + shift[0],
                                   pj->x[1] + shift[1], pj->x[2] + shift[2], sid,
-                                  cj, pj_idx);
+                                  cj, pj_idx, cj->nodeID);
         }
       } /* loop over the parts in cj. */
     }   /* loop over the parts in ci. */
@@ -641,7 +548,8 @@ cell_shadowfax_do_self1_density(const struct engine *e,
 #endif
     /* Get a pointer to the idx-th particle. */
     struct part *restrict p = &parts[idx];
-    delaunay_add_local_vertex(&c->hydro.deltess, idx, p->x[0], p->x[1], p->x[2]);
+    delaunay_add_local_vertex(&c->hydro.deltess, idx, p->x[0], p->x[1],
+                              p->x[2]);
   }
 }
 
@@ -836,7 +744,8 @@ cell_shadowfax_add_rbc_particles(struct cell *restrict c,
           /* Add vertex to deltess with sid 27 signaling that it is a boundary
            * particle. */
           delaunay_add_new_vertex(&c->hydro.deltess, reflected_x[0],
-                                  reflected_x[1], reflected_x[2], 27, c, p_idx);
+                                  reflected_x[1], reflected_x[2], 27, c, p_idx,
+                                  c->nodeID);
         }
       } else {
         for (int pid = count - 1;
@@ -853,7 +762,8 @@ cell_shadowfax_add_rbc_particles(struct cell *restrict c,
           /* Add vertex to deltess with sid 27 signaling that it is a boundary
            * particle. */
           delaunay_add_new_vertex(&c->hydro.deltess, reflected_x[0],
-                                  reflected_x[1], reflected_x[2], 27, c, p_idx);
+                                  reflected_x[1], reflected_x[2], 27, c, p_idx,
+                                  c->nodeID);
         }
       }
     }
@@ -903,7 +813,7 @@ __attribute__((always_inline)) INLINE static void cell_shadowfax_do_pair_naive(
     struct part *restrict pi = &parts_i[pid];
     delaunay_add_new_vertex(&cj->hydro.deltess, pi->x[0] - shift[0],
                             pi->x[1] - shift[1], pi->x[2] - shift[2], sid, ci,
-                            pid);
+                            pid, ci->nodeID);
   }
 
   /* Loop over the parts in cj. */
@@ -913,7 +823,7 @@ __attribute__((always_inline)) INLINE static void cell_shadowfax_do_pair_naive(
     struct part *restrict pj = &parts_j[pjd];
     delaunay_add_new_vertex(&ci->hydro.deltess, pj->x[0] + shift[0],
                             pj->x[1] + shift[1], pj->x[2] + shift[2], 26 - sid,
-                            cj, pjd);
+                            cj, pjd, cj->nodeID);
   }
 }
 

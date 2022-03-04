@@ -155,6 +155,8 @@ struct delaunay {
   /*! @brief Index of neighbouring particles in their respective cells. */
   int* ngb_part_idx;
 
+  int* ngb_nodeID;
+
   /*! @brief Current used size of the neighbouring vertex bookkeeping arrays
    *  (and next valid index in this array). */
   int ngb_index;

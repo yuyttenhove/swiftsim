@@ -466,6 +466,8 @@ inline static void delaunay_malloc(struct delaunay* restrict d,
       "c.h.d.ngb_cell_ptrs", vertex_size * sizeof(struct cell*));
   d->ngb_part_idx =
       (int*)swift_malloc("c.h.d.ngb_part_idx", vertex_size * sizeof(int));
+  d->ngb_nodeID =
+      (int*)swift_malloc("c.h.d.ngb_nodeID", vertex_size * sizeof(int));
   d->ngb_size = vertex_size;
 
   /* initialise the structure used to perform exact geometrical tests */
@@ -495,6 +497,7 @@ inline static void delaunay_destroy(struct delaunay* restrict d) {
   swift_free("c.h.d.ngb_cell_sids", d->ngb_cell_sids);
   swift_free("c.h.d.ngb_cell_ptrs", d->ngb_cell_ptrs);
   swift_free("c.h.d.ngb_part_idx", d->ngb_part_idx);
+  swift_free("c.h.d.ngb_nodeID", d->ngb_nodeID);
   geometry_destroy(&d->geometry);
 
   d->vertices = NULL;
@@ -507,6 +510,7 @@ inline static void delaunay_destroy(struct delaunay* restrict d) {
   d->ngb_cell_sids = NULL;
   d->ngb_cell_ptrs = NULL;
   d->ngb_part_idx = NULL;
+  d->ngb_nodeID = NULL;
 
   d->active = 0;
   d->anchor[0] = 0;
@@ -1230,14 +1234,14 @@ inline static void delaunay_add_local_vertex(struct delaunay* restrict d, int v,
 
 inline static void delaunay_add_new_vertex(struct delaunay* d, double x,
                                            double y, double z, int cell_sid,
-                                           struct cell* c,
-                                           int part_idx) {
+                                           struct cell* c, int part_idx,
+                                           int nodeID) {
   if (d->active != 1) {
     error("Trying to add a vertex to an inactive Delaunay tessellation!");
   }
 
 #ifdef SWIFT_DEBUG_CHECKS
-  assert(!c->split);
+//  assert(!c->split);
 #endif
 
   /* create the new vertex */
@@ -1259,11 +1263,14 @@ inline static void delaunay_add_new_vertex(struct delaunay* d, double x,
                                        d->ngb_size * sizeof(struct cell*));
       d->ngb_part_idx = (int*)swift_realloc(
           "c.h.d.ngb_part_idx", d->ngb_part_idx, d->ngb_size * sizeof(int));
+      d->ngb_nodeID = (int*)swift_realloc(
+          "c.h.d.ngb_nodeID", d->ngb_nodeID, d->ngb_size * sizeof(int));
     }
     delaunay_assert(d->ngb_index == v - d->ngb_offset);
     d->ngb_cell_sids[d->ngb_index] = cell_sid;
     d->ngb_cell_ptrs[d->ngb_index] = c;
     d->ngb_part_idx[d->ngb_index] = part_idx;
+    d->ngb_nodeID[d->ngb_index] = nodeID;
     ++d->ngb_index;
   }
 }

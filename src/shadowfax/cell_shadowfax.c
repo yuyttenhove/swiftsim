@@ -7,6 +7,7 @@ void cell_malloc_tessellations_recursive(
   /* anything to do here? */
   if (c->hydro.count == 0) return;
   if (!cell_is_active_hydro(c, e)) return;
+  if (c->nodeID != e->nodeID) return;
 
   /* recurse? */
   if (c->split) {
@@ -30,7 +31,11 @@ void cell_shadowfax_do_pair1_density_recursive(const struct engine *e,
                                                struct cell *restrict ci,
                                                struct cell *restrict cj,
                                                int sid, const double *shift) {
-  if (!cell_is_active_hydro(ci, e) && !cell_is_active_hydro(cj, e)) return;
+  /* Is ci local? */
+  if (ci->nodeID != e->nodeID) return;
+
+  /* Is local cell active? */
+  if (!cell_is_active_hydro(ci, e)) return;
 
   int k;
   /* recurse? */
@@ -38,13 +43,6 @@ void cell_shadowfax_do_pair1_density_recursive(const struct engine *e,
     for (k = 0; k < 8; k++) {
       if (ci->progeny[k] != NULL) {
         cell_shadowfax_do_pair1_density_recursive(e, ci->progeny[k], cj, sid,
-                                                  shift);
-      }
-    }
-  } else if (cj->split) {
-    for (k = 0; k < 8; k++) {
-      if (cj->progeny[k] != NULL) {
-        cell_shadowfax_do_pair1_density_recursive(e, ci, cj->progeny[k], sid,
                                                   shift);
       }
     }
@@ -62,7 +60,7 @@ void cell_shadowfax_do_pair1_gradient_recursive(const struct engine *e,
       || (ci->nodeID != e->nodeID && cj->nodeID != e->nodeID)) return;
 
   /* Do we need to flip ci and cj? */
-  if (ci->nodeID != e->nodeID) {
+  if (!cell_is_active_hydro(ci, e)) {
     const double new_shift[3] = {-shift[0], -shift[1], -shift[2]};
     cell_shadowfax_do_pair1_gradient_recursive(e, cj, ci, 26 - sid, new_shift);
     return;
@@ -74,13 +72,6 @@ void cell_shadowfax_do_pair1_gradient_recursive(const struct engine *e,
     for (k = 0; k < 8; k++) {
       if (ci->progeny[k] != NULL) {
         cell_shadowfax_do_pair1_gradient_recursive(e, ci->progeny[k], cj, sid,
-                                                   shift);
-      }
-    }
-  } else if (cj->split) {
-    for (k = 0; k < 8; k++) {
-      if (cj->progeny[k] != NULL) {
-        cell_shadowfax_do_pair1_gradient_recursive(e, ci, cj->progeny[k], sid,
                                                    shift);
       }
     }
@@ -98,25 +89,28 @@ void cell_shadowfax_do_pair2_force_recursive(const struct engine *e,
       || (ci->nodeID != e->nodeID && cj->nodeID != e->nodeID)) return;
 
   /* Do we need to flip ci and cj? */
-  if (ci->nodeID != e->nodeID) {
+  if (!cell_is_active_hydro(ci, e)) {
     const double new_shift[3] = {-shift[0], -shift[1], -shift[2]};
     cell_shadowfax_do_pair2_force_recursive(e, cj, ci, 26 - sid, new_shift);
     return;
   }
 
   int k;
+
+  if (ci->nodeID != e->nodeID && ci->split) {
+//#include <unistd.h>
+//    volatile int i = 0;
+    //    sleep(1);
+//    while (i == 0) {
+//      sleep(1);
+//    }
+    ci->nodeID = ci->nodeID;
+  }
   /* recurse? */
   if (ci->split) {
     for (k = 0; k < 8; k++) {
       if (ci->progeny[k] != NULL) {
         cell_shadowfax_do_pair2_force_recursive(e, ci->progeny[k], cj, sid,
-                                                shift);
-      }
-    }
-  } else if (cj->split) {
-    for (k = 0; k < 8; k++) {
-      if (cj->progeny[k] != NULL) {
-        cell_shadowfax_do_pair2_force_recursive(e, ci, cj->progeny[k], sid,
                                                 shift);
       }
     }
@@ -165,13 +159,6 @@ void cell_shadowfax_do_pair_subset_density_recursive(
           count -= sub_count;
         } /* Does this sub contain some of the remaining particles? */
       }   /* Progeny not NULL? */
-    }
-  } else if (cj->split) {
-    for (k = 0; k < 8; k++) {
-      if (cj->progeny[k] != NULL) {
-        cell_shadowfax_do_pair_subset_density_recursive(
-            e, ci, parts_i, ind, count, cj->progeny[k], sid, flipped, shift);
-      }
     }
   } else {
     cell_shadowfax_do_pair_subset_density(e, ci, parts_i, ind, count, cj, sid,

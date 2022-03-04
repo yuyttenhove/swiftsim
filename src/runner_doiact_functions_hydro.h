@@ -1045,6 +1045,8 @@ void DOPAIR1(struct runner *r, struct cell *ci, struct cell *cj, const int sid,
 #if defined(SHADOWFAX_NEW_SPH)
 #if FUNCTION_TASK_LOOP == TASK_LOOP_DENSITY
   cell_shadowfax_do_pair1_density_recursive(e, ci, cj, sid, shift);
+  double inverse_shift[3] = {-shift[0], -shift[1], -shift[2]};
+  cell_shadowfax_do_pair1_density_recursive(e, cj, ci, 26 - sid, inverse_shift);
 #elif FUNCTION_TASK_LOOP == TASK_LOOP_GRADIENT
   cell_shadowfax_do_pair1_gradient_recursive(e, ci, cj, sid, shift);
 #elif FUNCTION_TASK_LOOP == TASK_LOOP_FORCE
@@ -1310,6 +1312,7 @@ void DOPAIR1_BRANCH(struct runner *r, struct cell *ci, struct cell *cj) {
   double shift[3] = {0.0, 0.0, 0.0};
   const int sid = space_getsid(e->s, &ci, &cj, shift);
 
+#if !defined(SHADOWFAX_NEW_SPH) || FUNCTION_TASK_LOOP == TASK_LOOP_DENSITY
   /* Have the cells been sorted? */
   if (!(ci->hydro.sorted & (1 << sid)) ||
       ci->hydro.dx_max_sort_old > space_maxreldx * ci->dmin)
@@ -1362,6 +1365,7 @@ void DOPAIR1_BRANCH(struct runner *r, struct cell *ci, struct cell *cj) {
           cj->hydro.dx_max_sort_old);
   }
 #endif /* SWIFT_DEBUG_CHECKS */
+#endif
 
 #if defined(SWIFT_USE_NAIVE_INTERACTIONS)
   DOPAIR1_NAIVE(r, ci, cj);
@@ -1936,6 +1940,7 @@ void DOPAIR2_BRANCH(struct runner *r, struct cell *ci, struct cell *cj) {
   const int sid = space_getsid(e->s, &ci, &cj, shift);
 
   /* Have the cells been sorted? */
+#if !defined(SHADOWFAX_NEW_SPH) || FUNCTION_TASK_LOOP == TASK_LOOP_DENSITY
   if (!(ci->hydro.sorted & (1 << sid)) ||
       ci->hydro.dx_max_sort_old > space_maxreldx * ci->dmin)
     error("Interacting unsorted cells.");
@@ -1987,6 +1992,7 @@ void DOPAIR2_BRANCH(struct runner *r, struct cell *ci, struct cell *cj) {
           cj->hydro.dx_max_sort_old);
   }
 #endif /* SWIFT_DEBUG_CHECKS */
+#endif
 
 #ifdef SWIFT_USE_NAIVE_INTERACTIONS
   DOPAIR2_NAIVE(r, ci, cj);

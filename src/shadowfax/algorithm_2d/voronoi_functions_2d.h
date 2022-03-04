@@ -85,9 +85,11 @@ static inline int voronoi_add_pair(struct voronoi *v, const struct delaunay *d,
   int sid;
   struct cell *c;
   int right_part_idx;
+  int right_nodeID;
   /* Local pair? */
   if (ngb_del_vert_idx < d->ngb_offset) {
     right_part_idx = ngb_del_vert_idx - d->vertex_start;
+    right_nodeID = -1;
     if (ngb_del_vert_idx < del_vert_idx) {
       /* Pair was already added. Find it and add it to the cell_pair_connections
        * if necessary. If no pair is found, the face must have been degenerate.
@@ -110,11 +112,12 @@ static inline int voronoi_add_pair(struct voronoi *v, const struct delaunay *d,
     sid = d->ngb_cell_sids[ngb_del_vert_idx - d->ngb_offset];
     c = d->ngb_cell_ptrs[ngb_del_vert_idx - d->ngb_offset];
     right_part_idx = d->ngb_part_idx[ngb_del_vert_idx - d->ngb_offset];
+    right_nodeID = d->ngb_nodeID[ngb_del_vert_idx - d->ngb_offset];
   }
 
 #ifdef SWIFT_DEBUG_CHECKS
   /* Sanity check */
-  assert(c == NULL || !c->split);
+//  assert(c == NULL || !c->split);
 #endif
 
   /* Need to reallocate? */
@@ -138,6 +141,7 @@ static inline int voronoi_add_pair(struct voronoi *v, const struct delaunay *d,
   this_pair->right_cell = c;
   this_pair->left_idx = del_vert_idx - d->vertex_start;
   this_pair->right_idx = right_part_idx;
+  this_pair->right_nodeID = right_nodeID;
 
 #ifdef VORONOI_STORE_FACES
   this_pair->a[0] = ax;
@@ -223,7 +227,7 @@ static inline void voronoi_destroy(struct voronoi *restrict v) {
   v->number_of_cells = 0;
   v->cells_size = 0;
   for (int i = 0; i < 28; i++) {
-    v->pair_index[i] = -1;
+    v->pair_index[i] = 0;
     v->pair_size[i] = 0;
   }
   v->min_surface_area = -1;

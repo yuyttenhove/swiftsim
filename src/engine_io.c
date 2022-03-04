@@ -179,18 +179,33 @@ void engine_dump_snapshot(struct engine *e) {
 #endif
 #endif
 
-#if defined(SHADOWFAX_NEW_SPH) && !defined(WITH_MPI)
+#ifdef SHADOWFAX_NEW_SPH
+#ifndef WITH_MPI
   char fname[50];
   sprintf(fname, "voronoi%04d.txt", e->snapshot_output_count - 1);
   FILE *vfile = fopen(fname, "w");
   sprintf(fname, "delaunay%04d.txt", e->snapshot_output_count - 1);
   FILE *file = fopen(fname, "w");
   size_t offset = 0;
-  struct space* s = e->s;
+  struct space *s = e->s;
   for (int i = 0; i < s->nr_cells; ++i) {
     cell_shadowfax_write_tesselations(&s->cells_top[i], file, vfile, &offset);
   }
   fclose(vfile);
+#else
+  char fname[50];
+  sprintf(fname, "voronoi_node%02d_%04d.txt", e->nodeID, e->snapshot_output_count - 1);
+  FILE *vfile = fopen(fname, "w");
+  sprintf(fname, "delaunay_node%02d_%04d.txt", e->nodeID, e->snapshot_output_count - 1);
+  FILE *file = fopen(fname, "w");
+  size_t offset = 0;
+  struct space *s = e->s;
+  for (int i = 0; i < s->nr_cells; ++i) {
+    if (s->cells_top[i].nodeID != e->nodeID) continue;
+    cell_shadowfax_write_tesselations(&s->cells_top[i], file, vfile, &offset);
+  }
+  fclose(vfile);
+#endif
 #endif
 
   /* Flag that we dumped a snapshot */
