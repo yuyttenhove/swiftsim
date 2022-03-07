@@ -66,9 +66,6 @@ struct delaunay {
    *  part of. */
   double* search_radii;
 
-  /*! @brief Direct pointers to particles corresponding to vertices */
-  struct part** part_pointers;
-
   /*! @brief Next available index within the vertex array. Corresponds to the
    *  actual size of the vertex array. */
   int vertex_index;
@@ -142,6 +139,11 @@ struct delaunay {
 
   /*! @brief Pointers to neighbour cells containing corresponding particles */
   struct cell** ngb_cell_ptrs;
+
+  /*! @brief Index of neighbouring particles in their respective cells. */
+  int* ngb_part_idx;
+
+  int* ngb_nodeID;
 
   /*! @brief Current used size of the neighbouring vertex bookkeeping arrays
    *  (and next valid index in this array). */

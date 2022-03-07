@@ -250,7 +250,9 @@ inline static void voronoi_build(struct voronoi *v, struct delaunay *d) {
     double az = d->vertices[3 * gen_idx_in_d + 2];
 
 #ifdef VORONOI_STORE_GENERATORS
-    this_cell->generator = d->part_pointers[gen_idx_in_d];
+    this_cell->x[0] = ax;
+    this_cell->x[1] = ay;
+    this_cell->x[2] = az;
 #endif
 
     /* Get a tetrahedron containing the central generator */
@@ -437,7 +439,7 @@ inline static void voronoi_destroy(struct voronoi *restrict v) {
   for (int i = 0; i < 28; ++i) {
     for (int j = 0; j < v->pair_index[i]; j++) {
       voronoi_pair_destroy(&v->pairs[i][j]);
-      v->pair_index[i] = -1;
+      v->pair_index[i] = 0;
       v->pair_size[i] = 0;
     }
     swift_free("c.h.v.pairs", v->pairs[i]);
@@ -482,18 +484,22 @@ inline static int voronoi_new_face(struct voronoi *v, const struct delaunay *d,
                                    int n_vertices) {
   int sid;
   struct cell *c;
+  int right_part_idx;
+  int right_nodeID;
+  /* Local pair? */
   if (right_part_idx_in_d < d->ngb_offset) {
+    right_part_idx = right_part_idx_in_d - d->vertex_start;
+    right_nodeID = -1;
     if (right_part_idx_in_d < left_part_idx_in_d) {
       /* Pair was already added. Find it and add it to the cell_pair_connections
        * if necessary. If no pair is found, the face must have been degenerate.
        * Return early. */
-      struct voronoi_cell_new *ngb_cell =
-          &v->cells[right_part_idx_in_d - d->vertex_start];
-      struct part *left_part = d->part_pointers[left_part_idx_in_d];
+      struct voronoi_cell_new *ngb_cell = &v->cells[right_part_idx];
+      int left_part_idx = left_part_idx_in_d - d->vertex_start;
       for (int i = 0; i < ngb_cell->nface; i++) {
         int2 connection = v->cell_pair_connections
                               .values[ngb_cell->pair_connections_offset + i];
-        if (v->pairs[connection._1][connection._0].right == left_part) {
+        if (v->pairs[connection._1][connection._0].right_idx == left_part_idx) {
           int2_lifo_queue_push(&v->cell_pair_connections, connection);
           return 1;
         }
@@ -505,11 +511,13 @@ inline static int voronoi_new_face(struct voronoi *v, const struct delaunay *d,
   } else {
     sid = d->ngb_cell_sids[right_part_idx_in_d - d->ngb_offset];
     c = d->ngb_cell_ptrs[right_part_idx_in_d - d->ngb_offset];
+    right_part_idx = d->ngb_part_idx[right_part_idx_in_d - d->ngb_offset];
+    right_nodeID = d->ngb_nodeID[right_part_idx_in_d - d->ngb_offset];
   }
 
 #ifdef SWIFT_DEBUG_CHECKS
   /* Sanity check */
-  assert(c == NULL || !c->split);
+//  assert(c == NULL || !c->split);
 #endif
 
   if (v->pair_index[sid] == v->pair_size[sid]) {
@@ -531,14 +539,9 @@ inline static int voronoi_new_face(struct voronoi *v, const struct delaunay *d,
 
   /* Initialize pair */
   this_pair->right_cell = c;
-  this_pair->left = d->part_pointers[left_part_idx_in_d];
   this_pair->left_idx = left_part_idx_in_d - d->vertex_start;
-  this_pair->right = d->part_pointers[right_part_idx_in_d];
-  if (sid == 13 || sid == 27) {
-    this_pair->right_idx = right_part_idx_in_d - d->vertex_start;
-  } else {
-    this_pair->right_idx = -1;
-  }
+  this_pair->right_idx = right_part_idx;
+  this_pair->right_nodeID = right_nodeID;
 
 #ifdef VORONOI_STORE_FACES
   this_pair->vertices = (double *)malloc(3 * n_vertices * sizeof(double));
@@ -645,8 +648,7 @@ inline static void voronoi_write_grid(const struct voronoi *restrict v,
   for (int i = 0; i < v->number_of_cells; ++i) {
     struct voronoi_cell_new *this_cell = &v->cells[i];
 #ifdef VORONOI_STORE_GENERATORS
-    fprintf(file, "G\t%g\t%g\t%g\n", this_cell->generator->x[0],
-            this_cell->generator->x[1], this_cell->generator->x[2]);
+    fprintf(file, "G\t%g\t%g\t%g\n", this_cell->x[0], this_cell->x[1], this_cell->x[2]);
 #endif
     fprintf(file, "C\t%g\t%g\t%g\t%g", this_cell->centroid[0],
             this_cell->centroid[1], this_cell->centroid[2], this_cell->volume);

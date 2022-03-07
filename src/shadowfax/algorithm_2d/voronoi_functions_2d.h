@@ -385,7 +385,7 @@ static inline void voronoi_build(struct voronoi *v, struct delaunay *d) {
 
 #ifdef VORONOI_STORE_GENERATORS
     this_cell->x[0] = ax;
-    this_cell->x[1] = ax;
+    this_cell->x[1] = ay;
     this_cell->x[2] = 0.0;
 #endif
 

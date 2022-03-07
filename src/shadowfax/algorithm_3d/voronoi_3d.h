@@ -22,23 +22,21 @@
  * neighbouring cells, a surface area and a midpoint position.
  */
 struct voronoi_pair {
-  /*! Pointer to particle corresponding to the generator on the left of the
-   * interface (always a particle within the local cell). */
-  struct part *left;
-
-  /*! idx of cell on the left in this voronoi tesselation. */
+  /*! idx of the particle on the right of this pair in its respective swift
+   * cell. Since the left particle is always local this is also the index of the
+   * corresponding cell in this voronoi tesselation. */
   int left_idx;
 
-  /*! Pointer to particle corresponding to the generator on the right of the
-   * interface (can be a local particle, but also a particle in a
-   * neighbouring cell). */
-  struct part *right;
-
-  /*! idx of cell on the right in this voronoi tesselation If it is not a ghost
-   * particle, else -1. */
+  /*! idx of the particle on the right of this pair in its respective swift cell
+   * if that cell is the same as the cell holding this Voronoi tesselation (i.e.
+   * the particle is local) or in the super cell of its respective swift cell if
+   * that swift cell is foreign. For local particles, this is also the index of
+   * the corresponding cell in this voronoi tesselation. */
   int right_idx;
 
   struct cell *right_cell;
+
+  int right_nodeID;
 
   /*! Surface area of the interface. */
   double surface_area;

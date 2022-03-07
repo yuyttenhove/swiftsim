@@ -13,7 +13,7 @@ inline static void delaunay_init(struct delaunay* restrict d,
                                  const double* cell_width, int vertex_size);
 inline static void delaunay_check_tessellation(struct delaunay* d);
 inline static int delaunay_new_vertex(struct delaunay* restrict d, double x,
-                                      double y, double z, struct part* p);
+                                      double y, double z);
 inline static int delaunay_add_vertex(struct delaunay* restrict d, int v);
 inline static int delaunay_new_tetrahedron(struct delaunay* restrict d);
 inline static void delaunay_init_tetrahedron(struct delaunay* d, int t, int v0,
@@ -80,8 +80,6 @@ inline static void delaunay_malloc(struct delaunay* restrict d,
       "c.h.d.vertex_tetrahedron_index", vertex_size * sizeof(int));
   d->search_radii =
       (double*)swift_malloc("c.h.d.search_radii", vertex_size * sizeof(double));
-  d->part_pointers = (struct part**)swift_malloc(
-      "c.h.d.part_pointers", vertex_size * sizeof(struct part*));
   d->tetrahedra = (struct tetrahedron*)swift_malloc(
       "c.h.d.tetrahedra", tetrahedra_size * sizeof(struct tetrahedron));
   d->tetrahedra_size = tetrahedra_size;
@@ -101,6 +99,10 @@ inline static void delaunay_malloc(struct delaunay* restrict d,
       (int*)swift_malloc("c.h.d.ngb_cell_sids", vertex_size * sizeof(int));
   d->ngb_cell_ptrs = (struct cell**)swift_malloc(
       "c.h.d.ngb_cell_ptrs", vertex_size * sizeof(struct cell*));
+  d->ngb_part_idx =
+      (int*)swift_malloc("c.h.d.ngb_part_idx", vertex_size * sizeof(int));
+  d->ngb_nodeID =
+      (int*)swift_malloc("c.h.d.ngb_nodeID", vertex_size * sizeof(int));
   d->ngb_size = vertex_size;
 
   delaunay_init(d, cell_loc, cell_width, vertex_size);
@@ -182,13 +184,13 @@ inline static void delaunay_init(struct delaunay* restrict d,
 
   /* set up vertex_indices for large initial tetrahedron */
   int v0 =
-      delaunay_new_vertex(d, box_anchor[0], box_anchor[1], box_anchor[2], NULL);
+      delaunay_new_vertex(d, box_anchor[0], box_anchor[1], box_anchor[2]);
   int v1 = delaunay_new_vertex(d, box_anchor[0] + box_side, box_anchor[1],
-                               box_anchor[2], NULL);
+                               box_anchor[2]);
   int v2 = delaunay_new_vertex(d, box_anchor[0], box_anchor[1] + box_side,
-                               box_anchor[2], NULL);
+                               box_anchor[2]);
   int v3 = delaunay_new_vertex(d, box_anchor[0], box_anchor[1],
-                               box_anchor[2] + box_side, NULL);
+                               box_anchor[2] + box_side);
 
   /* Set the offset and index. */
   d->ngb_offset = d->vertex_index;
@@ -243,7 +245,6 @@ inline static void delaunay_destroy(struct delaunay* restrict d) {
   swift_free("c.h.d.vertex_tetrahedron_links", d->vertex_tetrahedron_links);
   swift_free("c.h.d.vertex_tetrahedron_index", d->vertex_tetrahedron_index);
   swift_free("c.h.d.search_radii", d->search_radii);
-  swift_free("c.h.d.part_pointers", d->part_pointers);
   swift_free("c.h.d.tetrahedra", d->tetrahedra);
   int_lifo_queue_destroy(&d->tetrahedra_to_check);
   int_lifo_queue_destroy(&d->free_tetrahedron_indices);
@@ -253,6 +254,8 @@ inline static void delaunay_destroy(struct delaunay* restrict d) {
   geometry3d_destroy(&d->geometry);
   swift_free("c.h.d.ngb_cell_sids", d->ngb_cell_sids);
   swift_free("c.h.d.ngb_cell_ptrs", d->ngb_cell_ptrs);
+  swift_free("c.h.d.ngb_part_idx", d->ngb_part_idx);
+  swift_free("c.h.d.ngb_nodeID", d->ngb_nodeID);
 
   d->vertices = NULL;
   d->rescaled_vertices = NULL;
@@ -260,11 +263,12 @@ inline static void delaunay_destroy(struct delaunay* restrict d) {
   d->vertex_tetrahedron_links = NULL;
   d->vertex_tetrahedron_index = NULL;
   d->search_radii = NULL;
-  d->part_pointers = NULL;
   d->tetrahedra = NULL;
   d->get_radius_neighbour_flags = NULL;
   d->ngb_cell_ptrs = NULL;
   d->ngb_cell_sids = NULL;
+  d->ngb_part_idx = NULL;
+  d->ngb_nodeID = NULL;
 
   bzero(d->anchor, 3 * sizeof(double));
   d->side = 0.;
@@ -341,7 +345,7 @@ inline static void delaunay_init_tetrahedron(struct delaunay* d, int t, int v0,
 
 inline static void delaunay_init_vertex(struct delaunay* restrict d,
                                         const int v, double x, double y,
-                                        double z, struct part* restrict p) {
+                                        double z) {
   /* store a copy of the vertex coordinates (we should get rid of this for
      SWIFT) */
   d->vertices[3 * v] = x;
@@ -383,9 +387,6 @@ inline static void delaunay_init_vertex(struct delaunay* restrict d,
 
   /* initialize the get_radius_flag to 0 */
   d->get_radius_neighbour_flags[v] = 0;
-
-  /* Set part pointer */
-  d->part_pointers[v] = p;
 }
 
 /**
@@ -401,7 +402,7 @@ inline static void delaunay_init_vertex(struct delaunay* restrict d,
  * @return Index of the new vertex within the vertex array.
  */
 inline static int delaunay_new_vertex(struct delaunay* restrict d, double x,
-                                      double y, double z, struct part* p) {
+                                      double y, double z) {
   delaunay_log("Adding new vertex at %i with coordinates: %g %g %g",
                d->vertex_index, x, y, z);
   /* check the size of the vertex arrays against the allocated memory size */
@@ -424,15 +425,12 @@ inline static int delaunay_new_vertex(struct delaunay* restrict d, double x,
         d->vertex_size * sizeof(int));
     d->search_radii = (double*)swift_realloc(
         "c.h.d.search_radii", d->search_radii, d->vertex_size * sizeof(double));
-    d->part_pointers =
-        (struct part**)swift_realloc("c.h.d.part_pointers", d->part_pointers,
-                                     d->vertex_size * sizeof(struct part*));
     d->get_radius_neighbour_flags = (int*)swift_realloc(
         "c.h.d.get_radius_neighbour_flags", d->get_radius_neighbour_flags,
         d->vertex_size * sizeof(int));
   }
 
-  delaunay_init_vertex(d, d->vertex_index, x, y, z, p);
+  delaunay_init_vertex(d, d->vertex_index, x, y, z);
 
   /* return the vertex index and then increase it by 1.
      After this operation, n_vertices will correspond to the size of the
@@ -448,13 +446,12 @@ inline static int delaunay_new_vertex(struct delaunay* restrict d, double x,
  * @param x, y, z Position of vertex
  */
 inline static void delaunay_add_local_vertex(struct delaunay* restrict d, int v,
-                                             double x, double y, double z,
-                                             struct part* p) {
+                                             double x, double y, double z) {
   delaunay_assert(d->active == 1);
   delaunay_assert(v < d->vertex_end && d->vertex_start <= v);
   delaunay_log("Adding local vertex at %i with coordinates: %g %g %g", v, x, y,
                z);
-  delaunay_init_vertex(d, v, x, y, z, p);
+  delaunay_init_vertex(d, v, x, y, z);
   delaunay_add_vertex(d, v);
 }
 
@@ -466,9 +463,9 @@ inline static void delaunay_add_local_vertex(struct delaunay* restrict d, int v,
 inline static void delaunay_add_new_vertex(struct delaunay* restrict d,
                                            double x, double y, double z,
                                            int sid, struct cell* restrict c,
-                                           struct part* restrict p) {
+                                           int part_idx, int nodeID) {
   delaunay_assert(d->active == 1);
-  int v = delaunay_new_vertex(d, x, y, z, p);
+  int v = delaunay_new_vertex(d, x, y, z);
   int flag = delaunay_add_vertex(d, v);
   if (flag == -1) {
     /* vertex already exists, delete the last vertex */
@@ -482,10 +479,16 @@ inline static void delaunay_add_new_vertex(struct delaunay* restrict d,
       d->ngb_cell_ptrs =
           (struct cell**)swift_realloc("c.h.d.ngb_cell_ptrs", d->ngb_cell_ptrs,
                                        d->ngb_size * sizeof(struct cell*));
+      d->ngb_part_idx = (int*)swift_realloc(
+          "c.h.d.ngb_part_idx", d->ngb_part_idx, d->ngb_size * sizeof(int));
+      d->ngb_nodeID = (int*)swift_realloc(
+          "c.h.d.ngb_nodeID", d->ngb_nodeID, d->ngb_size * sizeof(int));
     }
     delaunay_assert(d->ngb_index == v - d->ngb_offset);
     d->ngb_cell_sids[d->ngb_index] = sid;
     d->ngb_cell_ptrs[d->ngb_index] = c;
+    d->ngb_part_idx[d->ngb_index] = part_idx;
+    d->ngb_nodeID[d->ngb_index] = nodeID;
     d->ngb_index++;
   }
 }
@@ -626,7 +629,7 @@ inline static int delaunay_find_tetrahedra_containing_vertex(
 
     int non_axis_v_idx[4];
     int next_tetrahedron_idx = -1;
-    double min_dist = NAN;
+    double min_dist = -1.;
     double dist;
     double centroid[3];
     geometry3d_compute_centroid_tetrahedron(ad[0], ad[1], ad[2], bd[0], bd[1],
@@ -711,7 +714,7 @@ inline static int delaunay_find_tetrahedra_containing_vertex(
     const int test_abce = geometry3d_orient_adaptive(&d->geometry, al, bl, cl,
                                                      el, ad, bd, cd, ed);
     dist = geometry3d_ray_plane_intersect(&r, ad, bd, cd);
-    if (test_abce > 0 && (isnan(min_dist) || dist < min_dist)) {
+    if (test_abce > 0 && (min_dist == -1. || dist < min_dist)) {
       delaunay_assert(dist > -1e-13);
       min_dist = dist;
       next_tetrahedron_idx = tetrahedron->neighbours[3];
@@ -720,7 +723,7 @@ inline static int delaunay_find_tetrahedra_containing_vertex(
     const int test_acde = geometry3d_orient_adaptive(&d->geometry, al, cl, dl,
                                                      el, ad, cd, dd, ed);
     dist = geometry3d_ray_plane_intersect(&r, ad, cd, dd);
-    if (test_acde > 0 && (isnan(min_dist) || dist < min_dist)) {
+    if (test_acde > 0 && (min_dist == -1. || dist < min_dist)) {
       delaunay_assert(dist > -1e-13);
       min_dist = dist;
       next_tetrahedron_idx = tetrahedron->neighbours[1];
@@ -729,7 +732,7 @@ inline static int delaunay_find_tetrahedra_containing_vertex(
     const int test_adbe = geometry3d_orient_adaptive(&d->geometry, al, dl, bl,
                                                      el, ad, dd, bd, ed);
     dist = geometry3d_ray_plane_intersect(&r, ad, dd, bd);
-    if (test_adbe > 0 && (isnan(min_dist) || dist < min_dist)) {
+    if (test_adbe > 0 && (min_dist == -1. || dist < min_dist)) {
       delaunay_assert(dist > -1e-13);
       min_dist = dist;
       next_tetrahedron_idx = tetrahedron->neighbours[2];
@@ -738,7 +741,7 @@ inline static int delaunay_find_tetrahedra_containing_vertex(
     const int test_bdce = geometry3d_orient_adaptive(&d->geometry, bl, dl, cl,
                                                      el, bd, dd, cd, ed);
     if (test_bdce > 0) {
-      if (isnan(min_dist)) {
+      if (min_dist == -1.) {
         /* Point inside other faces */
 #ifdef DELAUNAY_DO_ASSERTIONS
         dist = geometry3d_ray_plane_intersect(&r, bd, dd, cd);
