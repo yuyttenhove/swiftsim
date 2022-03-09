@@ -898,6 +898,7 @@ inline static double geometry3d_ray_plane_intersect(const struct delaunay_ray* r
                                                  const double* p3) {
 
   /* Setup useful variables */
+  const double EPSILON = 1e-13;
   /* Vectors determining plane */
   const double v1[3] = {p1[0] - p3[0], p1[1] - p3[1], p1[2] - p3[2]};
   const double v2[3] = {p2[0] - p3[0], p2[1] - p3[1], p2[2] - p3[2]};
@@ -909,13 +910,14 @@ inline static double geometry3d_ray_plane_intersect(const struct delaunay_ray* r
   double numerator = n[0] * (p3[0] - r->origin[0]) +
                      n[1] * (p3[1] - r->origin[1]) +
                      n[2] * (p3[2] - r->origin[2]);
-  if (numerator == 0.) {
+  if (fabs(numerator) < EPSILON) {
     /* Point lies on the plane... */
     return 0.;
   }
 
   double denominator = geometry3d_dot(n, r->direction);
-  if (denominator == 0.) {
+  if (fabs(denominator) < EPSILON) {
+    /* Ray parallel to plane... */
     return DBL_MAX;
   }
   return numerator / denominator;

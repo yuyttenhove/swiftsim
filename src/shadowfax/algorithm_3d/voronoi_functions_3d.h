@@ -13,13 +13,6 @@ inline static int voronoi_new_face(struct voronoi *v, const struct delaunay *d,
 inline static void voronoi_check_grid(struct voronoi *restrict v);
 inline static void voronoi_destroy(struct voronoi *restrict v);
 
-inline static void voronoi_pair_destroy(struct voronoi_pair *pair) {
-#ifdef VORONOI_STORE_FACES
-  free(pair->vertices);
-  pair->vertices = NULL;
-#endif
-}
-
 inline static void voronoi_malloc(struct voronoi *restrict v,
                                   int number_of_cells, double dmin,
                                   struct cell *restrict swift_cell) {
@@ -30,15 +23,23 @@ inline static void voronoi_malloc(struct voronoi *restrict v,
   v->cells_size = v->number_of_cells;
 
   /* Allocate memory for the voronoi pairs (faces). */
-  for (int i = 0; i < 28; ++i) {
-    v->pairs[i] = (struct voronoi_pair *)swift_malloc(
+  for (int sid = 0; sid < 28; ++sid) {
+    v->pairs[sid] = (struct voronoi_pair *)swift_malloc(
         "c.h.v.pairs", 10 * sizeof(struct voronoi_pair));
-    v->pair_index[i] = 0;
-    v->pair_size[i] = 10;
+    v->pair_index[sid] = 0;
+    v->pair_size[sid] = 10;
   }
 
   /* Allocate memory for the cell_pair connections */
   int2_lifo_queue_init(&v->cell_pair_connections, 6 * number_of_cells);
+
+#ifdef VORONOI_STORE_FACES
+  /* Allocate memory for the face_vertices */
+  v->face_vertices_size = 100 * number_of_cells;
+  v->face_vertices = (double *)swift_malloc(
+      "c.h.v.face_vertices", 3 * v->face_vertices_size * sizeof(double));
+  v->face_vertices_index = 0;
+#endif
 
   v->swift_cell = swift_cell;
   v->min_surface_area = min_rel_voronoi_face_size * dmin;
@@ -59,13 +60,14 @@ inline static void voronoi_init(struct voronoi *restrict v, int number_of_cells,
   }
 
   /* reset indices for the voronoi pairs (faces). */
-  for (int i = 0; i < 28; ++i) {
-    /* Free any allocations made for the old pairs */
-    for (int j = 0; j < v->pair_index[i]; j++) {
-      voronoi_pair_destroy(&v->pairs[i][j]);
-    }
-    v->pair_index[i] = 0;
+  for (int sid = 0; sid < 28; ++sid) {
+    v->pair_index[sid] = 0;
   }
+
+#ifdef VORONOI_STORE_FACES
+  /* Reset face_vertices index */
+  v->face_vertices_index = 0;
+#endif
 
   /* Reset the cell_pair connections */
   int2_lifo_queue_reset(&v->cell_pair_connections);
@@ -436,16 +438,19 @@ inline static void voronoi_destroy(struct voronoi *restrict v) {
   v->number_of_cells = 0;
   v->cells_size = 0;
 
-  for (int i = 0; i < 28; ++i) {
-    for (int j = 0; j < v->pair_index[i]; j++) {
-      voronoi_pair_destroy(&v->pairs[i][j]);
-      v->pair_index[i] = 0;
-      v->pair_size[i] = 0;
-    }
-    swift_free("c.h.v.pairs", v->pairs[i]);
-    v->pairs[i] = NULL;
+  for (int sid = 0; sid < 28; ++sid) {
+    swift_free("c.h.v.pairs", v->pairs[sid]);
+    v->pairs[sid] = NULL;
+    v->pair_index[sid] = 0;
+    v->pair_size[sid] = 0;
   }
   int2_lifo_queue_destroy(&v->cell_pair_connections);
+#ifdef VORONOI_STORE_FACES
+  swift_free("c.h.v.face_vertices", v->face_vertices);
+  v->face_vertices = NULL;
+  v->face_vertices_size = 0;
+  v->face_vertices_index = 0;
+#endif
   v->swift_cell = NULL;
   v->active = 0;
 }
@@ -520,6 +525,7 @@ inline static int voronoi_new_face(struct voronoi *v, const struct delaunay *d,
 //  assert(c == NULL || !c->split);
 #endif
 
+  /* Do we need to extend the pairs array for this sid? */
   if (v->pair_index[sid] == v->pair_size[sid]) {
     v->pair_size[sid] <<= 1;
     v->pairs[sid] = (struct voronoi_pair *)swift_realloc(
@@ -544,16 +550,21 @@ inline static int voronoi_new_face(struct voronoi *v, const struct delaunay *d,
   this_pair->right_nodeID = right_nodeID;
 
 #ifdef VORONOI_STORE_FACES
-  this_pair->vertices = (double *)malloc(3 * n_vertices * sizeof(double));
-  this_pair->n_vertices = n_vertices;
 #ifdef SWIFT_DEBUG_CHECKS
   assert(this_pair->n_vertices > 0);
 #endif
-  for (int i = 0; i < n_vertices; i++) {
-    this_pair->vertices[3 * i] = vertices[3 * i];
-    this_pair->vertices[3 * i + 1] = vertices[3 * i + 1];
-    this_pair->vertices[3 * i + 2] = vertices[3 * i + 2];
+  /* Enough space to store new faces? */
+  int need_realloc = 0;
+  while (v->face_vertices_index + n_vertices >= v->face_vertices_size) {
+    v->face_vertices_size <<= 1;
+    need_realloc  = 1;
   }
+  if (need_realloc) {
+    v->face_vertices = realloc(v->face_vertices, 3 * v->face_vertices_size * sizeof(double));
+  }
+  this_pair->vertices = &v->face_vertices[3 * v->face_vertices_index];
+  this_pair->n_vertices = n_vertices;
+  memcpy(this_pair->vertices, vertices, 3 * n_vertices * sizeof(double));
 #endif
 
   /* Add cell_pair_connection */
@@ -657,10 +668,10 @@ inline static void voronoi_write_grid(const struct voronoi *restrict v,
   }
 
   /* now write the faces */
-  for (int ngb = 0; ngb < 28; ++ngb) {
-    for (int i = 0; i < v->pair_index[ngb]; ++i) {
-      struct voronoi_pair *pair = &v->pairs[ngb][i];
-      fprintf(file, "F\t%i\t%g\t%g\t%g\t%g", ngb, pair->surface_area,
+  for (int sid = 0; sid < 28; ++sid) {
+    for (int i = 0; i < v->pair_index[sid]; ++i) {
+      struct voronoi_pair *pair = &v->pairs[sid][i];
+      fprintf(file, "F\t%i\t%g\t%g\t%g\t%g", sid, pair->surface_area,
               pair->midpoint[0], pair->midpoint[1], pair->midpoint[2]);
 #ifdef VORONOI_STORE_FACES
       for (int j = 0; j < pair->n_vertices; j++) {

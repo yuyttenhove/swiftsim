@@ -88,6 +88,14 @@ struct voronoi {
    * tessellation */
   double min_surface_area;
 
+#ifdef VORONOI_STORE_FACES
+  /*! @brief The face vertices of all the faces concatenated in one big array.
+   * Every face has a pointer to the start of its vertices */
+   double *face_vertices;
+   int face_vertices_size;
+   int face_vertices_index;
+#endif
+
   /*! Pointer to swift cell containing this tesselation */
   struct cell *swift_cell;
 };

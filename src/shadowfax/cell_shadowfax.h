@@ -151,16 +151,17 @@ cell_shadowfax_do_pair1_density(const struct engine *e, struct cell *ci,
   /*  cell_shadowfax_do_pair_naive(e, ci, cj, sid, shift);*/
   /*  return;*/
 
+  int boundSid = sid > 13 ? 26 - sid : sid;
+
   /* Get the cutoff shift. */
   double rshift = 0.0;
-  for (int k = 0; k < 3; k++) rshift += shift[k] * runner_shift[sid][k];
+  for (int k = 0; k < 3; k++) rshift += shift[k] * runner_shift[boundSid][k];
 
   /* Pick-out the sorted lists. */
-  int get_sorts_sid = sid > 13 ? 26 - sid : sid;
   const struct sort_entry *restrict sort_i =
-      cell_get_hydro_sorts(ci, get_sorts_sid);
+      cell_get_hydro_sorts(ci, boundSid);
   const struct sort_entry *restrict sort_j =
-      cell_get_hydro_sorts(cj, get_sorts_sid);
+      cell_get_hydro_sorts(cj, boundSid);
 
   /* Get some other useful values. */
   const double hi_max = ci->hydro.h_max - rshift;
