@@ -67,11 +67,14 @@
 #include "debug.h"
 #include "equation_of_state.h"
 #include "error.h"
+#include "extra_io.h"
 #include "feedback.h"
 #include "fof.h"
 #include "gravity.h"
 #include "gravity_cache.h"
 #include "hydro.h"
+#include "lightcone/lightcone.h"
+#include "lightcone/lightcone_array.h"
 #include "line_of_sight.h"
 #include "map.h"
 #include "memuse.h"
@@ -83,6 +86,7 @@
 #include "output_list.h"
 #include "output_options.h"
 #include "partition.h"
+#include "potential.h"
 #include "profiler.h"
 #include "proxy.h"
 #include "restart.h"
@@ -1118,12 +1122,11 @@ int engine_estimate_nr_tasks(const struct engine *e) {
   }
 #endif
   if (e->policy & engine_policy_rt) {
-    /* inject: 1 self + (3^3-1)/2 = 26/2 = 13 pairs  |   14
-     * gradient: 1 self + 13 pairs                   | + 14
+    /* gradient: 1 self + 13 pairs                   |   14
      * transport: 1 self + 13 pairs                  | + 14
      * implicits: in + out, transport_out            | +  3
      * others: ghost1, ghost2, thermochemistry       | +  3 */
-    n1 += 48;
+    n1 += 34;
   }
 
 #ifdef WITH_MPI
@@ -1198,6 +1201,12 @@ void engine_rebuild(struct engine *e, const int repartitioned,
 
   /* Give some breathing space */
   scheduler_free_tasks(&e->sched);
+
+  /* Free the foreign particles to get more breathing space. */
+#ifdef WITH_MPI
+  if (e->free_foreign_when_rebuilding)
+    space_free_foreign_parts(e->s, /*clear_cell_pointers=*/1);
+#endif
 
   /* Re-build the space. */
   space_rebuild(e->s, repartitioned, e->verbose);
@@ -1311,6 +1320,12 @@ void engine_rebuild(struct engine *e, const int repartitioned,
 
   /* Re-build the tasks. */
   engine_maketasks(e);
+
+  /* Reallocate freed memory */
+#ifdef WITH_MPI
+  if (e->free_foreign_when_rebuilding)
+    engine_allocate_foreign_particles(e, /*fof=*/0);
+#endif
 
   /* Make the list of top-level cells that have tasks */
   space_list_useful_top_level_cells(e->s);
@@ -1571,7 +1586,7 @@ void engine_skip_force_and_kick(struct engine *e) {
         t->type == task_type_drift_sink || t->type == task_type_kick1 ||
         t->type == task_type_kick2 || t->type == task_type_timestep ||
         t->type == task_type_timestep_limiter ||
-        t->type == task_type_timestep_sync ||
+        t->type == task_type_timestep_sync || t->type == task_type_collect ||
         t->type == task_type_end_hydro_force || t->type == task_type_cooling ||
         t->type == task_type_stars_in || t->type == task_type_stars_out ||
         t->type == task_type_star_formation ||
@@ -1609,17 +1624,11 @@ void engine_skip_force_and_kick(struct engine *e) {
         t->subtype == task_subtype_sink_compute_formation ||
         t->subtype == task_subtype_sink_merger ||
         t->subtype == task_subtype_sink_accretion ||
-        t->subtype == task_subtype_tend_part ||
-        t->subtype == task_subtype_tend_gpart ||
-        t->subtype == task_subtype_tend_spart ||
-        t->subtype == task_subtype_tend_sink ||
-        t->subtype == task_subtype_tend_bpart ||
-        t->subtype == task_subtype_rho ||
+        t->subtype == task_subtype_tend || t->subtype == task_subtype_rho ||
         t->subtype == task_subtype_spart_density ||
         t->subtype == task_subtype_part_prep1 ||
         t->subtype == task_subtype_spart_prep2 ||
         t->subtype == task_subtype_sf_counts ||
-        t->subtype == task_subtype_rt_inject ||
         t->subtype == task_subtype_rt_gradient ||
         t->subtype == task_subtype_rt_transport)
       t->skip = 1;
@@ -1861,6 +1870,10 @@ void engine_init_particles(struct engine *e, int flag_entropy_ICs,
     }
   }
 
+  /* Apply some RT conversions (e.g. energy -> energy density) */
+  if (e->policy & engine_policy_rt)
+    space_convert_rt_quantities(e->s, e->verbose);
+
   /* Collect initial mean mass of each particle type */
   space_collect_mean_masses(e->s, e->verbose);
 
@@ -1917,18 +1930,10 @@ void engine_init_particles(struct engine *e, int flag_entropy_ICs,
   TIMER_TOC2(timer_runners);
 
   /* Initialise additional RT data now that time bins are set */
+#ifdef SWIFT_RT_DEBUG_CHECKS
   if (e->policy & engine_policy_rt)
     space_convert_rt_quantities_after_zeroth_step(e->s, e->verbose);
-
-  /* Since the time-steps may have changed because of the limiter's
-   * action, we need to communicate the new time-step sizes */
-  if ((e->policy & engine_policy_timestep_sync) ||
-      (e->policy & engine_policy_timestep_limiter)) {
-#ifdef WITH_MPI
-    engine_unskip_timestep_communications(e);
-    engine_launch(e, "timesteps");
 #endif
-  }
 
 #ifdef SWIFT_HYDRO_DENSITY_CHECKS
   /* Run the brute-force hydro calculation for some parts */
@@ -2196,6 +2201,13 @@ void engine_step(struct engine *e) {
     e->time_step = (e->ti_current - e->ti_old) * e->time_base;
   }
 
+#ifdef WITH_LIGHTCONE
+  /* Determine which periodic replications could contribute to the lightcone
+     during this time step */
+  lightcone_array_prepare_for_step(e->lightcone_array_properties, e->cosmology,
+                                   e->ti_earliest_undrifted, e->ti_current);
+#endif
+
   /*****************************************************/
   /* OK, we now know what the next end of time-step is */
   /*****************************************************/
@@ -2227,7 +2239,7 @@ void engine_step(struct engine *e) {
     e->forcerebuild = 1;
 
   /* Trigger a FOF black hole seeding? */
-  if (e->policy & engine_policy_fof) {
+  if (e->policy & engine_policy_fof && !e->restarting) {
     if (e->ti_end_min > e->ti_next_fof && e->ti_next_fof > 0) {
       e->run_fof = 1;
       e->forcerebuild = 1;
@@ -2387,16 +2399,6 @@ void engine_step(struct engine *e) {
   e->systime_last_step = end_systime - start_systime;
 #endif
 
-  /* Since the time-steps may have changed because of the limiter's
-   * action, we need to communicate the new time-step sizes */
-  if ((e->policy & engine_policy_timestep_sync) ||
-      (e->policy & engine_policy_timestep_limiter)) {
-#ifdef WITH_MPI
-    engine_unskip_timestep_communications(e);
-    engine_launch(e, "timesteps");
-#endif
-  }
-
 #ifdef SWIFT_HYDRO_DENSITY_CHECKS
   /* Run the brute-force hydro calculation for some parts */
   if (e->policy & engine_policy_hydro)
@@ -2447,12 +2449,6 @@ void engine_step(struct engine *e) {
   space_check_unskip_flags(e->s);
 #endif
 
-#if defined(SWIFT_RT_DEBUG_CHECKS)
-  /* if we're running the debug RT scheme, do some checks after every step */
-  if (e->policy & engine_policy_rt)
-    rt_debugging_checks_end_of_step(e, e->verbose);
-#endif
-
   /* Compute the local accumulated deadtime. */
   const ticks deadticks = (e->nr_threads * e->sched.deadtime.waiting_ticks) -
                           e->sched.deadtime.active_ticks;
@@ -2466,6 +2462,14 @@ void engine_step(struct engine *e) {
   e->s_updates_since_rebuild += e->collect_group1.s_updated;
   e->sink_updates_since_rebuild += e->collect_group1.sink_updated;
   e->b_updates_since_rebuild += e->collect_group1.b_updated;
+
+  /* Check if we updated all of the particles on this step */
+  if ((e->collect_group1.updated == e->total_nr_parts) &&
+      (e->collect_group1.g_updated == e->total_nr_gparts) &&
+      (e->collect_group1.s_updated == e->total_nr_sparts) &&
+      (e->collect_group1.sink_updated == e->total_nr_sinks) &&
+      (e->collect_group1.b_updated == e->total_nr_bparts))
+    e->ti_earliest_undrifted = e->ti_current;
 
 #ifdef SWIFT_DEBUG_CHECKS
   /* Verify that all cells have correct time-step information */
@@ -2481,14 +2485,30 @@ void engine_step(struct engine *e) {
             e->collect_group1.csds_file_size_gb);
 #endif
 
-  /********************************************************/
-  /* OK, we are done with the regular stuff. Time for i/o */
-  /********************************************************/
+    /********************************************************/
+    /* OK, we are done with the regular stuff. Time for i/o */
+    /********************************************************/
+
+#ifdef WITH_LIGHTCONE
+  /* Flush lightcone buffers if necessary */
+  const int flush = e->flush_lightcone_maps;
+  lightcone_array_flush(e->lightcone_array_properties, &(e->threadpool),
+                        e->cosmology, e->internal_units, e->snapshot_units,
+                        /*flush_map_updates=*/flush, /*flush_particles=*/0,
+                        /*end_file=*/0, /*dump_all_shells=*/0);
+#endif
 
   /* Create a restart file if needed. */
   engine_dump_restarts(e, 0, e->restart_onexit && engine_is_done(e));
 
   engine_check_for_dumps(e);
+
+#if defined(SWIFT_RT_DEBUG_CHECKS)
+  /* if we're running the debug RT scheme, do some checks after every step.
+   * Do this after the output so we can safely reset debugging checks now. */
+  if (e->policy & engine_policy_rt)
+    rt_debugging_checks_end_of_step(e, e->verbose);
+#endif
 
   TIMER_TOC2(timer_step);
 
@@ -2807,8 +2827,10 @@ void engine_numa_policies(int rank, int verbose) {
  * @param cooling_func The properties of the cooling function.
  * @param starform The #star_formation model of this run.
  * @param chemistry The chemistry information.
+ * @param io_extra_props The properties needed for the extra i/o fields.
  * @param fof_properties The #fof_props of this run.
  * @param los_properties the #los_props of this run.
+ * @param lightcone_array_properties the #lightcone_array_props of this run.
  * @param ics_metadata metadata read from the simulation ICs
  */
 void engine_init(
@@ -2829,7 +2851,9 @@ void engine_init(
     struct cooling_function_data *cooling_func,
     const struct star_formation *starform,
     const struct chemistry_global_data *chemistry,
+    struct extra_io_properties *io_extra_props,
     struct fof_props *fof_properties, struct los_props *los_properties,
+    struct lightcone_array_props *lightcone_array_properties,
     struct ic_info *ics_metadata) {
 
   struct clocks_time tic, toc;
@@ -2854,6 +2878,7 @@ void engine_init(
   e->reparttype = reparttype;
   e->ti_old = 0;
   e->ti_current = 0;
+  e->ti_earliest_undrifted = 0;
   e->time_step = 0.;
   e->time_base = 0.;
   e->time_base_inv = 0.;
@@ -2904,6 +2929,10 @@ void engine_init(
       parser_get_opt_param_int(params, "FOF:dump_catalogue_when_seeding", 0);
   e->snapshot_units = (struct unit_system *)malloc(sizeof(struct unit_system));
   units_init_default(e->snapshot_units, params, "Snapshots", internal_units);
+  e->free_foreign_when_dumping_restart = parser_get_opt_param_int(
+      params, "Scheduler:free_foreign_during_restart", 0);
+  e->free_foreign_when_rebuilding = parser_get_opt_param_int(
+      params, "Scheduler:free_foreign_during_rebuild", 0);
   e->snapshot_output_count = 0;
   e->stf_output_count = 0;
   e->los_output_count = 0;
@@ -2943,11 +2972,13 @@ void engine_init(
   e->feedback_props = feedback;
   e->rt_props = rt;
   e->chemistry = chemistry;
+  e->io_extra_props = io_extra_props;
   e->fof_properties = fof_properties;
   e->parameter_file = params;
   e->output_options = output_options;
   e->stf_this_timestep = 0;
   e->los_properties = los_properties;
+  e->lightcone_array_properties = lightcone_array_properties;
   e->ics_metadata = ics_metadata;
 #ifdef WITH_MPI
   e->usertime_last_step = 0.0;
@@ -3379,10 +3410,12 @@ void engine_clean(struct engine *e, const int fof, const int restart) {
     free((void *)e->cooling_func);
     free((void *)e->star_formation);
     free((void *)e->feedback_props);
+    free((void *)e->io_extra_props);
 #ifdef WITH_FOF
     free((void *)e->fof_properties);
 #endif
     free((void *)e->los_properties);
+    free((void *)e->lightcone_array_properties);
     free((void *)e->ics_metadata);
 #ifdef WITH_MPI
     free((void *)e->reparttype);
@@ -3440,10 +3473,12 @@ void engine_struct_dump(struct engine *e, FILE *stream) {
   neutrino_struct_dump(e->neutrino_properties, stream);
   neutrino_response_struct_dump(e->neutrino_response, stream);
   chemistry_struct_dump(e->chemistry, stream);
+  extra_io_struct_dump(e->io_extra_props, stream);
 #ifdef WITH_FOF
   fof_struct_dump(e->fof_properties, stream);
 #endif
   los_struct_dump(e->los_properties, stream);
+  lightcone_array_struct_dump(e->lightcone_array_properties, stream);
   ic_info_struct_dump(e->ics_metadata, stream);
   parser_struct_dump(e->parameter_file, stream);
   output_options_struct_dump(e->output_options, stream);
@@ -3585,6 +3620,11 @@ void engine_struct_restore(struct engine *e, FILE *stream) {
   chemistry_struct_restore(chemistry, stream);
   e->chemistry = chemistry;
 
+  struct extra_io_properties *extra_io_props =
+      (struct extra_io_properties *)malloc(sizeof(struct extra_io_properties));
+  extra_io_struct_restore(extra_io_props, stream);
+  e->io_extra_props = extra_io_props;
+
 #ifdef WITH_FOF
   struct fof_props *fof_props =
       (struct fof_props *)malloc(sizeof(struct fof_props));
@@ -3596,6 +3636,12 @@ void engine_struct_restore(struct engine *e, FILE *stream) {
       (struct los_props *)malloc(sizeof(struct los_props));
   los_struct_restore(los_properties, stream);
   e->los_properties = los_properties;
+
+  struct lightcone_array_props *lightcone_array_properties =
+      (struct lightcone_array_props *)malloc(
+          sizeof(struct lightcone_array_props));
+  lightcone_array_struct_restore(lightcone_array_properties, stream);
+  e->lightcone_array_properties = lightcone_array_properties;
 
   struct ic_info *ics_metadata =
       (struct ic_info *)malloc(sizeof(struct ic_info));

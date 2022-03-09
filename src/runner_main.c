@@ -123,13 +123,6 @@
 #undef FUNCTION_TASK_LOOP
 #undef FUNCTION
 
-/* Import radiative transfer loop functions. */
-#define FUNCTION inject
-#define FUNCTION_TASK_LOOP TASK_LOOP_RT_INJECT
-#include "runner_doiact_rt.h"
-#undef FUNCTION
-#undef FUNCTION_TASK_LOOP
-
 /* Import the RT gradient loop functions */
 #define FUNCTION rt_gradient
 #define FUNCTION_TASK_LOOP TASK_LOOP_RT_GRADIENT
@@ -269,8 +262,6 @@ void *runner_main(void *data) {
             runner_do_bh_swallow_self(r, ci, 1);
           else if (t->subtype == task_subtype_bh_feedback)
             runner_doself_branch_bh_feedback(r, ci);
-          else if (t->subtype == task_subtype_rt_inject)
-            runner_doself_branch_rt_inject(r, ci, 1);
           else if (t->subtype == task_subtype_rt_gradient)
             runner_doself1_branch_rt_gradient(r, ci);
           else if (t->subtype == task_subtype_rt_transport)
@@ -319,8 +310,6 @@ void *runner_main(void *data) {
             runner_do_bh_swallow_pair(r, ci, cj, 1);
           else if (t->subtype == task_subtype_bh_feedback)
             runner_dopair_branch_bh_feedback(r, ci, cj);
-          else if (t->subtype == task_subtype_rt_inject)
-            runner_dopair_branch_rt_inject(r, ci, cj, 1);
           else if (t->subtype == task_subtype_rt_gradient)
             runner_dopair1_branch_rt_gradient(r, ci, cj);
           else if (t->subtype == task_subtype_rt_transport)
@@ -367,8 +356,6 @@ void *runner_main(void *data) {
             runner_do_bh_swallow_self(r, ci, 1);
           else if (t->subtype == task_subtype_bh_feedback)
             runner_dosub_self_bh_feedback(r, ci, 1);
-          else if (t->subtype == task_subtype_rt_inject)
-            runner_dosub_self_rt_inject(r, ci, 1);
           else if (t->subtype == task_subtype_rt_gradient)
             runner_dosub_self1_rt_gradient(r, ci, 1);
           else if (t->subtype == task_subtype_rt_transport)
@@ -415,8 +402,6 @@ void *runner_main(void *data) {
             runner_do_bh_swallow_pair(r, ci, cj, 1);
           else if (t->subtype == task_subtype_bh_feedback)
             runner_dosub_pair_bh_feedback(r, ci, cj, 1);
-          else if (t->subtype == task_subtype_rt_inject)
-            runner_dosub_pair_rt_inject(r, ci, cj, 1);
           else if (t->subtype == task_subtype_rt_gradient)
             runner_dosub_pair1_rt_gradient(r, ci, cj, 1);
           else if (t->subtype == task_subtype_rt_transport)
@@ -507,15 +492,12 @@ void *runner_main(void *data) {
         case task_type_timestep_sync:
           runner_do_sync(r, ci, 0, 1);
           break;
+        case task_type_collect:
+          runner_do_timestep_collect(r, ci, 1);
+          break;
 #ifdef WITH_MPI
         case task_type_send:
-          if (t->subtype == task_subtype_tend_part) {
-            free(t->buff);
-          } else if (t->subtype == task_subtype_tend_gpart) {
-            free(t->buff);
-          } else if (t->subtype == task_subtype_tend_spart) {
-            free(t->buff);
-          } else if (t->subtype == task_subtype_tend_bpart) {
+          if (t->subtype == task_subtype_tend) {
             free(t->buff);
           } else if (t->subtype == task_subtype_sf_counts) {
             free(t->buff);
@@ -528,18 +510,8 @@ void *runner_main(void *data) {
           }
           break;
         case task_type_recv:
-          if (t->subtype == task_subtype_tend_part) {
-            cell_unpack_end_step_hydro(ci, (struct pcell_step_hydro *)t->buff);
-            free(t->buff);
-          } else if (t->subtype == task_subtype_tend_gpart) {
-            cell_unpack_end_step_grav(ci, (struct pcell_step_grav *)t->buff);
-            free(t->buff);
-          } else if (t->subtype == task_subtype_tend_spart) {
-            cell_unpack_end_step_stars(ci, (struct pcell_step_stars *)t->buff);
-            free(t->buff);
-          } else if (t->subtype == task_subtype_tend_bpart) {
-            cell_unpack_end_step_black_holes(
-                ci, (struct pcell_step_black_holes *)t->buff);
+          if (t->subtype == task_subtype_tend) {
+            cell_unpack_end_step(ci, (struct pcell_step *)t->buff);
             free(t->buff);
           } else if (t->subtype == task_subtype_sf_counts) {
             cell_unpack_sf_counts(ci, (struct pcell_sf *)t->buff);
@@ -550,6 +522,10 @@ void *runner_main(void *data) {
           } else if (t->subtype == task_subtype_rho) {
             runner_do_recv_part(r, ci, 0, 1);
           } else if (t->subtype == task_subtype_gradient) {
+            runner_do_recv_part(r, ci, 0, 1);
+          } else if (t->subtype == task_subtype_rt_gradient) {
+            runner_do_recv_part(r, ci, 0, 1);
+          } else if (t->subtype == task_subtype_rt_transport) {
             runner_do_recv_part(r, ci, 0, 1);
           } else if (t->subtype == task_subtype_part_swallow) {
             cell_unpack_part_swallow(ci,
