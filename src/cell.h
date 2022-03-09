@@ -50,6 +50,7 @@
 /* Avoid cyclic inclusions */
 struct engine;
 struct scheduler;
+struct replication_list;
 
 /* Max tag size set to 2^29 to take into account some MPI implementations
  * that use 2^31 as the upper bound on MPI tags and the fact that
@@ -230,37 +231,40 @@ struct pcell {
 /**
  * @brief Cell information at the end of a time-step.
  */
-struct pcell_step_hydro {
+struct pcell_step {
 
-  /*! Minimal integer end-of-timestep in this cell (hydro) */
-  integertime_t ti_end_min;
+  struct {
 
-  /*! Maximal distance any #part has travelled since last rebuild */
-  float dx_max_part;
-};
+    /*! Minimal integer end-of-timestep in this cell (hydro) */
+    integertime_t ti_end_min;
 
-struct pcell_step_grav {
+    /*! Maximal distance any #part has travelled since last rebuild */
+    float dx_max_part;
+  } hydro;
 
-  /*! Minimal integer end-of-timestep in this cell (gravity) */
-  integertime_t ti_end_min;
-};
+  struct {
 
-struct pcell_step_stars {
+    /*! Minimal integer end-of-timestep in this cell (gravity) */
+    integertime_t ti_end_min;
+  } grav;
 
-  /*! Minimal integer end-of-timestep in this cell (stars) */
-  integertime_t ti_end_min;
+  struct {
 
-  /*! Maximal distance any #part has travelled since last rebuild */
-  float dx_max_part;
-};
+    /*! Minimal integer end-of-timestep in this cell (stars) */
+    integertime_t ti_end_min;
 
-struct pcell_step_black_holes {
+    /*! Maximal distance any #part has travelled since last rebuild */
+    float dx_max_part;
+  } stars;
 
-  /*! Minimal integer end-of-timestep in this cell (black_holes) */
-  integertime_t ti_end_min;
+  struct {
 
-  /*! Maximal distance any #part has travelled since last rebuild */
-  float dx_max_part;
+    /*! Minimal integer end-of-timestep in this cell (black_holes) */
+    integertime_t ti_end_min;
+
+    /*! Maximal distance any #part has travelled since last rebuild */
+    float dx_max_part;
+  } black_holes;
 };
 
 /**
@@ -431,6 +435,9 @@ struct cell {
    * feedback */
   struct task *timestep_sync;
 
+  /*! The task to recursively collect time-steps */
+  struct task *timestep_collect;
+
 #ifdef WITH_CSDS
   /*! The csds task */
   struct task *csds;
@@ -509,16 +516,8 @@ void cell_unpack_bpart_swallow(struct cell *c,
                                const struct black_holes_bpart_data *data);
 int cell_pack_tags(const struct cell *c, int *tags);
 int cell_unpack_tags(const int *tags, struct cell *c);
-int cell_pack_end_step_hydro(struct cell *c, struct pcell_step_hydro *pcell);
-int cell_unpack_end_step_hydro(struct cell *c, struct pcell_step_hydro *pcell);
-int cell_pack_end_step_grav(struct cell *c, struct pcell_step_grav *pcell);
-int cell_unpack_end_step_grav(struct cell *c, struct pcell_step_grav *pcell);
-int cell_pack_end_step_stars(struct cell *c, struct pcell_step_stars *pcell);
-int cell_unpack_end_step_stars(struct cell *c, struct pcell_step_stars *pcell);
-int cell_pack_end_step_black_holes(struct cell *c,
-                                   struct pcell_step_black_holes *pcell);
-int cell_unpack_end_step_black_holes(struct cell *c,
-                                     struct pcell_step_black_holes *pcell);
+int cell_pack_end_step(const struct cell *c, struct pcell_step *pcell);
+int cell_unpack_end_step(struct cell *c, const struct pcell_step *pcell);
 void cell_pack_timebin(const struct cell *const c, timebin_t *const t);
 void cell_unpack_timebin(struct cell *const c, timebin_t *const t);
 int cell_pack_multipoles(struct cell *c, struct gravity_tensors *m);
@@ -566,11 +565,15 @@ int cell_unskip_sinks_tasks(struct cell *c, struct scheduler *s);
 int cell_unskip_rt_tasks(struct cell *c, struct scheduler *s);
 int cell_unskip_black_holes_tasks(struct cell *c, struct scheduler *s);
 int cell_unskip_gravity_tasks(struct cell *c, struct scheduler *s);
-void cell_drift_part(struct cell *c, const struct engine *e, int force);
-void cell_drift_gpart(struct cell *c, const struct engine *e, int force);
-void cell_drift_spart(struct cell *c, const struct engine *e, int force);
+void cell_drift_part(struct cell *c, const struct engine *e, int force,
+                     struct replication_list *replication_list_in);
+void cell_drift_gpart(struct cell *c, const struct engine *e, int force,
+                      struct replication_list *replication_list);
+void cell_drift_spart(struct cell *c, const struct engine *e, int force,
+                      struct replication_list *replication_list);
 void cell_drift_sink(struct cell *c, const struct engine *e, int force);
-void cell_drift_bpart(struct cell *c, const struct engine *e, int force);
+void cell_drift_bpart(struct cell *c, const struct engine *e, int force,
+                      struct replication_list *replication_list);
 void cell_drift_multipole(struct cell *c, const struct engine *e);
 void cell_drift_all_multipoles(struct cell *c, const struct engine *e);
 void cell_check_timesteps(const struct cell *c, const integertime_t ti_current,
@@ -601,8 +604,6 @@ void cell_activate_subcell_black_holes_tasks(struct cell *ci, struct cell *cj,
                                              const int with_timestep_sync);
 void cell_activate_subcell_external_grav_tasks(struct cell *ci,
                                                struct scheduler *s);
-void cell_activate_subcell_rt_tasks(struct cell *ci, struct cell *cj,
-                                    struct scheduler *s);
 void cell_activate_super_spart_drifts(struct cell *c, struct scheduler *s);
 void cell_activate_super_sink_drifts(struct cell *c, struct scheduler *s);
 void cell_activate_drift_part(struct cell *c, struct scheduler *s);
@@ -656,6 +657,18 @@ void cell_reorder_extra_sinks(struct cell *c, const ptrdiff_t sinks_offset);
 int cell_can_use_pair_mm(const struct cell *ci, const struct cell *cj,
                          const struct engine *e, const struct space *s,
                          const int use_rebuild_data, const int is_tree_walk);
+
+/**
+ * @brief Does a #cell contain no particle at all.
+ *
+ * @param c The #cell.
+ */
+__attribute__((always_inline)) INLINE static int cell_is_empty(
+    const struct cell *c) {
+
+  return (c->hydro.count == 0 && c->grav.count == 0 && c->stars.count == 0 &&
+          c->black_holes.count == 0 && c->sinks.count == 0);
+}
 
 /**
  * @brief Compute the square of the minimal distance between any two points in
@@ -713,10 +726,8 @@ __attribute__((always_inline)) INLINE static double cell_min_dist2_same_size(
 
     const double dx = min4(fabs(cix_min - cjx_min), fabs(cix_min - cjx_max),
                            fabs(cix_max - cjx_min), fabs(cix_max - cjx_max));
-
     const double dy = min4(fabs(ciy_min - cjy_min), fabs(ciy_min - cjy_max),
                            fabs(ciy_max - cjy_min), fabs(ciy_max - cjy_max));
-
     const double dz = min4(fabs(ciz_min - cjz_min), fabs(ciz_min - cjz_max),
                            fabs(ciz_max - cjz_min), fabs(ciz_max - cjz_max));
 

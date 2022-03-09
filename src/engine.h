@@ -37,11 +37,12 @@
 #include "clocks.h"
 #include "collectgroup.h"
 #include "ic_info.h"
+#include "lightcone/lightcone.h"
+#include "lightcone/lightcone_array.h"
 #include "mesh_gravity.h"
 #include "output_options.h"
 #include "parser.h"
 #include "partition.h"
-#include "potential.h"
 #include "runner.h"
 #include "scheduler.h"
 #include "space.h"
@@ -50,6 +51,8 @@
 #include "velociraptor_interface.h"
 
 struct black_holes_properties;
+struct extra_io_properties;
+struct external_potential;
 
 /**
  * @brief The different policies the #engine can follow.
@@ -108,9 +111,9 @@ enum engine_step_properties {
 #define engine_maxproxies 64
 #define engine_tasksreweight 1
 #define engine_parts_size_grow 1.05
-#define engine_redistribute_alloc_margin 1.2
+#define engine_redistribute_alloc_margin_default 1.2
 #define engine_rebuild_link_alloc_margin 1.2
-#define engine_foreign_alloc_margin 1.05
+#define engine_foreign_alloc_margin_default 1.05
 #define engine_default_energy_file_name "statistics"
 #define engine_default_timesteps_file_name "timesteps"
 #define engine_max_parts_per_ghost_default 1000
@@ -181,6 +184,9 @@ struct engine {
   /* The current system time. */
   double time;
   integertime_t ti_current;
+
+  /* The earliest time any particle may still need to be drifted from */
+  integertime_t ti_earliest_undrifted;
 
   /* The highest active bin at this time */
   timebin_t max_active_bin;
@@ -499,6 +505,9 @@ struct engine {
   /* Properties of the chemistry model */
   const struct chemistry_global_data *chemistry;
 
+  /* Properties used to compute the extra i/o fields */
+  struct extra_io_properties *io_extra_props;
+
   /*! The FOF properties data. */
   struct fof_props *fof_properties;
 
@@ -523,6 +532,12 @@ struct engine {
 
   /* Number of Lustre OSTs on the system to use as rank-based striping offset */
   int restart_lustre_OST_count;
+
+  /* Do we free the foreign data before writing restart files? */
+  int free_foreign_when_dumping_restart;
+
+  /* Do we free the foreign data before rebuilding the tree? */
+  int free_foreign_when_rebuilding;
 
   /* Name of the restart file. */
   const char *restart_file;
@@ -558,6 +573,9 @@ struct engine {
   /* Line of sight properties. */
   struct los_props *los_properties;
 
+  /* Line of sight properties. */
+  struct lightcone_array_props *lightcone_array_properties;
+
   /* Line of sight outputs information. */
   struct output_list *output_list_los;
   double a_first_los;
@@ -565,6 +583,9 @@ struct engine {
   double delta_time_los;
   integertime_t ti_next_los;
   int los_output_count;
+
+  /* Lightcone information */
+  int flush_lightcone_maps;
 
 #ifdef SWIFT_GRAVITY_FORCE_CHECKS
   /* Run brute force checks only on steps when all gparts active? */
@@ -591,7 +612,6 @@ void engine_compute_next_statistics_time(struct engine *e);
 void engine_compute_next_los_time(struct engine *e);
 void engine_recompute_displacement_constraint(struct engine *e);
 void engine_unskip(struct engine *e);
-void engine_unskip_timestep_communications(struct engine *e);
 void engine_drift_all(struct engine *e, const int drift_mpoles);
 void engine_drift_top_multipoles(struct engine *e);
 void engine_reconstruct_multipoles(struct engine *e);
@@ -621,7 +641,9 @@ void engine_init(
     struct cooling_function_data *cooling_func,
     const struct star_formation *starform,
     const struct chemistry_global_data *chemistry,
+    struct extra_io_properties *io_extra_props,
     struct fof_props *fof_properties, struct los_props *los_properties,
+    struct lightcone_array_props *lightcone_array_properties,
     struct ic_info *ics_metadata);
 void engine_config(int restart, int fof, struct engine *e,
                    struct swift_params *params, int nr_nodes, int nodeID,

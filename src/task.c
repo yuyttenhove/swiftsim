@@ -74,6 +74,7 @@ const char *taskID_names[task_type_count] = {
     "timestep",
     "timestep_limiter",
     "timestep_sync",
+    "collect",
     "send",
     "recv",
     "pack",
@@ -131,11 +132,7 @@ const char *subtaskID_names[task_subtype_count] = {
     "limiter",
     "grav",
     "external_grav",
-    "tend_part",
-    "tend_gpart",
-    "tend_spart",
-    "tend_sink",
-    "tend_bpart",
+    "tend",
     "xv",
     "rho",
 #ifdef SHADOWFAX_NEW_SPH
@@ -163,7 +160,6 @@ const char *subtaskID_names[task_subtype_count] = {
     "do_bh_swallow",
     "bh_feedback",
     "sink_merger",
-    "rt_inject",
     "sink_compute_formation",
     "sink_accretion",
     "rt_gradient",
@@ -299,10 +295,6 @@ __attribute__((always_inline)) INLINE static enum task_actions task_acts_on(
         case task_subtype_sink_merger:
         case task_subtype_sink_compute_formation:
           return task_action_all;
-
-        case task_subtype_rt_inject:
-          return task_action_all;
-          break;
 
         case task_subtype_rt_transport:
         case task_subtype_rt_gradient:
@@ -601,9 +593,6 @@ void task_unlock(struct task *t) {
         cell_unlocktree(ci);
       } else if (subtype == task_subtype_do_bh_swallow) {
         cell_bunlocktree(ci);
-      } else if (subtype == task_subtype_rt_inject) {
-        cell_unlocktree(ci);
-        cell_sunlocktree(ci);
       } else if (subtype == task_subtype_limiter) {
 #ifdef SWIFT_TASKS_WITHOUT_ATOMICS
         cell_unlocktree(ci);
@@ -658,11 +647,6 @@ void task_unlock(struct task *t) {
       } else if (subtype == task_subtype_do_bh_swallow) {
         cell_bunlocktree(ci);
         cell_bunlocktree(cj);
-      } else if (subtype == task_subtype_rt_inject) {
-        cell_sunlocktree(ci);
-        cell_sunlocktree(cj);
-        cell_unlocktree(ci);
-        cell_unlocktree(cj);
       } else if (subtype == task_subtype_limiter) {
 #ifdef SWIFT_TASKS_WITHOUT_ATOMICS
         cell_unlocktree(ci);
@@ -876,14 +860,6 @@ int task_lock(struct task *t) {
         if (ci->hydro.hold) return 0;
         if (cell_locktree(ci) != 0) return 0;
 #endif
-      } else if (subtype == task_subtype_rt_inject) {
-        if (ci->stars.hold) return 0;
-        if (ci->hydro.hold) return 0;
-        if (cell_slocktree(ci) != 0) return 0;
-        if (cell_locktree(ci) != 0) {
-          cell_sunlocktree(ci);
-          return 0;
-        }
       } else { /* subtype == hydro */
         if (ci->hydro.hold) return 0;
         if (cell_locktree(ci) != 0) return 0;
@@ -1038,15 +1014,6 @@ int task_lock(struct task *t) {
         if (cell_blocktree(ci) != 0) return 0;
         if (cell_blocktree(cj) != 0) {
           cell_bunlocktree(ci);
-          return 0;
-        }
-      } else if (subtype == task_subtype_rt_inject) {
-        /* Lock the stars and the gas particles in both cells */
-        if (ci->stars.hold || cj->stars.hold) return 0;
-        if (ci->hydro.hold || cj->hydro.hold) return 0;
-        if (cell_slocktree(ci) != 0) return 0;
-        if (cell_slocktree(cj) != 0) {
-          cell_sunlocktree(ci);
           return 0;
         }
         if (cell_locktree(ci) != 0) {
@@ -1264,14 +1231,19 @@ void task_get_group_name(int type, int subtype, char *cluster) {
     case task_subtype_bh_feedback:
       strcpy(cluster, "BHFeedback");
       break;
-    case task_subtype_rt_inject:
-      strcpy(cluster, "RTinject");
-      break;
     case task_subtype_rt_gradient:
-      strcpy(cluster, "RTgradient");
+      if (type == task_type_send || type == task_type_recv) {
+        strcpy(cluster, "None");
+      } else {
+        strcpy(cluster, "RTgradient");
+      }
       break;
     case task_subtype_rt_transport:
-      strcpy(cluster, "RTtransport");
+      if (type == task_type_send || type == task_type_recv) {
+        strcpy(cluster, "None");
+      } else {
+        strcpy(cluster, "RTtransport");
+      }
       break;
     case task_subtype_sink_compute_formation:
       strcpy(cluster, "SinkFormation");
@@ -1781,6 +1753,7 @@ enum task_categories task_get_category(const struct task *t) {
     case task_type_kick1:
     case task_type_kick2:
     case task_type_timestep:
+    case task_type_collect:
       return task_category_time_integration;
 
     case task_type_timestep_limiter:
@@ -1862,7 +1835,6 @@ enum task_categories task_get_category(const struct task *t) {
         case task_subtype_sink_accretion:
           return task_category_sink;
 
-        case task_subtype_rt_inject:
         case task_subtype_rt_gradient:
         case task_subtype_rt_transport:
           return task_category_rt;
