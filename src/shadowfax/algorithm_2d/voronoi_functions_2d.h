@@ -141,6 +141,7 @@ static inline int voronoi_add_pair(struct voronoi *v, const struct delaunay *d,
   this_pair->right_cell = c;
   this_pair->left_idx = del_vert_idx - d->vertex_start;
   this_pair->right_idx = right_part_idx;
+  this_pair->right_del_idx = ngb_del_vert_idx;
   this_pair->right_nodeID = right_nodeID;
 
 #ifdef VORONOI_STORE_FACES

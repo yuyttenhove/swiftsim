@@ -22,7 +22,7 @@
  * neighbouring cells, a surface area and a midpoint position.
  */
 struct voronoi_pair {
-  /*! idx of the particle on the right of this pair in its respective swift
+  /*! idx of the particle on the left of this pair in its respective swift
    * cell. Since the left particle is always local this is also the index of the
    * corresponding cell in this voronoi tesselation. */
   int left_idx;
@@ -33,6 +33,8 @@ struct voronoi_pair {
    * that swift cell is foreign. For local particles, this is also the index of
    * the corresponding cell in this voronoi tesselation. */
   int right_idx;
+
+  int right_del_idx;
 
   struct cell *right_cell;
 

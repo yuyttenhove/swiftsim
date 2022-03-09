@@ -645,7 +645,7 @@ void runner_do_end_hydro_force(struct runner *r, struct cell *c, int timer) {
         if (part_is_active(left, e)) {
           struct part right_vacuum;
           bzero(&right_vacuum, sizeof(struct part));
-          delaunay_get_vertex_at(&c->hydro.deltess, pair->right_idx, right_vacuum.x);
+          delaunay_get_vertex_at(&c->hydro.deltess, pair->right_del_idx, right_vacuum.x);
           double shift[3] = {0., 0., 0.};
           hydro_shadowfax_flux_exchange(left, &right_vacuum, pair->midpoint,
                                         pair->surface_area, shift, 0);
@@ -661,7 +661,7 @@ void runner_do_end_hydro_force(struct runner *r, struct cell *c, int timer) {
           /* Copy the left particle */
           struct part right_open = *left;
           /* Update its position. */
-          delaunay_get_vertex_at(&c->hydro.deltess, pair->right_idx, right_open.x);
+          delaunay_get_vertex_at(&c->hydro.deltess, pair->right_del_idx, right_open.x);
           double shift[3] = {0., 0., 0.};
           hydro_shadowfax_flux_exchange(left, &right_open, pair->midpoint,
                                         pair->surface_area, shift, 0);

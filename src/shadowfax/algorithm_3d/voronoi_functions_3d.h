@@ -547,6 +547,7 @@ inline static int voronoi_new_face(struct voronoi *v, const struct delaunay *d,
   this_pair->right_cell = c;
   this_pair->left_idx = left_part_idx_in_d - d->vertex_start;
   this_pair->right_idx = right_part_idx;
+  this_pair->right_del_idx = right_part_idx_in_d;
   this_pair->right_nodeID = right_nodeID;
 
 #ifdef VORONOI_STORE_FACES

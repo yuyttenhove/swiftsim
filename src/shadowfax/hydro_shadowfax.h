@@ -33,6 +33,9 @@ hydro_shadowfax_convert_conserved_to_primitive(struct part *restrict p,
 
     energy /= m;
     p->P = gas_pressure_from_internal_energy(p->rho, energy);
+
+    hydro_gravity_velocity_drift(p->fluid_v, p->v, xp->v_full);
+
   } else {
     p->rho = 0.f;
     p->fluid_v[0] = 0.f;
@@ -40,8 +43,6 @@ hydro_shadowfax_convert_conserved_to_primitive(struct part *restrict p,
     p->fluid_v[2] = 0.f;
     p->P = 0.f;
   }
-
-  hydro_gravity_velocity_drift(p->fluid_v, p->v, xp->v_full);
 
   if (m == 0. &&
       (p->fluid_v[0] != 0. || p->fluid_v[1] != 0. || p->fluid_v[2] != 0.)) {

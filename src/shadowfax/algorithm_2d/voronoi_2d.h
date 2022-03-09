@@ -52,6 +52,8 @@ struct voronoi_pair {
    * the corresponding cell in this voronoi tesselation. */
   int right_idx;
 
+  int right_del_idx;
+
   int right_nodeID;
 
   struct cell *right_cell;
