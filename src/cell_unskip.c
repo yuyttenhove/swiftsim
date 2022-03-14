@@ -748,21 +748,11 @@ void cell_activate_subcell_hydro_tasks(struct cell *ci, struct cell *cj,
 #ifdef SHADOWFAX_NEW_SPH
       /* If cell is split further, we must activate the sorts */
       if (ci->split) {
-        double shift[3] = {0., 0., 0.};
-        int sid;
-        for (int k = 0; k < 8; k++) {
-          if (ci->progeny[k] != NULL) {
-            for (int l = k + 1; l < 8; l++) {
-              if (ci->progeny[l] != NULL) {
-                /* Activate sort for this direction */
-                sid =
-                    space_getsid(e->s, &ci->progeny[k], &ci->progeny[l], shift);
-                atomic_or(&ci->hydro.requires_sorts, 1 << sid);
-                ci->hydro.dx_max_sort_old = ci->hydro.dx_max_sort;
-                cell_activate_hydro_sorts(ci, sid, s);
-              }
-            }
-          }
+        /* Activate sorts */
+        ci->hydro.dx_max_sort_old = ci->hydro.dx_max_sort;
+        for (int sid = 0; sid < 13; sid++) {
+          atomic_or(&ci->hydro.requires_sorts, 1 << sid);
+          cell_activate_hydro_sorts(ci, sid, s);
         }
       }
 #endif
@@ -1498,6 +1488,17 @@ int cell_unskip_hydro_tasks(struct cell *c, struct scheduler *s) {
         if (ci_nodeID == nodeID) cell_activate_drift_part(ci, s);
         if (ci_nodeID == nodeID && with_timestep_limiter)
           cell_activate_limiter(ci, s);
+#ifdef SHADOWFAX_NEW_SPH
+        /* if cell is split, we need to activate the sorts */
+        if (ci->split) {
+          /* Activate sorts */
+          ci->hydro.dx_max_sort_old = ci->hydro.dx_max_sort;
+          for (int sid = 0; sid < 13; sid++) {
+            atomic_or(&ci->hydro.requires_sorts, 1 << sid);
+            cell_activate_hydro_sorts(ci, sid, s);
+          }
+        }
+#endif
       }
 
       /* Set the correct sorting flags and activate hydro drifts */
