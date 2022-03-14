@@ -1008,7 +1008,7 @@ __attribute__((nonnull)) INLINE static void gravity_P2M(
     epsilon_max = max(epsilon_max, epsilon);
     min_old_a_grav_norm = min(min_old_a_grav_norm, gparts[k].old_a_grav_norm);
 #ifdef SHADOWFAX_NEW_SPH
-    /* Skip particles with zero mass (can only occur in the shadowfax scheme. */
+    /* Skip particles with zero mass (can only occur in the shadowfax scheme). */
     if (m == 0.) continue;
 #endif
     mass += m;
