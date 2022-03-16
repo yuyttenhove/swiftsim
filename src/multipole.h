@@ -1089,11 +1089,17 @@ __attribute__((nonnull)) INLINE static void gravity_P2M(
   /* Construce the higher order terms */
   for (int k = 0; k < gcount; k++) {
 
+#ifdef SHADOWFAX_NEW_SPH
+    /* Skip zero mass particles */
+    if (gparts[k].mass == 0.) continue;
+#endif
+
     const double dx[3] = {gparts[k].x[0] - com[0], gparts[k].x[1] - com[1],
                           gparts[k].x[2] - com[2]};
 
     /* Maximal distance CoM<->gpart */
     r_max2 = max(r_max2, dx[0] * dx[0] + dx[1] * dx[1] + dx[2] * dx[2]);
+
 
     /* Store the vector of the maximal vel difference */
     max_delta_vel[0] = max(gparts[k].v_full[0], max_delta_vel[0]);
@@ -1107,10 +1113,6 @@ __attribute__((nonnull)) INLINE static void gravity_P2M(
 
 #if SELF_GRAVITY_MULTIPOLE_ORDER > 0
     const double m = gparts[k].mass;
-#ifdef SHADOWFAX_NEW_SPH
-    /* If mass is zero, skip multipole calculations */
-    if (m == 0.) continue;
-#endif
 
     /* 1st order terms */
     M_100 += -m * X_100(dx);

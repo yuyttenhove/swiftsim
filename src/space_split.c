@@ -341,13 +341,75 @@ void space_split_recursive(struct space *s, struct cell *c,
       float min_delta_vel[3] = {0.f, 0.f, 0.f};
       double mass = 0.;
 
+#ifdef SHADOWFAX_NEW_SPH
+      /* Calculate total mass */
+      for (int k = 0; k < 8; ++k) {
+        if (c->progeny[k] != NULL) {
+          mass += c->progeny[k]->grav.multipole->m_pole.M_000;
+        }
+      }
+
+      if (mass > 0.) {
+        for (int k = 0; k < 8; ++k) {
+          if (c->progeny[k] != NULL) {
+            const struct gravity_tensors *m = c->progeny[k]->grav.multipole;
+
+            if (m->m_pole.M_000 == 0.) continue;
+
+            /* We divide here already to avoid losing precision in the case that
+             * there is only one massive particle */
+            const double weight = m->m_pole.M_000 / mass;
+
+            CoM[0] += m->CoM[0] * weight;
+            CoM[1] += m->CoM[1] * weight;
+            CoM[2] += m->CoM[2] * weight;
+
+            vel[0] += m->m_pole.vel[0] * weight;
+            vel[1] += m->m_pole.vel[1] * weight;
+            vel[2] += m->m_pole.vel[2] * weight;
+
+            max_delta_vel[0] = max(m->m_pole.max_delta_vel[0], max_delta_vel[0]);
+            max_delta_vel[1] = max(m->m_pole.max_delta_vel[1], max_delta_vel[1]);
+            max_delta_vel[2] = max(m->m_pole.max_delta_vel[2], max_delta_vel[2]);
+
+            min_delta_vel[0] = min(m->m_pole.min_delta_vel[0], min_delta_vel[0]);
+            min_delta_vel[1] = min(m->m_pole.min_delta_vel[1], min_delta_vel[1]);
+            min_delta_vel[2] = min(m->m_pole.min_delta_vel[2], min_delta_vel[2]);
+          }
+        }
+      } else {
+        /* Compute CoM without degeneracies */
+        /* This special case can only occur in the shadowfax scheme... */
+        for (int k = 0; k < 8; ++k) {
+          if (c->progeny[k] != NULL) {
+            const double weight = (double)c->progeny[k]->grav.count / c->grav.count;
+            const struct gravity_tensors *m = c->progeny[k]->grav.multipole;
+
+            CoM[0] += m->CoM[0] * weight;
+            CoM[1] += m->CoM[1] * weight;
+            CoM[2] += m->CoM[2] * weight;
+
+#ifdef SWIFT_DEBUG_CHECKS
+            /* Velocities should be 0 */
+            assert(m->m_pole.vel[0] == 0. && m->m_pole.vel[1] == 0. &&
+                   m->m_pole.vel[2] == 0.);
+#endif
+          }
+        }
+      }
+
+      /* Store CoM and velocity */
+      c->grav.multipole->CoM[0] = CoM[0];
+      c->grav.multipole->CoM[1] = CoM[1];
+      c->grav.multipole->CoM[2] = CoM[2];
+      c->grav.multipole->m_pole.vel[0] = vel[0];
+      c->grav.multipole->m_pole.vel[1] = vel[1];
+      c->grav.multipole->m_pole.vel[2] = vel[2];
+
+#else
       for (int k = 0; k < 8; ++k) {
         if (c->progeny[k] != NULL) {
           const struct gravity_tensors *m = c->progeny[k]->grav.multipole;
-
-#ifdef SHADOWFAX_NEW_SPH
-          if (m->m_pole.M_000 == 0.) continue;
-#endif
 
           mass += m->m_pole.M_000;
 
@@ -370,29 +432,6 @@ void space_split_recursive(struct space *s, struct cell *c,
       }
 
       /* Final operation on the CoM and bulk velocity */
-#ifdef SHADOWFAX_NEW_SPH
-      if (mass == 0.) {
-        /* Compute CoM without degeneracies */
-        /* This special case can only occur in the shadowfax scheme... */
-        for (int k = 0; k < 8; ++k) {
-          if (c->progeny[k] != NULL) {
-            const double cell_mass = c->progeny[k]->grav.count;
-            mass += cell_mass;
-            const struct gravity_tensors *m = c->progeny[k]->grav.multipole;
-
-            CoM[0] += m->CoM[0] * cell_mass;
-            CoM[1] += m->CoM[1] * cell_mass;
-            CoM[2] += m->CoM[2] * cell_mass;
-
-#ifdef SWIFT_DEBUG_CHECKS
-            /* Velocities should be 0 */
-            assert(m->m_pole.vel[0] == 0. && m->m_pole.vel[1] == 0. &&
-                   m->m_pole.vel[2] == 0.);
-#endif
-          }
-        }
-      }
-#endif
       const double inv_mass = 1. / mass;
       c->grav.multipole->CoM[0] = CoM[0] * inv_mass;
       c->grav.multipole->CoM[1] = CoM[1] * inv_mass;
@@ -400,6 +439,7 @@ void space_split_recursive(struct space *s, struct cell *c,
       c->grav.multipole->m_pole.vel[0] = vel[0] * inv_mass;
       c->grav.multipole->m_pole.vel[1] = vel[1] * inv_mass;
       c->grav.multipole->m_pole.vel[2] = vel[2] * inv_mass;
+#endif
 
       /* Min max velocity along each axis */
       c->grav.multipole->m_pole.max_delta_vel[0] = max_delta_vel[0];
@@ -422,6 +462,9 @@ void space_split_recursive(struct space *s, struct cell *c,
                       cp->grav.multipole->CoM);
           gravity_multipole_add(&c->grav.multipole->m_pole, &temp);
 
+#ifdef SHADOWFAX_NEW_SPH
+          if (m->M_000 == 0.) continue;
+#endif
           /* Upper limit of max CoM<->gpart distance */
           const double dx =
               c->grav.multipole->CoM[0] - cp->grav.multipole->CoM[0];

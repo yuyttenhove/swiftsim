@@ -207,6 +207,11 @@ __attribute__((nonnull, pure)) INLINE static int gravity_M2P_accept(
     const struct gravity_props *props, const struct gpart *pa,
     const struct gravity_tensors *B, const float r2, const int periodic) {
 
+#ifdef SHADOWFAX_NEW_SPH
+  /* If zero or one massive particles in cell accept */
+  if (B->m_pole.M_000 == 0. || B->r_max == 0.) return 1;
+#endif
+
   /* Order of the expansion */
   const int p = SELF_GRAVITY_MULTIPOLE_ORDER;
 
