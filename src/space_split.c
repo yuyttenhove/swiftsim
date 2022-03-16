@@ -357,8 +357,9 @@ void space_split_recursive(struct space *s, struct cell *c,
             if (m->m_pole.M_000 == 0.) continue;
 
             /* We divide here already to avoid losing precision in the case that
-             * there is only one massive particle */
-            const double weight = m->m_pole.M_000 / mass;
+             * there is only one massive particle. We forbid the compiler from
+             * optimizing this away */
+            volatile double weight = m->m_pole.M_000 / mass;
 
             CoM[0] += m->CoM[0] * weight;
             CoM[1] += m->CoM[1] * weight;
